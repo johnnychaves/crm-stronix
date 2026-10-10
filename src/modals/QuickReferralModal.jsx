@@ -178,7 +178,7 @@ export function QuickReferralModal({ db, appUser, referrer, referralFunnelId, en
                           }}
                           className={cn(
                             'h-7 px-3 rounded-full border text-[12px] font-medium transition',
-                            'focus:outline-none focus-visible:anel-foco',
+                            'focus:outline-none focus-visible:anel-foco focus-visible:ring-offset-2 focus-visible:ring-offset-background',
                             on
                               ? 'bg-brand-600 border-brand-600 text-white'
                               : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground'

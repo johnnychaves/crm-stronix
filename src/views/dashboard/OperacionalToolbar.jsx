@@ -102,7 +102,7 @@ export function CompareControl({ compareOn, onCompareOn, compareKey, compareOpti
               <button
                 type="button"
                 aria-label="Mês de comparação"
-                className="flex h-[34px] items-center px-[11px] text-[12.5px] font-semibold text-brand-700 outline-none focus-visible:anel-foco dark:text-brand-300"
+                className="flex h-[34px] items-center px-[11px] text-[12.5px] font-semibold text-brand-700 outline-none focus-visible:ring-inset focus-visible:anel-foco dark:text-brand-300"
               >
                 <SelectValue />
               </button>

@@ -32,7 +32,7 @@ function SettingsBtn({ kind = 'secondary', size = 34, icon, children, className 
       {...props}
       className={cn(
         'inline-flex items-center gap-1.5 rounded-[10px] font-semibold whitespace-nowrap transition active:scale-[.98]',
-        'focus-visible:outline-none focus-visible:anel-foco',
+        'focus-visible:outline-none focus-visible:anel-foco focus-visible:ring-offset-2 focus-visible:ring-offset-background',
         'disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100',
         BTN_SIZES[size] || BTN_SIZES[34], BTN_KINDS[kind] || BTN_KINDS.secondary, className
       )}

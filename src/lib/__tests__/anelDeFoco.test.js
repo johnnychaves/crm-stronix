@@ -10,6 +10,8 @@
 // - confere o @utility no index.css;
 // - refaz a conta de contraste com as cores de verdade do index.css e do
 //   tema do Tailwind, nos fundos onde o anel aparece;
+// - cobra a folga (ring-offset) quando o elemento tem fundo brand sólido,
+//   porque ali o anel teria a mesma cor do botão;
 // - barra o anel antigo (e qualquer anel brand com transparência no
 //   focus-visible) em src/.
 import { describe, it, expect } from 'vitest';
@@ -120,6 +122,49 @@ const FUNDOS = {
   },
 };
 
+// Tira comentário de bloco (inclusive o {/* */} do JSX) e de linha inteira.
+const semComentarios = (texto) => texto.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+// A expressão de classes que contém a posição `idx`: className="...",
+// className={...} ou cn(...). Sem uma delas em volta, null.
+function expressaoDeClasses(texto, idx) {
+  const base = Math.max(0, idx - 2000);
+  const antes = texto.slice(base, idx);
+  let melhor = -1;
+  let marca = null;
+  for (const m of ['className="', "className='", 'className={', 'cn(']) {
+    const p = antes.lastIndexOf(m);
+    if (p > melhor) [melhor, marca] = [p, m];
+  }
+  if (melhor < 0) return null;
+  const inicio = base + melhor;
+  if (marca === 'className="' || marca === "className='") {
+    const fim = texto.indexOf(marca.at(-1), inicio + marca.length);
+    return fim > idx ? texto.slice(inicio, fim + 1) : null;
+  }
+  let fundo = 0;
+  for (let i = inicio + marca.length - 1; i < texto.length; i++) {
+    const c = texto[i];
+    if (c === '(' || c === '{') fundo++;
+    else if (c === ')' || c === '}') {
+      fundo--;
+      if (fundo === 0) return i > idx ? texto.slice(inicio, i + 1) : null;
+    }
+  }
+  return null;
+}
+
+// Fundo brand sólido (bg-brand-600/700/800 ou bg-primary), com ou sem
+// variante de estado, menos o que só aparece no hover. Tom com transparência
+// (bg-brand-600/20) não conta.
+function temFundoBrand(trecho) {
+  for (const m of trecho.matchAll(/(\S*?)bg-(?:brand-(?:600|700|800)|primary)(?![\w/-])/g)) {
+    if (!/hover:$/.test(m[1])) return true;
+  }
+  return false;
+}
+const faltaFolga = (trecho) => Boolean(trecho) && temFundoBrand(trecho) && !/\bring-offset-[1-9]/.test(trecho);
+
 function fontes(dir) {
   const out = [];
   for (const nome of readdirSync(dir)) {
@@ -164,6 +209,41 @@ describe('anel de foco do app', () => {
     const antigo = { ...cor(variavel(tema, '--color-brand-500')), a: 0.4 };
     expect(contraste(antigo, FUNDOS.claro['balão (--popover)'])).toBeLessThan(2);
     expect(contraste(antigo, FUNDOS.escuro['balão (--popover)'])).toBeLessThan(2);
+  });
+
+  it('em fundo brand sólido o anel ganha a folga da cor da página (ring-offset)', () => {
+    // O anel tem a cor do botão principal: num fundo bg-brand-600 ele some no
+    // próprio botão, que só parece 2 px maior. A folga separa os dois. A
+    // conferência olha a expressão de classes do elemento (className="...",
+    // className={...} ou cn(...)); fundo que vem de constante (o BTN_KINDS do
+    // SettingsBtn) fica de fora dela e é conferido no teste seguinte.
+    const achados = [];
+    for (const arquivo of fontes(SRC)) {
+      const texto = semComentarios(readFileSync(arquivo, 'utf8'));
+      for (const m of texto.matchAll(/anel-foco/g)) {
+        const trecho = expressaoDeClasses(texto, m.index);
+        if (faltaFolga(trecho)) achados.push(`${relative(SRC, arquivo)}: ${trecho.replace(/\s+/g, ' ').slice(0, 120)}`);
+      }
+    }
+    expect(achados).toEqual([]);
+  });
+
+  it('o SettingsBtn, que tem o tipo principal em brand sólido, leva a folga', () => {
+    const bits = readFileSync(join(SRC, 'views', 'settings', 'settingsBits.jsx'), 'utf8');
+    expect(bits).toMatch(/primary:\s*'bg-brand-600/);
+    expect(bits).toContain("'focus-visible:outline-none focus-visible:anel-foco focus-visible:ring-offset-2 focus-visible:ring-offset-background',");
+  });
+
+  it('a conferência da folga enxerga o fundo brand na mesma expressão de classes', () => {
+    const achar = (codigo) => faltaFolga(expressaoDeClasses(codigo, codigo.indexOf('anel-foco')));
+    expect(achar(`<button className="bg-brand-600 text-white focus-visible:anel-foco" />`)).toBe(true);
+    expect(achar(`cn('h-9 focus-visible:anel-foco', on ? 'bg-brand-600 text-white' : 'bg-card')`)).toBe(true);
+    expect(achar(`className={cn('h-9 focus-visible:anel-foco', on && 'bg-primary')}`)).toBe(true);
+    expect(achar(`cn('h-9 focus-visible:anel-foco focus-visible:ring-offset-2', on && 'bg-brand-600')`)).toBe(false);
+    expect(achar(`cn('h-9 focus-visible:anel-foco', on && 'bg-brand-50 dark:bg-brand-500/15')`)).toBe(false);
+    expect(achar(`cn('h-9 focus-visible:anel-foco', on && 'bg-brand-600/20')`)).toBe(false);
+    expect(achar(`cn('h-9 focus-visible:anel-foco hover:bg-brand-600')`)).toBe(false);
+    expect(achar(`const FOCO = 'focus-visible:anel-foco';`)).toBe(false);
   });
 
   it('nenhum arquivo de src/ usa anel brand com transparência no focus-visible', () => {

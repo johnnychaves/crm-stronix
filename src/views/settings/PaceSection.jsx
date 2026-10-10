@@ -209,7 +209,7 @@ function PaceSection({ db, usersList, metaWeekdays }) {
                   title={name}
                   className={cn(
                     'w-11 h-10 rounded-[10px] text-[12.5px] font-bold transition border',
-                    'focus-visible:outline-none focus-visible:anel-foco',
+                    'focus-visible:outline-none focus-visible:anel-foco focus-visible:ring-offset-2 focus-visible:ring-offset-background',
                     on
                       ? 'bg-brand-600 text-white border-brand-600'
                       : 'bg-card text-muted-foreground border-border hover:bg-muted'
@@ -347,7 +347,7 @@ function PaceSection({ db, usersList, metaWeekdays }) {
                 aria-pressed={graceDays === n}
                 className={cn(
                   'num h-9 px-3.5 rounded-[10px] text-[13px] font-semibold transition border',
-                  'focus-visible:outline-none focus-visible:anel-foco',
+                  'focus-visible:outline-none focus-visible:anel-foco focus-visible:ring-offset-2 focus-visible:ring-offset-background',
                   graceDays === n
                     ? 'bg-brand-600 text-white border-brand-600'
                     : 'bg-card text-muted-foreground border-border hover:bg-muted'
