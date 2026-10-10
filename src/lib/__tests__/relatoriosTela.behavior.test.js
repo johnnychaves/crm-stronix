@@ -123,14 +123,16 @@ function TelaQueTroca({ onSection, ...props }) {
 let root = null;
 let container = null;
 let avisos = [];
-const arvore = (url, props, Tela = RelatoriosView) => h(MemoryRouter, { initialEntries: [url] },
+// O roteador do app é sem transições (main.jsx, useTransitions={false}): a navegação de um filtro
+// chega à tela na hora. O MemoryRouter do teste usa transições, a não ser que o teste peça o contrário.
+const arvore = (url, props, Tela = RelatoriosView, roteador = {}) => h(MemoryRouter, { initialEntries: [url], ...roteador },
   h(LeadProfileContext.Provider, { value: profile }, h(Tela, { ...TELA, ...props })),
   h(Sonda));
-async function montar(url, props = {}, Tela) {
+async function montar(url, props = {}, Tela, roteador) {
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
-  await act(async () => { root.render(arvore(url, props, Tela)); });
+  await act(async () => { root.render(arvore(url, props, Tela, roteador)); });
 }
 // Outro submenu, ou a carga trocada, na mesma árvore: o endereço inicial só vale na primeira vez.
 const remontar = (url, props = {}) => act(async () => { root.render(arvore(url, props)); });
@@ -688,6 +690,21 @@ describe('lista com mais de uma página', () => {
     expect(sonda()).toBe('?periodo=semana-passada');
     expect(limpar()).toBeNull();
     expect(linhas()).toHaveLength(50);
+    expect(numeroDaLista()).toBe(numero);
+    expect(document.activeElement).toBe(numero);
+  });
+
+  it('limpar o filtro tira o filtro do endereço antes de levar o foco ao número, no roteador do app', async () => {
+    usar(fontesComMuitosLeads());
+    await montar('/acad/relatorios?recorte=origem%3AInstagram', {}, undefined, { useTransitions: false });
+    const numero = numeroDaLista();
+    expect(numero.textContent).toBe('70 leads');
+    // O que o número diz quando recebe o foco é o que o leitor de tela lê primeiro: o total novo.
+    const aoFocar = [];
+    numero.addEventListener('focus', () => aoFocar.push(numero.textContent));
+    await clicarComFoco(limpar());
+    expect(aoFocar).toEqual(['120 leads']);
+    expect(sonda()).toBe('');
     expect(numeroDaLista()).toBe(numero);
     expect(document.activeElement).toBe(numero);
   });

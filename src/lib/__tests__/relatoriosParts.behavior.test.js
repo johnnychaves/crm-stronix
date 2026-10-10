@@ -187,4 +187,22 @@ describe('lista', () => {
     // Quem limpou pelo teclado precisa ver onde o foco caiu: o número leva o anel dos botões.
     for (const classe of FOCUS_RING.split(/\s+/)) expect(numero.classList.contains(classe), classe).toBe(true);
   });
+
+  it('o filtro sai antes de o foco chegar ao número: o leitor de tela lê o total novo, e não o antigo', async () => {
+    const todos = leads('l', 10);
+    function Tela() {
+      const [corte, setCorte] = useState('Matricularam');
+      const rows = corte ? todos.slice(0, 3) : todos;
+      return lista({ listId: corte || '', cutLabel: corte, onClearCut: () => setCorte(null), rows });
+    }
+    await montar(h(Tela));
+    const numero = container.querySelector('[aria-live="polite"]');
+    expect(numero.textContent).toBe('3 leads');
+    // O que o número diz no instante em que recebe o foco é o que o leitor de tela lê primeiro.
+    const aoFocar = [];
+    numero.addEventListener('focus', () => aoFocar.push(numero.textContent));
+    await clicarComFoco(container.querySelector('[aria-label="Limpar filtro da lista"]'));
+    expect(aoFocar).toEqual(['10 leads']);
+    expect(document.activeElement).toBe(numero);
+  });
 });

@@ -234,11 +234,14 @@ export function ReportList({ listId = '', total, noun, cutLabel = null, onClearC
   const shown = rows.slice(0, pageSize + extra);
   const left = rows.length - shown.length;
 
-  // O botão de limpar sai de cena junto com o filtro: o foco passa ao número
-  // antes, senão cairia no body.
+  // O botão de limpar sai de cena junto com o filtro, então o foco passa ao
+  // número. O filtro limpa primeiro, na hora (flushSync), e o foco vem depois:
+  // com o foco primeiro, o leitor de tela chegava ao número ainda com o total
+  // antigo e só depois lia o novo. Os dois acontecem no mesmo gesto, então o
+  // foco não chega a ficar no body.
   const clearCut = () => {
+    flushSync(() => onClearCut?.());
     countRef.current?.focus();
-    onClearCut?.();
   };
   // A linha nova só existe no DOM depois de renderizar. O flushSync a faz
   // aparecer na hora, para o foco ter onde pousar.
