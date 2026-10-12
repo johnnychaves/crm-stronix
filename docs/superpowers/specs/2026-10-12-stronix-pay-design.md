@@ -10,6 +10,14 @@ A ideia veio do Next Fit Pay, o módulo de pagamentos da Next Fit, que a STRONIX
 
 Desenhado com o Johnny em 12/10/2026. Hoje são até 10 academias pagantes, e várias escolhas abaixo contam com esse tamanho.
 
+Os mockups, feitos com a skill `frontend-design`, foram aprovados pelo Johnny no mesmo dia:
+
+- `docs/superpowers/specs/mockups/2026-10-12-stronix-pay-painel.html`: a seção Stronix Pay do SuperConsole. A opção aprovada é a **B, em abas**.
+- `docs/superpowers/specs/mockups/2026-10-12-stronix-pay-academia.html`: o bloco Forma de pagamento de Plano & faturas, a janela do Pix Automático e a tela de academia bloqueada. A opção aprovada do bloco é a **B, as três formas à vista**.
+- `docs/superpowers/specs/mockups/2026-10-12-stronix-pay-regua.html`: a régua, com o WhatsApp e o e-mail de cada etapa. Os textos e os assuntos foram aprovados como estão, e a prévia do WhatsApp mantém as duas visões (o celular de quem recebe e o da STRONIX).
+
+Os mockups têm dados inventados, tema claro e escuro, e celular a 375 px. Os textos de tela desta spec são os deles.
+
 ---
 
 ## Decisões do Johnny
@@ -78,10 +86,11 @@ Campo ausente é `invoice`, então as academias de hoje não precisam de script.
 **Cadastrar o cartão:**
 
 1. O gestor clica em "Pagar no cartão automaticamente".
-2. O servidor cria um Checkout recorrente com o valor efetivo (`effectivePrice`), o ciclo da academia (`MONTHLY` ou `YEARLY`) e o `nextDueDate` igual ao próximo vencimento ainda não pago. A academia é identificada pelo `externalReference` (o id da academia), se o Checkout aceitar, e pelo id do Checkout guardado em `tenants/{id}.pendingCardCheckout` (`{ id, createdAt }`).
-3. O app abre a página da Asaas em outra guia. A volta cai em `/<academia>/plano-e-faturas`, a tela que o gestor abre pelo menu do perfil ("Plano & faturas").
-4. No `SUBSCRIPTION_CREATED` (ou no `CHECKOUT_PAID`, o que vier primeiro com a assinatura), o webhook liga a assinatura nova à academia (`asaasSubscriptionId`), grava `billingMethod: 'card'`, os quatro últimos dígitos e a bandeira (`cardLast4`, `cardBrand`, da primeira cobrança), apaga o `pendingCardCheckout` e **cancela a assinatura antiga** na Asaas.
-5. A tela mostra "Cartão Visa final 1234 · cobrado sozinho todo dia 10".
+2. O servidor completa o cliente da academia na Asaas com o telefone e o endereço do Perfil da academia (`responsiblePhone` e `profile`, em `tenants/{id}/private`). Sem isso a Asaas recusa o Checkout com o cliente que já existe. Academia com o Perfil incompleto não chega a abrir o Checkout: o bloco pede para completar o Perfil, com o link para ele.
+3. O servidor cria o Checkout recorrente com o cliente da academia (`customer`), o valor efetivo (`effectivePrice`), o ciclo da academia (`MONTHLY` ou `YEARLY`) e o `nextDueDate` igual ao próximo vencimento ainda não pago, e guarda o id dele em `tenants/{id}.pendingCardCheckout` (`{ id, createdAt }`). O Checkout não cobra na hora: a primeira cobrança no cartão é a do vencimento.
+4. O app abre a página da Asaas em outra guia. A volta cai em `/<academia>/plano-e-faturas`, a tela que o gestor abre pelo menu do perfil ("Plano & faturas").
+5. No `SUBSCRIPTION_CREATED` (ou no `CHECKOUT_PAID`, o que vier primeiro com a assinatura), o webhook acha a academia pelo cliente (`asaasCustomerId`), porque a assinatura nova vem sem `externalReference`. Ele liga a assinatura nova à academia (`asaasSubscriptionId`), grava `billingMethod: 'card'`, os quatro últimos dígitos e a bandeira (`cardLast4`, `cardBrand`, da primeira cobrança), apaga o `pendingCardCheckout` e **cancela a assinatura antiga** na Asaas. O cancelamento apaga a cobrança pendente da assinatura antiga, então o mês não é cobrado duas vezes.
+6. A tela mostra "Cartão Visa final 1234 · cobrado sozinho todo dia 10".
 
 **Trocar o cartão** é o mesmo caminho, com o botão "Trocar cartão". O cartão novo vale a partir do próximo vencimento.
 
@@ -89,13 +98,11 @@ Campo ausente é `invoice`, então as academias de hoje não precisam de script.
 
 **Voltar para a fatura:** "Pagar por Pix ou boleto a cada mês" cria uma assinatura `UNDEFINED` com o próximo vencimento e cancela a do cartão.
 
-**O que precisa ser confirmado no sandbox antes do plano** (Parte 0):
+**O que o sandbox respondeu** (`docs/superpowers/specs/2026-10-12-stronix-pay-levantamento.md`): o Checkout não cobra na hora, aceita o cliente que já existe se o cadastro estiver completo, não passa o `externalReference` para a assinatura, e a cobrança traz os quatro dígitos e a bandeira. Cancelar a assinatura antiga apaga a cobrança pendente dela.
 
-- O Checkout recorrente com `nextDueDate` no futuro cobra na hora ou só no vencimento? Se cobra na hora, o próximo vencimento da assinatura antiga é removido antes de abrir o Checkout.
-- O Checkout aceita o cliente que já existe ou o `externalReference`? Se criar um cliente novo a cada vez, o webhook acha a academia pelo `pendingCardCheckout`, e o cliente antigo fica sem uso.
-- O `SUBSCRIPTION_CREATED` e a primeira cobrança trazem os quatro dígitos e a bandeira?
-- Cancelar a assinatura antiga remove as cobranças pendentes dela?
-- **Mudar o valor de uma assinatura no cartão.** A documentação diz que alterar valor ou vencimento de assinatura no cartão exige tokenização habilitada. O `syncSubscriptionValue` muda o valor sempre que a academia ganha ou perde um consultor extra. Se o `PUT` for recusado, a saída é pedir à Asaas que habilite a tokenização na conta (ela passa por análise), sem nunca tokenizar pelo nosso servidor. Sem isso, o cartão salvo não funciona para quem tem extras, e o plano precisa de outra saída.
+**Mudar o valor de uma assinatura no cartão.** O `syncSubscriptionValue` muda o valor sempre que a academia ganha ou perde um consultor extra. No sandbox o `PUT` passou, e a cobrança pendente foi junto. A documentação diz que em produção isso exige a tokenização habilitada, e a pergunta foi para a Asaas. Se for o caso, a saída é pedir que a Asaas habilite a tokenização na conta (ela passa por análise), sem nunca tokenizar pelo nosso servidor. Sem isso, o cartão salvo não funciona para quem tem extras.
+
+**Ainda em aberto:** se a primeira cobrança do teste cai sozinha no cartão no vencimento (22/10/2026).
 
 ### Pix Automático
 
@@ -152,6 +159,20 @@ Cada etapa tem um texto de WhatsApp e um e-mail com o mesmo conteúdo. `{nome}` 
 
 O link é o `invoiceUrl` da cobrança, que aceita Pix, boleto e cartão avulso em qualquer forma de pagamento.
 
+Os assuntos dos e-mails, aprovados com o mockup da régua (`{data}` é o vencimento):
+
+| Etapa | Assunto |
+|---|---|
+| aviso | A mensalidade do Stronilead vence em {data} |
+| hoje | A mensalidade do Stronilead vence hoje |
+| atraso, fatura e Pix Automático | A mensalidade do Stronilead de {data} está em aberto |
+| atraso, cartão | O cartão final {final} não passou na mensalidade do Stronilead |
+| vespera | O acesso ao Stronilead será bloqueado amanhã |
+| bloqueio | O acesso ao Stronilead está bloqueado |
+| liberado | O acesso ao Stronilead está liberado |
+
+O e-mail segue o visual do e-mail do "Esqueci a senha" (`api/_passwordResetEmail.js`), com o botão "Pagar fatura" em todas as etapas, menos no `liberado`.
+
 ### Quando a régua não avisa
 
 - A cobrança foi paga, removida ou estornada.
@@ -201,6 +222,8 @@ Quando o webhook marca uma cobrança como paga e ela teve alguma etapa de depois
 
 A seção Faturamento passa a se chamar **Stronix Pay** e ganha o que falta. Os números do MRR e do ARR continuam onde estão, na Visão geral.
 
+O desenho é a opção B do mockup: a faixa de números fica fixa no topo, e Recebimentos, Transações, Repasses e Régua são abas, no `Tabs` do shadcn. A linha da transação abre o detalhe embaixo dela mesma. O Console não tem endereço (o super-admin puro fica em `/`), então a aba e os filtros vivem no estado da seção, como a subaba do super-admin hoje.
+
 **Faixa do topo:**
 
 - Saldo disponível na conta Asaas (`/finance/balance`).
@@ -211,7 +234,7 @@ A seção Faturamento passa a se chamar **Stronix Pay** e ganha o que falta. Os 
 
 **Recebimentos por forma de pagamento:** os últimos 6 meses, com cartão, Pix, Pix Automático e boleto separados.
 
-**Transações:** as cobranças dos últimos 90 dias de todas as academias, lidas da Asaas (`/payments`), com academia, descrição, vencimento, forma, valor e situação. As situações são pago, pendente, vencido, recusado no cartão, reprovado na análise de risco, estornado e contestado. Filtros por situação, forma, academia e período, no endereço, pela tabela do `src/lib/screenParams.js`. A linha abre o detalhe com os eventos da cobrança (os registros de `tenant_payments` dela), os avisos da régua com o canal e o resultado de cada um, e o link da fatura com "Copiar".
+**Transações:** as cobranças dos últimos 90 dias de todas as academias, lidas da Asaas (`/payments`), com academia, descrição, vencimento, forma, valor e situação. As situações são pago, pendente, vencido, recusado no cartão, reprovado na análise de risco, estornado e contestado. Filtros por situação, forma, academia e período, com "Limpar filtros" e o aviso de lista vazia. O "Em atraso" da faixa do topo abre esta aba já filtrada em Vencido. A linha abre o detalhe com os eventos da cobrança (os registros de `tenant_payments` dela), os avisos da régua com o canal e o resultado de cada um, e o link da fatura com "Copiar".
 
 **Repasses:** as transferências da conta Asaas para o banco (`/transfers`), com data, valor, destino e situação.
 
@@ -227,7 +250,7 @@ A seção Faturamento passa a se chamar **Stronix Pay** e ganha o que falta. Os 
 
 ## O que a academia vê
 
-**Plano e faturas** ganha o bloco "Forma de pagamento":
+**Plano e faturas** ganha o bloco "Forma de pagamento". O desenho é a opção B do mockup: as três formas (cartão salvo, Pix Automático e fatura pelo link) ficam sempre à vista, cada uma dizendo o que acontece no dia do vencimento. A forma em uso leva a marca "Em uso", e as outras, o botão de trocar. Com fatura em atraso, a faixa "Pagar fatura em atraso" vem antes das três, e a troca de forma diz a partir de que mês vale.
 
 - A forma atual: "Cartão Visa final 1234 · cobrado sozinho todo dia 10", "Pix Automático · debitado sozinho todo dia 10" ou "Pix, boleto ou cartão pelo link, todo mês".
 - Os botões: "Pagar no cartão automaticamente", "Trocar cartão", "Pagar por Pix Automático" (só com o Pix Automático liberado) e "Pagar por Pix ou boleto a cada mês".
@@ -305,7 +328,7 @@ O `docs/ASAAS_SETUP.md` ganha os eventos novos na lista do webhook, o `CRON_SECR
 
 Cada parte é uma PR, na ordem.
 
-0. **Levantamento e liberação**, sem código de produto. Um documento `docs/superpowers/specs/2026-10-xx-stronix-pay-levantamento.md` com:
+0. **Levantamento e liberação**, sem código de produto. O documento `docs/superpowers/specs/2026-10-12-stronix-pay-levantamento.md`, com:
    - as respostas do sandbox às perguntas do cartão salvo;
    - os links da documentação da Asaas;
    - o pedido de liberação do Pix Automático feito pelo Johnny, e a confirmação do CNPJ.
@@ -320,7 +343,7 @@ Cada parte é uma PR, na ordem.
 3. **Régua.**
    - O cron, os textos e o e-mail.
    - As ações do Stronizap, a pausa no ManagePanel e o "recuperado pela régua".
-   - As notificações da Asaas desligadas, se o Johnny confirmar.
+   - As notificações da Asaas desligadas, se o Johnny confirmar, pelo `PUT /v3/notifications/batch` com `enabled: false` em cada academia (o sandbox mostrou que o `notificationDisabled` do cliente não muda a lista).
    - Junto, a PR do Stronizap. O Stronizap só liga a busca depois que esta parte estiver em produção.
 4. **Pix Automático**, depois da liberação da Asaas. A autorização, o QR Code, os eventos e as novas tentativas.
 
@@ -344,8 +367,8 @@ Cada parte é uma PR, na ordem.
 
 ## Riscos
 
-- **O Checkout recorrente pode não se comportar como a documentação sugere.** A Parte 0 responde antes de qualquer código, e o plano do cartão salvo só é escrito depois.
-- **Mudar o valor de assinatura no cartão pode exigir tokenização habilitada** (ver "Cartão salvo"). Sem ela, academia com consultor extra não pode usar o cartão salvo.
+- **O Checkout recorrente em produção pode não se comportar como no sandbox.** A primeira academia que trocar para o cartão é acompanhada de perto no painel, e a cobrança do vencimento é conferida.
+- **Mudar o valor de assinatura no cartão pode exigir tokenização habilitada em produção** (ver "Cartão salvo"). Sem ela, academia com consultor extra não pode usar o cartão salvo.
 - **Pix Automático depende de a Asaas liberar.** A Parte 4 pode ficar parada, e as outras três não dependem dela.
 - **WhatsApp pelo Baileys** pode levar o número a ser banido. O número da cobrança deve ser só dela.
 - **Plano Hobby da Vercel.** Pelos termos da Vercel, o Hobby é para uso pessoal e não comercial, e o Stronilead já cobra academias. Com cobrança automática em produção, vale passar para o Pro, que também tira o limite de 12 funções e de um cron por dia. A decisão é do Johnny e não muda esta spec.

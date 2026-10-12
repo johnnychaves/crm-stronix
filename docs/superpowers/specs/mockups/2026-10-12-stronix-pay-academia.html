@@ -1,0 +1,810 @@
+<!doctype html>
+<html lang="pt-BR" translate="no" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="google" content="notranslate">
+<title>Stronix Pay na academia</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Tokens do Stronilead, os mesmos dos mockups aprovados (2026-10-08-rotinas-aba-hoje.html).
+   Acrescentados só: --stage (fundo atrás da moldura), --line-2, --btn/--btn-hover
+   (o botão primário é brand-600 nos dois temas, como no app), --done-ink/--late-ink
+   (texto pequeno com contraste 4.5:1 sobre o fundo suave), --nt (neutro) e --scrim. */
+:root {
+  --stage: #E7EBF3;
+  --bg: #F5F7FB; --card: #FFFFFF; --ink: #0E1A40; --ink-2: #334155; --muted: #64748B; --faint: #94A3B8;
+  --line: #E2E8F0; --line-2: #CBD5E1; --soft: #F1F4F9;
+  --brand: #2B59FF; --brand-soft: rgba(43, 89, 255, .08); --brand-tint: #EEF2FF; --brand-line: rgba(43, 89, 255, .4);
+  --btn: #2B59FF; --btn-hover: #1C3FC4;
+  --accent: #FF6A2B;
+  --done: #059669; --done-ink: #047857; --done-soft: rgba(5, 150, 105, .1);
+  --warn: #B45309; --warn-soft: #FFFBF3; --warn-chip: #FEF3C7;
+  --late: #E11D48; --late-ink: #BE123C; --late-soft: #FFF1F3; --late-line: #FECDD3;
+  --nt: #475569; --nt-soft: #F1F5F9;
+  --shadow: 0 1px 0 rgba(15, 23, 42, .04), 0 1px 2px rgba(15, 23, 42, .06);
+  --shadow-lg: 0 1px 0 rgba(15, 23, 42, .04), 0 8px 24px -8px rgba(15, 23, 42, .10);
+  --shadow-pop: 0 30px 60px -20px rgba(14, 26, 64, .35), 0 2px 8px rgba(14, 26, 64, .08);
+  --scrim: rgba(8, 13, 34, .45);
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --stage: #04060F;
+  --bg: #080D22; --card: #0F152B; --ink: #EAEEF9; --ink-2: #C3CAE0; --muted: #8A93B0; --faint: #5B6482;
+  --line: rgba(255, 255, 255, .08); --line-2: rgba(255, 255, 255, .16); --soft: rgba(255, 255, 255, .05);
+  --brand: #5A7FFF; --brand-soft: rgba(90, 127, 255, .13); --brand-tint: rgba(90, 127, 255, .12); --brand-line: rgba(90, 127, 255, .5);
+  --btn: #2B59FF; --btn-hover: #4A70FF;
+  --done: #34D399; --done-ink: #34D399; --done-soft: rgba(52, 211, 153, .12);
+  --warn: #FBBF24; --warn-soft: rgba(251, 191, 36, .06); --warn-chip: rgba(251, 191, 36, .12);
+  --late: #FB7185; --late-ink: #FDA4AF; --late-soft: #2A1326; --late-line: rgba(251, 113, 133, .28);
+  --nt: #C3CAE0; --nt-soft: rgba(255, 255, 255, .07);
+  --shadow: none; --shadow-lg: 0 24px 48px -24px rgba(0, 0, 0, .7);
+  --shadow-pop: 0 30px 60px -16px rgba(0, 0, 0, .7);
+  --scrim: rgba(2, 4, 12, .72);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--stage); color: var(--ink); font: 14px/1.5 Geist, ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; background: none; border: 0; }
+ul, ol { list-style: none; }
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 6px; }
+.t { font-family: 'Space Grotesk', Geist, sans-serif; font-variant-numeric: tabular-nums; }
+svg.i { width: 16px; height: 16px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---------- barra do mockup (não é tela do produto) ---------- */
+.chrome { position: sticky; top: 0; z-index: 50; background: #0E1A40; color: #fff; }
+.chrome-row { padding: 10px 16px 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.chrome-row:empty { display: none; }
+.chrome-name { display: flex; align-items: center; gap: 8px; font: 600 13.5px/1 'Space Grotesk', sans-serif; }
+.chrome-name small { font: 600 11px/1 Geist, sans-serif; color: #FF8A57; border: 1px solid rgba(255, 138, 87, .45); padding: 4px 6px; border-radius: 5px; }
+.seg-l { font-size: 12px; color: rgba(255, 255, 255, .6); }
+.seg { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; display: flex; gap: 3px; background: rgba(255, 255, 255, .07); padding: 3px; border-radius: 10px; scrollbar-width: none; }
+.seg button { height: 30px; padding: 0 11px; border-radius: 7px; font-size: 12.5px; font-weight: 500; color: rgba(255, 255, 255, .74); white-space: nowrap; }
+.seg button b { font-family: 'Space Grotesk', sans-serif; font-weight: 700; margin-right: 4px; }
+.seg button[aria-pressed="true"] { background: #fff; color: #0E1A40; }
+.seg button:focus-visible { outline-color: #fff; outline-offset: -2px; }
+.theme { margin-left: auto; height: 30px; padding: 0 10px; border: 1px solid rgba(255, 255, 255, .18); border-radius: 8px; font-size: 12px; color: rgba(255, 255, 255, .86); }
+.theme:focus-visible { outline-color: #fff; }
+.note { padding: 10px 16px 12px; font-size: 12.5px; color: rgba(255, 255, 255, .8); max-width: 1000px; }
+.note b { color: #fff; font-weight: 600; }
+
+.stage { padding: 24px 16px 72px; }
+.frame { max-width: 1120px; margin: 0 auto; background: var(--bg); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow-pop); position: relative; }
+
+/* ---------- peças do app ---------- */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 38px; padding: 0 14px; border-radius: 10px; background: var(--btn); color: #fff; font-size: 13px; font-weight: 600; white-space: nowrap; transition: background-color .15s; }
+.btn:hover { background: var(--btn-hover); }
+.btn.ghost { background: var(--card); color: var(--ink); border: 1px solid var(--line-2); font-weight: 600; }
+.btn.ghost:hover { background: var(--soft); }
+.btn[disabled] { opacity: .65; cursor: default; }
+.btn svg.i { width: 15px; height: 15px; }
+.tlink { color: var(--brand); font-size: 13px; font-weight: 600; text-align: left; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 30%, transparent); text-underline-offset: 3px; }
+.tlink:hover { text-decoration-color: currentColor; }
+.btns { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+
+.page { max-width: 896px; margin: 0 auto; padding: 28px 24px 44px; display: flex; flex-direction: column; gap: 18px; }
+.ph { padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+.ph h1 { font: 700 21px/1.2 'Space Grotesk', sans-serif; letter-spacing: -.01em; }
+.ph p { font-size: 13px; color: var(--muted); margin-top: 4px; }
+
+.panel { background: var(--card); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); }
+.panel-h { padding: 16px 20px 0; }
+.panel-h h2 { font-size: 14.5px; font-weight: 600; }
+
+/* resumo do plano (era "Seu plano" com três caixas e rótulos em caixa alta) */
+.sum { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.sum > div { padding: 16px 20px; }
+.sum > div + div { border-left: 1px solid var(--line); }
+.lbl { display: block; font-size: 12px; color: var(--muted); }
+.sum .v { display: block; font: 600 18px/1.25 'Space Grotesk', sans-serif; margin-top: 3px; }
+.sum .s { display: block; font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.v.ok { color: var(--done-ink); } .v.bad { color: var(--late-ink); }
+
+/* ---------- bloco Forma de pagamento ---------- */
+.mi { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--soft); color: var(--muted); flex-shrink: 0; }
+.mi.is-auto { background: var(--brand-tint); color: var(--brand); }
+.mi svg.i { width: 17px; height: 17px; }
+.now { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 16px 20px; }
+.now .nm { font: 600 18px/1.3 'Space Grotesk', sans-serif; letter-spacing: -.005em; }
+.now .tl { font-size: 14px; color: var(--ink-2); }
+.now .nt { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+.now.quiet .nm { font-size: 15px; }
+.pm-foot { padding: 12px 20px 16px; border-top: 1px solid var(--line); }
+.auto { padding: 16px 20px 18px; border-top: 1px solid var(--line); }
+.auto p { font-size: 13.5px; color: var(--ink-2); margin-bottom: 10px; }
+
+/* faixa da fatura em atraso: vem antes de tudo no bloco */
+.late { margin: 14px 20px 0; padding: 16px; border-radius: 12px; background: var(--late-soft); border: 1px solid var(--late-line); display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 4px 12px; align-items: start; }
+.late > svg.i { color: var(--late); width: 20px; height: 20px; margin-top: 1px; }
+.late .lt { font: 600 17px/1.3 'Space Grotesk', sans-serif; }
+.late .ls { font-size: 13.5px; color: var(--ink-2); margin-top: 3px; max-width: 60ch; }
+.late .lact { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.late .lact small { font-size: 12px; color: var(--muted); text-align: right; max-width: 230px; }
+.late .done-note { grid-column: 2 / -1; margin-top: 8px; font-size: 13px; color: var(--ink-2); display: flex; gap: 8px; align-items: flex-start; }
+.next-line { padding: 14px 20px 0; font-size: 13.5px; color: var(--ink-2); }
+
+/* aviso do Checkout aberto em outra guia (pendingCardCheckout) */
+.pending { margin: 14px 20px 0; padding: 14px 16px; border-radius: 12px; background: var(--brand-soft); border: 1px solid var(--brand-line); display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 12px; }
+.pending:focus { outline: none; }
+.pending:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.pulse { width: 10px; height: 10px; border-radius: 50%; background: var(--brand); margin-top: 5px; box-shadow: 0 0 0 0 var(--brand-line); animation: pulse 1.6s ease-out infinite; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 var(--brand-line); } 100% { box-shadow: 0 0 0 9px transparent; } }
+.pending .pt { font-weight: 600; font-size: 13.5px; }
+.pending .ps { font-size: 13px; color: var(--ink-2); margin: 2px 0 8px; max-width: 64ch; }
+
+/* B: as três formas */
+.ways-note { padding: 14px 20px 0; font-size: 13px; color: var(--muted); }
+.ways { padding: 12px 12px 12px; display: flex; flex-direction: column; gap: 2px; }
+.way { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 14px 12px; border-radius: 12px; }
+.way + .way { box-shadow: 0 -1px 0 var(--line); }
+.way.on { background: var(--brand-soft); box-shadow: inset 3px 0 0 var(--brand); }
+.way.on + .way { box-shadow: none; }
+.way .wn { font: 600 15.5px/1.3 'Space Grotesk', sans-serif; }
+.way .ws { font-size: 13px; color: var(--muted); margin-top: 2px; max-width: 56ch; }
+.way.on .ws { color: var(--ink-2); }
+.way .wa { display: flex; align-items: center; gap: 10px; justify-content: flex-end; }
+.inuse { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; color: var(--brand); white-space: nowrap; }
+.inuse svg.i { width: 14px; height: 14px; stroke-width: 2.4; }
+
+/* C: os meses em fila, com a agulha do "hoje" das Rotinas */
+.strip { margin: 4px 20px 0; padding-top: 22px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.cell { position: relative; padding: 10px 12px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); min-height: 92px; }
+.cell .cm { display: block; font: 600 14px/1.2 'Space Grotesk', sans-serif; }
+.cell .cm .ab { display: none; }
+.cell .cs { display: flex; align-items: center; gap: 5px; margin-top: 8px; font-size: 12.5px; font-weight: 600; }
+.cell .cs svg.i { width: 13px; height: 13px; stroke-width: 2.2; }
+.cell .ch { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.cell.k-paid { background: transparent; }
+.cell.k-paid .cm { color: var(--muted); }
+.cell.k-paid .cs { color: var(--done-ink); }
+.cell.k-wait .cs { color: var(--nt); }
+.cell.k-late { background: var(--late-soft); border-color: var(--late-line); }
+.cell.k-late .cs { color: var(--late-ink); }
+.cell.k-auto { background: var(--brand-soft); border-color: transparent; }
+.cell.k-auto .ch { color: var(--brand); font-weight: 600; }
+.cell.k-manual { border-style: dashed; border-color: var(--line-2); background: transparent; }
+.cell.k-manual .ch { color: var(--ink-2); font-weight: 600; }
+.cell.preview { border: 1px dashed var(--brand); background: var(--brand-soft); }
+.cell.preview .ch { color: var(--brand); }
+.cell.today::after { content: ""; position: absolute; top: -8px; bottom: -4px; right: -4.5px; width: 3px; border-radius: 3px; background: var(--brand); }
+.cell.today::before { content: "hoje"; position: absolute; top: -22px; right: -3px; transform: translateX(50%); font: 600 10.5px/1 'Space Grotesk', sans-serif; color: #fff; background: var(--btn); padding: 3px 5px; border-radius: 5px; }
+.strip-cap { padding: 10px 20px 0; font-size: 12px; color: var(--muted); }
+.c-now { border-top: 1px solid var(--line); margin-top: 16px; }
+
+/* ---------- faturas ---------- */
+.inv-list { padding: 6px 0 4px; }
+.inv { display: grid; grid-template-columns: minmax(0, 1fr) 100px 156px 64px; grid-template-areas: "t v b a" "s v b a"; column-gap: 16px; align-items: center; padding: 12px 20px; }
+.inv + .inv { border-top: 1px solid var(--line); }
+.inv .it { grid-area: t; font-size: 13.5px; font-weight: 600; }
+.inv .is { grid-area: s; font-size: 12.5px; color: var(--muted); margin-top: 1px; }
+.inv .iv { grid-area: v; font: 600 14px/1 'Space Grotesk', sans-serif; font-variant-numeric: tabular-nums; text-align: right; }
+.inv .ib { grid-area: b; justify-self: start; }
+.inv .ia { grid-area: a; justify-self: end; display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; }
+.inv .ia svg.i { width: 13px; height: 13px; }
+.inv .ia.muted { color: var(--muted); font-weight: 500; text-decoration-color: transparent; }
+.inv .ia.muted:hover { color: var(--ink); text-decoration-color: currentColor; }
+.badge { display: inline-flex; align-items: center; gap: 5px; height: 23px; padding: 0 8px; border-radius: 6px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.badge svg.i { width: 13px; height: 13px; stroke-width: 2.2; }
+.b-ok { background: var(--done-soft); color: var(--done-ink); }
+.b-warn { background: var(--warn-chip); color: var(--warn); }
+.b-late { background: var(--late-soft); color: var(--late-ink); box-shadow: inset 0 0 0 1px var(--late-line); }
+.b-nt { background: var(--nt-soft); color: var(--nt); }
+
+/* ---------- planos ---------- */
+.plan { display: flex; align-items: center; gap: 12px; padding: 12px 20px; }
+.plan + .plan { border-top: 1px solid var(--line); }
+.plan .pn { font-weight: 600; font-size: 13.5px; }
+.plan .pd { font-size: 12.5px; color: var(--muted); }
+.plan > div { flex: 1; min-width: 0; }
+.plan .cur { font-size: 12.5px; color: var(--muted); font-weight: 500; }
+.plans-note { padding: 10px 20px 16px; font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--line); }
+
+/* ---------- janela do Pix Automático ---------- */
+.scrim { position: absolute; inset: 0; background: var(--scrim); display: flex; justify-content: center; align-items: flex-start; padding: 56px 24px 24px; }
+.dlg { width: 100%; max-width: 640px; background: var(--card); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow-pop); }
+.dlg:focus { outline: none; }
+.dlg-h { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 22px 24px 0; }
+.dlg-h h2 { font: 600 21px/1.2 'Space Grotesk', sans-serif; letter-spacing: -.01em; }
+.dlg-h p { font-size: 13.5px; color: var(--muted); margin-top: 6px; max-width: 52ch; }
+.icon-btn { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; color: var(--muted); flex-shrink: 0; margin: -4px -8px 0 0; }
+.icon-btn:hover { background: var(--soft); color: var(--ink); }
+.dlg-b { display: grid; grid-template-columns: 196px minmax(0, 1fr); grid-template-areas: "qr val" "qr steps" "qr valid" "code code"; gap: 0 24px; padding: 20px 24px 22px; }
+.d-qr { grid-area: qr; }
+.qr { width: 196px; height: 196px; padding: 10px; background: #fff; border: 1px solid var(--line); border-radius: 14px; }
+.qr svg { width: 100%; height: 100%; display: block; }
+.d-val { grid-area: val; }
+.d-val .amt { display: block; font: 700 30px/1.1 'Space Grotesk', sans-serif; letter-spacing: -.02em; margin-top: 2px; }
+.d-val .sub { display: block; font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+.d-steps { grid-area: steps; margin-top: 16px; display: flex; flex-direction: column; gap: 10px; counter-reset: st; }
+.d-steps li { counter-increment: st; display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 10px; font-size: 13.5px; line-height: 1.45; }
+.d-steps li::before { content: counter(st); width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--brand-tint); color: var(--brand); font: 700 12px/1 'Space Grotesk', sans-serif; }
+.d-valid { grid-area: valid; margin-top: 14px; display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted); align-self: end; }
+.d-valid svg.i { width: 14px; height: 14px; }
+.d-code { grid-area: code; margin-top: 18px; }
+.code { display: flex; gap: 8px; margin-top: 6px; }
+.code input { flex: 1; min-width: 0; height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--soft); font-size: 13px; color: var(--ink-2); text-overflow: ellipsis; }
+.code input:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+.code .btn { height: 40px; min-width: 112px; }
+.code .btn.copied { background: var(--done); }
+:root[data-theme="dark"] .code .btn.copied { background: #047857; }
+.dlg-f { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 24px; border-top: 1px solid var(--line); }
+.waiting { display: grid; grid-template-columns: 10px minmax(0, 1fr); gap: 10px; font-size: 12.5px; color: var(--ink-2); }
+.waiting .pulse { margin-top: 4px; }
+
+/* ---------- academia bloqueada (mesma cara da TenantBlockedScreen) ---------- */
+.auth { min-height: 760px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 24px; }
+.auth-card { width: 100%; max-width: 448px; padding: 32px; border-radius: 24px; border: 1px solid var(--line); background: var(--card); box-shadow: var(--shadow-lg); text-align: center; }
+.brand-row { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 24px; }
+.wm { font: 500 18px/1 'Space Grotesk', sans-serif; letter-spacing: -.01em; }
+.wm b { font-weight: 700; color: var(--btn); }
+:root[data-theme="dark"] .wm b { color: #9FBCFF; }
+.auth-ic { width: 56px; height: 56px; margin: 0 auto 16px; border-radius: 16px; display: grid; place-items: center; background: var(--late-soft); color: var(--late); }
+.auth-ic svg.i { width: 28px; height: 28px; }
+.auth h1 { font: 600 22px/1.25 'Space Grotesk', sans-serif; letter-spacing: -.01em; }
+.auth .msg { margin-top: 8px; font-size: 14px; color: var(--muted); line-height: 1.6; }
+.auth .stack { margin-top: 28px; display: flex; flex-direction: column; gap: 10px; }
+.auth .btn { height: 44px; border-radius: 12px; font-size: 14px; width: 100%; }
+.auth-out { margin-top: 24px; font-size: 13px; font-weight: 600; color: var(--muted); padding: 6px 10px; border-radius: 8px; }
+.auth-out:hover { color: var(--ink); }
+.check-note { margin-top: 12px; display: flex; gap: 10px; align-items: flex-start; text-align: left; padding: 10px 14px; border-radius: 12px; font-size: 12.5px; background: var(--warn-soft); border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); color: var(--ink-2); }
+.check-note svg.i { color: var(--warn); margin-top: 1px; width: 15px; height: 15px; }
+.spin { width: 15px; height: 15px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* aviso que responde a um clique */
+.toast { position: fixed; left: 50%; bottom: 20px; transform: translate(-50%, 12px); max-width: calc(100% - 32px); display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-radius: 12px; background: var(--card); color: var(--ink); border: 1px solid var(--line); box-shadow: var(--shadow-pop); font-size: 13px; font-weight: 500; opacity: 0; pointer-events: none; transition: opacity .18s, transform .18s; z-index: 80; }
+.toast.on { opacity: 1; transform: translate(-50%, 0); }
+.toast svg.i { color: var(--done); }
+
+/* ---------- celular ---------- */
+@media (max-width: 760px) {
+  .inv { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "t v" "s b" "s a"; row-gap: 3px; padding: 12px 16px; }
+  .inv .ib { justify-self: end; }
+  .inv .is { align-self: start; }
+  .inv .ia { margin-top: 2px; }
+  .strip { grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 4px 16px 0; gap: 6px; }
+  .strip .cell:first-child, .strip .cell:last-child { display: none; }
+  .cell { padding: 9px 8px 10px; min-height: 88px; }
+  .cell .cm .fu { display: none; } .cell .cm .ab { display: inline; }
+}
+@media (max-width: 640px) {
+  .chrome { position: static; }
+  .stage { padding: 0; }
+  .frame { border: 0; border-radius: 0; box-shadow: none; }
+  .page { padding: 20px 16px 36px; gap: 14px; }
+  .panel-h { padding: 14px 16px 0; }
+  .sum { grid-template-columns: 1fr; }
+  .sum > div { padding: 12px 16px; display: grid; grid-template-columns: 1fr auto; column-gap: 12px; align-items: baseline; }
+  .sum > div + div { border-left: 0; border-top: 1px solid var(--line); }
+  .sum .lbl { grid-row: 1 / 3; }
+  .sum .v { font-size: 15.5px; margin: 0; text-align: right; }
+  .sum .s { text-align: right; }
+  .now, .way { grid-template-columns: 36px minmax(0, 1fr); }
+  .now { padding: 14px 16px; }
+  .now .act, .way .wa { grid-column: 1 / -1; justify-content: flex-start; }
+  .now .act .btn, .way .wa .btn { width: 100%; }
+  .way .wa { flex-wrap: wrap; }
+  .way .wa .inuse { order: -1; }
+  .now .nm { font-size: 17px; }
+  .auto, .pm-foot { padding-left: 16px; padding-right: 16px; }
+  .auto .btns { flex-direction: column; align-items: stretch; }
+  .late { margin: 12px 16px 0; padding: 14px; grid-template-columns: 20px minmax(0, 1fr); }
+  .late .lact { grid-column: 1 / -1; align-items: stretch; margin-top: 10px; }
+  .late .lact small { text-align: left; max-width: none; }
+  .late .done-note { grid-column: 1 / -1; }
+  .pending { margin: 12px 16px 0; }
+  .next-line, .ways-note, .strip-cap { padding-left: 16px; padding-right: 16px; }
+  .ways { padding: 8px 6px; }
+  .way { padding: 14px 10px; row-gap: 12px; }
+  .plan { padding: 12px 16px; flex-wrap: wrap; }
+  .plans-note { padding: 10px 16px 14px; }
+  .scrim { padding: 12px 10px; }
+  .dlg { border-radius: 16px; }
+  .dlg-h { padding: 18px 18px 0; }
+  .dlg-h h2 { font-size: 19px; }
+  .dlg-b { grid-template-columns: minmax(0, 1fr); grid-template-areas: "val" "code" "qr" "steps" "valid"; padding: 16px 18px 18px; }
+  .d-code { margin-top: 14px; }
+  .d-qr { margin-top: 16px; display: flex; align-items: center; gap: 14px; }
+  .qr { width: 132px; height: 132px; padding: 7px; border-radius: 12px; }
+  .d-qr .qr-cap { display: block; }
+  .dlg-f { flex-direction: column; align-items: stretch; padding: 14px 18px; }
+  .auth { min-height: 680px; padding: 28px 16px; }
+  .auth-card { padding: 28px 22px; }
+}
+.qr-cap { display: none; font-size: 12.5px; color: var(--muted); max-width: 22ch; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="i-card" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M2 10h20"/></symbol>
+    <symbol id="i-receipt" viewBox="0 0 24 24"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M14 8H8M16 12H8M13 16H8"/></symbol>
+    <symbol id="i-qr" viewBox="0 0 24 24"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3M21 21v.01M12 7v3a2 2 0 0 1-2 2H7M3 12h.01M12 3h.01M12 16v.01M16 12h1M21 12v.01M12 21v-1"/></symbol>
+    <symbol id="i-ext" viewBox="0 0 24 24"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/></symbol>
+    <symbol id="i-cardx" viewBox="0 0 24 24"><path d="M22 10V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h9"/><path d="M2 10h20M16 16l5 5M21 16l-5 5"/></symbol>
+    <symbol id="i-hourglass" viewBox="0 0 24 24"><path d="M5 22h14M5 2h14M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
+    <symbol id="i-ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
+    <symbol id="i-dot" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5" fill="currentColor"/></symbol>
+  </defs>
+</svg>
+
+<header class="chrome">
+  <div class="chrome-row">
+    <span class="chrome-name">Stronix Pay: o que a academia vê <small>Mockup</small></span>
+    <div class="seg" role="group" aria-label="Tela" id="seg-screen">
+      <button type="button" data-screen="s1">Plano e faturas</button>
+      <button type="button" data-screen="s2">Janela do Pix Automático</button>
+      <button type="button" data-screen="s3">Academia bloqueada</button>
+    </div>
+    <button class="theme" type="button" id="theme">Tema escuro</button>
+  </div>
+  <div class="chrome-row" id="chrome-sub"></div>
+  <p class="note" id="note"></p>
+</header>
+
+<main class="stage"><div class="frame" id="frame"></div></main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+// ------------------------------------------------------------------
+// Dados de exemplo (inventados). Hoje é 12/10/2026; a mensalidade vence
+// todo dia 10. Em atraso, o bloqueio é 3 dias depois do atraso: 14/10.
+// ------------------------------------------------------------------
+const VALOR = 'R$ 289,00';
+const STATES = {
+  fatura:   { label: 'Fatura', method: 'invoice' },
+  cartao:   { label: 'Cartão salvo', method: 'card' },
+  pix:      { label: 'Pix Automático', method: 'pix' },
+  atraso:   { label: 'Fatura em atraso', method: 'invoice', late: true },
+  recusado: { label: 'Cartão recusado', method: 'card', late: true, refused: true },
+};
+const OPTS = {
+  a: { name: 'Uma linha', note: '<b>Opção A, uma linha.</b> O bloco entra entre o resumo do plano e as faturas, do tamanho das outras seções: a forma atual numa linha e os botões logo abaixo ou ao lado.' },
+  b: { name: 'Os três jeitos', note: '<b>Opção B, os três jeitos.</b> As três formas ficam sempre à vista, cada uma dizendo o que acontece no dia 10. A que está em uso ganha a marca, e as outras, o botão para trocar.' },
+  c: { name: 'Os meses em fila', note: '<b>Opção C, os meses em fila.</b> Uma fila de meses mostra como cada mensalidade foi ou vai ser paga, com a agulha do hoje das Rotinas. Passar o mouse num botão mostra os meses que mudam.' },
+};
+const SCREEN_NOTES = {
+  s2: '<b>Janela do Pix Automático.</b> Abre no "Pagar por Pix Automático". O QR Code é de mentira. No celular, o código copia e cola vem antes do QR, porque ninguém lê o QR da própria tela.',
+  s3: '<b>Academia bloqueada.</b> Mesma cara da tela de bloqueio de hoje. O gestor ganha "Pagar fatura" e "Já paguei, atualizar"; o consultor só tem o Sair. "Já paguei" simula a conferência com o pagamento ainda não caído.',
+};
+
+const METHOD = {
+  invoice: { icon: 'receipt', auto: false, nm: 'Pix, boleto ou cartão pelo link, todo mês', tl: '', nt: 'A fatura chega antes do dia 10, e alguém da academia paga à mão.' },
+  card: { icon: 'card', auto: true, nm: 'Cartão Visa final 1234', tl: 'cobrado sozinho todo dia 10', nt: 'Se o cartão recusar, a Asaas tenta de novo nos dias seguintes.' },
+  pix: { icon: 'qr', auto: true, nm: 'Pix Automático', tl: 'debitado sozinho todo dia 10', nt: 'Para parar, escolha outra forma aqui ou cancele a autorização no app do banco.' },
+};
+
+const BADGE = {
+  paga: ['Paga', 'b-ok', 'check'],
+  aberto: ['Em aberto', 'b-warn', 'clock'],
+  atrasada: ['Atrasada', 'b-late', 'alert'],
+  recusado: ['Cartão recusado', 'b-late', 'cardx'],
+  analise: ['Em análise', 'b-nt', 'hourglass'],
+};
+
+// As quatro faturas mais recentes de cada estado. act: 'pagar' abre a fatura
+// para pagar; 'abrir' abre a fatura (ou o recibo).
+const INVOICES = {
+  fatura: [
+    ['novembro', 'aberto', 'Vence em 10/11, pelo link.', 'pagar'],
+    ['outubro', 'paga', 'Paga por Pix em 08/10.'],
+    ['setembro', 'paga', 'Paga por boleto em 09/09.'],
+    ['agosto', 'paga', 'Paga no cartão em 10/08.'],
+  ],
+  cartao: [
+    ['novembro', 'aberto', 'No cartão final 1234, em 10/11.'],
+    ['outubro', 'analise', 'Cartão final 1234. A Asaas está conferindo o pagamento.'],
+    ['setembro', 'paga', 'Paga por Pix em 08/09.'],
+    ['agosto', 'paga', 'Paga por boleto em 09/08.'],
+  ],
+  pix: [
+    ['novembro', 'aberto', 'Por Pix Automático, em 10/11.'],
+    ['outubro', 'paga', 'Paga por Pix Automático em 10/10.'],
+    ['setembro', 'paga', 'Paga por Pix em 04/09.'],
+    ['agosto', 'paga', 'Paga por boleto em 09/08.'],
+  ],
+  atraso: [
+    ['novembro', 'aberto', 'Vence em 10/11, pelo link.'],
+    ['outubro', 'atrasada', 'Venceu em 10/10, há 2 dias.', 'pagar'],
+    ['setembro', 'paga', 'Paga por Pix em 08/09.'],
+    ['agosto', 'paga', 'Paga por boleto em 09/08.'],
+  ],
+  recusado: [
+    ['novembro', 'aberto', 'No cartão final 1234, em 10/11.'],
+    ['outubro', 'recusado', 'Venceu em 10/10. O cartão final 1234 recusou, e o banco não informa o motivo.', 'pagar'],
+    ['setembro', 'paga', 'Paga no cartão final 1234 em 10/09.'],
+    ['agosto', 'paga', 'Paga por Pix em 07/08.'],
+  ],
+};
+
+// Opção C: setembro e outubro vêm das faturas; novembro em diante, da forma atual.
+const HOW_FUTURE = { invoice: 'Pelo link', card: 'No cartão', pix: 'Pix Automático' };
+const HOW_PAST = {
+  fatura: ['Pix', 'Pix'], cartao: ['Pix', 'Cartão'], pix: ['Pix', 'Pix Automático'],
+  atraso: ['Pix', 'Venceu em 10/10'], recusado: ['Cartão', 'Venceu em 10/10'],
+};
+
+const S = { screen: 's1', opt: 'a', state: 'fatura', ver: 'gestor', theme: 'light', pending: null, paid: false, checking: false, checked: false };
+
+const I = (id, cls = 'i') => `<svg class="${cls}" aria-hidden="true"><use href="#i-${id}"/></svg>`;
+const cap = (s) => s[0].toUpperCase() + s.slice(1);
+
+// ------------------------------------------------------------------
+// Tela 1: Plano e faturas
+// ------------------------------------------------------------------
+function summaryHtml(st) {
+  const s = STATES[st];
+  const sit = s.late
+    ? `<span class="v bad">Em atraso</span><span class="s">Outubro venceu em 10/10</span>`
+    : st === 'cartao' ? `<span class="v ok">Em dia</span><span class="s">Outubro em análise no cartão</span>`
+    : st === 'pix' ? `<span class="v ok">Em dia</span><span class="s">Outubro pago em 10/10</span>`
+    : `<span class="v ok">Em dia</span><span class="s">Outubro pago em 08/10</span>`;
+  const nextSub = s.method === 'card' ? 'no cartão final 1234' : s.method === 'pix' ? 'por Pix Automático' : `<button type="button" class="tlink" data-act="ext" style="font-size:12.5px">Ver fatura</button>`;
+  return `<section class="panel sum" aria-label="Resumo do plano">
+    <div><span class="lbl">Plano</span><span class="v">Pro</span><span class="s">${VALOR} por mês, até 5 consultores</span></div>
+    <div><span class="lbl">Situação</span>${sit}</div>
+    <div><span class="lbl">Próxima mensalidade</span><span class="v t">10/11/2026</span><span class="s">${nextSub}</span></div>
+  </section>`;
+}
+
+function lateBand(st) {
+  const s = STATES[st];
+  if (!s.late) return '';
+  const title = s.refused ? 'O cartão não passou na mensalidade de outubro' : 'Mensalidade de outubro em atraso';
+  const text = s.refused
+    ? `A Asaas tentou cobrar ${VALOR} no cartão Visa final 1234 e não conseguiu. Sem o pagamento, o acesso da equipe é bloqueado em 14/10.`
+    : `${VALOR}, venceu em 10/10. Sem o pagamento, o acesso da equipe é bloqueado em 14/10.`;
+  const small = s.refused ? 'Na fatura dá para pagar por Pix, boleto ou outro cartão.' : 'Pix, boleto ou cartão. Pagando por Pix, a situação muda em poucos minutos.';
+  const done = S.paid ? `<p class="done-note" role="status">${I('ext')}<span>A fatura abriu em outra guia. Depois de pagar, esta tela mostra a mensalidade em dia.</span></p>` : '';
+  return `<div class="late">${I(s.refused ? 'cardx' : 'alert')}
+    <div><p class="lt">${title}</p><p class="ls">${text}</p></div>
+    <div class="lact"><button type="button" class="btn" data-act="pay-late">Pagar fatura em atraso ${I('ext')}</button><small>${small}</small></div>
+    ${done}</div>`;
+}
+
+function pendingHtml(st) {
+  if (S.pending !== 'card') return '';
+  const swap = STATES[st].method === 'card';
+  const title = swap ? 'Termine a troca do cartão na página da Asaas' : 'Termine o cadastro do cartão na página da Asaas';
+  const text = swap
+    ? 'Ela abriu em outra guia. Digite o cartão novo lá; no fim, a Asaas traz você de volta para esta tela. O cartão novo vale a partir do próximo vencimento.'
+    : `Ela abriu em outra guia. Digite o cartão lá; no fim, a Asaas traz você de volta para esta tela, com o cartão salvo.${STATES[st].late ? ' O cartão vale a partir da mensalidade de novembro.' : ''}`;
+  return `<div class="pending" role="status" tabindex="-1" id="pending"><span class="pulse" aria-hidden="true"></span>
+    <div><p class="pt">${title}</p>
+    <p class="ps">${text}</p>
+    <button type="button" class="tlink" data-act="card">Abrir a página de novo</button></div></div>`;
+}
+
+const ACT = {
+  card: (ghost) => `<button type="button" class="btn${ghost ? ' ghost' : ''}" data-act="card" data-preview="card">Pagar no cartão automaticamente</button>`,
+  swap: () => `<button type="button" class="btn ghost" data-act="card">Trocar cartão</button>`,
+  pix: (ghost) => `<button type="button" class="btn${ghost ? ' ghost' : ''}" data-act="pix" data-preview="pix">Pagar por Pix Automático</button>`,
+  invoice: () => `<button type="button" class="tlink" data-act="to-invoice" data-preview="invoice">Pagar por Pix ou boleto a cada mês</button>`,
+};
+
+// A forma atual numa linha (A e C).
+function nowRow(st, { quiet = false, note = true } = {}) {
+  const s = STATES[st];
+  const m = METHOD[s.method];
+  const act = s.method === 'card' ? `<div class="act btns">${ACT.swap()}</div>` : '<div></div>';
+  const nt = S.pending === 'card' && s.method === 'card' ? '' : s.refused ? 'O cartão novo vale a partir da mensalidade de novembro.' : m.nt;
+  return `<div class="now${quiet ? ' quiet' : ''}"><span class="mi${m.auto ? ' is-auto' : ''}">${I(m.icon)}</span>
+    <div><p class="nm">${m.nm}</p>${m.tl ? `<p class="tl">${m.tl}</p>` : ''}${note && !quiet && nt ? `<p class="nt">${nt}</p>` : ''}</div>${act}</div>`;
+}
+
+// O que vem depois da forma atual: os botões para trocar.
+function afterNow(st) {
+  const s = STATES[st];
+  if (s.method === 'invoice') {
+    const lead = s.late ? 'A partir de novembro, a mensalidade pode se pagar sozinha:' : 'Com o cartão ou o Pix Automático, a mensalidade se paga sozinha no dia 10.';
+    return `<div class="auto"><p>${lead}</p><div class="btns">${ACT.card(s.late)}${ACT.pix(true)}</div></div>`;
+  }
+  return `<div class="pm-foot">${ACT.invoice()}</div>`;
+}
+
+function optA(st) {
+  return `<section class="panel pm" aria-labelledby="pm-h"><div class="panel-h"><h2 id="pm-h">Forma de pagamento</h2></div>
+    ${lateBand(st)}${pendingHtml(st)}${nowRow(st, { quiet: STATES[st].late && STATES[st].method === 'invoice' })}${afterNow(st)}</section>`;
+}
+
+function optB(st) {
+  const s = STATES[st];
+  const ways = [
+    { id: 'card', icon: 'card', name: 'Cartão salvo',
+      off: 'Cobrado sozinho no dia 10. Você digita o cartão uma vez, na página da Asaas.',
+      on: 'Cartão Visa final 1234 · cobrado sozinho todo dia 10', act: ACT.card(true), onAct: ACT.swap() },
+    { id: 'pix', icon: 'qr', name: 'Pix Automático',
+      off: 'Debitado sozinho da conta da academia no dia 10, depois que você autoriza no app do banco.',
+      on: 'Debitado sozinho todo dia 10. Para parar, escolha outra forma aqui ou cancele no app do banco.', act: ACT.pix(true), onAct: '' },
+    { id: 'invoice', icon: 'receipt', name: 'Fatura pelo link',
+      off: 'Pix, boleto ou cartão na página da fatura. Todo mês alguém da academia paga à mão.',
+      on: 'Pix, boleto ou cartão pelo link, todo mês', act: `<button type="button" class="btn ghost" data-act="to-invoice">Pagar por Pix ou boleto a cada mês</button>`, onAct: '' },
+  ];
+  const rows = ways.map((w) => {
+    const on = w.id === s.method;
+    return `<li class="way${on ? ' on' : ''}"><span class="mi${w.id !== 'invoice' ? ' is-auto' : ''}">${I(w.icon)}</span>
+      <div><p class="wn">${w.name}</p><p class="ws">${on ? w.on : w.off}</p></div>
+      <div class="wa">${on ? `${w.onAct}<span class="inuse">${I('check')}Em uso</span>` : w.act}</div></li>`;
+  }).join('');
+  const note = s.late ? `<p class="ways-note">A forma escolhida aqui vale a partir da mensalidade de novembro.</p>` : '';
+  return `<section class="panel pm" aria-labelledby="pm-h"><div class="panel-h"><h2 id="pm-h">Forma de pagamento</h2></div>
+    ${lateBand(st)}${pendingHtml(st)}${note}<ul class="ways" aria-label="Formas de pagamento">${rows}</ul></section>`;
+}
+
+function stripHtml(st) {
+  const s = STATES[st];
+  const inv = INVOICES[st];
+  const past = HOW_PAST[st];
+  const cells = [];
+  [['Setembro', 'set', inv[2]], ['Outubro', 'out', inv[1]]].forEach(([full, ab, row], i) => {
+    const b = row[1];
+    const k = b === 'paga' ? 'k-paid' : b === 'analise' ? 'k-wait' : 'k-late';
+    const [txt, , icon] = BADGE[b];
+    cells.push(`<li class="cell ${k}${i === 1 ? ' today' : ''}"><span class="cm"><span class="fu">${full}</span><span class="ab">${ab}</span></span><span class="cs">${I(icon)}${txt}</span><span class="ch">${past[i]}</span></li>`);
+  });
+  [['Novembro', 'nov', '10/11'], ['Dezembro', 'dez', '10/12'], ['Janeiro', 'jan', '10/01']].forEach(([full, ab, d]) => {
+    const k = s.method === 'invoice' ? 'k-manual' : 'k-auto';
+    cells.push(`<li class="cell ${k} fut" data-k="${k}"><span class="cm"><span class="fu">${full}</span><span class="ab">${ab}</span></span><span class="cs t">${d}</span><span class="ch" data-now="${HOW_FUTURE[s.method]}">${HOW_FUTURE[s.method]}</span></li>`);
+  });
+  return `<ol class="strip" aria-label="Mensalidades mês a mês">${cells.join('')}</ol>`;
+}
+
+function optC(st) {
+  const s = STATES[st];
+  const cap = s.method === 'invoice'
+    ? 'Os meses tracejados você paga à mão, pelo link.'
+    : 'Os meses em azul se pagam sozinhos.';
+  return `<section class="panel pm" aria-labelledby="pm-h"><div class="panel-h"><h2 id="pm-h">Forma de pagamento</h2></div>
+    ${lateBand(st)}${pendingHtml(st)}${stripHtml(st)}<p class="strip-cap">${cap}</p>
+    <div class="c-now">${nowRow(st, { quiet: s.late && s.method === 'invoice' })}</div>${afterNow(st)}</section>`;
+}
+
+function invoicesHtml(st) {
+  const rows = INVOICES[st].map(([mes, b, sub, act]) => {
+    const [txt, cls, icon] = BADGE[b];
+    const a = act === 'pagar'
+      ? `<button type="button" class="tlink ia" data-act="${STATES[st].late && mes === 'outubro' ? 'pay-late' : 'ext'}">Pagar ${I('ext')}</button>`
+      : `<button type="button" class="tlink ia muted" data-act="ext" aria-label="Abrir a fatura de ${mes}">Abrir ${I('ext')}</button>`;
+    return `<li class="inv"><p class="it">Mensalidade de ${mes}</p><p class="is">${sub}</p><span class="iv">${VALOR}</span><span class="badge ib ${cls}">${I(icon)}${txt}</span>${a}</li>`;
+  }).join('');
+  return `<section class="panel" aria-labelledby="inv-h"><div class="panel-h"><h2 id="inv-h">Faturas</h2></div><ul class="inv-list">${rows}</ul></section>`;
+}
+
+function plansHtml() {
+  const plans = [
+    ['Starter', 'R$ 189,00 por mês, até 2 consultores', false],
+    ['Pro', `${VALOR} por mês, até 5 consultores`, true],
+    ['Enterprise', 'R$ 489,00 por mês, consultores ilimitados', false],
+  ];
+  return `<section class="panel" aria-labelledby="pl-h"><div class="panel-h"><h2 id="pl-h">Mudar de plano</h2></div>
+    <ul style="padding-top:6px">${plans.map(([n, d, cur]) => `<li class="plan"><div><p class="pn">${n}</p><p class="pd">${d}</p></div>${cur ? '<span class="cur">Plano atual</span>' : `<button type="button" class="btn ghost" style="height:34px" data-act="noop">Mudar para este</button>`}</li>`).join('')}</ul>
+    <p class="plans-note">A troca vale na hora, e a fatura em aberto muda de valor junto.</p></section>`;
+}
+
+function page1(opt, st) {
+  const block = opt === 'b' ? optB(st) : opt === 'c' ? optC(st) : optA(st);
+  return `<div class="page">
+    <div class="ph"><h1>Plano e faturas</h1><p>A assinatura do Stronilead da Academia Ponto Fit.</p></div>
+    ${summaryHtml(st)}${block}${invoicesHtml(st)}${plansHtml()}</div>`;
+}
+
+// ------------------------------------------------------------------
+// Tela 2: janela do Pix Automático
+// ------------------------------------------------------------------
+// QR de mentira: módulos sorteados com semente fixa e os três quadrados de
+// canto. Não é lido por nenhum banco.
+function qrSvg() {
+  const n = 29;
+  let seed = 20261012;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const inFinder = (x, y) => (x < 8 && y < 8) || (x >= n - 8 && y < 8) || (x < 8 && y >= n - 8);
+  let d = '';
+  const box = (x, y, w, h) => { d += `M${x} ${y}h${w}v${h}h-${w}z`; };
+  [[0, 0], [n - 7, 0], [0, n - 7]].forEach(([x, y]) => {
+    d += `M${x} ${y}h7v7h-7zM${x + 1} ${y + 1}v5h5v-5z`;
+    box(x + 2, y + 2, 3, 3);
+  });
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      if (inFinder(x, y)) continue;
+      const timing = (x === 6 || y === 6) ? (x + y) % 2 === 0 : rnd() < 0.47;
+      if (timing) box(x, y, 1, 1);
+    }
+  }
+  return `<svg viewBox="0 0 ${n} ${n}" shape-rendering="crispEdges" role="img" aria-label="QR Code do Pix (exemplo)"><path fill="#0E1A40" fill-rule="evenodd" d="${d}"/></svg>`;
+}
+const PIX_CODE = '00020101021226870014br.gov.bcb.pix2565qr.exemplo.asaas.com/pixautomatico/ponto-fit-exemplo-00015204000053039865406289.005802BR5910STRONILEAD6009SAO PAULO62070503***6304E2CA';
+
+function dialogHtml() {
+  return `<div class="scrim"><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dlg-t" aria-describedby="dlg-d" tabindex="-1" id="dlg">
+    <div class="dlg-h"><div><h2 id="dlg-t">Pagar por Pix Automático</h2>
+      <p id="dlg-d">Você paga o primeiro Pix agora e autoriza os próximos no app do banco. Depois disso, a mensalidade é debitada sozinha todo dia 10.</p></div>
+      <button type="button" class="icon-btn" aria-label="Fechar" data-act="close">${I('x')}</button></div>
+    <div class="dlg-b">
+      <div class="d-val"><span class="lbl">Primeiro Pix</span><span class="amt t">${VALOR}</span><span class="sub">Os próximos saem sozinhos, no dia 10 de cada mês.</span></div>
+      <div class="d-qr"><div class="qr">${qrSvg()}</div><span class="qr-cap">O QR Code serve para ler com outro aparelho.</span></div>
+      <div class="d-code"><label class="lbl" for="pixcode">Pix copia e cola</label>
+        <div class="code"><input id="pixcode" readonly value="${PIX_CODE}"><button type="button" class="btn" data-act="copy" id="copy">${I('copy')}Copiar</button></div>
+        <span class="sr" role="status" id="copy-status"></span></div>
+      <ol class="d-steps" aria-label="Como pagar">
+        <li>Abra o app do banco da academia.</li>
+        <li>Pague o Pix de ${VALOR}, pelo código ou pelo QR&nbsp;Code.</li>
+        <li>Autorize as próximas cobranças quando o banco pedir.</li>
+      </ol>
+      <p class="d-valid">${I('clock')}O código vale por 24 horas.</p>
+    </div>
+    <div class="dlg-f"><p class="waiting"><span class="pulse" aria-hidden="true"></span><span>Esperando o pagamento. Quando o banco confirmar, esta janela fecha e a forma de pagamento muda sozinha.</span></p>
+      <button type="button" class="btn ghost" data-act="close">Fechar</button></div>
+  </div></div>`;
+}
+
+// ------------------------------------------------------------------
+// Tela 3: academia bloqueada
+// ------------------------------------------------------------------
+const SURGE = `<svg width="26" height="26" viewBox="0 0 48 48" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 39 L24 29 L37 39" stroke="#2B59FF" stroke-width="4.4"/><path d="M13.5 30 L24 21.5 L34.5 30" stroke="#2B59FF" stroke-width="4.4"/><path d="M16 21 L24 14 L32 21" stroke="#FF6A2B" stroke-width="4.4"/></svg>`;
+
+function blockedHtml(ver) {
+  const head = `<div class="brand-row">${SURGE}<span class="wm" aria-label="STRONILEAD">STRONI<b>LEAD</b></span></div>
+    <span class="auth-ic">${I('ban')}</span><h1>Mensalidade em atraso</h1>`;
+  if (ver === 'consultor') {
+    return `<div class="auth"><div class="auth-card">${head}
+      <p class="msg">O acesso ao Stronilead da Academia Ponto Fit está bloqueado. Peça ao gestor para regularizar a mensalidade. O acesso volta para toda a equipe assim que o pagamento cair.</p>
+      <div class="stack"><button type="button" class="btn" data-act="logout">Sair</button></div></div></div>`;
+  }
+  const checkBtn = S.checking
+    ? `<button type="button" class="btn ghost" disabled><span class="spin" aria-hidden="true"></span>Conferindo o pagamento…</button>`
+    : `<button type="button" class="btn ghost" data-act="refresh">${I('refresh')}Já paguei, atualizar</button>`;
+  const note = S.checked && !S.checking
+    ? `<p class="check-note" role="status">${I('clock')}<span>O pagamento ainda não apareceu. Pix costuma cair em poucos minutos, e boleto em até 3 dias úteis. Tente de novo daqui a pouco.</span></p>`
+    : '<p class="sr" role="status"></p>';
+  return `<div class="auth"><div class="auth-card">${head}
+    <p class="msg">A mensalidade de outubro da Academia Ponto Fit, de ${VALOR}, venceu em 10/10, e o acesso da equipe está bloqueado. Pagando por Pix, o acesso volta em poucos minutos.</p>
+    <div class="stack"><button type="button" class="btn" data-act="pay-blocked">Pagar fatura ${I('ext')}</button>${checkBtn}</div>${note}</div>
+    <button type="button" class="auth-out" data-act="logout">Sair</button></div>`;
+}
+
+// ------------------------------------------------------------------
+// Barra do mockup, endereço (#s1-b-atraso-dark) e cliques
+// ------------------------------------------------------------------
+function readHash() {
+  const parts = location.hash.replace('#', '').split('-').filter(Boolean);
+  if (/^s[123]$/.test(parts[0] || '')) S.screen = parts[0];
+  parts.slice(1).forEach((p) => {
+    if (OPTS[p]) S.opt = p;
+    else if (STATES[p]) S.state = p;
+    else if (p === 'gestor' || p === 'consultor') S.ver = p;
+    else if (p === 'light' || p === 'dark') S.theme = p;
+    else if (p === 'asaas') S.pending = 'card';
+    else if (p === 'pagando') S.paid = true;
+    else if (p === 'conferido') S.checked = true;
+  });
+}
+function writeHash() {
+  const h = S.screen === 's1' ? `s1-${S.opt}-${S.state}-${S.theme}` : S.screen === 's2' ? `s2-${S.opt}-${S.theme}` : `s3-${S.ver}-${S.theme}`;
+  history.replaceState(null, '', `#${h}`);
+}
+function seg(label, items, cur, key) {
+  return `<span class="seg-l">${label}</span><div class="seg" role="group" aria-label="${label}">${items.map(([v, t]) => `<button type="button" data-${key}="${v}" aria-pressed="${v === cur}">${t}</button>`).join('')}</div>`;
+}
+function renderChrome() {
+  document.querySelectorAll('#seg-screen button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.screen === S.screen)));
+  const sub = document.getElementById('chrome-sub');
+  if (S.screen === 's1') {
+    sub.innerHTML = seg('Opção', Object.entries(OPTS).map(([k, o]) => [k, `<b>${k.toUpperCase()}</b>${o.name}`]), S.opt, 'opt')
+      + seg('Estado', Object.entries(STATES).map(([k, s]) => [k, s.label]), S.state, 'state');
+  } else if (S.screen === 's3') {
+    sub.innerHTML = seg('Quem entra', [['gestor', 'Gestor'], ['consultor', 'Consultor']], S.ver, 'ver');
+  } else {
+    sub.innerHTML = seg('Fundo', Object.entries(OPTS).map(([k]) => [k, `<b>${k.toUpperCase()}</b>Opção ${k.toUpperCase()}`]), S.opt, 'opt');
+  }
+  const lateNote = S.screen === 's1' && STATES[S.state].late ? ' Em atraso, a faixa vermelha do topo do app some nesta tela: o bloco já traz o botão de pagar.' : '';
+  document.getElementById('note').innerHTML = S.screen === 's1' ? OPTS[S.opt].note + lateNote : SCREEN_NOTES[S.screen];
+  document.documentElement.dataset.theme = S.theme;
+  document.getElementById('theme').textContent = S.theme === 'dark' ? 'Tema claro' : 'Tema escuro';
+}
+function render() {
+  renderChrome();
+  const f = document.getElementById('frame');
+  if (S.screen === 's1') f.innerHTML = page1(S.opt, S.state);
+  else if (S.screen === 's2') f.innerHTML = `<div inert aria-hidden="true">${page1(S.opt, 'fatura')}</div>${dialogHtml()}`;
+  else f.innerHTML = blockedHtml(S.ver);
+  writeHash();
+}
+
+let toastT;
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.innerHTML = `${I('check')}<span>${msg}</span>`;
+  t.classList.add('on');
+  clearTimeout(toastT);
+  toastT = setTimeout(() => t.classList.remove('on'), 3200);
+}
+
+function go(patch) {
+  Object.assign(S, { pending: null, paid: false, checking: false, checked: false }, patch);
+  render();
+}
+
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('button');
+  if (!el) return;
+  const d = el.dataset;
+  if (d.screen) return go({ screen: d.screen });
+  if (d.opt) return go({ opt: d.opt });
+  if (d.state) return go({ state: d.state });
+  if (d.ver) return go({ ver: d.ver });
+  if (el.id === 'theme') { S.theme = S.theme === 'dark' ? 'light' : 'dark'; renderChrome(); writeHash(); return; }
+  switch (d.act) {
+    case 'card':
+      S.pending = 'card'; render();
+      toast('A página da Asaas abriu em outra guia.');
+      document.getElementById('pending')?.focus();
+      break;
+    case 'pay-late':
+      S.paid = true; render();
+      toast('A fatura de outubro abriu em outra guia.');
+      break;
+    case 'ext': toast('A fatura abriu em outra guia.'); break;
+    case 'pay-blocked': toast('A fatura de outubro abriu em outra guia.'); break;
+    case 'pix': go({ screen: 's2' }); document.getElementById('dlg')?.focus(); break;
+    case 'close': go({ screen: 's1', state: 'fatura' }); break;
+    case 'to-invoice':
+      go({ state: 'fatura' });
+      toast('Pronto. A partir de novembro, a mensalidade vem pelo link.');
+      break;
+    case 'copy': {
+      const input = document.getElementById('pixcode');
+      const done = () => {
+        el.innerHTML = `${I('check')}Copiado`; el.classList.add('copied');
+        document.getElementById('copy-status').textContent = 'Código copiado.';
+        setTimeout(() => { el.innerHTML = `${I('copy')}Copiar`; el.classList.remove('copied'); document.getElementById('copy-status').textContent = ''; }, 2400);
+      };
+      if (navigator.clipboard?.writeText) navigator.clipboard.writeText(input.value).then(done, () => { input.select(); done(); });
+      else { input.select(); done(); }
+      break;
+    }
+    case 'refresh':
+      S.checking = true; render();
+      setTimeout(() => { S.checking = false; S.checked = true; render(); }, 1200);
+      break;
+    case 'logout': toast('Na tela de verdade, Sair volta para o login.'); break;
+    case 'noop': toast('A troca de plano continua como hoje.'); break;
+    default: break;
+  }
+});
+
+// Opção C: o botão mostra, na fila, os meses que mudariam.
+function preview(kind) {
+  document.querySelectorAll('.cell.fut').forEach((c) => {
+    const ch = c.querySelector('.ch');
+    if (kind && HOW_FUTURE[kind] !== ch.dataset.now) { c.classList.add('preview'); ch.textContent = HOW_FUTURE[kind]; }
+    else { c.classList.remove('preview'); ch.textContent = ch.dataset.now; }
+  });
+}
+['mouseover', 'focusin'].forEach((ev) => document.addEventListener(ev, (e) => {
+  const b = e.target.closest('[data-preview]');
+  preview(b ? b.dataset.preview : null);
+}));
+
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && S.screen === 's2') go({ screen: 's1', state: 'fatura' }); });
+window.addEventListener('hashchange', () => { readHash(); render(); });
+readHash();
+render();
+</script>
+</body>
+</html>
