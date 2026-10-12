@@ -10,6 +10,14 @@ A ideia veio do Next Fit Pay, o módulo de pagamentos da Next Fit, que a STRONIX
 
 Desenhado com o Johnny em 12/10/2026. Hoje são até 10 academias pagantes, e várias escolhas abaixo contam com esse tamanho.
 
+Os mockups, feitos com a skill `frontend-design`, foram aprovados pelo Johnny no mesmo dia:
+
+- `docs/superpowers/specs/mockups/2026-10-12-stronix-pay-painel.html`: a seção Stronix Pay do SuperConsole. A opção aprovada é a **B, em abas**.
+- `docs/superpowers/specs/mockups/2026-10-12-stronix-pay-academia.html`: o bloco Forma de pagamento de Plano & faturas, a janela do Pix Automático e a tela de academia bloqueada. A opção aprovada do bloco é a **B, as três formas à vista**.
+- `docs/superpowers/specs/mockups/2026-10-12-stronix-pay-regua.html`: a régua, com o WhatsApp e o e-mail de cada etapa. Os textos e os assuntos foram aprovados como estão, e a prévia do WhatsApp mantém as duas visões (o celular de quem recebe e o da STRONIX).
+
+Os mockups têm dados inventados, tema claro e escuro, e celular a 375 px. Os textos de tela desta spec são os deles.
+
 ---
 
 ## Decisões do Johnny
@@ -152,6 +160,20 @@ Cada etapa tem um texto de WhatsApp e um e-mail com o mesmo conteúdo. `{nome}` 
 
 O link é o `invoiceUrl` da cobrança, que aceita Pix, boleto e cartão avulso em qualquer forma de pagamento.
 
+Os assuntos dos e-mails, aprovados com o mockup da régua (`{data}` é o vencimento):
+
+| Etapa | Assunto |
+|---|---|
+| aviso | A mensalidade do Stronilead vence em {data} |
+| hoje | A mensalidade do Stronilead vence hoje |
+| atraso, fatura e Pix Automático | A mensalidade do Stronilead de {data} está em aberto |
+| atraso, cartão | O cartão final {final} não passou na mensalidade do Stronilead |
+| vespera | O acesso ao Stronilead será bloqueado amanhã |
+| bloqueio | O acesso ao Stronilead está bloqueado |
+| liberado | O acesso ao Stronilead está liberado |
+
+O e-mail segue o visual do e-mail do "Esqueci a senha" (`api/_passwordResetEmail.js`), com o botão "Pagar fatura" em todas as etapas, menos no `liberado`.
+
 ### Quando a régua não avisa
 
 - A cobrança foi paga, removida ou estornada.
@@ -201,6 +223,8 @@ Quando o webhook marca uma cobrança como paga e ela teve alguma etapa de depois
 
 A seção Faturamento passa a se chamar **Stronix Pay** e ganha o que falta. Os números do MRR e do ARR continuam onde estão, na Visão geral.
 
+O desenho é a opção B do mockup: a faixa de números fica fixa no topo, e Recebimentos, Transações, Repasses e Régua são abas, no `Tabs` do shadcn. A linha da transação abre o detalhe embaixo dela mesma. O Console não tem endereço (o super-admin puro fica em `/`), então a aba e os filtros vivem no estado da seção, como a subaba do super-admin hoje.
+
 **Faixa do topo:**
 
 - Saldo disponível na conta Asaas (`/finance/balance`).
@@ -211,7 +235,7 @@ A seção Faturamento passa a se chamar **Stronix Pay** e ganha o que falta. Os 
 
 **Recebimentos por forma de pagamento:** os últimos 6 meses, com cartão, Pix, Pix Automático e boleto separados.
 
-**Transações:** as cobranças dos últimos 90 dias de todas as academias, lidas da Asaas (`/payments`), com academia, descrição, vencimento, forma, valor e situação. As situações são pago, pendente, vencido, recusado no cartão, reprovado na análise de risco, estornado e contestado. Filtros por situação, forma, academia e período, no endereço, pela tabela do `src/lib/screenParams.js`. A linha abre o detalhe com os eventos da cobrança (os registros de `tenant_payments` dela), os avisos da régua com o canal e o resultado de cada um, e o link da fatura com "Copiar".
+**Transações:** as cobranças dos últimos 90 dias de todas as academias, lidas da Asaas (`/payments`), com academia, descrição, vencimento, forma, valor e situação. As situações são pago, pendente, vencido, recusado no cartão, reprovado na análise de risco, estornado e contestado. Filtros por situação, forma, academia e período, com "Limpar filtros" e o aviso de lista vazia. O "Em atraso" da faixa do topo abre esta aba já filtrada em Vencido. A linha abre o detalhe com os eventos da cobrança (os registros de `tenant_payments` dela), os avisos da régua com o canal e o resultado de cada um, e o link da fatura com "Copiar".
 
 **Repasses:** as transferências da conta Asaas para o banco (`/transfers`), com data, valor, destino e situação.
 
@@ -227,7 +251,7 @@ A seção Faturamento passa a se chamar **Stronix Pay** e ganha o que falta. Os 
 
 ## O que a academia vê
 
-**Plano e faturas** ganha o bloco "Forma de pagamento":
+**Plano e faturas** ganha o bloco "Forma de pagamento". O desenho é a opção B do mockup: as três formas (cartão salvo, Pix Automático e fatura pelo link) ficam sempre à vista, cada uma dizendo o que acontece no dia do vencimento. A forma em uso leva a marca "Em uso", e as outras, o botão de trocar. Com fatura em atraso, a faixa "Pagar fatura em atraso" vem antes das três, e a troca de forma diz a partir de que mês vale.
 
 - A forma atual: "Cartão Visa final 1234 · cobrado sozinho todo dia 10", "Pix Automático · debitado sozinho todo dia 10" ou "Pix, boleto ou cartão pelo link, todo mês".
 - Os botões: "Pagar no cartão automaticamente", "Trocar cartão", "Pagar por Pix Automático" (só com o Pix Automático liberado) e "Pagar por Pix ou boleto a cada mês".
