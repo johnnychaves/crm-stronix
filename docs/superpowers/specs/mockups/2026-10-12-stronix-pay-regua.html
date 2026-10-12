@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="pt-BR" translate="no" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="google" content="notranslate">
+<title>Stronix Pay: régua de cobrança</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Geist:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Revisão da régua de cobrança da spec 2026-10-12-stronix-pay-design.md.
+   Tokens dos mockups do Stronilead (2026-10-08-rotinas-aba-hoje.html). A cor
+   diz o estado da cobrança: azul antes de vencer, laranja em atraso, vermelho
+   bloqueado, verde liberado. O WhatsApp usa as cores do próprio WhatsApp, e o
+   e-mail as cores fixas do "Esqueci a senha" (api/_passwordResetEmail.js).
+   Endereço: #metodo-etapa-tema, por exemplo #cartao-atraso-dark. Com -stronix
+   no fim, o WhatsApp aparece no celular da STRONIX. */
+:root {
+  --bg: #F5F7FB; --card: #FFFFFF; --ink: #0E1A40; --muted: #64748B; --faint: #94A3B8;
+  --line: #E2E8F0; --hatch: #CBD3E1;
+  --brand: #2B59FF; --brand-soft: rgba(43, 89, 255, .14);
+  --accent: #FF6A2B; --accent-soft: rgba(255, 106, 43, .2);
+  --late: #E11D48; --late-soft: rgba(225, 29, 72, .14);
+  --done: #059669; --done-soft: rgba(5, 150, 105, .16);
+  --wa-bg: #EFEAE2; --wa-bar: #FFFFFF; --wa-bar-ink: #111B21; --wa-icon: #54656F;
+  --wa-in: #FFFFFF; --wa-out: #D9FDD3; --wa-ink: #111B21; --wa-meta: #667781; --wa-meta-out: #667781;
+  --wa-link: #027EB5; --wa-tick: #53BDEB; --wa-green: #00A884; --wa-chip: #FFFFFF; --wa-chip-ink: #54656F;
+  --wa-field: #FFFFFF; --wa-hint: #8696A0; --wa-av: #DFE5E7; --wa-av-ink: #8696A0;
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --bg: #080D22; --card: #0F152B; --ink: #EAEEF9; --muted: #8A93B0; --faint: #5B6482;
+  --line: rgba(255, 255, 255, .09); --hatch: rgba(255, 255, 255, .16);
+  --brand: #5A7FFF; --brand-soft: rgba(90, 127, 255, .22);
+  --accent: #FF8A57; --accent-soft: rgba(255, 138, 87, .22);
+  --late: #FB7185; --late-soft: rgba(251, 113, 133, .2);
+  --done: #34D399; --done-soft: rgba(52, 211, 153, .2);
+  --wa-bg: #0B141A; --wa-bar: #1F2C34; --wa-bar-ink: #E9EDEF; --wa-icon: #AEBAC1;
+  --wa-in: #1F2C34; --wa-out: #005C4B; --wa-ink: #E9EDEF; --wa-meta: #8696A0; --wa-meta-out: rgba(233, 237, 239, .62);
+  --wa-link: #53BDEB; --wa-chip: #182229; --wa-chip-ink: #8696A0;
+  --wa-field: #1F2C34; --wa-hint: #8696A0; --wa-av: #2A3942; --wa-av-ink: #AEBAC1;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.5 Geist, ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; cursor: pointer; background: none; border: 0; text-align: inherit; }
+ol, ul { list-style: none; }
+svg { display: block; flex-shrink: 0; }
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; border-radius: 8px; }
+
+/* barra do mockup */
+.chrome { position: sticky; top: 0; z-index: 20; background: #0E1A40; color: #fff; }
+.chrome-in { max-width: 1168px; margin: 0 auto; padding: 10px 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.chrome-name { display: flex; align-items: center; gap: 9px; font: 600 13.5px/1.2 'Space Grotesk', sans-serif; }
+.chrome-name small { font: 600 11px/1 Geist, sans-serif; color: #FF8A57; border: 1px solid rgba(255, 138, 87, .45); padding: 4px 6px; border-radius: 5px; }
+.theme { margin-left: auto; height: 30px; padding: 0 11px; border: 1px solid rgba(255, 255, 255, .2); border-radius: 8px; font-size: 12.5px; color: rgba(255, 255, 255, .9); }
+.theme:focus-visible { outline-color: #fff; }
+
+.page { max-width: 1168px; margin: 0 auto; padding: 36px 24px 80px; }
+
+/* forma de pagamento e título */
+.method { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.method-label { font-size: 13px; color: var(--muted); }
+.seg { display: inline-flex; max-width: 100%; padding: 3px; gap: 2px; background: var(--card); border: 1px solid var(--line); border-radius: 11px; }
+.seg button { height: 32px; padding: 0 13px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--muted); white-space: nowrap; }
+.seg button:hover { color: var(--ink); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+h1 { margin-top: 20px; max-width: 21em; font: 600 31px/1.16 'Space Grotesk', sans-serif; letter-spacing: -.018em; text-wrap: balance; }
+.example { margin-top: 10px; max-width: 72ch; color: var(--muted); }
+
+/* a régua: um risco por dia, as etapas como paradas */
+.ruler { margin-top: 36px; }
+.r-inner { position: relative; height: 158px; margin: 0 14px; }
+.r-track { position: absolute; left: 0; right: 0; top: 56px; }
+.bar { position: absolute; top: -1.5px; height: 3px; left: var(--a); width: calc(var(--b) - var(--a)); border-radius: 2px; }
+.bar.pre { background: var(--brand); }
+.bar.idle { background: var(--hatch); }
+.bar.late { background: var(--accent); }
+.bar.wait { top: -1px; height: 2px; background: repeating-linear-gradient(90deg, var(--faint) 0 5px, transparent 5px 10px); }
+.bar.zone { top: -8px; height: 16px; border-radius: 5px; border: 1px solid var(--line); background: repeating-linear-gradient(-45deg, var(--hatch) 0 1.5px, transparent 1.5px 7px); }
+.tick { position: absolute; left: var(--x); top: -13px; width: 1px; height: 8px; background: var(--faint); }
+.due { position: absolute; top: 0; left: var(--x); transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.due::after { content: ""; width: 2px; height: 36px; margin-top: 4px; background: var(--ink); border-radius: 2px; }
+.brk { position: absolute; top: 26px; left: var(--a); width: calc(var(--b) - var(--a)); height: 9px; border: 1.5px solid var(--faint); border-bottom: 0; border-radius: 3px 3px 0 0; }
+.brk span { position: absolute; bottom: 100%; left: 50%; transform: translate(-50%, -5px); white-space: nowrap; font-size: 12.5px; color: var(--muted); }
+.zone-note { position: absolute; top: 76px; left: calc(var(--a) + 10px); width: calc(var(--b) - var(--a) - 18px); font-size: 12.5px; line-height: 1.4; color: var(--muted); text-wrap: pretty; }
+.stops { position: absolute; inset: 0; }
+.stop { position: absolute; z-index: 1; top: 43px; left: calc(var(--x) - 13px); width: var(--w); display: flex; flex-direction: column; align-items: flex-start; gap: 9px; padding-bottom: 4px; border-radius: 10px; }
+.dot { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--card); border: 2px solid var(--c); color: var(--c); font: 600 12px/1 'Space Grotesk', sans-serif; transition: box-shadow .15s, background-color .15s; }
+.stop:hover .dot { box-shadow: 0 0 0 4px var(--cs); }
+.stop[aria-pressed="true"] .dot { background: var(--c); color: var(--on); box-shadow: 0 0 0 5px var(--cs); }
+.nm { display: block; font: 600 14px/1.2 'Space Grotesk', sans-serif; }
+.wh { display: block; margin-top: 3px; font-size: 12.5px; line-height: 1.38; color: var(--muted); }
+.r-cap { margin: 2px 0 0; font-size: 12.5px; color: var(--muted); }
+.tone-pre { --c: var(--brand); --cs: var(--brand-soft); --on: #fff; }
+.tone-late { --c: var(--accent); --cs: var(--accent-soft); --on: #0E1A40; }
+.tone-block { --c: var(--late); --cs: var(--late-soft); --on: #fff; }
+.tone-ok { --c: var(--done); --cs: var(--done-soft); --on: #fff; }
+:root[data-theme="dark"] :is(.tone-pre, .tone-late, .tone-block, .tone-ok) { --on: #080D22; }
+
+/* a etapa escolhida */
+.step { margin-top: 34px; padding-top: 28px; border-top: 1px solid var(--line); }
+.step-top { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 14px 56px; }
+.step-id { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.step-num { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; flex-shrink: 0; background: var(--c); color: var(--on); font: 600 15px/1 'Space Grotesk', sans-serif; }
+.step-id h2 { font: 600 23px/1.2 'Space Grotesk', sans-serif; letter-spacing: -.01em; }
+.step-when { display: none; margin-top: 2px; font-size: 13px; color: var(--muted); }
+.times { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 14px; font-size: 13.5px; padding-top: 2px; }
+.times dt { font-weight: 600; }
+.times dd { color: var(--muted); }
+.previews { display: grid; grid-template-columns: 392px minmax(0, 1fr); gap: 28px; align-items: start; margin-top: 24px; }
+.pv-bot { margin-top: 12px; }
+.pv-bot .seg button { height: 28px; padding: 0 11px; font-size: 12.5px; }
+
+/* WhatsApp */
+.wa { display: flex; flex-direction: column; height: 480px; border-radius: 18px; overflow: hidden; background: var(--wa-bg); border: 1px solid var(--line); color: var(--wa-ink); font-family: -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
+.wa-top { display: flex; align-items: center; gap: 10px; padding: 10px 14px 10px 10px; background: var(--wa-bar); color: var(--wa-bar-ink); box-shadow: 0 1px 2px rgba(11, 20, 26, .08); }
+.wa-top svg { width: 22px; height: 22px; color: var(--wa-icon); }
+.wa-av { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; flex-shrink: 0; background: #2B59FF; color: #fff; font: 700 16px/1 'Space Grotesk', sans-serif; }
+.wa-av.person { background: var(--wa-av); color: var(--wa-av-ink); }
+.wa-av.person svg { width: 24px; height: 24px; color: inherit; }
+.wa-name { flex: 1; min-width: 0; font-size: 16px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wa-acts { display: flex; gap: 18px; }
+.wa-chat { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 10px; padding: 12px 16px 10px; }
+.wa-chip { align-self: center; padding: 5px 12px; border-radius: 8px; background: var(--wa-chip); color: var(--wa-chip-ink); font-size: 12.5px; box-shadow: 0 1px .5px rgba(11, 20, 26, .13); }
+.msg { position: relative; align-self: flex-start; max-width: 88%; padding: 6px 8px 8px 9px; border-radius: 0 8px 8px 8px; background: var(--wa-in); font-size: 14.2px; line-height: 1.4; box-shadow: 0 1px .5px rgba(11, 20, 26, .13); overflow-wrap: anywhere; animation: arrive .28s ease-out both; }
+.msg::before { content: ""; position: absolute; top: 0; left: -8px; border-top: 12px solid var(--wa-in); border-left: 8px solid transparent; }
+.msg.out { align-self: flex-end; background: var(--wa-out); border-radius: 8px 0 8px 8px; }
+.msg.out::before { left: auto; right: -8px; border-top-color: var(--wa-out); border-left: 0; border-right: 8px solid transparent; }
+.msg-sp { display: inline-block; width: 40px; height: 1px; }
+.msg.out .msg-sp { width: 62px; }
+.msg-meta { position: absolute; right: 8px; bottom: 5px; display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--wa-meta); }
+.msg.out .msg-meta { color: var(--wa-meta-out); }
+.msg-meta svg { width: 17px; height: 11px; color: var(--wa-tick); }
+.wa-link { color: var(--wa-link); }
+.wa-compose { display: flex; align-items: center; gap: 6px; padding: 6px 8px 10px; }
+.wa-field { flex: 1; min-width: 0; height: 46px; display: flex; align-items: center; gap: 12px; padding: 0 14px; border-radius: 23px; background: var(--wa-field); color: var(--wa-hint); font-size: 16px; box-shadow: 0 1px .5px rgba(11, 20, 26, .13); }
+.wa-field svg { width: 22px; height: 22px; }
+.wa-field span { flex: 1; min-width: 0; }
+.wa-mic { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; flex-shrink: 0; background: var(--wa-green); color: #fff; }
+.wa-mic svg { width: 22px; height: 22px; }
+@keyframes arrive { from { opacity: 0; transform: translateY(10px); } }
+
+/* e-mail: a janela segue o tema; o corpo tem as cores fixas do e-mail real */
+.mail { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--card); }
+.mail-head { padding: 18px 22px 16px; border-bottom: 1px solid var(--line); }
+.mail-subj { font-size: 19px; font-weight: 600; line-height: 1.3; }
+.mail-from { display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; gap: 12px; align-items: center; margin-top: 14px; }
+.mail-av { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; background: #2B59FF; color: #fff; font: 700 16px/1 'Space Grotesk', sans-serif; }
+.mail-from p { font-size: 13.5px; line-height: 1.4; overflow-wrap: anywhere; }
+.mail-from p span { color: var(--muted); }
+.mail-from small { display: block; font-size: 12.5px; color: var(--muted); }
+.mail-from time { align-self: start; font-size: 12.5px; color: var(--muted); }
+.mail-body { background: #F5F7FB; padding: 32px 16px; }
+.em-card { max-width: 480px; margin: 0 auto; padding: 32px; background: #FFFFFF; border: 1px solid #E3E6EE; border-radius: 12px; font-family: Arial, Helvetica, sans-serif; color: #0E1A40; }
+.em-logo { margin: 0 0 24px; font-size: 20px; line-height: 1.2; letter-spacing: -.3px; }
+.em-logo b { font-weight: 700; color: #2B59FF; }
+.em-p { margin: 0 0 14px; font-size: 15px; line-height: 1.6; }
+.em-p:last-child { margin-bottom: 0; }
+.em-p.lead-in { margin-bottom: 22px; }
+.em-link { color: #1C3FC4; text-decoration: underline; overflow-wrap: anywhere; }
+.em-btn { display: inline-block; padding: 14px 22px; border-radius: 10px; background: #2B59FF; color: #FFFFFF; font: 700 15px/1 Arial, Helvetica, sans-serif; }
+.em-foot { max-width: 480px; margin: 14px auto 0; text-align: center; font: 12px/1.4 Arial, Helvetica, sans-serif; color: #687083; }
+
+/* quando a régua não avisa */
+.quiet { margin-top: 56px; padding-top: 28px; border-top: 1px solid var(--line); }
+.quiet h2 { font: 600 21px/1.2 'Space Grotesk', sans-serif; letter-spacing: -.01em; }
+.quiet ul { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 48px; max-width: 1000px; margin-top: 20px; }
+.quiet li { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 14px; color: var(--muted); }
+.quiet li::before { content: ""; width: 16px; height: 16px; margin-top: 2px; border-radius: 50%; border: 2px dashed var(--faint); }
+.quiet li b { display: block; color: var(--ink); font-weight: 600; }
+
+/* telas menores: as paradas ficam iguais e o "quando" vai para a etapa */
+@media (max-width: 959px) {
+  .r-inner { height: auto; margin: 0; }
+  .r-track, .due, .brk, .zone-note, .r-cap { display: none; }
+  .stops { position: relative; display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); }
+  .stops::before { content: ""; position: absolute; top: 12px; height: 2px; left: calc(50% / var(--n)); right: calc(50% / var(--n)); background: var(--hatch); }
+  .stop, .stop.last { position: relative; top: auto; left: auto; right: auto; width: 100%; align-items: center; text-align: center; gap: 7px; }
+  .wh { display: none; }
+  .nm { font-size: 13px; }
+  .step-when { display: block; }
+  .previews { grid-template-columns: minmax(280px, 340px) minmax(0, 1fr); gap: 20px; }
+}
+@media (max-width: 760px) {
+  .previews { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+  .quiet ul { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 600px) {
+  .chrome-in { padding: 10px 16px; }
+  .page { padding: 26px 16px 64px; }
+  h1 { font-size: 25px; }
+  .ruler { margin-top: 28px; }
+  .nm { font-size: 12px; }
+  .step-top { gap: 12px; }
+  .step-id h2 { font-size: 21px; }
+  .wa { height: 440px; }
+  .wa-acts .vid { display: none; }
+  .mail-head { padding: 14px 14px 12px; }
+  .mail-subj { font-size: 17px; }
+  .mail-from { grid-template-columns: 34px minmax(0, 1fr); }
+  .mail-av { width: 34px; height: 34px; font-size: 14px; }
+  .mail-from time { grid-column: 2; }
+  .mail-body { padding: 20px 10px; }
+  .em-card { padding: 24px 20px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+
+<header class="chrome">
+  <div class="chrome-in">
+    <span class="chrome-name"><small>Mockup</small>Stronix Pay: régua de cobrança</span>
+    <button class="theme" type="button" id="theme">Tema escuro</button>
+  </div>
+</header>
+
+<main class="page">
+  <section aria-labelledby="headline">
+    <div class="method">
+      <span class="method-label" id="method-label">Forma de pagamento</span>
+      <div class="seg" role="group" aria-labelledby="method-label" id="methods"></div>
+    </div>
+    <h1 id="headline"></h1>
+    <p class="example">Textos da spec com valores de exemplo: Carla, gestora da Academia Ponto Fit, mensalidade de R$&nbsp;289,00 com vencimento em 10/10, cartão final 1234.</p>
+  </section>
+
+  <section class="ruler" aria-label="Etapas da régua">
+    <div class="r-inner" id="ruler"></div>
+    <p class="r-cap">Cada risco é um dia. A régua roda uma vez por dia, às 9h de Brasília.</p>
+  </section>
+
+  <section class="step" id="step" aria-labelledby="step-title"></section>
+
+  <section class="quiet" aria-labelledby="quiet-title">
+    <h2 id="quiet-title">Quando a régua não avisa</h2>
+    <ul>
+      <li><p><b>A cobrança foi paga, removida ou estornada.</b>Se a academia pagar depois do e-mail da manhã, o WhatsApp que ainda não saiu é cancelado.</p></li>
+      <li><p><b>O super-admin pausou a régua da academia.</b>Por exemplo, numa negociação. A pausa fica no ManagePanel e entra na auditoria.</p></li>
+      <li><p><b>A academia está suspensa.</b>Também não avisa academia arquivada nem conta interna.</p></li>
+      <li><p><b>Falta o contato.</b>Sem WhatsApp, só o e-mail sai, e vice-versa. Sem os dois, a etapa é pulada e o painel mostra a academia sem contato.</p></li>
+      <li><p><b>O WhatsApp ficou mais de 24 horas na fila.</b>Se o Stronizap ficar fora do ar, o aviso velho é descartado em vez de sair atrasado.</p></li>
+    </ul>
+  </section>
+</main>
+
+<script>
+const LINK = 'https://www.asaas.com/i/exemplo';
+const NB = ' ';
+const VALOR = `R$${NB}289,00`;
+
+const METHODS = {
+  fatura: {
+    label: 'Fatura', due: 3, gap: 1,
+    steps: ['aviso', 'hoje', 'atraso', 'vespera', 'bloqueio', 'liberado'],
+    head: 'Na fatura, a régua avisa antes de vencer, no dia e depois do atraso.',
+  },
+  cartao: {
+    label: 'Cartão salvo', due: 0.8, gap: 3,
+    steps: ['atraso', 'vespera', 'bloqueio', 'liberado'],
+    head: 'No cartão salvo, a régua só avisa se o cartão não passar.',
+    zone: 'A Asaas tenta o cartão 3 vezes no dia do vencimento e mais 2 dias, uma vez por dia. Nenhum aviso sai.',
+  },
+  pix: {
+    label: 'Pix Automático', due: 0.8, gap: 4,
+    steps: ['atraso', 'vespera', 'bloqueio', 'liberado'],
+    head: 'No Pix Automático, a régua só avisa se o banco não conseguir debitar.',
+    zone: 'O banco tenta de novo, até 3 vezes em 7 dias. Nenhum aviso sai.',
+  },
+};
+
+const STEPS = {
+  aviso: { name: 'Aviso', title: 'Aviso', when: '3 dias antes do vencimento', tone: 'pre' },
+  hoje: { name: 'Hoje', title: 'Hoje', when: 'No dia do vencimento', tone: 'pre' },
+  atraso: { name: 'Atraso', title: 'Atraso', when: 'No dia em que a cobrança entra em atraso', tone: 'late' },
+  vespera: { name: 'Véspera', title: 'Véspera do bloqueio', when: '2 dias depois do atraso', tone: 'late' },
+  bloqueio: { name: 'Bloqueio', title: 'Bloqueio', when: 'Na primeira rodada com a academia já bloqueada', tone: 'block' },
+  liberado: { name: 'Liberado', title: 'Liberado', when: 'Quando a academia bloqueada paga', tone: 'ok' },
+};
+
+// Os textos da spec, seção "Os textos", com os valores de exemplo.
+const TEXT = {
+  aviso: `Oi, Carla! A mensalidade do Stronilead da Academia Ponto Fit, de ${VALOR}, vence em 10/10. Dá para pagar por Pix, boleto ou cartão neste link: {link}`,
+  hoje: `Oi, Carla! A mensalidade do Stronilead da Academia Ponto Fit, de ${VALOR}, vence hoje. Para pagar: {link}`,
+  atraso: `Oi, Carla. Não identificamos o pagamento da mensalidade do Stronilead da Academia Ponto Fit, de ${VALOR}, que venceu em 10/10. Para pagar: {link}. Se já pagou, pode ignorar esta mensagem.`,
+  atrasoCartao: `Oi, Carla. O cartão final 1234 não passou na mensalidade do Stronilead da Academia Ponto Fit, de ${VALOR}. Dá para pagar por Pix, boleto ou outro cartão neste link: {link}. Para trocar o cartão dos próximos meses, abra Plano & faturas no menu do seu perfil no Stronilead.`,
+  vespera: 'Oi, Carla. A mensalidade do Stronilead da Academia Ponto Fit continua em aberto, e o acesso da equipe será bloqueado amanhã. Para pagar: {link}',
+  bloqueio: 'Oi, Carla. O acesso ao Stronilead da Academia Ponto Fit está bloqueado por causa da mensalidade de 10/10. Pagando por Pix, o acesso volta em poucos minutos: {link}',
+  liberado: 'Pagamento recebido. O acesso ao Stronilead da Academia Ponto Fit já está liberado. Obrigado!',
+};
+
+// Assuntos propostos para o e-mail.
+const SUBJECT = {
+  aviso: 'A mensalidade do Stronilead vence em 10/10',
+  hoje: 'A mensalidade do Stronilead vence hoje',
+  atraso: 'A mensalidade do Stronilead de 10/10 está em aberto',
+  atrasoCartao: 'O cartão final 1234 não passou na mensalidade do Stronilead',
+  vespera: 'O acesso ao Stronilead será bloqueado amanhã',
+  bloqueio: 'O acesso ao Stronilead está bloqueado',
+  liberado: 'O acesso ao Stronilead está liberado',
+};
+
+const ICON = {
+  back: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5m6-6-6 6 6 6"/></svg>',
+  video: '<svg class="vid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="6" width="13" height="12" rx="2.5"/><path d="m15.5 10.5 6-3.5v10l-6-3.5z"/></svg>',
+  call: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M6.6 3.5h3l1.6 4.4-2.1 1.4a11.5 11.5 0 0 0 5.6 5.6l1.4-2.1 4.4 1.6v3a2 2 0 0 1-2.2 2A16.5 16.5 0 0 1 4.6 5.7a2 2 0 0 1 2-2.2z"/></svg>',
+  more: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>',
+  smile: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.6 4.6 0 0 0 7 0M9 9.6h.01M15 9.6h.01"/></svg>',
+  clip: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m20.5 11.5-8.2 8.2a5 5 0 0 1-7-7l8.6-8.6a3.4 3.4 0 0 1 4.8 4.8l-8.5 8.5a1.8 1.8 0 0 1-2.6-2.6l7.8-7.8"/></svg>',
+  cam: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5h3.2l1.8-2.8h7l1.8 2.8h3.2v10.8H3.5z"/><circle cx="12" cy="13.4" r="3.4"/></svg>',
+  mic: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>',
+  person: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="8.5" r="4"/><path d="M4 20.5c.8-4 4-6.2 8-6.2s7.2 2.2 8 6.2z"/></svg>',
+  ticks: '<svg viewBox="0 0 17 11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-label="Lida"><path d="m1 6 3 3 6.5-7.5M7.2 8.6l.6.4L14.3 1.5"/></svg>',
+};
+
+let method = 'fatura';
+let step = 'aviso';
+let theme = 'light';
+let view = 'carla';
+
+const $ = (id) => document.getElementById(id);
+const textKey = () => (step === 'atraso' && method === 'cartao' ? 'atrasoCartao' : step);
+
+// Posição de cada etapa em dias. Antes do vencimento conta do vencimento;
+// depois, do dia em que a cobrança entra em atraso, como o bloqueio.
+function layout(m) {
+  const x = {};
+  if (m.steps.includes('aviso')) { x.aviso = m.due - 3; x.hoje = m.due; }
+  x.atraso = m.due + m.gap;
+  x.vespera = x.atraso + 2;
+  x.bloqueio = x.atraso + 3;
+  x.liberado = x.bloqueio + 2;
+  // Depois do Liberado sobra espaço para o rótulo dele, alinhado como os outros.
+  return { x, end: x.liberado + 1.7 };
+}
+
+function renderMethods() {
+  $('methods').innerHTML = Object.entries(METHODS).map(([id, m]) =>
+    `<button type="button" data-method="${id}" aria-pressed="${id === method}">${m.label}</button>`).join('');
+  $('headline').textContent = METHODS[method].head;
+}
+
+function renderRuler() {
+  const m = METHODS[method];
+  const { x, end } = layout(m);
+  const p = (v) => `${((v / end) * 100).toFixed(3)}%`;
+  const bar = (cls, a, b) => `<span class="bar ${cls}" style="--a:${p(a)};--b:${p(b)}"></span>`;
+  let track = '';
+  if (x.aviso !== undefined) track += bar('pre', x.aviso, x.hoje) + bar('idle', x.hoje, x.atraso);
+  else track += bar('idle', 0, m.due) + bar('zone', m.due, x.atraso);
+  track += bar('late', x.atraso, x.bloqueio) + bar('wait', x.bloqueio, x.liberado);
+  for (let d = m.due - Math.floor(m.due); d <= x.bloqueio + 0.01; d += 1) track += `<i class="tick" style="--x:${p(d)}"></i>`;
+
+  const notes = `<span class="due" style="--x:${p(m.due)}">Vencimento, 10/10</span>`
+    + `<span class="brk" style="--a:${p(x.atraso)};--b:${p(x.bloqueio)}"><span>3 dias até o bloqueio</span></span>`
+    + (m.zone ? `<p class="zone-note" style="--a:${p(m.due)};--b:${p(x.atraso)}">${m.zone}</p>` : '');
+
+  const stops = m.steps.map((id, i) => {
+    const s = STEPS[id];
+    const last = i === m.steps.length - 1;
+    const w = last ? `calc(${p(end - x[id])} + 13px)` : `calc(${p(x[m.steps[i + 1]] - x[id])} - 14px)`;
+    return `<li><button type="button" class="stop tone-${s.tone}${last ? ' last' : ''}" data-step="${id}" aria-pressed="${id === step}" style="--x:${p(x[id])};--w:${w}">`
+      + `<span class="dot" aria-hidden="true">${i + 1}</span><span><span class="nm">${s.name}</span><span class="wh">${s.when}</span></span></button></li>`;
+  }).join('');
+
+  $('ruler').innerHTML = `<div class="r-track" aria-hidden="true">${track}</div><div aria-hidden="true">${notes}</div>`
+    + `<ol class="stops" style="--n:${m.steps.length}">${stops}</ol>`;
+}
+
+function markStops() {
+  document.querySelectorAll('.stop').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.step === step)));
+}
+
+function waText() {
+  return TEXT[textKey()].replace('{link}', `<span class="wa-link">${LINK}</span>`);
+}
+
+function mailParts() {
+  const t = TEXT[textKey()].replace('{link}', `<span class="em-link">${LINK}</span>`);
+  const m = t.match(/^(Oi, Carla[!.]) (.*)$/);
+  return m ? { greet: m[1], body: m[2] } : { greet: '', body: t };
+}
+
+function renderStep() {
+  const s = STEPS[step];
+  const n = METHODS[method].steps.indexOf(step) + 1;
+  const paid = step === 'liberado';
+  const mailTime = paid ? '14:37' : '09:04';
+  const waTime = paid ? '14:45' : '09:15';
+  const mailWhen = paid ? 'Na hora em que o pagamento entra.' : 'Na rodada do dia, entre 9h e 10h (Brasília).';
+  const waWhen = paid
+    ? 'Até 15 minutos depois, só das 8h às 21h (Brasília). Pago depois das 21h, sai às 8h.'
+    : 'Até 15 minutos depois do e-mail, só das 8h às 21h (Brasília).';
+  const out = view === 'stronix';
+  const { greet, body } = mailParts();
+
+  const wa = `<div class="wa" role="group" aria-label="WhatsApp ${out ? 'no celular da STRONIX' : 'no celular da Carla'}">
+      <div class="wa-top">${ICON.back}${out ? `<span class="wa-av person">${ICON.person}</span>` : '<span class="wa-av">S</span>'}
+        <span class="wa-name">${out ? 'Carla (Ponto Fit)' : 'Stronilead Financeiro'}</span>
+        <span class="wa-acts">${ICON.video}${ICON.call}${ICON.more}</span></div>
+      <div class="wa-chat"><span class="wa-chip">Hoje</span>
+        <p class="msg${out ? ' out' : ''}">${waText()}<span class="msg-sp"></span><span class="msg-meta">${waTime}${out ? ICON.ticks : ''}</span></p></div>
+      <div class="wa-compose"><span class="wa-field">${ICON.smile}<span>Mensagem</span>${ICON.clip}${ICON.cam}</span><span class="wa-mic">${ICON.mic}</span></div>
+    </div>`;
+
+  const mail = `<article class="mail" aria-label="E-mail">
+      <div class="mail-head">
+        <p class="mail-subj">${SUBJECT[textKey()]}</p>
+        <div class="mail-from"><span class="mail-av" aria-hidden="true">S</span>
+          <p><b>Stronilead</b> <span>&lt;financeiro@stronilead.com.br&gt;</span><small>para carla@example.com</small></p>
+          <time>${mailTime}</time></div>
+      </div>
+      <div class="mail-body">
+        <div class="em-card">
+          <p class="em-logo">STRONI<b>LEAD</b></p>
+          ${greet ? `<p class="em-p">${greet}</p>` : ''}
+          <p class="em-p${paid ? '' : ' lead-in'}">${body}</p>
+          ${paid ? '' : '<span class="em-btn">Pagar fatura</span>'}
+        </div>
+        <p class="em-foot">Stronilead · Gestão de leads para academias</p>
+      </div>
+    </article>`;
+
+  $('step').innerHTML = `
+    <div class="step-top">
+      <div class="step-id tone-${s.tone}"><span class="step-num" aria-hidden="true">${n}</span>
+        <div><h2 id="step-title" aria-live="polite">${s.title}</h2><p class="step-when">${s.when}.</p></div></div>
+      <dl class="times"><dt>E-mail</dt><dd>${mailWhen}</dd><dt>WhatsApp</dt><dd>${waWhen}</dd></dl>
+    </div>
+    <div class="previews">
+      <div>
+        ${wa}
+        <div class="pv-bot"><div class="seg" role="group" aria-label="Ver o WhatsApp no celular de">
+          <button type="button" data-view="carla" aria-pressed="${!out}">Celular da Carla</button>
+          <button type="button" data-view="stronix" aria-pressed="${out}">Celular da STRONIX</button></div></div>
+      </div>
+      ${mail}
+    </div>`;
+}
+
+function applyTheme() {
+  document.documentElement.dataset.theme = theme;
+  $('theme').textContent = theme === 'dark' ? 'Tema claro' : 'Tema escuro';
+}
+
+function writeHash() {
+  const h = `#${method}-${step}-${theme}${view === 'stronix' ? '-stronix' : ''}`;
+  if (location.hash === h) return;
+  try { history.replaceState(null, '', h); } catch (e) { location.replace(h); }
+}
+
+function readHash() {
+  const parts = decodeURIComponent(location.hash.slice(1)).toLowerCase().split('-');
+  let m; let s; let t; let v;
+  parts.forEach((x) => {
+    if (METHODS[x]) m = x;
+    else if (STEPS[x]) s = x;
+    else if (x === 'light' || x === 'dark') t = x;
+    else if (x === 'stronix' || x === 'carla') v = x;
+  });
+  method = m || method;
+  const valid = METHODS[method].steps;
+  step = s && valid.includes(s) ? s : (valid.includes(step) ? step : valid[0]);
+  theme = t || theme;
+  view = v || view;
+}
+
+function renderAll() {
+  applyTheme();
+  renderMethods();
+  renderRuler();
+  renderStep();
+}
+
+function selectStep(id, focus) {
+  step = id;
+  markStops();
+  renderStep();
+  writeHash();
+  if (focus) document.querySelector(`.stop[data-step="${id}"]`).focus();
+}
+
+$('methods').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-method]');
+  if (!b || b.dataset.method === method) return;
+  method = b.dataset.method;
+  if (!METHODS[method].steps.includes(step)) step = METHODS[method].steps[0];
+  renderMethods(); renderRuler(); renderStep(); writeHash();
+  document.querySelector(`[data-method="${method}"]`).focus();
+});
+
+$('ruler').addEventListener('click', (e) => {
+  const b = e.target.closest('.stop');
+  if (b && b.dataset.step !== step) selectStep(b.dataset.step, false);
+});
+
+$('ruler').addEventListener('keydown', (e) => {
+  const b = e.target.closest('.stop');
+  if (!b || !['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(e.key)) return;
+  e.preventDefault();
+  const ids = METHODS[method].steps;
+  let i = ids.indexOf(b.dataset.step);
+  if (e.key === 'ArrowRight') i = Math.min(ids.length - 1, i + 1);
+  else if (e.key === 'ArrowLeft') i = Math.max(0, i - 1);
+  else i = e.key === 'Home' ? 0 : ids.length - 1;
+  selectStep(ids[i], true);
+});
+
+$('step').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-view]');
+  if (!b || b.dataset.view === view) return;
+  view = b.dataset.view;
+  renderStep(); writeHash();
+  document.querySelector(`[data-view="${view}"]`).focus();
+});
+
+$('theme').addEventListener('click', () => {
+  theme = theme === 'dark' ? 'light' : 'dark';
+  applyTheme(); writeHash();
+});
+
+window.addEventListener('hashchange', () => { readHash(); renderAll(); });
+
+if (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) theme = 'dark';
+readHash();
+renderAll();
+</script>
+</body>
+</html>
