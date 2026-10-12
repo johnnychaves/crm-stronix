@@ -79,7 +79,7 @@ Campo ausente é `invoice`, então as academias de hoje não precisam de script.
 
 1. O gestor clica em "Pagar no cartão automaticamente".
 2. O servidor cria um Checkout recorrente com o valor efetivo (`effectivePrice`), o ciclo da academia (`MONTHLY` ou `YEARLY`) e o `nextDueDate` igual ao próximo vencimento ainda não pago. A academia é identificada pelo `externalReference` (o id da academia), se o Checkout aceitar, e pelo id do Checkout guardado em `tenants/{id}.pendingCardCheckout` (`{ id, createdAt }`).
-3. O app abre a página da Asaas em outra guia. A volta cai em `/<academia>/configuracoes/plano-e-faturas`.
+3. O app abre a página da Asaas em outra guia. A volta cai em `/<academia>/plano-e-faturas`, a tela que o gestor abre pelo menu do perfil ("Plano & faturas").
 4. No `SUBSCRIPTION_CREATED` (ou no `CHECKOUT_PAID`, o que vier primeiro com a assinatura), o webhook liga a assinatura nova à academia (`asaasSubscriptionId`), grava `billingMethod: 'card'`, os quatro últimos dígitos e a bandeira (`cardLast4`, `cardBrand`, da primeira cobrança), apaga o `pendingCardCheckout` e **cancela a assinatura antiga** na Asaas.
 5. A tela mostra "Cartão Visa final 1234 · cobrado sozinho todo dia 10".
 
@@ -145,7 +145,7 @@ Cada etapa tem um texto de WhatsApp e um e-mail com o mesmo conteúdo. `{nome}` 
 - **aviso:** "Oi, {nome}! A mensalidade do Stronilead da {academia}, de {valor}, vence em {data}. Dá para pagar por Pix, boleto ou cartão neste link: {link}"
 - **hoje:** "Oi, {nome}! A mensalidade do Stronilead da {academia}, de {valor}, vence hoje. Para pagar: {link}"
 - **atraso, fatura e Pix Automático:** "Oi, {nome}. Não identificamos o pagamento da mensalidade do Stronilead da {academia}, de {valor}, que venceu em {data}. Para pagar: {link}. Se já pagou, pode ignorar esta mensagem."
-- **atraso, cartão:** "Oi, {nome}. O cartão final {final} não passou na mensalidade do Stronilead da {academia}, de {valor}. Dá para pagar por Pix, boleto ou outro cartão neste link: {link}. Para trocar o cartão dos próximos meses, entre em Configurações → Plano e faturas."
+- **atraso, cartão:** "Oi, {nome}. O cartão final {final} não passou na mensalidade do Stronilead da {academia}, de {valor}. Dá para pagar por Pix, boleto ou outro cartão neste link: {link}. Para trocar o cartão dos próximos meses, abra Plano & faturas no menu do seu perfil no Stronilead."
 - **vespera:** "Oi, {nome}. A mensalidade do Stronilead da {academia} continua em aberto, e o acesso da equipe será bloqueado amanhã. Para pagar: {link}"
 - **bloqueio:** "Oi, {nome}. O acesso ao Stronilead da {academia} está bloqueado por causa da mensalidade de {data}. Pagando por Pix, o acesso volta em poucos minutos: {link}"
 - **liberado:** "Pagamento recebido. O acesso ao Stronilead da {academia} já está liberado. Obrigado!"
