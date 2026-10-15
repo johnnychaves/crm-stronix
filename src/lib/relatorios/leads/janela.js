@@ -7,6 +7,7 @@
 import { addMonthsToKey, monthKeyOf } from '../../operacional/month.js';
 import { contactTimesByLead } from '../../crm/contact.js';
 import { recordsByLeadOf, visitOutcomesByLead } from '../../crm/appointments.js';
+import { movesByLead } from '../../crm/stages.js';
 import { newestRecordsOf } from '../../crm/metrics.js';
 
 // O mesmo teto do painel (crmMonthKeys): uma data torta não prende o laço.
@@ -26,11 +27,12 @@ export function reportMonthKeys(period, cmp, currentKey) {
 }
 
 // Índices de toda a carga, os mesmos do painel: registros de agendamento por
-// lead, instantes de contato e desfechos de visita pela linha do tempo. Os
-// registros vão sem repetir id, com a cópia do mês mais novo. As interações
-// entram como no cacheOf do painel, sem tirar repetidos aqui: as duas funções
-// do painel (contactTimesByLead e visitOutcomesByLead) já tiram pelo id, e a
-// interação que veio sem id continua contando.
+// lead, instantes de contato, desfechos de visita pela linha do tempo e trocas
+// de etapa. Os registros vão sem repetir id, com a cópia do mês mais novo. As
+// interações entram como no cacheOf do painel, sem tirar repetidos aqui: as
+// três funções do painel (contactTimesByLead, visitOutcomesByLead e
+// movesByLead) já tiram pelo id, e a interação que veio sem id continua
+// contando.
 function buildIndex(months) {
   const interactions = Object.values(months || {}).flatMap((m) => m.interactions || []);
   const records = newestRecordsOf(months, 'aulas');
@@ -39,6 +41,7 @@ function buildIndex(months) {
     recordsByLead: recordsByLeadOf(records),
     contactTimes: contactTimesByLead(interactions),
     visitOutcomes: visitOutcomesByLead(interactions),
+    moves: movesByLead(interactions),
   };
 }
 

@@ -2,8 +2,9 @@
 // leads novos, nomes, filtro da lista e planilha.
 import { describe, it, expect } from 'vitest';
 import {
-  reportScope, newLeadsIn, namesOf, OTHERS_NAME, OTHERS_NOTE, cutCode, applyCut, cutLabelOf, contactCells, fmtDate,
-  fmtScreenDate, compareTextOf, exportFileName, SITUACAO_LABEL,
+  reportScope, newLeadsIn, freshLeadsOf, namesOf, OTHERS_NAME, OTHERS_NOTE, cutCode, countRows, applyCut, cutLabelOf,
+  contactCells, fmtDate, fmtScreenDate, fmtDateTime, fmtScreenDateTime, compareTextOf, exportFileName, snapshotFileName,
+  SITUACAO_LABEL,
 } from '../relatorios/leads/base.js';
 import { OTHERS_ID } from '../crm/scope.js';
 import { regimeTexts } from '../crm/texts.js';
@@ -81,6 +82,41 @@ describe('filtro da lista', () => {
     expect(cutLabelOf('faixa:ate-1h', items)).toBe('Primeiro contato: Até 1 hora');
     expect(cutLabelOf('origem:Outdoor', items)).toBeNull();
   });
+
+  it('os tipos novos de Visitas e aulas e de Perdas também dizem o tipo', () => {
+    const items = [
+      { key: 'tipo:visita', name: 'Visitas' }, { key: 'unidade:Centro', name: 'Centro' }, { key: 'modalidade:Pilates', name: 'Pilates' },
+      { key: 'motivo:Preço', name: 'Preço' }, { key: 'etapa:Contato feito', name: 'Contato feito' },
+    ];
+    expect(items.map((i) => cutLabelOf(i.key, items))).toEqual([
+      'Tipo: Visitas', 'Unidade: Centro', 'Modalidade: Pilates', 'Motivo: Preço', 'Etapa: Contato feito',
+    ]);
+  });
+});
+
+describe('contagem dos recortes', () => {
+  it('do maior para o menor, o empate pelo nome, com o código do recorte e o que a linha leva a mais', () => {
+    const itens = [{ s: 'Site' }, { s: 'Instagram' }, { s: 'Indicação' }, { s: 'Instagram' }];
+    const rows = countRows(itens, (x) => x.s, (id) => id, 'origem', (id) => ({ channel: id === 'Instagram' ? 'Pago' : '' }));
+    expect(rows).toEqual([
+      { key: 'origem:Instagram', id: 'Instagram', name: 'Instagram', count: 2, channel: 'Pago' },
+      { key: 'origem:Indicação', id: 'Indicação', name: 'Indicação', count: 1, channel: '' },
+      { key: 'origem:Site', id: 'Site', name: 'Site', count: 1, channel: '' },
+    ]);
+    expect(countRows([], (x) => x, (id) => id, 'origem')).toEqual([]);
+  });
+});
+
+describe('leads de um balde', () => {
+  it('todos os meses carregados, sem repetir, com a versão mais nova de cada lead', () => {
+    const ctx = ctxOf();
+    const velho = { id: 's3', status: 'Perda', lostAt: new Date(2026, 7, 30), lossReason: 'Antigo' };
+    ctx.months['2026-08'] = { ...ctx.months['2026-08'], lost: [velho] };
+    const lost = freshLeadsOf(ctx, 'lost');
+    expect(lost.map((l) => l.id)).toEqual(['s3']);
+    // A cópia que vale é a do leadsById, a mais nova.
+    expect(lost[0].lossReason).toBe('Preço');
+  });
 });
 
 describe('planilha', () => {
@@ -111,6 +147,18 @@ describe('planilha', () => {
     expect(exportFileName('entrada', setembro)).toBe('leads-entrada-2026-09-01-a-2026-09-14.csv');
     const agosto = periodFromParams({ monthKey: '2026-08' }, NOW);
     expect(exportFileName('conversao', agosto)).toBe('leads-conversao-2026-08-01-a-2026-08-31.csv');
+  });
+
+  it('o retrato de agora leva o dia de hoje no nome', () => {
+    expect(snapshotFileName('parados', NOW)).toBe('leads-parados-2026-09-14.csv');
+  });
+
+  it('dia e hora: a planilha com o ano e a tela sem o ano de agora', () => {
+    const d = new Date(2026, 8, 4, 9, 5);
+    expect(fmtDateTime(d)).toBe('04/09/2026 09:05');
+    expect(fmtScreenDateTime(d, 2026)).toBe('04/09 09:05');
+    expect(fmtScreenDateTime(d, 2027)).toBe('04/09/2026 09:05');
+    expect([fmtDateTime(null), fmtScreenDateTime(new Date('x'), 2026)]).toEqual(['', '']);
   });
 
   it('situação de hoje em palavras', () => {

@@ -1,14 +1,14 @@
 // O que os submenus dos Relatórios de Leads dividem (spec 2026-10-09): o
-// recorte da barra, os leads novos da janela, os nomes de consultor, funil e
-// origem, o filtro da lista, as colunas de contato da planilha, a data e o
-// nome do arquivo. Puro.
+// recorte da barra, os leads da janela, os nomes de consultor, funil e
+// origem, a contagem dos recortes, o filtro da lista, as colunas de contato da
+// planilha, as datas, o aviso dos agendamentos e o nome do arquivo. Puro.
 
-import { makeScope, OTHERS_ID } from '../../crm/scope.js';
+import { makeScope, OTHERS_ID, APPTS_COMPLETE_MONTH, STAGE_TRACKING_SINCE } from '../../crm/scope.js';
 import { newLeadsOf } from '../../crm/cohort.js';
 import { newestRecordsOf } from '../../crm/metrics.js';
 import { getDefaultFunnel } from '../../funnels.js';
 import { contactLabel, contactOf } from '../../guardian.js';
-import { dayKeyOf } from '../../operacional/month.js';
+import { dayKeyOf, monthKeyOf } from '../../operacional/month.js';
 
 // Recorte da barra: consultores (lista; vazia é a equipe toda, com quem saiu
 // da equipe e os leads sem dono), funil (null é todos os funis de lead) e
@@ -24,12 +24,15 @@ export function reportScope({ users, funnels, userIds = [], funnelId = null, ori
   return { ...scope, sourceOk, funnelOk, inScope: (lead) => scope.ownerOk(lead) && funnelOk(lead) };
 }
 
+// Os leads de um balde de todos os meses carregados (leadsCreated, converted ou
+// lost), sem repetir id, com a versão mais nova de cada lead (leadsById), como
+// o painel faz com o mês dele.
+export const freshLeadsOf = (ctx, bucket) => newestRecordsOf(ctx.months, bucket).map((l) => ctx.leadsById?.get(l.id) || l);
+
 // Os leads cadastrados na janela [start, end), na regra do painel (newLeadsOf:
-// sem importados e sem data de cadastro ausente), com a versão mais nova de
-// cada lead (leadsById).
+// sem importados e sem data de cadastro ausente).
 export function newLeadsIn(ctx, scope, { start, end }) {
-  const fresh = newestRecordsOf(ctx.months, 'leadsCreated').map((l) => ctx.leadsById?.get(l.id) || l);
-  return newLeadsOf(fresh, { start, end, inScope: scope.inScope });
+  return newLeadsOf(freshLeadsOf(ctx, 'leadsCreated'), { start, end, inScope: scope.inScope });
 }
 
 // A linha de quem saiu da equipe e dos leads sem dono tem o nome dos painéis
@@ -60,6 +63,21 @@ export function namesOf(ctx) {
   };
 }
 
+// Contagem por um recorte, do maior para o menor, e o empate pelo nome: a ordem
+// do rankCounts do painel. `keyOf` diz em que linha cada item entra, e `extra`
+// acrescenta o que a linha mostra além do nome (o canal da origem, a nota de
+// Outros).
+export function countRows(items, keyOf, nameOf, tipo, extra = () => ({})) {
+  const map = new Map();
+  items.forEach((item) => {
+    const id = keyOf(item);
+    const row = map.get(id) || { key: cutCode(tipo, id), id, name: nameOf(id), count: 0, ...extra(id) };
+    row.count += 1;
+    map.set(id, row);
+  });
+  return [...map.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'pt-BR'));
+}
+
 // Filtro da lista. Cada linha leva os códigos dos recortes em que ela entra
 // (situacao:matricularam, origem:Instagram, consultor:<id>). O recorte do
 // endereço só vale quando algum número ou recorte do submenu tem esse código;
@@ -71,7 +89,10 @@ export function applyCut(rows, recorte, available) {
   return { cut, rows: cut ? rows.filter((r) => r.cuts.includes(cut)) : rows };
 }
 
-const CUT_PREFIX = Object.freeze({ origem: 'Origem', consultor: 'Consultor', funil: 'Funil', faixa: 'Primeiro contato' });
+const CUT_PREFIX = Object.freeze({
+  origem: 'Origem', consultor: 'Consultor', funil: 'Funil', faixa: 'Primeiro contato',
+  tipo: 'Tipo', unidade: 'Unidade', modalidade: 'Modalidade', motivo: 'Motivo', etapa: 'Etapa',
+});
 
 // Texto do filtro aplicado, que a lista mostra: "Origem: Instagram". Os
 // números (situacao) aparecem só com o nome deles, como "Matricularam".
@@ -102,16 +123,23 @@ export function contactCells(lead, now) {
   };
 }
 
-export const fmtDate = (d) => (d instanceof Date && !Number.isNaN(d.getTime()) ? d.toLocaleDateString('pt-BR') : '');
+const isDate = (d) => d instanceof Date && !Number.isNaN(d.getTime());
+export const fmtDate = (d) => (isDate(d) ? d.toLocaleDateString('pt-BR') : '');
 
 // Data na tela: o dia e o mês quando é do ano de agora ("02/09"), e o ano
 // inteiro quando é de outro ("02/09/2025"). Só a tela encurta, para a coluna de
 // data da lista caber numa linha: a planilha usa o fmtDate, sempre com o ano.
 export function fmtScreenDate(d, currentYear) {
-  if (!(d instanceof Date) || Number.isNaN(d.getTime())) return '';
+  if (!isDate(d)) return '';
   const dayMonth = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
   return d.getFullYear() === currentYear ? dayMonth : `${dayMonth}/${d.getFullYear()}`;
 }
+
+// Dia e hora do agendamento: "04/09/2026 10:00" na planilha e "04/09 10:00" na
+// tela, que só encurta o ano, como o fmtScreenDate.
+const hhmm = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+export const fmtDateTime = (d) => (isDate(d) ? `${fmtDate(d)} ${hhmm(d)}` : '');
+export const fmtScreenDateTime = (d, currentYear) => (isDate(d) ? `${fmtScreenDate(d, currentYear)} ${hhmm(d)}` : '');
 
 // O texto do comparado ao lado do número grande ("vs. Agosto 2026"). Com o mês
 // em andamento, o comparado é o mesmo começo do mês anterior, e o texto diz
@@ -139,6 +167,23 @@ export function exportFileName(section, period) {
   const last = new Date(Math.max(period.start.getTime(), period.end.getTime() - 1));
   return `leads-${section}-${dayKeyOf(period.start)}-a-${dayKeyOf(last)}.csv`;
 }
+
+// O dia em que a etapa passou a ser gravada (STAGE_TRACKING_SINCE, 14/09/2026),
+// como a tela e a planilha escrevem: a etapa da perda e os dias na etapa de
+// Leads parados só existem a partir dele.
+export const STAGE_SINCE_TEXT = fmtDate(STAGE_TRACKING_SINCE);
+
+// O do retrato de agora (Leads parados), que não tem período: o dia de hoje.
+export const snapshotFileName = (section, now) => `leads-${section}-${dayKeyOf(now)}.csv`;
+
+// Os agendamentos só ficam completos a partir de setembro de 2026
+// (APPTS_COMPLETE_MONTH): as visitas só têm registro desde 18/08/2026. Com o
+// período ou o comparado começando antes disso, a variação dos números de
+// agendamento fica sem base, como no painel CRM (apptsOk, em
+// src/lib/crm/texts.js, que olha o apptsBase de cada mês). A Conversão e as
+// Visitas e aulas usam a mesma conta para o aviso.
+export const apptsPartialOf = (period, cmp) => [period, cmp]
+  .some((win) => Boolean(win) && monthKeyOf(win.start) < APPTS_COMPLETE_MONTH);
 
 // Ordem das listas: cadastro mais novo primeiro, depois o nome e o id.
 export const byNewest = (a, b) => (b.createdAt?.getTime?.() ?? 0) - (a.createdAt?.getTime?.() ?? 0)

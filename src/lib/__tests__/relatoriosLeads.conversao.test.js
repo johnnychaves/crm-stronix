@@ -2,7 +2,8 @@
 // primeiro contato, o comparado, a lista e a planilha. No mês inteiro, os
 // números são os do painel CRM (metricsOf).
 import { describe, it, expect } from 'vitest';
-import { conversaoReport, CONVERSAO_COLUMNS, SPEED_BUCKETS, apptsPartialOf } from '../relatorios/leads/conversao.js';
+import { conversaoReport, CONVERSAO_COLUMNS, SPEED_BUCKETS } from '../relatorios/leads/conversao.js';
+import { apptsPartialOf } from '../relatorios/leads/base.js';
 import { metricsOf, crmDelta } from '../crm/metrics.js';
 import { comparisonCut } from '../operacional/month.js';
 import { periodFromParams, previousPeriod, monthPeriod } from '../period.js';

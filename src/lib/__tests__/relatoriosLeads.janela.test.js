@@ -37,6 +37,8 @@ describe('baldes e índices', () => {
     expect(idx.records.map((r) => r.id).sort()).toEqual(['r1', 'r2', 'r3', 'r4']);
     expect(idx.recordsByLead.get('s1').map((r) => r.id)).toEqual(['r1']);
     expect(idx.contactTimes.get('s1')).toEqual([D(9, 2, 10, 30).getTime(), D(9, 3).getTime(), D(9, 5).getTime()]);
+    // As trocas de etapa, que dão a etapa da perda.
+    expect(idx.moves.get('s3').map((m) => [m.fromStatus, m.toStatus])).toEqual([['Novo lead', 'Contato feito'], ['Contato feito', 'Perda']]);
     // As interações entram como no painel (cacheOf): a que veio sem id ainda conta.
     const sem = { '2026-09': { interactions: [{ leadId: 'z', type: 'note', text: 'oi', createdAt: D(9, 3) }] } };
     expect(reportIndex(sem).contactTimes.get('z')).toEqual([D(9, 3).getTime()]);
@@ -55,7 +57,7 @@ describe('baldes e índices', () => {
   it('sem meses, o índice é vazio', () => {
     for (const vazio of [null, undefined, {}]) {
       const idx = reportIndex(vazio);
-      expect([idx.records, idx.contactTimes.size, idx.recordsByLead.size, idx.visitOutcomes.size]).toEqual([[], 0, 0, 0]);
+      expect([idx.records, idx.contactTimes.size, idx.recordsByLead.size, idx.visitOutcomes.size, idx.moves.size]).toEqual([[], 0, 0, 0, 0]);
     }
   });
 

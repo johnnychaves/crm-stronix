@@ -6,7 +6,6 @@
 // são os do painel. Puro.
 
 import { addMonthsToKey, monthKeyOf, monthRange } from '../../operacional/month.js';
-import { APPTS_COMPLETE_MONTH } from '../../crm/scope.js';
 import { outcomeAt, firstEnrolledAtOf, lostAtOf } from '../../crm/cohort.js';
 import { cohortMilestoneOf } from '../../crm/appointments.js';
 import { firstContactMinutesOf, FIRST_CONTACT_LIMITS } from '../../crm/contact.js';
@@ -16,6 +15,7 @@ import { fmtDuration } from '../../crm/format.js';
 import { reportIndex } from './janela.js';
 import {
   reportScope, newLeadsIn, namesOf, cutCode, applyCut, cutLabelOf, contactCells, CONTACT_COLUMNS, fmtDate, byNewest,
+  apptsPartialOf,
 } from './base.js';
 
 // Faixas da rapidez do primeiro contato. Os limites vêm do painel, no código
@@ -65,13 +65,6 @@ export const CONVERSAO_COLUMNS = Object.freeze([
   Object.freeze({ key: 'dataDesfecho', label: 'Data do desfecho' }),
 ]);
 
-// Os agendamentos só ficam completos a partir de setembro de 2026
-// (APPTS_COMPLETE_MONTH): as visitas só têm registro desde 18/08/2026. Com o
-// período ou o comparado começando antes disso, a variação de Agendaram e
-// Vieram fica sem base, como no painel CRM (apptsOk, em src/lib/crm/texts.js,
-// que olha o apptsBase de cada mês). A tela usa a mesma conta para o aviso.
-export const apptsPartialOf = (period, cmp) => [period, cmp]
-  .some((win) => Boolean(win) && monthKeyOf(win.start) < APPTS_COMPLETE_MONTH);
 
 // O primeiro contato olha até o fim do mês seguinte ao do cadastro de cada
 // lead, ou até o instante da safra, o que vier antes (a regra do painel).

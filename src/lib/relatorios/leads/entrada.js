@@ -6,7 +6,7 @@
 import { deriveLeadBucket } from '../../leadDerived.js';
 import { crmDelta } from '../../crm/metrics.js';
 import {
-  reportScope, newLeadsIn, namesOf, cutCode, applyCut, cutLabelOf, contactCells, CONTACT_COLUMNS, fmtDate,
+  reportScope, newLeadsIn, namesOf, cutCode, countRows, applyCut, cutLabelOf, contactCells, CONTACT_COLUMNS, fmtDate,
   SITUACAO_LABEL, byNewest,
 } from './base.js';
 
@@ -20,18 +20,6 @@ export const ENTRADA_COLUMNS = Object.freeze([
   Object.freeze({ key: 'cadastro', label: 'Cadastro' }),
   Object.freeze({ key: 'situacao', label: 'Situação' }),
 ]);
-
-// Contagem por um recorte, do maior para o menor, e o empate pelo nome.
-function countRows(leads, keyOf, nameOf, tipo, extra = () => ({})) {
-  const map = new Map();
-  leads.forEach((l) => {
-    const id = keyOf(l);
-    const row = map.get(id) || { key: cutCode(tipo, id), id, name: nameOf(id), count: 0, ...extra(id) };
-    row.count += 1;
-    map.set(id, row);
-  });
-  return [...map.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'pt-BR'));
-}
 
 export function entradaReport(ctx, { period, cmp = null, userIds = [], funnelId = null, origem = null, recorte = null }) {
   const scope = reportScope({ users: ctx.users, funnels: ctx.funnels, userIds, funnelId, origem });

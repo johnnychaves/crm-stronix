@@ -16,9 +16,9 @@ import { addMonthsToKey, dayKeyOf, monthKeyOf, monthLabel } from '../../lib/oper
 import { leadFunnelsOf } from '../../lib/crm/scope.js';
 import { relatoriosSection } from '../../lib/relatoriosRail.js';
 import { loadState, reportMonthKeys } from '../../lib/relatorios/leads/janela.js';
-import { exportFileName, compareTextOf } from '../../lib/relatorios/leads/base.js';
+import { exportFileName, compareTextOf, apptsPartialOf } from '../../lib/relatorios/leads/base.js';
 import { entradaReport } from '../../lib/relatorios/leads/entrada.js';
-import { conversaoReport, apptsPartialOf } from '../../lib/relatorios/leads/conversao.js';
+import { conversaoReport } from '../../lib/relatorios/leads/conversao.js';
 import { downloadCsv, toCsv } from '../../lib/csvExport.js';
 import { DashedNote } from '../dashboard/CrmParts.jsx';
 import { RelatoriosRail } from './RelatoriosRail.jsx';
