@@ -14,9 +14,9 @@ Todo o código deste plano foi montado e rodado numa cópia do branch `claude/re
 
 ---
 
-## Perguntas para o Johnny
+## Decisões do Johnny
 
-Cada pergunta traz a recomendação, e o plano já segue a recomendação. Se a resposta for outra, a task indicada diz o que muda.
+O Johnny aprovou as oito recomendações abaixo em 15/10/2026, e o plano segue cada uma. A outra saída fica registrada para o caso de uma delas mudar, com a task que diz o que trocar.
 
 1. **Visitas e aulas: "A acontecer" e o mês em andamento.** O painel CRM conta, no mês em andamento, só os agendamentos de data já passada ("No mês em andamento, entram só as de data já passada", `src/lib/crm/texts.js`). A spec pede "a acontecer" entre os números do topo, o que só existe se o relatório for até o fim do período.
    - **Recomendação:** a lista vai até o fim do período, com os dias que ainda vão acontecer, e Marcados é tudo (vieram + faltaram + sem desfecho + a acontecer). No mês fechado todos os números são os do painel. No mês em andamento, Vieram, Faltaram, Sem desfecho e o comparecimento são os do painel, e Marcados soma os que vão acontecer. Por isso, com o período em andamento, Marcados fica sem variação: o comparado é cortado no mesmo ponto e não tem os agendamentos que ainda vão acontecer, e a variação sairia sempre para cima. Uma frase embaixo dos números diz isso.
@@ -3510,9 +3510,9 @@ por:
         <li>Clique num número para ver os nomes e exportar a lista.</li>
 ```
 
-- [ ] **Step 2: A data do balão (pergunta 8)**
+- [ ] **Step 2: A data do balão (decisão 8)**
 
-O `NOVO_ATE` continua `'2026-11-15'`, a não ser que o Johnny responda a pergunta 8 pedindo outra data, ou que o PR entre depois de 01/11/2026 com a recomendação aceita. Nesse caso, troque a linha `export const NOVO_ATE = '2026-11-15';` pela data de uns 30 dias depois do merge, no formato `AAAA-MM-DD`, e atualize a data no item **Menu e endereço.** da seção "Relatórios" do `CLAUDE.md` (Task 13).
+Pela decisão 8, o `NOVO_ATE` continua `'2026-11-15'` se o PR entrar até 01/11/2026. Se entrar depois, troque a linha `export const NOVO_ATE = '2026-11-15';` pela data de uns 30 dias depois do merge, no formato `AAAA-MM-DD`, e atualize a data no item **Menu e endereço.** da seção "Relatórios" do `CLAUDE.md` (Task 13).
 
 - [ ] **Step 3: Rodar e commit**
 
@@ -3711,9 +3711,16 @@ Nada a publicar no Firestore. Nenhuma consulta nova e nenhum índice.
 Spec: `docs/superpowers/specs/2026-10-09-relatorios-de-leads-design.md`
 Plano: `docs/superpowers/plans/2026-10-15-relatorios-de-leads-pr2.md`
 
-## Para decidir
+## Decisões do Johnny (15/10/2026)
 
-(Copie aqui as perguntas do plano que o Johnny ainda não respondeu, com a recomendação que o PR seguiu.)
+- Visitas e aulas vão até o fim do período, com os agendamentos que ainda vão acontecer em Marcados, que fica sem variação enquanto o período anda.
+- Só a visita guarda a unidade e só a aula guarda a modalidade e o professor: cada recorte conta o tipo que guarda o dado, e a lista mostra um traço no que não se aplica.
+- O aviso dos agendamentos incompletos segue a regra da Conversão: período ou comparado antes de setembro de 2026.
+- A etapa da perda segue o card do painel, com as perdas de antes de 14/09/2026 em "Sem etapa" e o aviso de parcial.
+- Os dias na etapa saem da entrada gravada na etapa, ou do cadastro de 14/09/2026 em diante.
+- Os dias sem registro seguem o selo "N dias sem contato" do Pipeline.
+- O número grande de Leads parados é a lista sem recorte, com os leads em aberto ao lado.
+- O balão "Novo" vai até 15/11/2026, ou até uns 30 dias depois do merge, se o PR entrar depois de 01/11/2026.
 
 ## Para conferir no preview
 
