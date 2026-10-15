@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { monthSubline, emptyGym, emptyMonth } from '../gerencial/texts.js';
+import { monthSubline, emptyGym, emptyMonth, HELP } from '../gerencial/texts.js';
 
 describe('monthSubline', () => {
   it('mês em andamento, comparando: pró-rata, com os mesmos dias do outro mês', () => {
@@ -44,5 +44,21 @@ describe('vazios', () => {
       title: 'Nenhum contrato fechado neste mês',
       body: 'Os contratos existem no sistema desde junho de 2026, então este mês não tem venda registrada. A carteira e o risco abaixo continuam valendo: eles olham os contratos vigentes, não as vendas do mês.'
     });
+  });
+});
+
+describe('dicas do "?"', () => {
+  it('cada card tem uma explicação escrita, sem travessão no meio da frase', () => {
+    const keys = ['sold', 'wallet', 'risk', 'lapsed', 'mix', 'sellers', 'expiry', 'exits', 'plans', 'sources'];
+    expect(Object.keys(HELP).sort()).toEqual([...keys].sort());
+    keys.forEach((k) => {
+      expect(HELP[k].length, k).toBeGreaterThan(40);
+      expect(HELP[k], k).not.toMatch(/ — | – /);
+    });
+  });
+
+  it('a da carteira e a do risco dizem que contrato sem valor não soma em reais', () => {
+    expect(HELP.wallet).toContain('sem valor');
+    expect(HELP.risk).toContain('sem valor');
   });
 });

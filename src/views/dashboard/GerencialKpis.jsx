@@ -7,6 +7,8 @@
 // número, no mesmo baseline, para nunca se soltar dele.
 import { cn } from '../../lib/utils.js';
 import { fmtNum } from '../../lib/format.js';
+import { HELP } from '../../lib/gerencial/texts.js';
+import { DashHelpTip } from './DashPrimitives.jsx';
 import { fmtMoney, fmtMoneyShort } from './dashTokens.js';
 
 export const CASH_WARNING = 'Valor de contrato vendido, não caixa recebido';
@@ -56,6 +58,7 @@ export function GerencialKpis({ sold, wallet, risk }) {
       <section className={cn(CARD, 'col-span-2 border-t-[3px] border-t-brand-600 xl:col-span-1')}>
         <div className="flex items-center gap-2">
           <span className={LABEL}>Vendido no mês</span>
+          <DashHelpTip text={HELP.sold} label='O que é "Vendido no mês"?' />
           <div className="flex-1" />
           <span
             title={CASH_WARNING}
@@ -72,7 +75,10 @@ export function GerencialKpis({ sold, wallet, risk }) {
       </section>
 
       <section className={CARD}>
-        <span className={LABEL}>Carteira mensal</span>
+        <div className="flex items-center gap-1.5">
+          <span className={LABEL}>Carteira mensal</span>
+          <DashHelpTip text={HELP.wallet} label='O que é "Carteira mensal"?' />
+        </div>
         <div className="mt-3 flex flex-wrap items-baseline gap-x-1 gap-y-0.5">
           <span className={VALUE}>{fmtMoneyShort(wallet?.monthly)}</span>
           <span className="text-[13px] font-semibold text-muted-foreground">/mês</span>
@@ -81,7 +87,10 @@ export function GerencialKpis({ sold, wallet, risk }) {
       </section>
 
       <section className={CARD}>
-        <span className={LABEL}>Em risco · 90 dias</span>
+        <div className="flex items-center gap-1.5">
+          <span className={LABEL}>Em risco · 90 dias</span>
+          <DashHelpTip text={HELP.risk} label='O que é "Em risco · 90 dias"?' />
+        </div>
         <div className="mt-3 flex flex-wrap items-baseline gap-x-1 gap-y-0.5 text-amber-700 dark:text-amber-300">
           <span className={VALUE}>{fmtMoneyShort(riskValue)}</span>
           <span className="text-[13px] font-semibold">/mês</span>
@@ -90,7 +99,10 @@ export function GerencialKpis({ sold, wallet, risk }) {
       </section>
 
       <section className={cn(CARD, 'col-span-2 xl:col-span-1')}>
-        <span className={LABEL}>Vencidos sem renovar</span>
+        <div className="flex items-center gap-1.5">
+          <span className={LABEL}>Vencidos sem renovar</span>
+          <DashHelpTip text={HELP.lapsed} label='O que é "Vencidos sem renovar"?' />
+        </div>
         <div className="mt-3">
           <span className={cn(VALUE, 'text-rose-700 dark:text-rose-300')}>{fmtNum(lapsed)}</span>
         </div>

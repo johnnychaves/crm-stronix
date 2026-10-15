@@ -7,7 +7,9 @@
 // gente de verdade que vence, e o dinheiro ainda vai ser preenchido.
 import { cn } from '../../lib/utils.js';
 import { fmtNum } from '../../lib/format.js';
+import { HELP } from '../../lib/gerencial/texts.js';
 import { ChartMark } from './ChartMark.jsx';
+import { DashHelpTip } from './DashPrimitives.jsx';
 import { ItemDelta } from './ItemDelta.jsx';
 import { dashInitials, fmtMoney, fmtMoneyShort } from './dashTokens.js';
 
@@ -34,7 +36,10 @@ export function SellersCard({ rows }) {
   return (
     <section className={CARD}>
       <div className="flex items-center gap-3.5">
-        <h3 className={cn(TITLE, 'flex-1')}>Consultores</h3>
+        <div className="flex flex-1 items-center gap-2">
+          <h3 className={TITLE}>Consultores</h3>
+          <DashHelpTip text={HELP.sellers} label='O que é "Consultores"?' />
+        </div>
         <span className={cn(HEAD, 'w-[60px] text-right')}>Vendas</span>
         <span className={cn(HEAD, 'w-[90px] text-right')}>Ticket/mês</span>
       </div>
@@ -85,6 +90,7 @@ export function ExpiryCard({ horizon }) {
     <section className={CARD}>
       <div className="flex items-baseline gap-2.5">
         <h3 className={TITLE}>Vencimentos</h3>
+        <DashHelpTip text={HELP.expiry} label='O que é "Vencimentos"?' />
         <div className="flex-1" />
         <span className="num whitespace-nowrap text-[12px] text-muted-foreground">{plural(count, 'contrato', 'contratos')}</span>
       </div>
@@ -139,6 +145,7 @@ export function ExitsCard({ items }) {
     <section className={CARD}>
       <div className="flex items-baseline gap-2.5">
         <h3 className={TITLE}>Saídas do mês</h3>
+        <DashHelpTip text={HELP.exits} label='O que é "Saídas do mês"?' />
         <div className="flex-1" />
         <span className="num whitespace-nowrap text-[12px] text-muted-foreground">{`${fmtMoney(total)}/mês`}</span>
       </div>

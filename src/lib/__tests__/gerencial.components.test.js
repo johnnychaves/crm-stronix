@@ -387,3 +387,11 @@ describe('GerencialDashboard', () => {
     expect(html).toContain('26% da carteira');
   });
 });
+
+describe('dicas "?" da tela', () => {
+  it('cada card do corpo tem o seu "?", com o nome do card no rótulo', () => {
+    const html = render(createElement(GerencialDashboard, BODY));
+    ['Vendido no mês', 'Carteira mensal', 'Em risco · 90 dias', 'Vencidos sem renovar', 'Vendas por tipo', 'Consultores', 'Vencimentos', 'Saídas do mês', 'Planos', 'Origem das vendas']
+      .forEach((t) => expect(html, t).toContain(`aria-label="O que é &quot;${t}&quot;?"`));
+  });
+});

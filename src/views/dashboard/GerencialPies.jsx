@@ -11,7 +11,9 @@
 import { RotateCcw } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { fmtNum } from '../../lib/format.js';
+import { HELP } from '../../lib/gerencial/texts.js';
 import { ChartMark } from './ChartMark.jsx';
+import { DashHelpTip } from './DashPrimitives.jsx';
 import { ItemDelta } from './ItemDelta.jsx';
 import { BREAKDOWN_PALETTE, fmtMoney, fmtMoneyShort } from './dashTokens.js';
 
@@ -136,6 +138,7 @@ export function SalesTypeCard({ mix, discount, clawback }) {
     <section className={CARD}>
       <div className="flex items-baseline gap-2.5">
         <h3 className={TITLE}>Vendas por tipo</h3>
+        <DashHelpTip text={HELP.mix} label='O que é "Vendas por tipo"?' />
         <div className="flex-1" />
         <span
           className="num text-[12px] text-muted-foreground"
@@ -206,7 +209,10 @@ export function PieCard({ title, variant = 'pie', items, total }) {
 
   return (
     <section className={CARD}>
-      <h3 className={TITLE}>{title}</h3>
+      <div className="flex items-center gap-2">
+        <h3 className={TITLE}>{title}</h3>
+        <DashHelpTip text={half ? HELP.sources : HELP.plans} label={`O que é "${title}"?`} />
+      </div>
       <div className="mt-4 flex flex-col items-center gap-6 sm:flex-row">
         <Ring
           slices={slices}
