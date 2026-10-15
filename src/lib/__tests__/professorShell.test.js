@@ -84,6 +84,9 @@ describe('casca do App para o professor', () => {
     const item = app.slice(app.lastIndexOf('{nav.relatorios && ', relatorios), app.indexOf('/>', relatorios));
     expect(item).toContain("href={menuHref('relatorios')}");
     expect(item).toContain("active={activeTab === 'relatorios'}");
+    // O balão "Novo" até o RELATORIOS_NOVO_ATE, como o das Rotinas.
+    expect(item).toContain('novo={isNewFeatureOn(RELATORIOS_NOVO_ATE) ? <RelatoriosNovo tone="alert"');
+    expect(app).toContain("import { RelatoriosNovo, NOVO_ATE as RELATORIOS_NOVO_ATE } from './views/relatorios/RelatoriosNovo.jsx';");
   });
 
   // Rotinas fica em Administração, logo acima de Configurações (pedido do

@@ -108,6 +108,7 @@ import { DailyGoalView } from './views/DailyGoalView.jsx';
 import { ProfessorGoalPlaceholder } from './views/ProfessorGoalPlaceholder.jsx';
 import { RotinasView } from './views/RotinasView.jsx';
 import { RelatoriosView } from './views/relatorios/RelatoriosView.jsx';
+import { RelatoriosNovo, NOVO_ATE as RELATORIOS_NOVO_ATE } from './views/relatorios/RelatoriosNovo.jsx';
 import { RotinasNovo, NOVO_ATE as ROTINAS_NOVO_ATE } from './components/rotinas/RotinasIntro.jsx';
 import { SettingsView } from './views/settings/SettingsView.jsx';
 import { WhatsNewModal } from './components/WhatsNewModal.jsx';
@@ -1631,7 +1632,9 @@ useEffect(() => {
                     <SidebarSubItem label="Visitas" href={menuHref('visitas')} onNavigate={closeDrawer} active={activeTab === 'visitas'} />
                   </SidebarGroup>
                 )}
-                {nav.relatorios && <SidebarItem icon={<ChartColumn className="w-[18px] h-[18px]" />} label="Relatórios" href={menuHref('relatorios')} onNavigate={closeDrawer} active={activeTab === 'relatorios'} />}
+                {/* O balão "Novo" dos Relatórios fica no item até o
+                    RELATORIOS_NOVO_ATE, como o das Rotinas, e abre um aviso curto. */}
+                {nav.relatorios && <SidebarItem icon={<ChartColumn className="w-[18px] h-[18px]" />} label="Relatórios" href={menuHref('relatorios')} onNavigate={closeDrawer} active={activeTab === 'relatorios'} novo={isNewFeatureOn(RELATORIOS_NOVO_ATE) ? <RelatoriosNovo tone="alert" /> : null} />}
                 {nav.suporte && <SidebarItem icon={<LifeBuoy className="w-[18px] h-[18px]" />} label="Suporte" badge={ticketsUnread > 0 ? ticketsUnread : null} active={false} onClick={() => setTicketModalOpen(true)} />}
               </div>
             </>
