@@ -24,13 +24,12 @@ const MIX = [
   { type: 'retorno', count: 2, value: 3500 }
 ];
 const SOLD = { mix: MIX, discount: { pct: 8, abs: 6800 }, clawback: { count: 2, value: 3100 } };
-const WALLET = { count: 628, monthly: 134200, ticket: 214, blind: 0, lockedCount: 19 };
+const WALLET = { count: 628, monthly: 134200, ticket: 214, lockedCount: 19 };
 const HORIZON = [
   { days: 30, label: 'Em 30 dias', count: 63, v: 13100, blind: 0 },
   { days: 60, label: 'Em 60 dias', count: 48, v: 9800, blind: 0 },
   { days: 90, label: 'Em 90 dias', count: 57, v: 11400, blind: 0 }
 ];
-const BLIND_HORIZON = HORIZON.map((h, i) => ({ ...h, blind: [41, 35, 38][i] }));
 const RISK = { horizon: HORIZON, walletMonthly: 134200, lapsedCount: 29 };
 const EXITS = [
   { kind: 'cancelamento', label: 'Cancelamentos', count: 7, v: 1480 },
@@ -94,18 +93,12 @@ describe('GerencialKpis', () => {
     expect(html).toContain('>/mês</span>');
   });
 
-  it('o ticket médio mensal diz quantos contratos ficam de fora, sem repetir a contagem da carteira', () => {
+  it('o ticket médio mensal sai da carteira e não fala de contrato sem valor', () => {
     const html = kpis({ wallet: { ...WALLET, count: 1122, blind: 494 } });
     expect(html).toContain('Ticket médio mensal');
     expect(html).toContain('R$ 214');
-    expect(html).toContain('494 contratos sem valor ficam de fora');
-    expect(html).not.toContain('média de');
-  });
-
-  it('sem importados, o ticket só diz de onde sai a conta', () => {
-    const html = kpis();
-    expect(html).toContain('carteira ÷ contratos');
-    expect(html).not.toContain('ficam de fora');
+    expect(html).toContain('média por contrato');
+    expect(html).not.toContain('sem valor');
   });
 
   it('o risco dos 90 dias não é mais um dos quatro números', () => {
@@ -122,7 +115,7 @@ describe('GerencialKpis', () => {
   });
 
   it('carteira vazia não quebra a conta', () => {
-    const html = kpis({ wallet: { count: 0, monthly: 0, ticket: 0, blind: 0, lockedCount: 0 } });
+    const html = kpis({ wallet: { count: 0, monthly: 0, ticket: 0, lockedCount: 0 } });
     expect(html).toContain('R$ 0');
   });
 });
@@ -221,18 +214,11 @@ describe('ExpiryCard', () => {
     expect(html).toContain('Em 30 dias: 63 contratos valendo R$ 13.100 por mês');
   });
 
-  it('sem contrato importado, não há trilha tracejada nem legenda dela', () => {
-    const html = render(createElement(ExpiryCard, { horizon: HORIZON }));
+  it('contrato importado sem valor não aparece no card, nem como trilha nem como legenda', () => {
+    const withBlind = HORIZON.map((h, i) => ({ ...h, blind: [41, 35, 38][i] }));
+    const html = render(createElement(ExpiryCard, { horizon: withBlind }));
     expect(html).not.toContain('border-dashed');
     expect(html).not.toContain('sem valor');
-  });
-
-  it('com importados, a trilha tracejada e a legenda escrevem a contagem', () => {
-    const html = render(createElement(ExpiryCard, { horizon: BLIND_HORIZON }));
-    expect(html).toContain('border-dashed');
-    expect(html).toContain('114 contratos importados sem valor'); // 41 + 35 + 38
-    expect(html).toContain('Em 30 dias: mais 41 contratos importados sem valor');
-    // A contagem de contratos do topo continua só com os que têm valor.
     expect(html).toContain('168 contratos');
   });
 });
@@ -409,6 +395,20 @@ describe('GerencialDashboard', () => {
     expect(html).toContain('Vencimentos');
     expect(html).toContain('Saídas do mês');
     expect(html).toContain('Ticket médio mensal');
+  });
+});
+
+describe('contrato sem valor', () => {
+  it('a tela inteira não menciona contrato sem valor, mesmo com importados na base', () => {
+    const body = {
+      ...BODY,
+      wallet: { ...WALLET, count: 1122, blind: 494 },
+      risk: { ...RISK, horizon: HORIZON.map((h, i) => ({ ...h, blind: [41, 35, 38][i] })) }
+    };
+    const html = render(createElement(GerencialDashboard, body));
+    expect(html).not.toContain('sem valor');
+    expect(html).not.toContain('importado');
+    expect(html).not.toContain('border-dashed');
   });
 });
 

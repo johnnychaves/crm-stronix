@@ -41,13 +41,12 @@ function SoldDelta({ delta }) {
 
 // Props:
 //   sold    { mix, delta } — o vendido e a contagem saem do mix
-//   wallet  { count, monthly, ticket, blind, lockedCount }
+//   wallet  { count, monthly, ticket, lockedCount }
 //   risk    { lapsedCount }
 export function GerencialKpis({ sold, wallet, risk }) {
   const mix = sold?.mix || [];
   const soldTotal = mix.reduce((s, m) => s + (Number(m.value) || 0), 0);
   const soldCount = mix.reduce((s, m) => s + (Number(m.count) || 0), 0);
-  const blind = Number(wallet?.blind) || 0;
   const lapsed = Number(risk?.lapsedCount) || 0;
 
   return (
@@ -92,8 +91,7 @@ export function GerencialKpis({ sold, wallet, risk }) {
           <span className={VALUE}>{fmtMoney(wallet?.ticket)}</span>
           <span className="text-[13px] font-semibold text-muted-foreground">/mês</span>
         </div>
-        {/* A contagem de contratos já está no card ao lado; aqui só o que fica de fora da média. */}
-        <div className={SUB}>{blind > 0 ? `${plural(blind, 'contrato', 'contratos')} sem valor ficam de fora` : 'carteira ÷ contratos'}</div>
+        <div className={SUB}>média por contrato</div>
       </section>
 
       <section className={cn(CARD, 'col-span-2 xl:col-span-1')}>

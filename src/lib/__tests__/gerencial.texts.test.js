@@ -57,8 +57,7 @@ describe('dicas do "?"', () => {
     });
   });
 
-  it('a da carteira e a do ticket dizem que contrato sem valor fica fora da soma em reais', () => {
-    expect(HELP.wallet).toContain('sem valor');
-    expect(HELP.ticket).toContain('sem valor');
+  it('nenhuma explicação fala de contrato sem valor', () => {
+    Object.values(HELP).forEach((t) => expect(t).not.toMatch(/sem valor|importado/));
   });
 });

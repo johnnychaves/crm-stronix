@@ -68,7 +68,6 @@ export function dashboardProps({ cur, cmp, comparing, roleOf = () => null }) {
       count: cur.wallet.count,
       monthly: cur.wallet.monthly,
       ticket: cur.wallet.ticket,
-      blind: cur.wallet.blind,
       lockedCount: cur.wallet.lockedCount
     },
     risk: {

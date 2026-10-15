@@ -80,12 +80,12 @@ describe('tela Gerencial, de ponta a ponta', () => {
     expect(html).toContain('R$ 400');
   });
 
-  it('o contrato já renovado sai do risco e o importado entra só como contagem', () => {
+  it('o contrato já renovado sai do risco, e o importado sem valor não aparece na tela', () => {
     const { cur, html } = screenOf(RAW);
     expect(cur.risk.horizon[0]).toMatchObject({ days: 30, count: 1, v: 100 }); // só o c4
     expect(cur.risk.horizon[2].blind).toBe(1); // o importado c5
     expect(cur.risk.expired.count).toBe(1); // o c7
-    expect(html).toContain('1 contrato importado sem valor');
+    expect(html).not.toContain('sem valor');
     expect(html).toContain('Vencidos sem renovar');
   });
 
