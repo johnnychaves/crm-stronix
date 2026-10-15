@@ -31,6 +31,8 @@ React 19 + Vite 8 + Tailwind v4 + shadcn/ui + React Router 7 (`~7.18.4`, sem `<R
 
 ## Armadilhas que já custaram caso
 
+As mais frequentes, repetidas aqui de propósito. A fonte e as demais estão no `CLAUDE.md`.
+
 - `api/` tem limite de 12 funções no plano Hobby, e hoje são 11. Consolide antes de criar função nova.
 - Nenhuma função de `api/` pode importar `src/lib/dailyGoal.js` (traz `lucide-react`). Os arquivos puros de `src/lib/` lidos pela `api/` não importam pacote, e há teste que trava isso.
 - No SDK de servidor `snap.exists` é propriedade, no do navegador é função.
@@ -58,7 +60,7 @@ React 19 + Vite 8 + Tailwind v4 + shadcn/ui + React Router 7 (`~7.18.4`, sem `<R
 - **Context7**: consulte para API de biblioteca, resolvendo o identificador e perguntando um conceito por vez. Nunca envie segredo nem dado de cliente.
 - **RTK**: o hook do usuário já reescreve os comandos suportados. Não prefixe `rtk` à mão. Use `rtk proxy <comando>` para a saída original.
 - **Graphify**: não instalado. Consulte o `docs/setup.md` antes de depender dele.
-- **Skills do projeto** (`.claude/skills/`, versionadas com `skills-lock.json`): `vercel-react-best-practices`, `vercel-composition-patterns`, `web-design-guidelines`, `writing-guidelines`, `vercel-react-view-transitions` e `find-skills`. Skill instalada não executa nada sozinha.
+- **Skills do projeto** (`.claude/skills/`, versionadas com `skills-lock.json`): `vercel-react-best-practices`, `vercel-composition-patterns`, `web-design-guidelines` e `writing-guidelines`. As duas últimas leem regras locais (`rules.md`) em vez de buscar na rede. Parte das regras de React é de Next.js ou de servidor (SWR, `after()`, `next/dynamic`) e não se aplica a este app em Vite. Skill instalada não executa nada sozinha, e não se instala skill nova sem pedido.
 
 ## Delegação e revisão
 

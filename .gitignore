@@ -38,3 +38,6 @@ design_handoff_meta_equipe/
 
 # Saída do Graphify (grafo gerado, não versionado)
 graphify-out/
+
+# Configuração local do Claude Code (permissões e MCPs da máquina de cada pessoa)
+.claude/settings.local.json

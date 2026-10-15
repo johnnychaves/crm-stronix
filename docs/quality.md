@@ -6,9 +6,9 @@ O que o projeto cobra de uma mudança, como rodar e qual era a linha de base em 
 
 | Check | Comando | O que cobre |
 |---|---|---|
-| Lint | `npm run lint` | ESLint 9 em `src/`, `api/` e `scripts/`, com regras de React, hooks e refresh |
+| Lint | `npm run lint` | ESLint 9 em todo `.js` e `.jsx` fora de `dist/` e `docs/`, com `jsx-no-undef`, `jsx-uses-vars`, hooks e refresh |
 | Testes | `npm test` | Vitest, 219 arquivos. jsdom nos que montam tela (`// @vitest-environment jsdom`) |
-| Vazamento | `npm run verificar:sentry` | Sobe o SDK do Sentry contra um receptor falso e procura chave e telefone no envelope |
+| Vazamento | `npm run verificar:sentry` | Sobe o Sentry da `api/` contra um receptor falso, com um handler no formato do `api/zap.js`, e procura a chave do Zap, a chave do Resend e telefones no envelope. Não cobre o SDK do navegador |
 | Build | `npm run build` | `vite build` e remoção dos `.map` |
 | Tipos | indisponível | JavaScript puro, sem TypeScript. `jsconfig.json` só ajuda o editor |
 | Base inteira | `npm run lint && npm test && npm run verificar:sentry && npm run build` | O mesmo que o CI roda |
@@ -30,8 +30,8 @@ Nenhuma correção de auditoria foi aplicada neste setup. `npm audit fix --force
 
 - Testes ao lado do código, em `src/lib/__tests__/` e `api/__tests__/`. Teste de tela usa jsdom.
 - **Varreduras (sweeps)** reprovam o padrão proibido em todo o código, em vez de testar um caso: `acessoSweep`, `filtrosNoEndereco.sweep`, `leadLinkSweep`, `newLeadSweep`, `marcaDoDia.sweep`, `donoDaEpoca.sweep`, `protecaoDeErro.sweep` e `registroDoAgendamento.sweep`. Código novo que repita o padrão antigo quebra o teste.
-- **Testes de importação** (`acessoImports`, `rotinasImports`, `newLeadImports`, `guardianImports`) travam que arquivo lido pela `api/` não importe pacote.
-- **Testes das regras do Firestore** conferem a lista de campos gravados pelo app contra `firestore.rules` (`professorRules`, `rotinaRules`). Mudou a gravação, o teste quebra até a regra acompanhar.
+- **Testes de importação** (`acessoImports`, `rotinasImports`, `newLeadImports`, `teamRolesImports`, `guardianImports`) travam, arquivo por arquivo, que o que a `api/` lê não importe pacote. Não há uma varredura geral de tudo que a `api/` importa de `src/lib/`.
+- **Testes que leem o texto das regras do Firestore** conferem a lista de campos gravados pelo app contra `firestore.rules` (`professorRules`, `rotinaRules`) e as chamadas de módulo (`modules`). Mudou a gravação, o teste quebra até a regra acompanhar. As regras não são executadas em teste, e não há emulador.
 - O banco falso de `api/__tests__/zapRoute.test.js` imita o SDK de servidor, e é ele que pega erro de `snap.exists`.
 
 ## Regras do toolkit medidas, sem endurecer
@@ -47,7 +47,7 @@ Os cinco maiores: `src/views/DailyGoalView.jsx` (1974), `src/App.jsx` (1942), `s
 
 Por que não virou regra do lint agora:
 
-- `no-direct-console` só faz sentido com um adaptador de log. O projeto não tem um, e `scripts/` são CLIs que imprimem de propósito. Com `api/` há log com política própria (sem dado pessoal, sem segredo).
+- `no-direct-console` só faz sentido com um adaptador de log. O projeto não tem um, e `scripts/` são CLIs que imprimem de propósito. Na `api/`, o log segue política própria: sem dado pessoal e sem segredo.
 - `max-lines` em `error` reprovaria 46 arquivos de uma vez. O caminho é `warn` com contagem, e reduzir arquivo por arquivo quando a tela passar por mudança, junto com os testes dela.
 - O toolkit traz também `no-direct-data-access`, escrito para Drizzle. Não se aplica a Firestore.
 
@@ -65,9 +65,16 @@ Estão no `CLAUDE.md` e em testes. As que mais pegam:
 ## Segurança e dados
 
 - Segredos só em variável de ambiente da Vercel. `.env.example` lista as chaves sem valor.
-- O Sentry recebe só o necessário, e o `verificar:sentry` roda no CI para provar isso.
-- Scripts de `scripts/` que corrigem dado só rodam com autorização do Johnny, e cada um tem seu gatilho: `--apply` ou `--commit` para gravar, `--dry-run` no `backfill-scale-fields.js` para só simular, e nenhum no `backfill-zap-match-key.js`, que grava direto. Leia o cabeçalho do script antes de rodar.
-- Regras do Firestore são conferidas por testes e publicadas à mão.
+- O Sentry do app e da `api/` limpa dado pessoal na origem, e o `verificar:sentry` roda no CI para provar que a `api/` não deixa sair a chave do Zap, a chave do Resend nem o telefone.
+- Scripts de `scripts/` que gravam dado só rodam com autorização do Johnny, e o gatilho varia:
+  - `--apply`: `backfill-contract-seamless`, `backfill-tenant-claims`, `fix-clients-unsold-by-stage-move`, `fix-consultant-ownership` e `migrate-tenant-private`;
+  - `--commit`: `backfill-appointments`, `backfill-aulas` e `cleanup-orphan-aulas`;
+  - `--dry-run` para simular, porque gravam por padrão: `backfill-scale-fields`;
+  - nenhum gatilho, gravam direto: `backfill-zap-match-key`, `create-super-admin`, `set-super-admin` e `register-tenant`;
+  - só leitura: `volume-audit-report`.
+
+  Leia o cabeçalho do script antes de rodar.
+- As regras do Firestore têm listas e cláusulas conferidas por teste de texto, e a publicação é manual.
 
 ## Quando uma mudança está pronta
 

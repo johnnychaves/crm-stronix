@@ -13,27 +13,22 @@ Review files for compliance with Web Interface Guidelines.
 
 ## How It Works
 
-1. Fetch the latest guidelines from the source URL below
-2. Read the specified files (or prompt user for files/pattern)
-3. Check against all rules in the fetched guidelines
-4. Output findings in the terse `file:line` format
+1. Read `rules.md`, in this folder. It holds the rules and the output format.
+2. Read the specified files (or ask the user which files to review).
+3. Check the files against the rules, with the adaptations below.
+4. Output findings in the terse `file:line` format that `rules.md` defines.
 
-## Guidelines Source
+Do not fetch anything from the network. The rules are a local copy on purpose.
 
-Fetch fresh guidelines before each review:
+## Origin of rules.md
 
-```
-https://raw.githubusercontent.com/vercel-labs/web-interface-guidelines/main/command.md
-```
+`rules.md` is `command.md` from `vercel-labs/web-interface-guidelines`, commit `434b7f91364665f2f733b310ec54809bf8f37937` (2026-10-05), copied unchanged and reviewed on 2026-10-15. The original skill fetched the file from the `main` branch on every run. That made the rules change without review, so the project pinned a reviewed copy.
 
-Use WebFetch to retrieve the latest rules. The fetched content contains all the rules and output format instructions.
+Updating the rules is a deliberate change: read the new `command.md` in full, replace `rules.md`, update the commit above and send it in a PR. `npx skills update` rewrites this folder from upstream and removes this adaptation, so do not run it for this skill without redoing the section above.
 
-## Usage
+## Adaptation for STRONILEAD
 
-When a user provides a file or pattern argument:
-1. Fetch guidelines from the source URL above
-2. Read the specified files
-3. Apply all rules from the fetched guidelines
-4. Output findings using the format specified in the guidelines
-
-If no files specified, ask the user which files to review.
+- The app is a Vite single-page app in Brazilian Portuguese, with no server rendering. Skip the "Hydration Safety" rules.
+- Title Case, curly quotes and `&` in the "Typography" and "Content & Copy" rules are English conventions. Do not flag Portuguese interface text for them.
+- The project rules win where they differ: `AGENTS.md`, `CLAUDE.md` and `docs/design.md`. For example, filters live in the address and opening a lead is always a link.
+- Report only. Do not edit files unless the user asks.

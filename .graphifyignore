@@ -23,6 +23,13 @@ design_handoff_meta_equipe/
 *.pfx
 auth.json
 credentials.json
+*service-account*.json
+serviceAccount*.json
+*-firebase-adminsdk-*.json
+.firebaserc
+.npmrc
+.netrc
+.sentryclirc
 
 # Gerados e travas
 *.log
@@ -30,5 +37,8 @@ credentials.json
 package-lock.json
 skills-lock.json
 
-# Fixtures e planilhas de teste com dado de academia
+# Fixtures e planilhas com dado de academia
 docs/superpowers/fixtures/
+*.xlsx
+*.xls
+*.csv

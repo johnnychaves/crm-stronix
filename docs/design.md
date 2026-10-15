@@ -19,7 +19,7 @@ O ramp laranja do app é `accent-50` a `accent-600`, sempre com sufixo numérico
 
 - **shadcn/ui**, estilo `new-york`, ícones lucide, alias `@/` para `src/`. Os componentes base ficam em `src/components/ui/` com nome em minúsculas (`button.jsx`, `dialog.jsx`, `tabs.jsx`).
 - **Primitivo novo e complexo** (modal, menu, tooltip, tabs, combobox) usa componente shadcn (`npx shadcn@latest add`) e a skill `shadcn`, não se constrói à mão.
-- **Não adicionar via shadcn:** `avatar` e `skeleton`. Colidem com `Avatar.jsx` e `Skeleton.jsx` do app em sistema de arquivos que não diferencia maiúsculas.
+- **Não adicionar via shadcn:** `avatar` e `skeleton`. Colidem com `src/components/ui/Avatar.jsx` e `src/components/ui/Skeleton.jsx` do app em sistema de arquivos que não diferencia maiúsculas.
 - **Legado:** `Btn`, `SettingsCard`, `Field` e as telas antigas seguem como estão. Migram para shadcn quando a tela passar por redesign.
 - **Classes:** `cn()` de `@/lib/utils` para condicionais, tokens semânticos (`bg-background`, `text-muted-foreground`, `border-border`) em código novo, `flex gap-*` no lugar de `space-*` e `size-N` no lugar de `w-N h-N`.
 - **Raios:** os `rounded-*` do Tailwind não foram redefinidos, para não mudar o visual atual.
@@ -38,7 +38,7 @@ Regras já praticadas, que valem para tela nova:
 
 - Erro de campo em região viva educada (`aria-live="polite"`) presente desde o primeiro render, e foco no primeiro campo com erro.
 - Erro fora de campo com `role="alert"` e aviso com `role="status"`.
-- Janela (`Dialog`) devolve o foco ao elemento que a abriu, e o foco inicial vai ao botão principal quando o primeiro elemento focável seria decorativo.
+- Janela (`Dialog`, do Radix) devolve o foco ao elemento que a abriu. Na apresentação das Rotinas, o foco inicial vai ao botão principal, porque o primeiro focável seria decorativo. Faça o mesmo onde essa situação se repetir.
 - Animação de entrada com `motion-reduce:` e sem a classe `fade-in` solta do `index.css` (ela vence o `motion-reduce`).
 - Rolador horizontal leva `overscroll-x-contain`.
 - Abrir ficha é `<a href>`, para Ctrl+clique e "Abrir em nova aba" funcionarem.

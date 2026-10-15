@@ -20,7 +20,7 @@ O front funciona sem `.env.local`, porque cai no projeto `crm-stronix` (src/lib/
 
 ## Cuidado: o desenvolvimento aponta para produção
 
-Sem variável de ambiente, `npm run dev` lê e escreve no Firebase de produção. Em agosto de 2026, uma sessão de desenvolvimento aberta assim chegou a pesar no pico de leitura do banco. Regras:
+Sem variável de ambiente, `npm run dev` lê e escreve no Firebase de produção. A medição de leituras de agosto de 2026 achou uma sessão de desenvolvimento aberta assim entre as causas de um pico; o registro dessa medição não está neste repositório. Regras:
 
 - Teste escrita só em academia de teste, nunca em conta de cliente real.
 - Feche as abas de desenvolvimento ao terminar. A leitura contínua custa cota.
