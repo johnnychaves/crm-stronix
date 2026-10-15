@@ -120,3 +120,89 @@ describe('tela Gerencial, de ponta a ponta', () => {
     expect(html).toContain('Vencidos sem renovar');
   });
 });
+
+// Comparativo por linha: cada tipo de venda, consultor, plano, origem e saída
+// leva a variação contra a mesma linha do mês comparado. Carteira e risco são
+// retrato de hoje e não têm base para comparar.
+describe('comparativo por linha', () => {
+  const stub = (over) => ({
+    monthKey: '2026-09',
+    running: true,
+    sold: { sold: 78400, count: 42, ticket: 214, discPct: 8, discAbs: 6800, clawCount: 0, clawValue: 0, mix: [], ...over.sold },
+    wallet: { count: 628, monthly: 134200, lockedCount: 19 },
+    risk: { horizon: [], expired: { count: 0 } },
+    exits: { items: [], ...over.exits },
+    sellers: [],
+    plans: [],
+    sources: [],
+    flags: { gymEmpty: false, monthNoSales: false },
+    ...over.rest
+  });
+  const cur = stub({
+    sold: { mix: [{ type: 'nova', count: 21, value: 34700 }, { type: 'upgrade', count: 5, value: 10400 }] },
+    exits: { items: [{ kind: 'cancelamento', label: 'Cancelamentos', count: 7, v: 1480 }] },
+    rest: {
+      sellers: [{ id: 'u1', name: 'Ana', count: 16, value: 31200, monthly: 232 }, { id: 'u9', name: 'Bia', count: 2, value: 3000, monthly: 100 }],
+      plans: [{ name: 'Anual', count: 11, value: 26400 }],
+      sources: [{ name: 'Instagram', count: 14, value: 29600 }]
+    }
+  });
+  const cmp = {
+    ...stub({
+      sold: { sold: 71900, count: 39, mix: [{ type: 'nova', count: 18, value: 31600 }, { type: 'upgrade', count: 4, value: 10400 }] },
+      exits: { items: [{ kind: 'cancelamento', label: 'Cancelamentos', count: 4, v: 900 }] },
+      rest: {
+        monthKey: '2026-08',
+        sellers: [{ id: 'u1', name: 'Ana', count: 20, value: 36000, monthly: 230 }],
+        plans: [{ name: 'Anual', count: 9, value: 26400 }],
+        sources: []
+      }
+    })
+  };
+
+  it('sem comparação, nenhuma linha leva variação', () => {
+    const p = dashboardProps({ cur, cmp: null, comparing: false });
+    expect(p.sold.mix.every((m) => m.delta === null)).toBe(true);
+    expect(p.sellers.rows[0].delta).toBeNull();
+    expect(p.plans.items[0].delta).toBeNull();
+    expect(p.exits.items[0].delta).toBeNull();
+  });
+
+  it('tipo de venda: porcentagem sobre o mesmo tipo e base com os mesmos dias', () => {
+    const p = dashboardProps({ cur, cmp, comparing: true });
+    expect(p.sold.mix[0].delta).toMatchObject({ up: true, tone: 'good', text: '10%', baseline: 'R$ 31.600 nos mesmos dias de agosto' });
+    expect(p.sold.mix[1].delta).toMatchObject({ tone: 'quiet', text: 'igual' }); // upgrade: 10.400 nos dois meses
+  });
+
+  it('consultor que caiu fica em vermelho, e quem não vendeu no mês comparado é "novo"', () => {
+    const p = dashboardProps({ cur, cmp, comparing: true });
+    expect(p.sellers.rows[0].delta).toMatchObject({ up: false, tone: 'bad', text: '13%' }); // 31.200 contra 36.000
+    expect(p.sellers.rows[1].delta).toMatchObject({ tone: 'quiet', text: 'novo' });
+  });
+
+  it('plano igual, origem sem base e saída que cresce, que é ruim', () => {
+    const p = dashboardProps({ cur, cmp, comparing: true });
+    expect(p.plans.items[0].delta).toMatchObject({ tone: 'quiet', text: 'igual' });
+    expect(p.sources.items[0].delta).toMatchObject({ tone: 'quiet', text: 'novo' });
+    expect(p.exits.items[0].delta).toMatchObject({ up: true, tone: 'bad', text: '75%', baseline: '4 contratos nos mesmos dias de agosto' });
+  });
+
+  it('mês fechado diz "em agosto" na base', () => {
+    const closed = { ...cur, running: false };
+    const p = dashboardProps({ cur: closed, cmp, comparing: true });
+    expect(p.sold.mix[0].delta.baseline).toBe('R$ 31.600 em agosto');
+  });
+
+  it('o desconto do mês comparado vai junto, para a dica', () => {
+    expect(dashboardProps({ cur, cmp, comparing: true }).sold.discount.prevPct).toBe(8);
+    expect(dashboardProps({ cur, cmp: null, comparing: false }).sold.discount.prevPct).toBeNull();
+  });
+
+  it('a variação aparece escrita na tela, com seta e porcentagem', () => {
+    const p = dashboardProps({ cur, cmp, comparing: true });
+    const html = renderToString(createElement(TooltipProvider, null, createElement(GerencialDashboard, { ...p, onGoToPipeline: () => {} })));
+    expect(html).toContain('▲ 10%');
+    expect(html).toContain('▼ 13%');
+    expect(html).toContain('R$ 31.600 nos mesmos dias de agosto');
+  });
+});

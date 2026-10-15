@@ -8,6 +8,7 @@
 import { cn } from '../../lib/utils.js';
 import { fmtNum } from '../../lib/format.js';
 import { ChartMark } from './ChartMark.jsx';
+import { ItemDelta } from './ItemDelta.jsx';
 import { dashInitials, fmtMoney, fmtMoneyShort } from './dashTokens.js';
 
 const CARD = 'rounded-2xl border border-border bg-card px-[22px] py-5 shadow-card';
@@ -24,7 +25,7 @@ const plural = (n, one, many) => `${fmtNum(n)} ${n === 1 ? one : many}`;
 const widthOf = (v, max, ceiling) => `${Math.max(Math.round(((Number(v) || 0) / max) * ceiling), 4)}%`;
 
 // Props:
-//   rows  [{ id, name, role, count, value, monthly }] — já ordenadas pelo vendido
+//   rows  [{ id, name, role, count, value, monthly, delta }] — já ordenadas pelo vendido
 export function SellersCard({ rows }) {
   const list = rows || [];
   const total = list.reduce((s, r) => s + (Number(r.value) || 0), 0);
@@ -50,6 +51,7 @@ export function SellersCard({ rows }) {
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-2">
                   <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{r.name}</span>
+                  <ItemDelta delta={r.delta} />
                   <span className="num flex-none font-display text-[14px] font-bold">{fmtMoneyShort(r.value)}</span>
                 </div>
                 <div className="mt-1.5 flex h-1.5 overflow-hidden rounded-full bg-muted">
@@ -127,7 +129,7 @@ const EXIT_TONES = {
 };
 
 // Props:
-//   items  [{ kind, label, count, v }] — kind 'cancelamento' ou 'trancamento'
+//   items  [{ kind, label, count, v, delta }] — kind 'cancelamento' ou 'trancamento'
 export function ExitsCard({ items }) {
   const list = items || [];
   const total = list.reduce((s, e) => s + (Number(e.v) || 0), 0);
@@ -154,6 +156,7 @@ export function ExitsCard({ items }) {
                   style={{ width: `${Math.max(Math.round(((Number(e.v) || 0) / max) * 100), 4)}%` }}
                 />
               </div>
+              {list.some((x) => x.delta) && <span className="w-[54px] flex-none text-right"><ItemDelta delta={e.delta} /></span>}
               <span className={cn('num w-7 flex-none text-right text-[13px] font-bold', tone.text)}>{fmtNum(e.count)}</span>
             </div>
           );

@@ -12,6 +12,7 @@ import { RotateCcw } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { fmtNum } from '../../lib/format.js';
 import { ChartMark } from './ChartMark.jsx';
+import { ItemDelta } from './ItemDelta.jsx';
 import { BREAKDOWN_PALETTE, fmtMoney, fmtMoneyShort } from './dashTokens.js';
 
 const CARD = 'rounded-2xl border border-border bg-card px-[22px] py-5 shadow-card';
@@ -100,13 +101,16 @@ function Ring({ slices, size, thickness, half = false, label, children }) {
   );
 }
 
-// Linha da legenda: amostra, rótulo, participação e valor, com régua em cima.
-function LegendRow({ swatch, round, label, pct, value, tight }) {
+// Linha da legenda: amostra, rótulo, participação, variação contra o mês
+// comparado (quando há) e valor, com régua em cima. `showDelta` reserva a
+// coluna da variação para todas as linhas da legenda, as que não têm também.
+function LegendRow({ swatch, round, label, pct, value, tight, delta, showDelta }) {
   return (
     <div className={cn('flex items-center gap-2.5 border-t', RULE, tight ? 'py-[7px]' : 'py-2')}>
       <span className={cn('block size-[9px] flex-none', round ? 'rounded-full' : 'rounded-[3px]', swatch)} />
       <span className="min-w-0 flex-1 truncate text-[13px]">{label}</span>
       <span className="num w-9 flex-none text-right text-[12px] text-muted-foreground">{`${pct}%`}</span>
+      {showDelta && <span className="hidden w-[54px] flex-none text-right sm:block"><ItemDelta delta={delta} /></span>}
       <span className="num w-20 flex-none text-right font-display text-[13.5px] font-bold">{value}</span>
     </div>
   );
@@ -133,7 +137,10 @@ export function SalesTypeCard({ mix, discount, clawback }) {
       <div className="flex items-baseline gap-2.5">
         <h3 className={TITLE}>Vendas por tipo</h3>
         <div className="flex-1" />
-        <span className="num text-[12px] text-muted-foreground">
+        <span
+          className="num text-[12px] text-muted-foreground"
+          title={discount?.prevPct != null ? `Mês comparado: ${fmtNum(discount.prevPct)}%` : undefined}
+        >
           {'desconto '}
           <b className={cn('font-bold text-foreground', pct >= 12 && 'text-amber-700 dark:text-amber-300')}>{`${fmtNum(pct)}%`}</b>
         </span>
@@ -153,7 +160,15 @@ export function SalesTypeCard({ mix, discount, clawback }) {
         </Ring>
         <div className="flex w-full min-w-0 flex-1 flex-col">
           {list.map((m) => (
-            <LegendRow key={m.type} swatch={m.swatch} label={m.label} pct={pctOf(m.value, sold)} value={fmtMoneyShort(m.value)} />
+            <LegendRow
+              key={m.type}
+              swatch={m.swatch}
+              label={m.label}
+              pct={pctOf(m.value, sold)}
+              value={fmtMoneyShort(m.value)}
+              delta={m.delta}
+              showDelta={list.some((x) => x.delta)}
+            />
           ))}
         </div>
       </div>
@@ -210,7 +225,17 @@ export function PieCard({ title, variant = 'pie', items, total }) {
         <div className="flex w-full min-w-0 flex-1 flex-col">
           {list.length === 0 && <span className="text-[13px] text-muted-foreground">Nenhuma venda no mês.</span>}
           {list.map((it) => (
-            <LegendRow key={it.name} round tight swatch={it.swatch} label={it.name} pct={pctOf(it.count, total)} value={fmtMoneyShort(it.count)} />
+            <LegendRow
+              key={it.name}
+              round
+              tight
+              swatch={it.swatch}
+              label={it.name}
+              pct={pctOf(it.count, total)}
+              value={fmtMoneyShort(it.count)}
+              delta={it.delta}
+              showDelta={list.some((x) => x.delta)}
+            />
           ))}
         </div>
       </div>
