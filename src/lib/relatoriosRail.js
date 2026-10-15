@@ -13,6 +13,9 @@ export const RELATORIOS_RAIL_GROUPS = Object.freeze([
     items: Object.freeze([
       Object.freeze({ id: 'entrada', label: 'Entrada de leads', hint: 'Quantos chegaram e de onde' }),
       Object.freeze({ id: 'conversao', label: 'Conversão', hint: 'Quantos viraram matrícula' }),
+      Object.freeze({ id: 'visitas-e-aulas', label: 'Visitas e aulas experimentais', hint: 'Quem veio e quem faltou' }),
+      Object.freeze({ id: 'perdas', label: 'Perdas', hint: 'Por que e onde se perderam' }),
+      Object.freeze({ id: 'parados', label: 'Leads parados', hint: 'Quem precisa de um próximo passo' }),
     ]),
   }),
 ]);

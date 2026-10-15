@@ -53,12 +53,14 @@ export const ROTINAS_TABS = Object.freeze({
   hoje: 'hoje',
 });
 // Submenus dos Relatórios (spec 2026-10-09). Hoje só o relatório de Leads, com
-// Entrada de leads e Conversão. O PR 2 acrescenta visitas-e-aulas, perdas e
-// parados. O id é também o segmento, e a lista ao lado
+// os cinco submenus. O id é também o segmento, e a lista ao lado
 // (src/lib/relatoriosRail.js) usa os mesmos ids.
 export const RELATORIOS_SUBS = Object.freeze({
   entrada: 'entrada',
   conversao: 'conversao',
+  'visitas-e-aulas': 'visitas-e-aulas',
+  perdas: 'perdas',
+  parados: 'parados',
 });
 
 // id da tela (os mesmos valores de activeTab de sempre) para os segmentos

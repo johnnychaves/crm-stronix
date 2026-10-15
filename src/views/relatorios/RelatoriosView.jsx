@@ -1,9 +1,12 @@
 // Tela dos Relatórios (spec docs/superpowers/specs/2026-10-09-relatorios-de-leads-design.md).
-// Hoje, o relatório de Leads, com Entrada de leads e Conversão. O submenu vem
-// do endereço (section, a sub-tela que o App lê) e o período e os filtros vêm
-// da query (useScreenParams). As contas são as do painel CRM, em
+// Hoje, o relatório de Leads, com cinco submenus: Entrada de leads, Conversão,
+// Visitas e aulas experimentais, Perdas e Leads parados. O submenu vem do
+// endereço (section, a sub-tela que o App lê) e o período e os filtros vêm da
+// query (useScreenParams). As contas são as do painel CRM, em
 // src/lib/relatorios/leads/, e a carga é a do painel (useCrmSources), com os
-// meses do início do comparado até o mês atual. Desenhada com a skill
+// meses do início do comparado até o mês atual. Leads parados é retrato de
+// agora: não pede mês nenhum e lê os leads em aberto que o app já tem
+// (liveLeads) e as interações do mês que chegam ao vivo. Desenhada com a skill
 // frontend-design.
 import { useEffect, useMemo, useState } from 'react';
 import { cn } from '../../lib/utils.js';
@@ -16,9 +19,12 @@ import { addMonthsToKey, dayKeyOf, monthKeyOf, monthLabel } from '../../lib/oper
 import { leadFunnelsOf } from '../../lib/crm/scope.js';
 import { relatoriosSection } from '../../lib/relatoriosRail.js';
 import { loadState, reportMonthKeys } from '../../lib/relatorios/leads/janela.js';
-import { exportFileName, compareTextOf, apptsPartialOf } from '../../lib/relatorios/leads/base.js';
+import { exportFileName, snapshotFileName, compareTextOf, apptsPartialOf } from '../../lib/relatorios/leads/base.js';
 import { entradaReport } from '../../lib/relatorios/leads/entrada.js';
 import { conversaoReport } from '../../lib/relatorios/leads/conversao.js';
+import { visitasReport } from '../../lib/relatorios/leads/visitas.js';
+import { perdasReport } from '../../lib/relatorios/leads/perdas.js';
+import { paradosReport } from '../../lib/relatorios/leads/parados.js';
 import { downloadCsv, toCsv } from '../../lib/csvExport.js';
 import { DashedNote } from '../dashboard/CrmParts.jsx';
 import { RelatoriosRail } from './RelatoriosRail.jsx';
@@ -26,8 +32,27 @@ import { RelatoriosToolbar } from './RelatoriosToolbar.jsx';
 import { ExportButton } from './ReportParts.jsx';
 import { EntradaSection } from './EntradaSection.jsx';
 import { ConversaoSection } from './ConversaoSection.jsx';
+import { VisitasSection } from './VisitasSection.jsx';
+import { PerdasSection } from './PerdasSection.jsx';
+import { ParadosSection } from './ParadosSection.jsx';
 
-const REPORTS = Object.freeze({ entrada: entradaReport, conversao: conversaoReport });
+// A conta e a tela de cada submenu, pelo id do endereço (RELATORIOS_SUBS).
+const REPORTS = Object.freeze({
+  entrada: entradaReport,
+  conversao: conversaoReport,
+  'visitas-e-aulas': visitasReport,
+  perdas: perdasReport,
+  parados: paradosReport,
+});
+const SECTIONS = Object.freeze({
+  entrada: EntradaSection,
+  conversao: ConversaoSection,
+  'visitas-e-aulas': VisitasSection,
+  perdas: PerdasSection,
+  parados: ParadosSection,
+});
+// O retrato de agora: sem período na barra, sem mês para carregar e com o dia de hoje no nome do arquivo.
+const SNAPSHOT = 'parados';
 
 export function RelatoriosView({
   db, appUser, usersList, funnels, sources, liveLeads, interactions, listenersActive = true, section, onSection,
@@ -57,31 +82,35 @@ export function RelatoriosView({
     [currentKey, todayKey, users, leadFunnels, origens]
   );
   const [params, setParams] = useScreenParams('relatorios', paramsCtx);
-  const { monthKey, periodo, de, ate, resp, origem, funnel, recorte } = params;
+  const { monthKey, periodo, de, ate, dias, resp, origem, funnel, recorte } = params;
 
+  const secao = relatoriosSection(section);
+  const snapshot = secao === SNAPSHOT;
   const period = useMemo(() => periodFromParams({ periodo, de, ate, monthKey }, now), [periodo, de, ate, monthKey, now]);
   const cmp = useMemo(() => previousPeriod(period, now), [period, now]);
   // A lista vira texto antes do useMemo: o relógio refaz o período a cada
-  // minuto, e a carga só pode mudar quando os meses mudam.
-  const keysText = reportMonthKeys(period, cmp, currentKey).join(',');
-  const monthKeys = useMemo(() => keysText.split(','), [keysText]);
+  // minuto, e a carga só pode mudar quando os meses mudam. Leads parados não
+  // pede mês: com a lista vazia, a carga fica pronta na hora.
+  const keysText = snapshot ? '' : reportMonthKeys(period, cmp, currentKey).join(',');
+  const monthKeys = useMemo(() => (keysText ? keysText.split(',') : []), [keysText]);
   const src = useCrmSources({ db, enabled: listenersActive, now, monthKeys, liveInteractions: interactions, liveLeads });
   const load = loadState(src.months, monthKeys);
   const failed = load.failed || (src.failedKeys || []).length > 0;
   const ready = !src.loading && load.ready && !failed;
 
-  const secao = relatoriosSection(section);
   const ctx = useMemo(
-    () => ({ now, users, funnels: funnels || [], sources: sources || [], months: src.months, leadsById: src.leadsById }),
-    [now, users, funnels, sources, src.months, src.leadsById]
+    () => ({
+      now, users, funnels: funnels || [], sources: sources || [], months: src.months, leadsById: src.leadsById, liveLeads, interactions,
+    }),
+    [now, users, funnels, sources, src.months, src.leadsById, liveLeads, interactions]
   );
   const funnelId = funnel === 'all' ? null : funnel;
   // O relatório se refaz a cada clique num número, a cada minuto e a cada período
   // novo. A parte pesada, o índice das interações, não vai junto: o reportIndex
   // o guarda pelo objeto de meses e só o refaz quando os meses mudam.
   const report = useMemo(
-    () => (ready ? REPORTS[secao](ctx, { period, cmp, userIds: resp, funnelId, origem, recorte }) : null),
-    [ready, secao, ctx, period, cmp, resp, funnelId, origem, recorte]
+    () => (ready ? REPORTS[secao](ctx, { period, cmp, userIds: resp, funnelId, origem, recorte, dias }) : null),
+    [ready, secao, ctx, period, cmp, resp, funnelId, origem, recorte, dias]
   );
 
   // Enquanto o período novo carrega, o último resultado do mesmo submenu fica
@@ -134,11 +163,16 @@ export function RelatoriosView({
 
   const canExport = can(appUser, ACTIONS.RELATORIOS_EXPORTAR);
   const exportable = Boolean(shown) && !veiled && shown.report.exportRows.length > 0;
+  // O arquivo leva as datas que a lista cobre: as do período, ou as da janela das
+  // Visitas e aulas, que vai até o fim do período; em Leads parados, o dia de hoje.
   const doExport = () => {
     if (!exportable) return;
-    downloadCsv(exportFileName(secao, shown.period), toCsv(shown.report.exportRows, shown.report.exportColumns));
+    const fileName = snapshot ? snapshotFileName(secao, now) : exportFileName(secao, shown.report.window || shown.period);
+    downloadCsv(fileName, toCsv(shown.report.exportRows, shown.report.exportColumns));
   };
   const exportAction = canExport ? <ExportButton onExport={doExport} disabled={!exportable} /> : null;
+  // A tela do submenu do resultado que está na tela (o de agora ou o de sob o véu, que é sempre o mesmo submenu).
+  const Section = SECTIONS[secao];
 
   return (
     <div className="animate-fade-in flex flex-col gap-6 font-sans lg:flex-row lg:items-start lg:gap-8">
@@ -149,6 +183,9 @@ export function RelatoriosView({
       </aside>
       <div className="min-w-0 flex-1">
         <RelatoriosToolbar
+          showPeriod={!snapshot}
+          dias={dias}
+          onDias={(v) => setParams({ dias: v })}
           period={period}
           todayKey={todayKey}
           onPeriod={onPeriod}
@@ -195,19 +232,15 @@ export function RelatoriosView({
               veiled && 'pointer-events-none opacity-35'
             )}
           >
-            {secao === 'conversao' ? (
-              <ConversaoSection
-                report={shown.report}
-                compareText={compareText}
-                listId={listId}
-                year={year}
-                onCut={onCut}
-                exportAction={exportAction}
-                apptsPartial={apptsPartialOf(shown.period, shown.cmp)}
-              />
-            ) : (
-              <EntradaSection report={shown.report} compareText={compareText} listId={listId} year={year} onCut={onCut} exportAction={exportAction} />
-            )}
+            <Section
+              report={shown.report}
+              compareText={compareText}
+              listId={listId}
+              year={year}
+              onCut={onCut}
+              exportAction={exportAction}
+              apptsPartial={apptsPartialOf(shown.period, shown.cmp)}
+            />
           </div>
         )}
       </div>

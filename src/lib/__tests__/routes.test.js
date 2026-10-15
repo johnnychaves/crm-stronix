@@ -414,12 +414,15 @@ describe('sub-tela no caminho', () => {
   });
 
   it('Relatórios lê os submenus, abre sem submenu e marca o desconhecido', () => {
-    for (const [seg, id] of [['entrada', 'entrada'], ['conversao', 'conversao']]) {
+    for (const [seg, id] of [
+      ['entrada', 'entrada'], ['conversao', 'conversao'], ['visitas-e-aulas', 'visitas-e-aulas'], ['perdas', 'perdas'], ['parados', 'parados'],
+    ]) {
       const r = parseAppPath(`/${T}/relatorios/${seg}`);
       expect([r.screen, r.sub, r.subUnknown], seg).toEqual(['relatorios', id, false]);
     }
     expect(parseAppPath(`/${T}/relatorios`)).toMatchObject({ screen: 'relatorios', sub: null, subUnknown: false });
-    expect(parseAppPath(`/${T}/relatorios/perdas`)).toMatchObject({ screen: 'relatorios', subUnknown: true });
+    expect(parseAppPath(`/${T}/relatorios/clientes`)).toMatchObject({ screen: 'relatorios', subUnknown: true });
+    expect(hrefFor(T, 'relatorios', { sub: 'visitas-e-aulas' })).toBe(`/${T}/relatorios/visitas-e-aulas`);
     expect(hrefFor(T, 'relatorios', { sub: 'conversao' })).toBe(`/${T}/relatorios/conversao`);
     expect(SCREENS.relatorios).toMatchObject({ title: 'Relatórios', subPadrao: 'entrada' });
     expect(SCREENS.relatorios.gestor).toBeUndefined();
