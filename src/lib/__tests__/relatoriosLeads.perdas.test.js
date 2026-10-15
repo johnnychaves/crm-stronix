@@ -31,6 +31,14 @@ const ctxOf = () => {
   c.leadsById = new Map([...c.leadsById, ['p1', P1], ['p2', P2], ['p4', P4]]);
   return { ...c, now: NOW, sources: [] };
 };
+// O ctxOf com mais perdas no balde do mês e a versão de hoje de cada lead. Monta tudo antes de
+// qualquer relatório, porque o índice fica guardado pelo objeto de meses (reportIndex).
+const ctxCom = (monthKey, ...leads) => {
+  const c = ctxOf();
+  c.months[monthKey] = { ...c.months[monthKey], lost: [...c.months[monthKey].lost, ...leads] };
+  c.leadsById = new Map([...c.leadsById, ...leads.map((l) => [l.id, l])]);
+  return c;
+};
 const setembro = periodFromParams({ monthKey: '2026-09' }, NOW);
 const agosto = periodFromParams({ monthKey: '2026-08' }, NOW);
 const rel = (ctx, extra = {}, period = setembro) => perdasReport(ctx, { period, cmp: previousPeriod(period, NOW), ...extra });
@@ -42,6 +50,10 @@ describe('Perdas', () => {
     expect(r.total).toBe(2);
     expect(r.delta).toEqual(crmDelta(2, 1));
     expect(r.rows.map((x) => x.id)).toEqual(['p1', 's3']);
+
+    // O comparado vai só até o corte (20/08 ao meio-dia), e não até o fim de agosto: a perda de 25/08 não entra.
+    const depoisDoCorte = L('p6', { createdAt: D(8, 1), status: 'Perda', lostAt: D(8, 25), lossReason: 'Preço' });
+    expect(rel(ctxCom('2026-08', depoisDoCorte)).delta).toEqual(crmDelta(2, 1));
   });
 
   it('os recortes: motivo, etapa, origem e consultor, que somam o mesmo total', () => {
@@ -79,6 +91,18 @@ describe('Perdas', () => {
     const [p1, s3] = rel(ctxOf()).rows;
     expect(p1).toMatchObject({ reason: 'Horário', stage: 'Novo lead', lostAt: D(9, 12), days: 8, source: 'Site', owner: 'Diego Santos' });
     expect(s3).toMatchObject({ reason: 'Preço', stage: 'Contato feito', days: 14, owner: 'Ana Ribeiro' });
+
+    // No mesmo instante, o nome desempata e depois o id. Os ids ficam fora da ordem dos nomes e o
+    // 't9' entra antes do 't8', para a ordem só sair certa pela regra.
+    const noMesmoInstante = (id, name) => L(id, { name, status: 'Perda', lostAt: D(9, 18, 9), lossReason: 'Preço' });
+    const empate = ctxCom('2026-09', noMesmoInstante('t7', 'Bia'), noMesmoInstante('t9', 'Ana'), noMesmoInstante('t8', 'Ana'));
+    expect(rel(empate).rows.map((x) => x.id)).toEqual(['t8', 't9', 't7', 'p1', 's3']);
+
+    // Dias de calendário, e não períodos de 24 horas: da perda de 12/09 às 22h até 20/09 às 8h
+    // são 8 dias no calendário e 7 de 24 horas.
+    const noite = L('t1', { status: 'Perda', lostAt: D(9, 12, 22), lossReason: 'Preço' });
+    const cedo = { ...ctxCom('2026-09', noite), now: D(9, 20, 8) };
+    expect(rel(cedo).rows.find((x) => x.id === 't1').days).toBe(8);
   });
 
   it('o recorte filtra a lista: o motivo dá a lista de repescagem', () => {
