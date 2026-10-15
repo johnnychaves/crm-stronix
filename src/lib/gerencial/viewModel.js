@@ -60,7 +60,6 @@ export function dashboardProps({ cur, cmp, comparing, roleOf = () => null }) {
   return {
     sold: {
       mix: cur.sold.mix.map((m) => ({ ...m, delta: moneyDelta(m.value, prevMix?.get(m.type)) })),
-      ticket: cur.sold.ticket,
       discount: { pct: cur.sold.discPct, abs: cur.sold.discAbs, prevPct: on ? cmp.sold.discPct : null },
       clawback: { count: cur.sold.clawCount, value: cur.sold.clawValue },
       delta: soldDelta(cur, cmp, { comparing })

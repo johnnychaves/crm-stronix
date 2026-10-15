@@ -23,7 +23,7 @@ const MIX = [
   { type: 'upgrade', count: 5, value: 10400 },
   { type: 'retorno', count: 2, value: 3500 }
 ];
-const SOLD = { mix: MIX, ticket: 214, discount: { pct: 8, abs: 6800 }, clawback: { count: 2, value: 3100 } };
+const SOLD = { mix: MIX, discount: { pct: 8, abs: 6800 }, clawback: { count: 2, value: 3100 } };
 const WALLET = { count: 628, monthly: 134200, ticket: 214, blind: 0, lockedCount: 19 };
 const HORIZON = [
   { days: 30, label: 'Em 30 dias', count: 63, v: 13100, blind: 0 },
@@ -53,10 +53,11 @@ const SOURCES = {
 describe('GerencialKpis', () => {
   const kpis = (over) => render(createElement(GerencialKpis, { sold: SOLD, wallet: WALLET, risk: RISK, ...over }));
 
-  it('o vendido e a contagem saem do mix, com o ticket mensal na linha de apoio', () => {
+  it('o vendido e a contagem saem do mix, e o ticket das vendas não está no card', () => {
     const html = kpis();
     expect(html).toContain('R$ 78.400');
-    expect(html).toContain('42 contratos · ticket R$ 214/mês');
+    expect(html).toContain('>42 contratos</div>');
+    expect(html).not.toContain('ticket R$');
   });
 
   it('o "não é caixa" é uma etiqueta com a explicação na dica', () => {
@@ -129,10 +130,15 @@ describe('GerencialKpis', () => {
 describe('SalesTypeCard', () => {
   const card = (over) => render(createElement(SalesTypeCard, { mix: MIX, discount: SOLD.discount, clawback: SOLD.clawback, ...over }));
 
-  it('a rosca mostra o total de contratos e a legenda escreve cada tipo', () => {
+  it('a rosca não repete o total de contratos, que já está no card de cima', () => {
     const html = card();
     expect(html).toContain('Vendas por tipo');
-    expect(html).toContain('>42</span>');
+    expect(html).not.toContain('>42</span>');
+    expect(html).not.toContain('>contratos</span>');
+  });
+
+  it('a legenda escreve cada tipo, com participação e valor', () => {
+    const html = card();
     ['Matrícula nova', 'Renovação', 'Upgrade', 'Retorno de ex-cliente'].forEach((t) => expect(html).toContain(t));
     expect(html).toContain('R$ 34,7 mil');
     expect(html).toContain('44%'); // 34.700 de 78.400
@@ -157,7 +163,7 @@ describe('SalesTypeCard', () => {
 
   it('mix vazio não quebra a conta', () => {
     const html = card({ mix: [] });
-    expect(html).toContain('>0</span>');
+    expect(html).toContain('Vendas por tipo');
   });
 });
 

@@ -125,7 +125,6 @@ function LegendRow({ swatch, round, label, pct, value, tight, delta, showDelta }
 export function SalesTypeCard({ mix, discount, clawback }) {
   const list = (mix || []).map((m) => ({ ...m, ...(TYPES[m.type] || TYPES.retorno), label: TYPES[m.type]?.label || m.type }));
   const sold = list.reduce((s, m) => s + (Number(m.value) || 0), 0);
-  const count = list.reduce((s, m) => s + (Number(m.count) || 0), 0);
   const pct = Number(discount?.pct) || 0;
   const slices = list.map((m) => ({
     key: m.type,
@@ -155,12 +154,7 @@ export function SalesTypeCard({ mix, discount, clawback }) {
           size={148}
           thickness={22}
           label={`Vendas por tipo: ${list.map((m) => `${m.label} ${pctOf(m.value, sold)}%`).join(', ')}`}
-        >
-          <div className="pointer-events-none absolute inset-[22px] flex flex-col items-center justify-center">
-            <span className="num font-display text-[22px] font-bold leading-none tracking-[-0.02em]">{fmtNum(count)}</span>
-            <span className="mt-1 text-[11px] text-muted-foreground">contratos</span>
-          </div>
-        </Ring>
+        />
         <div className="flex w-full min-w-0 flex-1 flex-col">
           {list.map((m) => (
             <LegendRow

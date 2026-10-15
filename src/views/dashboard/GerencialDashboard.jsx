@@ -5,7 +5,7 @@
 // detalhe o que precisa mostrar.
 //
 // Props:
-//   sold     { mix, delta, ticket, discount, clawback: { count, value } }
+//   sold     { mix, delta, discount, clawback: { count, value } }
 //   wallet   { count, monthly, ticket, blind, lockedCount }
 //   risk     { horizon, walletMonthly, lapsedCount }
 //   exits    { items }

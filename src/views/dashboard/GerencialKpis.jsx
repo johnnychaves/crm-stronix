@@ -40,7 +40,7 @@ function SoldDelta({ delta }) {
 }
 
 // Props:
-//   sold    { mix, ticket, delta } — o vendido e a contagem saem do mix
+//   sold    { mix, delta } — o vendido e a contagem saem do mix
 //   wallet  { count, monthly, ticket, blind, lockedCount }
 //   risk    { lapsedCount }
 export function GerencialKpis({ sold, wallet, risk }) {
@@ -68,7 +68,7 @@ export function GerencialKpis({ sold, wallet, risk }) {
           <span className="num font-display text-[40px] font-bold leading-none tracking-[-0.035em]">{fmtMoney(soldTotal)}</span>
           {sold?.delta && <SoldDelta delta={sold.delta} />}
         </div>
-        <div className={SUB}>{`${plural(soldCount, 'contrato', 'contratos')} · ticket ${fmtMoney(sold?.ticket)}/mês`}</div>
+        <div className={SUB}>{plural(soldCount, 'contrato', 'contratos')}</div>
       </section>
 
       <section className={CARD}>
