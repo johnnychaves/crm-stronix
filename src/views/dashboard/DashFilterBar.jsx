@@ -1,6 +1,6 @@
-// Peças da barra de filtros no desenho do handoff do Gerencial v2 (§3): caixa
-// de período com setas, pílulas de filtro e a lista de opções que abre em
-// balão. O README pede que Relatórios use a mesma barra; como a de Relatórios
+// Peças do cabeçalho e da barra de filtros do Gerencial: o cartão fixo com o
+// título, a caixa de período com setas, as pílulas de filtro e a lista de
+// opções que abre em balão. O README pede que Relatórios use a mesma barra; como a de Relatórios
 // ainda vive na própria branch, estas peças ficam aqui para ela adotar depois.
 //
 // Todo balão fecha ao escolher e ao clicar fora, que é o que o Popover do
@@ -14,17 +14,20 @@ import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/pop
 const BALLOON = 'w-auto rounded-[14px] border-border p-1.5 shadow-card-lg';
 const ARROW = 'grid size-[30px] flex-none place-items-center rounded-[9px] text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand-500/40 disabled:pointer-events-none disabled:opacity-35';
 
-// Contêiner fixo no topo. O fundo é o da página, e a régua embaixo separa a
-// barra do conteúdo que rola por baixo dela.
-export function FilterBar({ className, children }) {
+// Cabeçalho fixo da tela: o título e a linha de apoio à esquerda, os controles
+// à direita, tudo num cartão com a mesma borda, raio e sombra das faixas da
+// página. Fica alinhado às margens do conteúdo, e o fundo da página por trás
+// cobre o que rola por baixo dele.
+export function FilterBar({ title, subline, className, children }) {
   return (
-    <div
-      className={cn(
-        'sticky -top-4 z-30 flex flex-wrap items-center gap-2 border-b border-border bg-background px-4 pb-3.5 pt-5 md:-top-8 md:px-8',
-        className
-      )}
-    >
-      {children}
+    <div className={cn('sticky -top-4 z-30 bg-background px-4 pb-3 pt-4 md:-top-8 md:px-8 md:pt-5', className)}>
+      <div className="flex flex-col gap-3 rounded-[18px] border border-border bg-card px-5 py-3.5 shadow-card md:flex-row md:items-center md:justify-between md:gap-6 md:px-6">
+        <div className="min-w-0">
+          <h2 className="m-0 font-display text-[22px] font-bold leading-[1.1] tracking-[-0.02em]">{title}</h2>
+          {subline && <p className="mt-[3px] text-[12.5px] text-muted-foreground">{subline}</p>}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">{children}</div>
+      </div>
     </div>
   );
 }

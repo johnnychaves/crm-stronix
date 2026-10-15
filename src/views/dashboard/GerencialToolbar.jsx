@@ -25,7 +25,7 @@ function compareChoices(compareOptions) {
 }
 
 export function GerencialToolbar({
-  monthKey, monthOptions, onMonth, canPrev, onPrev, canNext, onNext,
+  title, subline, monthKey, monthOptions, onMonth, canPrev, onPrev, canNext, onNext,
   compareOn, compareKey, compareOptions, onCompare
 }) {
   const [panel, setPanel] = useState(false);
@@ -37,7 +37,7 @@ export function GerencialToolbar({
   const pick = (k) => onCompare(k === NONE ? null : k);
 
   return (
-    <FilterBar>
+    <FilterBar title={title} subline={subline}>
       <div className="hidden items-center gap-2 md:flex">
         <PeriodControl
           label={month?.label || monthKey}

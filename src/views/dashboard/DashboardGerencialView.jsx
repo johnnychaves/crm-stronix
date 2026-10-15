@@ -123,11 +123,8 @@ export function DashboardGerencialView({ usersList, liveLeads, db, listenersActi
   return (
     <TooltipProvider delayDuration={150}>
       <div className="-m-4 md:-m-8 font-sans">
-        <header className="flex min-h-[72px] flex-col justify-center border-b border-border bg-card px-4 py-3 md:px-8">
-          <h2 className="m-0 font-display text-[22px] font-bold leading-[1.1] tracking-[-0.02em]">Gerencial</h2>
-          <p className="mt-[3px] text-[12px] text-muted-foreground">{subline}</p>
-        </header>
         <GerencialToolbar
+          title="Gerencial" subline={subline}
           monthKey={monthKey} monthOptions={monthOptions} onMonth={changeMonth}
           canPrev={monthKey > oldestKey} onPrev={() => { if (monthKey > oldestKey) changeMonth(addMonthsToKey(monthKey, -1)); }}
           canNext={monthKey < currentKey} onNext={() => { if (monthKey < currentKey) changeMonth(addMonthsToKey(monthKey, 1)); }}

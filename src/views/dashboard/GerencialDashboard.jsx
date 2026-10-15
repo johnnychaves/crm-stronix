@@ -29,7 +29,7 @@ export function GerencialDashboard({ period, curve, sold, wallet, risk, exits, c
   // número zerado, nem tabela com zero linhas.
   if (flags?.gymEmpty) {
     return (
-      <div className="px-4 pb-8 pt-[22px] md:px-8">
+      <div className="px-4 pb-8 pt-2 md:px-8">
         <GerencialEmpty onGoToPipeline={onGoToPipeline} />
       </div>
     );
@@ -41,7 +41,7 @@ export function GerencialDashboard({ period, curve, sold, wallet, risk, exits, c
   const noSales = Boolean(flags?.monthNoSales);
 
   return (
-    <div className="flex flex-col gap-6 px-4 pb-8 pt-[22px] md:px-8">
+    <div className="flex flex-col gap-6 px-4 pb-8 pt-2 md:px-8">
       {noSales ? (
         <div className="rounded-[22px] border border-border bg-card px-7 py-10 text-center shadow-card">
           <div className="font-display text-[19px] font-bold tracking-[-0.02em]">{texts?.emptyMonth?.title}</div>

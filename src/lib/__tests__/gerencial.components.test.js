@@ -320,6 +320,8 @@ describe('ExpiryExitsCard', () => {
 describe('barra do Gerencial', () => {
   const noop = () => {};
   const bar = (over) => render(createElement(GerencialToolbar, {
+    title: 'Gerencial',
+    subline: '1 a 17 de setembro · vs. mesmos dias de agosto',
     monthKey: '2026-09',
     monthOptions: [{ key: '2026-09', label: 'Setembro 2026', note: 'em andamento' }, { key: '2026-08', label: 'Agosto 2026' }],
     onMonth: noop,
@@ -341,6 +343,13 @@ describe('barra do Gerencial', () => {
     expect(html).toContain('aria-label="Próximo mês"');
     expect(html).toContain('Comparar com');
     expect(html).toContain('Agosto 2026');
+  });
+
+  it('o título e a linha de apoio moram no mesmo cartão da barra, com a borda das faixas', () => {
+    const html = bar();
+    expect(html).toContain('>Gerencial</h2>');
+    expect(html).toContain('1 a 17 de setembro · vs. mesmos dias de agosto');
+    expect(html).toContain('rounded-[18px] border border-border bg-card');
   });
 
   it('o aviso de caixa e o filtro de unidade não moram na barra', () => {
