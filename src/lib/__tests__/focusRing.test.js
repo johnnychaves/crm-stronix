@@ -122,6 +122,14 @@ describe('o anel chega aos controles do teclado', () => {
       expect(botaoDe(barra, rotulo), rotulo).toHaveLength(1);
       expect(semAnel(botaoDe(barra, rotulo)), rotulo).toEqual([]);
     }
+    // Em Leads parados, o corte de dias também leva o anel.
+    const parados = renderToString(createElement(RelatoriosToolbar, {
+      period: mes, todayKey: TODAY, onPeriod: noop, onRange: noop, showPeriod: false, dias: 7, onDias: noop,
+      resp: [], people, onResp: noop, origem: null, origens: ['Instagram'], onOrigem: noop,
+      funnel: 'all', funnels: [{ id: 'f1', name: 'Vendas' }], onFunnel: noop,
+    }));
+    expect(botaoDe(parados, 'Sem registro há mais de')).toHaveLength(1);
+    expect(semAnel(botaoDe(parados, 'Sem registro há mais de'))).toEqual([]);
     const menu = renderToString(createElement(ConsultoresMenu, { resp: [], people, onResp: noop }));
     const equipe = tagsOf(menu, 'button').filter((tag) => tag.includes('aria-pressed'));
     expect(equipe).toHaveLength(1);

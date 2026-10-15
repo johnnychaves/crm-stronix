@@ -20,7 +20,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} };
 Element.prototype.scrollIntoView ??= function scrollIntoView() {};
 
-const { RelatoriosToolbar, FilterButton, ConsultoresMenu, ConsultoresControl, OrigemControl, FunilControl } = await import('../../views/relatorios/RelatoriosToolbar.jsx');
+const { RelatoriosToolbar, FilterButton, ConsultoresMenu, ConsultoresControl, OrigemControl, FunilControl, DiasControl } = await import('../../views/relatorios/RelatoriosToolbar.jsx');
 const { RelatoriosRail } = await import('../../views/relatorios/RelatoriosRail.jsx');
 
 const NOW = new Date(2026, 8, 25, 14, 30);
@@ -186,6 +186,32 @@ describe('listas de Origem e de Funil', () => {
     await tecla(opcao('Todos os funis'), 'Enter');
     expect(onFunnel).toHaveBeenLastCalledWith('all');
     expect(onFunnel).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('corte de Leads parados', () => {
+  it('a lista tem os quatro cortes, com borda própria, e escolher passa o número de dias', async () => {
+    const onDias = vi.fn();
+    await montar(h(DiasControl, { dias: 7, onDias }));
+    // O nome do botão é o texto inteiro, e o combobox lê os dias como valor.
+    expect(gatilho('Sem registro há mais de').getAttribute('role')).toBe('combobox');
+    expect(gatilho('Sem registro há mais de').textContent).toContain('7 dias');
+    await abrir('Sem registro há mais de');
+    expect(lista().className).toContain('border-border');
+    expect([...document.querySelectorAll('[role="option"]')].map((o) => o.textContent.trim())).toEqual(['3 dias', '7 dias', '15 dias', '30 dias']);
+    await tecla(opcao('15 dias'), 'Enter');
+    expect(onDias).toHaveBeenCalledTimes(1);
+    expect(onDias).toHaveBeenCalledWith(15);
+  });
+
+  it('a barra sem período traz o corte no computador e no balão do celular, e o corte não acende o botão de filtros', async () => {
+    await montar(h(RelatoriosToolbar, { ...barra, showPeriod: false, dias: 30, onDias: noop }));
+    expect(gatilho('Período')).toBeNull();
+    expect(gatilho('Sem registro há mais de').textContent).toContain('30 dias');
+    expect(gatilho('Filtros dos relatórios')).not.toBeNull();
+    await clicar(gatilho('Filtros dos relatórios'));
+    expect(balao().querySelector('[aria-label="Sem registro há mais de"]')).not.toBeNull();
+    expect(balao().querySelector('[aria-label="Período"]')).toBeNull();
   });
 });
 

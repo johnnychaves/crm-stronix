@@ -1,6 +1,8 @@
 // Barra dos Relatórios (spec 2026-10-09, "A barra de cima"): o período e, no
 // modo mês, as setas e a lista dos 12 meses; os consultores, a origem e o
-// funil. Tudo vem do endereço e volta para ele pela tela (on*). Abaixo de md
+// funil. Em Leads parados, que é retrato de agora, o período sai e entra no
+// lugar dele o corte "sem registro há mais de" (showPeriod falso). Tudo vem do
+// endereço e volta para ele pela tela (on*). Abaixo de md
 // os controles entram num balão, como na barra do Operacional, e só o período
 // fica à vista: por isso o botão do balão acende e ganha um ponto quando há
 // consultor, origem ou funil escolhido, como o botão de filtros do CRM.
@@ -12,13 +14,14 @@
 // SelectTrigger do shadcn põe um segundo filho e o Slot exige um só.
 import { useId } from 'react';
 import { Select as SelectPrimitive } from 'radix-ui';
-import { ChevronDown, Filter, Layers, SlidersHorizontal, Users } from 'lucide-react';
+import { ChevronDown, Clock, Filter, Layers, SlidersHorizontal, Users } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/popover.jsx';
 import { Select, SelectContent, SelectItem } from '../../components/ui/select.jsx';
 import { Checkbox } from '../../components/ui/checkbox.jsx';
 import { PeriodControl } from '../../components/period/PeriodControl.jsx';
 import { FOCUS_RING } from '../../components/focusRing.js';
+import { DIAS_PARADOS } from '../../lib/screenParams.js';
 import { MonthControl } from '../dashboard/OperacionalToolbar.jsx';
 
 const IDLE = 'border-border bg-card text-foreground';
@@ -129,16 +132,42 @@ export function FunilControl({ funnel, funnels, onFunnel, compact = false }) {
   );
 }
 
+// O corte de Leads parados: "Sem registro há mais de" e os dias, que o botão
+// diz. O texto de fora é só visual (aria-hidden): o nome do botão já o leva, e
+// o combobox lê os dias como valor. Os dias saem da mesma lista do endereço
+// (DIAS_PARADOS). Exportado para o teste.
+const diasText = (d) => `${d} dias`;
+export function DiasControl({ dias, onDias, compact = false }) {
+  return (
+    <div className={cn('flex items-center gap-2', compact && 'flex-col items-stretch gap-1')}>
+      <span aria-hidden="true" className="whitespace-nowrap text-[12.5px] font-semibold text-muted-foreground">Sem registro há mais de</span>
+      <Select value={String(dias)} onValueChange={(v) => onDias(Number(v))}>
+        <SelectPrimitive.Trigger asChild>
+          <FilterButton label="Sem registro há mais de" icon={Clock} active={false} text={diasText(dias)} compact={compact} />
+        </SelectPrimitive.Trigger>
+        <SelectContent position="popper" className="border-border">
+          {DIAS_PARADOS.map((d) => (
+            <SelectItem key={d} value={String(d)}>
+              {diasText(d)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
 export function RelatoriosToolbar(props) {
-  const { period } = props;
+  const { period, showPeriod = true } = props;
   // No celular só o período fica à vista: com consultor, origem ou funil
   // escolhido, o botão do balão acende e ganha um ponto, e o nome diz que há
   // filtro ativo (o CrmToolbar faz o mesmo).
   const filtered = props.resp.length > 0 || Boolean(props.origem) || props.funnel !== 'all';
   const controls = (compact) => (
     <>
-      <PeriodControl period={period} todayKey={props.todayKey} onPeriod={props.onPeriod} onRange={props.onRange} compact={compact} />
-      {period.kind === 'mes' && (
+      {!showPeriod && <DiasControl dias={props.dias} onDias={props.onDias} compact={compact} />}
+      {showPeriod && <PeriodControl period={period} todayKey={props.todayKey} onPeriod={props.onPeriod} onRange={props.onRange} compact={compact} />}
+      {showPeriod && period.kind === 'mes' && (
         <MonthControl
           monthKey={props.monthKey}
           monthOptions={props.monthOptions}
@@ -193,7 +222,9 @@ export function RelatoriosToolbar(props) {
             balão rolar por dentro, com cada controle no tamanho de sempre. */}
         <PopoverContent align="start" aria-label="Filtros" className="flex w-[288px] max-h-(--radix-popover-content-available-height) flex-col gap-2.5 overflow-y-auto overscroll-y-contain border-border [&>*]:shrink-0">{controls(true)}</PopoverContent>
       </Popover>
-      <span className="num min-w-0 truncate text-[12.5px] font-semibold text-muted-foreground md:hidden">{period.label}</span>
+      <span className="num min-w-0 truncate text-[12.5px] font-semibold text-muted-foreground md:hidden">
+        {showPeriod ? period.label : `Sem registro há mais de ${diasText(props.dias)}`}
+      </span>
     </div>
   );
 }

@@ -38,6 +38,20 @@ describe('barra dos Relatórios', () => {
     expect(out).toContain('>Instagram</span>');
   });
 
+  it('em Leads parados, o corte de dias no lugar do período e do mês', () => {
+    const out = renderToString(createElement(RelatoriosToolbar, {
+      ...base, period: periodFromParams({ monthKey: '2026-09' }, NOW), showPeriod: false, dias: 15, onDias: noop,
+    }));
+    expect(out).not.toContain('aria-label="Período"');
+    expect(out).not.toContain('aria-label="Mês de competência"');
+    expect(out).toContain('aria-label="Sem registro há mais de"');
+    expect(out).toContain('15 dias');
+    // No celular, o texto ao lado do botão de filtros é o corte, e não o período.
+    expect(out).toContain('Sem registro há mais de 15 dias');
+    expect(out).not.toContain('Setembro 2026 · em andamento</span>');
+    for (const l of ['Consultores', 'Origem', 'Funil']) expect(out).toContain(`aria-label="${l}"`);
+  });
+
   it('o menu de consultores marca a equipe toda ou cada pessoa', () => {
     const toda = renderToString(createElement(ConsultoresMenu, { resp: [], people, onResp: noop }));
     expect(toda.match(/aria-pressed="true"/g)).toHaveLength(1);
