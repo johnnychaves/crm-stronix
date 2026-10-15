@@ -2,8 +2,8 @@ import { useCallback, useMemo, useState } from 'react';
 import { ArrowRightLeft, CalendarClock, FileSpreadsheet, Gauge, Handshake, Kanban, Library, PlugZap, Target, Users } from 'lucide-react';
 import { SettingsRailGroup, SettingsRailItem } from '../../components/ui/SettingsCard.jsx';
 import { buildSetupState } from '../../lib/settingsSetup.js';
-import { usePagedLeads } from '../../hooks/usePagedLeads.js';
-import { allLeadsQuerySpec } from '../../lib/leadQueries.js';
+import { useLiveLeads } from '../../hooks/useLiveLeads.js';
+import { allLeadsQuerySpec, ALL_LEADS_KEY } from '../../lib/leadQueries.js';
 import { LEADS_PATH } from '../../lib/firebase.js';
 import { normalizeLeadDoc } from '../../lib/leads.js';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
@@ -52,17 +52,20 @@ const RAIL_ICONS = {
 
 function SettingsView({
   section, onSection, db, statuses, sources, usersList, appUser, tags, lossReasons,
-  dores, funnels, modalities, planos, trialClassOptions, units, metaWeekdays
+  dores, funnels, modalities, planos, trialClassOptions, units, metaWeekdays, listenersActive = true
 }) {
   // Fonte de leads das Configurações (G1-flip): TODOS os buckets por query
   // própria em vez do prop global (que virou só 'ativo' no flip). As seções
   // contam uso e fazem cascata de renomear/excluir sobre clientes e perdas
   // também, então precisam da base COMPLETA — senão contagens (motivo de perda,
   // plano por cliente) zeram e a cascata deixa clientes/perdas com valor antigo.
+  // Ao vivo desde 09/10/2026 (useLiveLeads), com a mesma consulta de Todos os
+  // leads: só entrega a lista depois da resposta do servidor, então a base
+  // continua completa, e na volta em até 30 minutos cobra só o que mudou.
   const settingsLeadsSpec = useMemo(() => allLeadsQuerySpec(), []);
-  const { items: leads } = usePagedLeads({
-    db, path: LEADS_PATH, spec: settingsLeadsSpec, specKey: 'settings-all-leads',
-    mapDoc: normalizeLeadDoc, enabled: !!db,
+  const { items: leads } = useLiveLeads({
+    db, path: LEADS_PATH, spec: settingsLeadsSpec, specKey: ALL_LEADS_KEY,
+    mapDoc: normalizeLeadDoc, enabled: !!db && listenersActive,
   });
 
   const { slaOverdueDays } = useGeneralConfig();
