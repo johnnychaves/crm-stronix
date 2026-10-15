@@ -1,6 +1,6 @@
 // Tela Gerencial (Visão geral · Gerencial): o dinheiro vendido no mês, o que a
 // carteira vale por mês, o que está para sair e quem vende. Visual e textos:
-// handoff do Claude Design (docs/superpowers/specs/handoff-gerencial/). A
+// handoff v2 do Claude Design (docs/superpowers/specs/handoff-gerencial/). A
 // matemática vem de src/lib/gerencial/ (metricsOf) e o mapeamento para as props
 // da tela vem de lib/gerencial/viewModel.js; aqui é só estado e carga, no molde
 // do DashboardCrmView.
@@ -100,7 +100,7 @@ export function DashboardGerencialView({ usersList, liveLeads, db, listenersActi
   const oldestKey = addMonthsToKey(currentKey, -11);
   const monthOptions = useMemo(
     () => Array.from({ length: 12 }, (_, i) => addMonthsToKey(currentKey, -i))
-      .map((k) => ({ key: k, label: `${monthLabel(k)}${k === currentKey ? ' · em andamento' : ''}` })),
+      .map((k) => ({ key: k, label: monthLabel(k), note: k === currentKey ? 'em andamento' : undefined })),
     [currentKey]
   );
   const cmpOptions = earlierWithSales.map((k) => ({ key: k, label: monthLabel(k) }));
@@ -113,17 +113,16 @@ export function DashboardGerencialView({ usersList, liveLeads, db, listenersActi
   return (
     <TooltipProvider delayDuration={150}>
       <div className="-m-4 md:-m-8 font-sans">
-        <header className="bg-card px-4 md:px-8 pb-4 pt-5">
-          <h2 className="m-0 font-display text-[24px] font-bold tracking-[-0.02em]">Gerencial</h2>
-          <p className="mt-[5px] max-w-[860px] text-[12.5px] leading-normal text-muted-foreground">{subline}</p>
+        <header className="flex min-h-[72px] flex-col justify-center border-b border-border bg-card px-4 py-3 md:px-8">
+          <h2 className="m-0 font-display text-[22px] font-bold leading-[1.1] tracking-[-0.02em]">Gerencial</h2>
+          <p className="mt-[3px] text-[12px] text-muted-foreground">{subline}</p>
         </header>
         <GerencialToolbar
           monthKey={monthKey} monthOptions={monthOptions} onMonth={changeMonth}
           canPrev={monthKey > oldestKey} onPrev={() => { if (monthKey > oldestKey) changeMonth(addMonthsToKey(monthKey, -1)); }}
           canNext={monthKey < currentKey} onNext={() => { if (monthKey < currentKey) changeMonth(addMonthsToKey(monthKey, 1)); }}
-          compareOn={compareOn} onCompareOn={(v) => setParams({ compareOn: v })}
-          compareKey={cmpKey || ''} compareOptions={cmpOptions} onCompare={(k) => setParams({ compareKey: k })}
-          canCompare={canCompare}
+          compareOn={comparing} compareKey={cmpKey || ''} compareOptions={cmpOptions}
+          onCompare={(k) => setParams(k ? { compareOn: true, compareKey: k } : { compareOn: false })}
         />
         <GerencialDashboard {...props} onGoToPipeline={() => onNavigate?.('kanban')} />
       </div>

@@ -75,7 +75,8 @@ describe('tela Gerencial, de ponta a ponta', () => {
     expect(cur.wallet.blind).toBe(1);
     expect(cur.wallet.monthly).toBe(400); // quatro contratos de R$ 100 por mês
     expect(cur.wallet.ticket).toBe(100); // 400 ÷ 4 com valor, nunca ÷ 5
-    expect(html).toContain('Contratos vigentes');
+    expect(html).toContain('Carteira mensal');
+    expect(html).toContain('5 contratos');
     expect(html).toContain('R$ 400');
   });
 
@@ -84,8 +85,8 @@ describe('tela Gerencial, de ponta a ponta', () => {
     expect(cur.risk.horizon[0]).toMatchObject({ days: 30, count: 1, v: 100 }); // só o c4
     expect(cur.risk.horizon[2].blind).toBe(1); // o importado c5
     expect(cur.risk.expired.count).toBe(1); // o c7
-    expect(html).toContain('+1 sem valor');
-    expect(html).toContain('Já venceu e ninguém renovou');
+    expect(html).toContain('1 contrato importado sem valor');
+    expect(html).toContain('Vencidos sem renovar');
   });
 
   it('as saídas do mês trazem o cancelamento com o valor por mês', () => {
@@ -107,15 +108,15 @@ describe('tela Gerencial, de ponta a ponta', () => {
   it('academia sem contrato nenhum troca o corpo inteiro pelo painel único', () => {
     const { html } = screenOf([]);
     expect(html).toContain('Ainda não há contratos');
-    expect(html).not.toContain('Contratos vigentes');
-    expect(html).not.toContain('Quem vendeu');
+    expect(html).not.toContain('Carteira mensal');
+    expect(html).not.toContain('Consultores');
   });
 
-  it('mês sem venda esvazia só a venda e o ranking, e a carteira segue inteira', () => {
+  it('mês sem venda esvazia só a venda e os gráficos, e a carteira segue inteira', () => {
     const { html } = screenOf(RAW, '2026-05');
     expect(html).toContain('Nenhum contrato fechado neste mês');
-    expect(html).toContain('Sem vendas no mês, não há ranking');
-    expect(html).toContain('Contratos vigentes');
-    expect(html).toContain('Já venceu e ninguém renovou');
+    expect(html).not.toContain('Consultores');
+    expect(html).toContain('Carteira mensal');
+    expect(html).toContain('Vencidos sem renovar');
   });
 });
