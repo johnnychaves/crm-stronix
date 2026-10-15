@@ -127,7 +127,7 @@ body{
 .aviso{margin-top:4mm;border-left:1.4pt solid var(--ambar);padding:1mm 0 1mm 3mm;font-size:7.6pt;line-height:1.4;color:var(--grafite)}
 
 /* Lista */
-.lista-cab{display:flex;align-items:baseline;justify-content:space-between;margin-top:6mm;padding-bottom:1.6mm}
+.lista-cab{display:flex;align-items:baseline;justify-content:space-between;margin-top:5mm;padding-bottom:1.6mm}
 .lista-cab h3{margin:0;font:700 9.4pt/1 'Space Grotesk',sans-serif;display:flex;align-items:baseline;gap:2mm}
 .lista-cab h3 .num{font-size:15pt;letter-spacing:-.02em}
 .lista-cab .obs{font-size:7.4pt;color:var(--grafite)}
@@ -168,7 +168,7 @@ body{
 
   <div class="legenda so-tela">
     <h2>Relatório impresso</h2>
-    <p>O botão Imprimir fica ao lado de Exportar lista e abre a impressão do navegador já com este formato: A4 em pé, com o período e os filtros escritos no topo, o painel de números, todos os recortes lado a lado e a lista inteira, com o filtro da lista aplicado.</p>
+    <p>O botão Imprimir fica ao lado de Exportar lista e imprime só a lista, em A4 em pé: o período e os filtros escritos no topo, para quem pega a folha saber o que está lendo, e depois a lista inteira, com o filtro da lista aplicado.</p>
     <p>Funciona em impressora preto e branco: a situação de cada lead vai com um símbolo além da cor (✓ matriculou, ✕ perdeu, ○ em aberto).</p>
   </div>
 
@@ -204,53 +204,7 @@ body{
         <div><dt>Consultor</dt><dd>Equipe toda</dd></div>
         <div><dt>Origem</dt><dd>Todas</dd></div>
         <div><dt>Funil</dt><dd>Todos</dd></div>
-        <div class="linha2"><dt>Comparado com</dt><dd>1 a 15 de setembro de 2026 <span class="fraco">(os mesmos dias do mês anterior)</span></dd></div>
       </dl>
-
-      <div class="placar">
-        <div class="heroi">
-          <div class="rot">Conversão da safra</div>
-          <div class="grande verde">8%</div>
-          <div class="var"><b class="sobe-bom">▲ 3 p.p.</b> sobre 1 a 15 de setembro</div>
-        </div>
-        <ol class="etapas" aria-label="Etapas da safra">
-          <li class="etapa lista"><span class="rot">Leads da safra</span><span class="v">51</span><span class="d"><b class="sobe-bom">▲ 30,8%</b></span></li>
-          <li class="seta" aria-hidden="true"><svg viewBox="0 0 10 10"><path d="M3 1l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></li>
-          <li class="etapa"><span class="rot">Agendaram</span><span class="v">23</span><span class="d"><b class="sobe-bom">▲ 43,8%</b></span></li>
-          <li class="seta" aria-hidden="true"><svg viewBox="0 0 10 10"><path d="M3 1l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></li>
-          <li class="etapa"><span class="rot">Vieram</span><span class="v">8</span><span class="d"><b class="sobe-bom">▲ 33,3%</b></span></li>
-          <li class="seta" aria-hidden="true"><svg viewBox="0 0 10 10"><path d="M3 1l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></li>
-          <li class="etapa"><span class="rot">Matricularam</span><span class="v verde">4</span><span class="d"><b class="sobe-bom">▲ 100%</b></span></li>
-          <li class="corte" aria-hidden="true"></li>
-          <li class="etapa"><span class="rot">Perderam</span><span class="v">9</span><span class="d"><b class="sobe-ruim">▲ 350%</b></span></li>
-          <li class="etapa"><span class="rot">Em aberto</span><span class="v">38</span><span class="d">ainda no funil</span></li>
-        </ol>
-      </div>
-
-      <div class="recortes dois">
-        <div class="rec">
-          <h3>Por origem</h3>
-          <table>
-            <thead><tr><th>Origem</th><th>Leads</th><th>Matr.</th><th>Conversão</th></tr></thead>
-            <tbody id="c-origem"></tbody>
-          </table>
-        </div>
-        <div class="rec">
-          <h3>Por consultor</h3>
-          <table>
-            <thead><tr><th>Consultor</th><th>Leads</th><th>Matr.</th><th>Conversão</th></tr></thead>
-            <tbody id="c-consultor"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <p class="rapidez-titulo">Rapidez do 1º contato</p>
-      <div class="rapidez">
-        <div><span class="rot">Até 1 hora</span><span class="v">12</span></div>
-        <div><span class="rot">1 a 24 horas</span><span class="v">18</span></div>
-        <div><span class="rot">Mais de 24 horas</span><span class="v">9</span></div>
-        <div><span class="rot">Sem contato ainda</span><span class="v">12</span></div>
-      </div>
 
       <div class="lista-cab">
         <h3><span class="num">51</span> leads da safra</h3>
@@ -282,7 +236,7 @@ body{
   </section>
 
   <!-- ===================== Entrada de leads, folha 1 ===================== -->
-  <div class="rotulo-folha so-tela">Entrada de leads, folha 1: com o gráfico por dia e a lista filtrada por um consultor</div>
+  <div class="rotulo-folha so-tela">Entrada de leads, folha 1: a lista filtrada por um consultor</div>
   <section class="folha">
     <div class="corpo">
       <div class="cab-topo">
@@ -296,36 +250,8 @@ body{
         <div><dt>Consultor</dt><dd>Equipe toda</dd></div>
         <div><dt>Origem</dt><dd>Todas</dd></div>
         <div><dt>Funil</dt><dd>Todos</dd></div>
-        <div class="linha2"><dt>Lista filtrada por</dt><dd>Consultor: Bruno Lima <span class="fraco">(14 dos 51 leads; os números de cima são de todos)</span></dd></div>
+        <div class="linha2"><dt>Lista filtrada por</dt><dd>Consultor: Bruno Lima <span class="fraco">(14 dos 51 leads do período)</span></dd></div>
       </dl>
-
-      <div class="placar">
-        <div class="heroi">
-          <div class="rot">Leads novos</div>
-          <div class="grande">51</div>
-          <div class="var"><b class="sobe-bom">▲ 30,8%</b> sobre 1 a 15 de setembro</div>
-        </div>
-        <div class="dias">
-          <div class="dias-topo"><span>Por dia de cadastro</span><span>pico de 7 em 13/10</span></div>
-          <div class="barras" id="e-barras" aria-hidden="true"></div>
-          <div class="dias-eixo"><span>01/10</span><span>hoje, 15/10</span></div>
-        </div>
-      </div>
-
-      <div class="recortes tres">
-        <div class="rec">
-          <h3>Por origem</h3>
-          <table><thead><tr><th>Origem</th><th>Leads</th><th>Fatia</th></tr></thead><tbody id="e-origem"></tbody></table>
-        </div>
-        <div class="rec">
-          <h3>Por consultor</h3>
-          <table><thead><tr><th>Consultor</th><th>Leads</th><th>Fatia</th></tr></thead><tbody id="e-consultor"></tbody></table>
-        </div>
-        <div class="rec">
-          <h3>Por funil</h3>
-          <table><thead><tr><th>Funil</th><th>Leads</th><th>Fatia</th></tr></thead><tbody id="e-funil"></tbody></table>
-        </div>
-      </div>
 
       <div class="lista-cab">
         <h3><span class="num">14</span> leads de Bruno Lima</h3>
@@ -358,31 +284,6 @@ body{
         <div><dt>Origem e funil</dt><dd>Todas, todos</dd></div>
       </dl>
 
-      <div class="placar">
-        <div class="heroi">
-          <div class="rot">Leads parados</div>
-          <div class="grande">35</div>
-          <div class="var">de 54 em aberto agora. Cada lead conta uma vez.</div>
-        </div>
-        <ol class="etapas" aria-label="Por que estão parados">
-          <li class="etapa"><span class="rot">Sem próximo passo</span><span class="v ambar">11</span><span class="d">fora quem chegou há menos de 24 horas</span></li>
-          <li class="corte" aria-hidden="true"></li>
-          <li class="etapa"><span class="rot">Contato atrasado</span><span class="v rosa">9</span><span class="d">a data do contato já passou</span></li>
-          <li class="corte" aria-hidden="true"></li>
-          <li class="etapa"><span class="rot">Sem registro há mais de 7 dias</span><span class="v">23</span><span class="d">nada anotado na ficha</span></li>
-        </ol>
-      </div>
-
-      <div class="recortes dois">
-        <div class="rec">
-          <h3>Por consultor</h3>
-          <table><thead><tr><th>Consultor</th><th>Leads</th><th>Fatia</th></tr></thead><tbody id="p-consultor"></tbody></table>
-        </div>
-        <div class="rec">
-          <div class="aviso" style="margin-top:6.4mm">O consultor é o dono do lead hoje, mesmo quando o contato foi passado para outra pessoa. Um lead pode estar em mais de um motivo, e por isso os três números somam mais que 35.</div>
-        </div>
-      </div>
-
       <div class="lista-cab">
         <h3><span class="num">35</span> leads parados</h3>
         <span class="obs">Quem está há mais dias sem registro vem primeiro</span>
@@ -408,7 +309,7 @@ const nomes = ['André Martins','Camila Gomes','Aline Gomes','Rodrigo Menegatti'
 const origens = ['Instagram','Indicação','Google','Site','WhatsApp','Passante'];
 const consultores = ['Bruno Lima','Diego Santos','Camila Torres','Ana Ribeiro','Marcos Silva'];
 const etapas = ['Novo lead','Contato feito','Aula agendada','Negociação'];
-const fill = (id, html) => { document.getElementById(id).innerHTML = html; };
+const fill = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
 const mini = (pct, cls = '') => `<span class="mini"><span class="trilho"><i class="${cls}" style="width:${pct}%"></i></span><b>${pct}%</b></span>`;
 
 // Conversão
@@ -423,8 +324,8 @@ const linhaConv = (i) => {
   const dia = String(15 - Math.floor(i / 3.6)).padStart(2,'0');
   return `<tr><td class="nome">${nomes[i % nomes.length]}</td><td>${pick(origens)}</td><td>${pick(consultores)}</td><td>${dia}/10</td><td>${pick(contato)}</td><td class="c">${ag?'Sim':'Não'}</td><td class="c">${veio?'Sim':'Não'}</td><td>${st}</td></tr>`;
 };
-fill('c-lista-1', Array.from({length:12}, (_, i) => linhaConv(i)).join(''));
-fill('c-lista-2', Array.from({length:39}, (_, i) => linhaConv(i + 12)).join(''));
+fill('c-lista-1', Array.from({length:32}, (_, i) => linhaConv(i)).join(''));
+fill('c-lista-2', Array.from({length:19}, (_, i) => linhaConv(i + 32)).join(''));
 
 // Entrada
 const porDia = [3,3,2,4,3,4,4,5,4,2,5,1,7,3,6];
@@ -441,8 +342,8 @@ fill('e-lista', Array.from({length:14}, (_, i) => {
 
 // Leads parados
 fill('p-consultor', fatia([['Diego Santos',11],['Bruno Lima',9],['Camila Torres',8],['Outros',5],['Ana Ribeiro',2]], 35));
-fill('p-lista', Array.from({length:19}, (_, i) => {
-  const dias = 42 - i * 1.6 | 0;
+fill('p-lista', Array.from({length:32}, (_, i) => {
+  const dias = 44 - i;
   const d = new Date(2026, 9, 15 - dias);
   const ult = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}, há ${dias} dias`;
   const tipo = i % 3;
