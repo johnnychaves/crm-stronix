@@ -9,6 +9,7 @@
 //   wallet   { count, monthly, ticket, lockedCount }
 //   risk     { horizon, walletMonthly, lapsedCount }
 //   exits    { items }
+//   churn    { pct, exits, base, delta }
 //   sellers  { rows }
 //   plans    { items, total } — count é dinheiro e times é o número de vendas
 //   sources  { items, total }
@@ -16,14 +17,14 @@
 //   texts    { emptyMonth: { title, text } }
 import { GerencialKpis } from './GerencialKpis.jsx';
 import { SalesTypeCard, PieCard } from './GerencialPies.jsx';
-import { SellersCard, ExpiryCard, ExitsCard } from './GerencialRows.jsx';
+import { SellersCard, ExpiryCard, ExitsCard, ChurnCard } from './GerencialRows.jsx';
 import { GerencialEmpty } from './GerencialParts.jsx';
 
 const ROW_2 = 'grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)]';
 const ROW_3 = 'grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]';
 const ROW_4 = 'grid grid-cols-1 gap-4 xl:grid-cols-2';
 
-export function GerencialDashboard({ sold, wallet, risk, exits, sellers, plans, sources, flags, texts, onGoToPipeline }) {
+export function GerencialDashboard({ sold, wallet, risk, exits, churn, sellers, plans, sources, flags, texts, onGoToPipeline }) {
   // A academia sem contrato nenhum troca o CORPO INTEIRO por um painel só: nem
   // card de zeros, nem tabela com zero linhas.
   if (flags?.gymEmpty) {
@@ -58,7 +59,10 @@ export function GerencialDashboard({ sold, wallet, risk, exits, sellers, plans, 
 
       <div className={ROW_3}>
         <ExpiryCard horizon={risk?.horizon} />
-        <ExitsCard items={exits?.items} />
+        <div className="flex flex-col gap-4">
+          <ChurnCard churn={churn} />
+          <ExitsCard items={exits?.items} />
+        </div>
       </div>
 
       {!noSales && (

@@ -34,6 +34,16 @@ export function pctDelta(cur, prev, { lowerBetter = false, baseline } = {}) {
   return { up, tone: up !== lowerBetter ? 'good' : 'bad', text: `${Math.abs(pct)}%`, baseline };
 }
 
+// Variação em pontos percentuais, para taxa (churn). Mesmo formato do
+// pctDelta; `lowerBetter` diz que subir é ruim.
+export function ppDelta(cur, prev, { lowerBetter = false, baseline } = {}) {
+  if (cur == null || prev == null) return null;
+  const d = Math.round((cur - prev) * 10) / 10;
+  if (d === 0) return { tone: 'quiet', text: 'igual', baseline };
+  const up = d > 0;
+  return { up, tone: up !== lowerBetter ? 'good' : 'bad', text: `${Math.abs(d).toLocaleString('pt-BR')} p.p.`, baseline };
+}
+
 // Planos e origem entram no gráfico pelo VALOR vendido: a grandeza é dinheiro
 // e a contagem de vendas vira a dica da fatia. `prevOf` devolve o valor do
 // mesmo nome no mês comparado.
@@ -74,6 +84,17 @@ export function dashboardProps({ cur, cmp, comparing, roleOf = () => null }) {
       horizon: cur.risk.horizon,
       walletMonthly: cur.wallet.monthly,
       lapsedCount: cur.risk.expired.count
+    },
+    churn: {
+      pct: cur.churn.pct,
+      exits: cur.churn.exits,
+      base: cur.churn.base,
+      delta: on
+        ? ppDelta(cur.churn.pct, cmp.churn.pct, {
+          lowerBetter: true,
+          baseline: cmp.churn.pct == null ? undefined : `${cmp.churn.pct.toLocaleString('pt-BR')}% ${vs}`
+        })
+        : null
     },
     exits: {
       items: cur.exits.items.map((e) => {

@@ -9,7 +9,7 @@ import { renderToString } from 'react-dom/server';
 import { TooltipProvider } from '../../components/ui/tooltip.jsx';
 import { normalizeContracts } from '../operacional/base.js';
 import { metricsOf } from '../gerencial/metrics.js';
-import { dashboardProps } from '../gerencial/viewModel.js';
+import { dashboardProps, ppDelta } from '../gerencial/viewModel.js';
 import { GerencialDashboard } from '../../views/dashboard/GerencialDashboard.jsx';
 
 const NOW = new Date(2026, 8, 17, 12, 0);
@@ -132,6 +132,7 @@ describe('comparativo por linha', () => {
     wallet: { count: 628, monthly: 134200, lockedCount: 19 },
     risk: { horizon: [], expired: { count: 0 } },
     exits: { items: [], ...over.exits },
+    churn: { exits: 7, base: 200, pct: 3.5, ...over.churn },
     sellers: [],
     plans: [],
     sources: [],
@@ -139,6 +140,7 @@ describe('comparativo por linha', () => {
     ...over.rest
   });
   const cur = stub({
+    churn: { exits: 7, base: 200, pct: 3.5 },
     sold: { mix: [{ type: 'nova', count: 21, value: 34700 }, { type: 'upgrade', count: 5, value: 10400 }] },
     exits: { items: [{ kind: 'cancelamento', label: 'Cancelamentos', count: 7, v: 1480 }] },
     rest: {
@@ -151,6 +153,7 @@ describe('comparativo por linha', () => {
     ...stub({
       sold: { sold: 71900, count: 39, mix: [{ type: 'nova', count: 18, value: 31600 }, { type: 'upgrade', count: 4, value: 10400 }] },
       exits: { items: [{ kind: 'cancelamento', label: 'Cancelamentos', count: 4, v: 900 }] },
+      churn: { exits: 4, base: 190, pct: 2.1 },
       rest: {
         monthKey: '2026-08',
         sellers: [{ id: 'u1', name: 'Ana', count: 20, value: 36000, monthly: 230 }],
@@ -204,5 +207,49 @@ describe('comparativo por linha', () => {
     expect(html).toContain('▲ 10%');
     expect(html).toContain('▼ 13%');
     expect(html).toContain('R$ 31.600 nos mesmos dias de agosto');
+  });
+});
+
+describe('churn na tela', () => {
+  const base = { exits: 7, base: 200, pct: 3.5 };
+  const mk = (churn, running = true) => ({
+    monthKey: '2026-09', running,
+    sold: { sold: 0, count: 0, ticket: 0, discPct: 0, discAbs: 0, clawCount: 0, clawValue: 0, mix: [] },
+    wallet: { count: 0, monthly: 0, ticket: 0, lockedCount: 0 },
+    risk: { horizon: [], expired: { count: 0 } },
+    exits: { items: [] }, churn, sellers: [], plans: [], sources: [],
+    flags: { gymEmpty: false, monthNoSales: true }
+  });
+
+  it('a taxa vem da conta, sem comparação não há variação', () => {
+    const p = dashboardProps({ cur: mk(base), cmp: null, comparing: false });
+    expect(p.churn).toEqual({ pct: 3.5, exits: 7, base: 200, delta: null });
+  });
+
+  it('subir o churn é ruim: pontos percentuais em vermelho, com a base na dica', () => {
+    const cmp = { ...mk({ exits: 4, base: 190, pct: 2.1 }), monthKey: '2026-08' };
+    const p = dashboardProps({ cur: mk(base), cmp, comparing: true });
+    expect(p.churn.delta).toMatchObject({ up: true, tone: 'bad', text: '1,4 p.p.', baseline: '2,1% nos mesmos dias de agosto' });
+  });
+
+  it('cair é bom, e sem taxa de um dos lados não há variação', () => {
+    expect(ppDelta(2, 3.5, { lowerBetter: true })).toMatchObject({ up: false, tone: 'good', text: '1,5 p.p.' });
+    expect(ppDelta(null, 3.5)).toBeNull();
+    expect(ppDelta(3.5, 3.5, { lowerBetter: true })).toMatchObject({ tone: 'quiet', text: 'igual' });
+  });
+
+  it('o card aparece na tela com a porcentagem e quantos saíram de quantos', () => {
+    const p = dashboardProps({ cur: mk(base), cmp: null, comparing: false });
+    const html = renderToString(createElement(TooltipProvider, null, createElement(GerencialDashboard, { ...p, onGoToPipeline: () => {} })));
+    expect(html).toContain('Churn');
+    expect(html).toContain('3,5%');
+    expect(html).toContain('7 clientes saíram de 200 ativos no início');
+  });
+
+  it('sem clientes no início, o card diz que não há base em vez de 0%', () => {
+    const p = dashboardProps({ cur: mk({ exits: 0, base: 0, pct: null }), cmp: null, comparing: false });
+    const html = renderToString(createElement(TooltipProvider, null, createElement(GerencialDashboard, { ...p, onGoToPipeline: () => {} })));
+    expect(html).toContain('sem clientes ativos no início do mês');
+    expect(html).not.toContain('0%');
   });
 });

@@ -49,7 +49,7 @@ describe('vazios', () => {
 
 describe('dicas do "?"', () => {
   it('cada card tem uma explicação escrita, sem travessão no meio da frase', () => {
-    const keys = ['sold', 'wallet', 'ticket', 'lapsed', 'mix', 'sellers', 'expiry', 'exits', 'plans', 'sources'];
+    const keys = ['sold', 'wallet', 'ticket', 'lapsed', 'churn', 'mix', 'sellers', 'expiry', 'exits', 'plans', 'sources'];
     expect(Object.keys(HELP).sort()).toEqual([...keys].sort());
     keys.forEach((k) => {
       expect(HELP[k].length, k).toBeGreaterThan(40);

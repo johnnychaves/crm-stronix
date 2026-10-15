@@ -44,6 +44,7 @@ export const HELP = {
   mix: 'Cada contrato fechado no mês entra em um tipo só: matrícula nova, renovação, upgrade ou retorno de ex-cliente. O desconto é quanto os contratos saíram abaixo do preço de tabela. Com a comparação ligada, a seta mostra a variação contra o mês comparado.',
   sellers: 'O consultor dono do lead na hora da venda. Vendas é a quantidade de contratos. Ticket/mês é o valor médio por mês de cada venda, e mostra quem vende planos mais longos ou mais caros, não só quem vende mais.',
   expiry: 'Contratos ativos que terminam em 30, 60 e 90 dias e ainda não têm renovação, com o valor por mês de cada faixa. Contrato trancado não vence.',
+  churn: 'De cada 100 clientes ativos no começo do mês, quantos saíram de vez. Sai de vez quem cancelou e não ficou com outro contrato, ou cujo contrato venceu, passou da tolerância e não voltou. Trancado não conta como saída. Cancelamentos e trancamentos em valor estão em Saídas do mês.',
   exits: 'Contratos cancelados e trancados no mês, com o valor por mês que cada um leva embora. Trancamento é reversível e o contrato continua na carteira. Cancelamento sai dela.',
   plans: 'Planos vendidos no mês, por valor. Combinação de modalidades é um plano próprio: Musculação + Pilates não entra em Musculação nem em Pilates.',
   sources: 'De onde veio o lead que virou contrato no mês. Não é o volume de leads de cada canal, que fica no painel CRM.'

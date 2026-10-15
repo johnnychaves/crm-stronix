@@ -29,7 +29,7 @@ import { isGestor, roleLabel } from '../../lib/acesso.js';
 const sellerRoleText = (user) => (isGestor(user) ? 'Gestor · também vende' : roleLabel(user));
 
 export function DashboardGerencialView({ usersList, liveLeads, db, listenersActive = true, onNavigate }) {
-  const { contratos } = useGeneralConfig();
+  const { contratos, renewalGraceDays = 15 } = useGeneralConfig();
 
   // Relógio da tela: vira o minuto. A carteira e o risco são retrato de agora,
   // então dependem dele tanto quanto o mês em andamento.
@@ -80,7 +80,10 @@ export function DashboardGerencialView({ usersList, liveLeads, db, listenersActi
   );
   const leadsById = useGerencialLeads({ db, enabled: listenersActive, contracts, monthKeys, liveLeads });
 
-  const ctx = useMemo(() => ({ now, contracts, leadsById }), [now, contracts, leadsById]);
+  const ctx = useMemo(
+    () => ({ now, contracts, leadsById, graceDays: renewalGraceDays }),
+    [now, contracts, leadsById, renewalGraceDays]
+  );
   const cur = useMemo(() => metricsOf(ctx, { monthKey }), [ctx, monthKey]);
   const cmp = useMemo(
     // Corte pró-rata só com o mês exibido em andamento; mês fechado compara inteiro.

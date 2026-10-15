@@ -353,6 +353,7 @@ const BODY = {
   wallet: WALLET,
   risk: RISK,
   exits: { items: EXITS },
+  churn: { pct: 3.5, exits: 7, base: 200, delta: null },
   sellers: { rows: SELLERS },
   plans: PLANS,
   sources: SOURCES,
@@ -415,7 +416,7 @@ describe('contrato sem valor', () => {
 describe('dicas "?" da tela', () => {
   it('cada card do corpo tem o seu "?", com o nome do card no rótulo', () => {
     const html = render(createElement(GerencialDashboard, BODY));
-    ['Vendido no mês', 'Carteira mensal', 'Ticket médio mensal', 'Vencidos sem renovar', 'Vendas por tipo', 'Consultores', 'Vencimentos', 'Saídas do mês', 'Planos', 'Origem das vendas']
+    ['Vendido no mês', 'Carteira mensal', 'Ticket médio mensal', 'Vencidos sem renovar', 'Churn', 'Vendas por tipo', 'Consultores', 'Vencimentos', 'Saídas do mês', 'Planos', 'Origem das vendas']
       .forEach((t) => expect(html, t).toContain(`aria-label="O que é &quot;${t}&quot;?"`));
   });
 });

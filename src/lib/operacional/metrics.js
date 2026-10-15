@@ -3,7 +3,7 @@
 // número da equipe é a soma; nenhuma taxa é guardada.
 
 import { monthRange, effectiveEnd, metaDaysOfMonth, isCurrentMonthKey, addMonthsToKey } from './month.js';
-import { computeBaseMovement, computeChurn, cancellationsByReason, salesInWindow } from './base.js';
+import { computeBaseMovement, cancellationsByReason, salesInWindow } from './base.js';
 import { renewalCohort, summarizeCohort, milestones, milestoneSpanDays, upcomingExpirations } from './renewal.js';
 import {
   OTHERS_ID, metaDaysSummary, pickMeta, metaCalendar, prospectionSummary, pickProspection, tasksByType, overdueNow
@@ -67,7 +67,7 @@ function cacheOf(ctx) {
   return cache;
 }
 
-// Ponte, trancados, churn, cancelamentos, vendas por vendedor e linhas da
+// Ponte, trancados, cancelamentos, vendas por vendedor e linhas da
 // coorte: iguais para a equipe e para qualquer pessoa filtrada.
 function academyOf(ctx, cache, { monthKey, start, monthEnd, end, asOf }) {
   const key = `${monthKey}|${end.getTime()}`;
@@ -80,7 +80,6 @@ function academyOf(ctx, cache, { monthKey, start, monthEnd, end, asOf }) {
     known: contracts.some((c) => c.startsAt && c.startsAt < end),
     movement,
     locked: movement.locked,
-    churn: computeChurn(contracts, { start, end, graceDays: grace, activeAtStart: movement.startCount }),
     cancels: cancellationsByReason(contracts, { start, end }),
     sales: salesInWindow(contracts, { start, end }),
     cohortRows: renewalCohort(contracts, { start, end: monthEnd, asOf, graceDays: grace, leadsById: ctx.leadsById })
@@ -155,7 +154,6 @@ function computeMetrics(ctx, cache, { monthKey, userId, cutEnd, src, after, win 
       active: academy.known ? academy.movement.endCount : null,
       movement: academy.movement,
       locked: academy.locked,
-      churn: academy.churn,
       cancels: academy.cancels
     },
     // Sem contrato nenhum antes do fim, o sistema ainda não tinha base: sem número.

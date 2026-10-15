@@ -360,7 +360,6 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
     meta: seriesOf(ctx, { monthKey, userId, pick: (m) => m.meta?.pct ?? null }),
     prosp: seriesOf(ctx, { monthKey, userId, pick: (m) => (m.prosp?.on ? m.prosp.pct : null) }),
     active: seriesOf(ctx, { monthKey, pick: (m) => m.base.active }),
-    churn: seriesOf(ctx, { monthKey, pick: (m) => m.base.churn.pct }),
     renew: seriesOf(ctx, { monthKey, userId, pick: (m) => m.renewal.rate })
   }), [ctx, monthKey, userId]);
   // Com "Equipe toda": uma linha por pessoa e a de quem está fora da equipe.
@@ -468,14 +467,6 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
       sub: userId ? 'base da academia, não da carteira' : running ? 'com contrato vigente hoje' : 'no fim do mês',
       delta: d(cur.base.active, cmp?.base.active, 'count'),
       ...spark(series.active, fmtNum)
-    },
-    {
-      key: 'churn', label: 'Churn', goodUp: false,
-      help: 'Cancelamentos mais vencidos que passaram da tolerância ÷ clientes ativos no início do mês.',
-      value: cur.base.churn.pct != null ? pctFmt(cur.base.churn.pct) : '—',
-      sub: userId ? 'base da academia' : 'saídas definitivas',
-      delta: d(cur.base.churn.pct, cmp?.base.churn.pct, 'pp'),
-      ...spark(series.churn, pctFmt)
     },
     {
       key: 'renew', label: 'Taxa de renovação', goodUp: true,
