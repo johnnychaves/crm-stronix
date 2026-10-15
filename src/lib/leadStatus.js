@@ -107,8 +107,12 @@ const isLeadActive = (lead) => {
 // já resolvida (via buildInteractionIndex.get(id)?.lastDate), sem varrer o
 // array por lead — O(1) por lead em listas. ---
 
-// `nowMs` deixa quem calcula num instante próprio (os Relatórios, com o relógio
-// da tela) usar a mesma régua do selo. Sem ele, vale o Date.now().
+// Dias em períodos de 24 horas, e não do calendário. NÃO é a conta do rodapé do
+// card do Pipeline, que é kanbanSilence/silenceDaysOf (lib/kanban.js, dias do
+// calendário): quem precisa do mesmo número do card usa aquela. Hoje só o
+// isColdLeadFromDate e o DaysSinceContactBadge chamam esta, e nenhuma tela
+// desenha os dois badges. `nowMs` deixa quem calcula fixar o instante; sem ele,
+// vale o Date.now().
 const getDaysSinceFromDate = (lead, lastInteractionDate, nowMs = Date.now()) => {
   const last = (lastInteractionDate instanceof Date ? lastInteractionDate : null) || lead?.createdAt;
   if (!(last instanceof Date) || isNaN(last.getTime())) return null;

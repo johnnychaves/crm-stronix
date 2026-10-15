@@ -5,8 +5,9 @@
 import { describe, it, expect } from 'vitest';
 import { paradosReport, stageSinceOf, PARADOS_COLUMNS } from '../relatorios/leads/parados.js';
 import { metricsOf } from '../crm/metrics.js';
-import { STAGE_TRACKING_SINCE } from '../crm/scope.js';
-import { makeCtx, L, D, s2, s4, s5, a2, a3 } from './fixtures/crmCtx.js';
+import { OTHERS_ID } from '../crm/scope.js';
+import { kanbanSilence } from '../kanban.js';
+import { makeCtx, L, D, NOW, s2, s4, s5, a2, a3 } from './fixtures/crmCtx.js';
 
 // Agora: 14/09, segunda, meio-dia.
 // x1: da Ana, com o contato atrasado desde 10/09 e delegado ao Diego; o atraso fica com a Ana.
@@ -46,7 +47,8 @@ describe('Leads parados', () => {
 
   it('a lista: quem está há mais dias sem registro primeiro, com a etapa, o último registro, o próximo contato e o consultor', () => {
     const r = rel(ctxOf());
-    expect(r.rows.map((x) => [x.id, x.quiet])).toEqual([['a3', 33], ['a2', 11], ['s2', 11], ['s5', 11], ['x1', 2]]);
+    // Os dias são do calendário, como no card do Pipeline: o s5, com o último registro em 02/09 às 15h, está há 12 dias.
+    expect(r.rows.map((x) => [x.id, x.quiet])).toEqual([['a3', 33], ['s5', 12], ['a2', 11], ['s2', 11], ['x1', 2]]);
     const x1 = r.rows.find((x) => x.id === 'x1');
     expect(x1).toMatchObject({ stage: 'Novo lead', stageDays: 9, lastAt: D(9, 12, 9), next: D(9, 10), late: 4, owner: 'Ana Ribeiro' });
     // O último registro vem das interações que chegam ao vivo quando o lead não tem o campo.
@@ -58,11 +60,16 @@ describe('Leads parados', () => {
     // "Sem nome" e fica depois.
     const parado11 = (id, name) => L(id, { name, nextFollowUp: null, lastInteractionAt: D(9, 3, 12) });
     const empate = rel(ctxCom(parado11('t7', 'Bia'), parado11('t9', 'Ana'), parado11('t8', 'Ana')));
-    expect(empate.rows.map((x) => x.id)).toEqual(['a3', 't8', 't9', 't7', 'a2', 's2', 's5', 'x1']);
+    expect(empate.rows.map((x) => x.id)).toEqual(['a3', 's5', 't8', 't9', 't7', 'a2', 's2', 'x1']);
 
     // Lead sem nenhuma data (nem registro, nem cadastro): sem dias, e na lista por último.
     const semData = rel(ctxCom(L('v1', { createdAt: null, nextFollowUp: null }))).rows;
     expect(semData.at(-1)).toMatchObject({ id: 'v1', quiet: null, lastAt: null, stageDays: null });
+
+    // O lead que o app monta sem data de cadastro (normalizeLeadDoc): createdAtMissing e createdAt com a hora da
+    // carga. Os dias são desconhecidos, e não 0.
+    const carregado = L('m1', { createdAt: NOW, createdAtMissing: true, nextFollowUp: null });
+    expect(rel(ctxCom(carregado)).rows.at(-1)).toMatchObject({ id: 'm1', quiet: null, lastAt: null, stageDays: null });
 
     // Dias na etapa em dias de calendário, e não em períodos de 24 horas: da entrada de 12/09 às 22h
     // até 14/09 ao meio-dia são 2 dias no calendário e 1 de 24 horas. Entrar hoje dá 0.
@@ -76,7 +83,7 @@ describe('Leads parados', () => {
     const r15 = rel(ctxOf(), { dias: 15 });
     expect(r15.tiles[2]).toMatchObject({ name: 'Sem registro há mais de 15 dias', value: 1 });
     // O a2 só estava parado pelo registro: com 15 dias ele sai da lista.
-    expect(r15.rows.map((x) => x.id)).toEqual(['a3', 's2', 's5', 'x1']);
+    expect(r15.rows.map((x) => x.id)).toEqual(['a3', 's5', 's2', 'x1']);
     expect(rel(ctxOf(), { dias: 3 }).tiles[2].value).toBe(4);
     expect([rel(ctxOf()).dias, r15.dias]).toEqual([7, 15]);
 
@@ -86,17 +93,34 @@ describe('Leads parados', () => {
     expect(rel(ctxCom(dia7)).rows.map((x) => x.id)).not.toContain('c7');
     expect(rel(ctxCom(dia7), { dias: 6 }).rows.map((x) => x.id)).toContain('c7');
     expect(rel(ctxCom(dia7), { dias: 3 }).tiles[2].value).toBe(5);
+
+    // Os dias são os do rodapé do card do Pipeline (kanbanSilence): dias do calendário, e não períodos de 24
+    // horas. O último registro de 06/09 às 18h visto em 14/09 ao meio-dia são 8 dias no calendário e 7 de 24
+    // horas, então ele está em "mais de 7 dias". E 23h50 de ontem já é 1 dia, com a meia-noite no meio.
+    const naoVeio = L('k1', { nextFollowUp: D(9, 20), lastInteractionAt: D(9, 6, 18) });
+    const ontem = L('k2', { nextFollowUp: null, lastInteractionAt: D(9, 13, 23, 50) });
+    const doCard = rel(ctxCom(naoVeio, ontem));
+    expect(doCard.rows.find((x) => x.id === 'k1')).toMatchObject({ quiet: 8 });
+    expect(doCard.tiles[2].value).toBe(5);
+    expect(doCard.rows.find((x) => x.id === 'k2')).toMatchObject({ quiet: 1 });
+    // Para todo lead com registro, o número da lista é o que o card escreve.
+    const textoDoCard = (x) => (x.quiet === 0 ? 'contato hoje' : `${x.quiet}d sem contato`);
+    doCard.rows.filter((x) => x.lastAt).forEach((x) => expect(kanbanSilence(x.lastAt, NOW).text, x.id).toBe(textoDoCard(x)));
   });
 
   it('o recorte filtra a lista: cada número e o consultor', () => {
     const ids = (recorte) => rel(ctxOf(), { recorte }).rows.map((x) => x.id);
-    expect(ids('situacao:sem-proximo-passo')).toEqual(['a3', 's2', 's5']);
+    expect(ids('situacao:sem-proximo-passo')).toEqual(['a3', 's5', 's2']);
     expect(ids('situacao:atrasado')).toEqual(['x1']);
-    expect(ids('situacao:sem-registro')).toEqual(['a3', 'a2', 's2', 's5']);
+    expect(ids('situacao:sem-registro')).toEqual(['a3', 's5', 'a2', 's2']);
     expect(ids('consultor:ana')).toEqual(['a3', 'x1']);
     expect(rel(ctxOf(), { recorte: 'situacao:atrasado' }).cutLabel).toBe('Contato atrasado');
     expect(rel(ctxOf(), { recorte: 'consultor:diego' }).cutLabel).toBe('Consultor: Diego Santos');
     expect(rel(ctxOf(), { recorte: 'situacao:vieram' }).cut).toBeNull();
+
+    // Quem saiu da equipe (o s5, dono 'ex') entra no recorte Outros pela chave da equipe, e não pelo id gravado.
+    expect(ids(`consultor:${OTHERS_ID}`)).toEqual(['s5']);
+    expect(rel(ctxOf(), { recorte: `consultor:${OTHERS_ID}` }).cutLabel).toBe('Consultor: Outros');
   });
 
   it('os consultores do recorte, com Outros para quem saiu da equipe', () => {
@@ -114,9 +138,13 @@ describe('Leads parados', () => {
     expect(stageSinceOf({ createdAt: D(9, 20) })).toEqual(D(9, 20));
     expect(stageSinceOf({ createdAt: D(9, 2) })).toBeNull();
     expect(stageSinceOf({ createdAt: D(9, 20), createdAtMissing: true })).toBeNull();
-    // A fronteira é o instante em que a troca de etapa passou a ser gravada: nele já vale, um minuto antes não.
-    expect(stageSinceOf({ createdAt: STAGE_TRACKING_SINCE })).toEqual(STAGE_TRACKING_SINCE);
-    expect(stageSinceOf({ createdAt: new Date(STAGE_TRACKING_SINCE.getTime() - 60000) })).toBeNull();
+    // A fronteira é o dia 14/09/2026, e não o instante das 18h10: os dias na etapa são do calendário, então a
+    // troca sem registro de 14/09 antes das 18h10 cai no mesmo dia do cadastro. O dia inteiro vale, da
+    // meia-noite em diante, e o fim do dia anterior não.
+    expect(stageSinceOf({ createdAt: D(9, 14, 10) })).toEqual(D(9, 14, 10));
+    expect(stageSinceOf({ createdAt: D(9, 14, 0) })).toEqual(D(9, 14, 0));
+    expect(stageSinceOf({ createdAt: new Date(2026, 8, 13, 23, 59, 59) })).toBeNull();
+    expect(stageSinceOf({ createdAt: D(9, 13, 23) })).toBeNull();
   });
 
   it('a planilha tem o contato, o CPF e as colunas da lista, com os dias à parte', () => {
@@ -144,6 +172,15 @@ describe('Leads parados', () => {
     // Sem nenhuma data: dias em branco, e a etapa diz que é de antes da gravação.
     const [semData] = rel(ctxCom(L('v1', { createdAt: null, nextFollowUp: null })), { recorte: 'consultor:ana' }).exportRows.slice(-1);
     expect(semData).toMatchObject({ diasNaEtapa: 'antes de 14/09/2026', ultimoRegistro: 'Nenhum', diasSemRegistro: '' });
+    const carregado = L('m1', { createdAt: NOW, createdAtMissing: true, nextFollowUp: null });
+    const [semCadastro] = rel(ctxCom(carregado), { recorte: 'consultor:ana' }).exportRows.slice(-1);
+    expect(semCadastro).toMatchObject({ diasNaEtapa: 'antes de 14/09/2026', ultimoRegistro: 'Nenhum', diasSemRegistro: '' });
+
+    // O consultor de quem saiu da equipe e de quem não tem dono é o texto explícito, e não o nome do recorte (Outros).
+    const semDono = L('o9', { consultantId: null, nextFollowUp: null });
+    const fora = rel(ctxCom(semDono), { recorte: `consultor:${OTHERS_ID}` });
+    expect(fora.rows.map((x) => [x.id, x.owner])).toEqual([['o9', 'Sem responsável'], ['s5', 'Fora da equipe']]);
+    expect(fora.exportRows.map((x) => x.consultor)).toEqual(['Sem responsável', 'Fora da equipe']);
   });
 
   it('o em aberto e o sem próximo passo são os da carteira de agora do painel CRM, para cada pessoa e funil', () => {

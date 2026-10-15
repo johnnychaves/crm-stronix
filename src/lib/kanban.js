@@ -1,5 +1,6 @@
 import { isClientLead } from './leads.js';
 import { isGestor } from './acesso.js';
+import { calendarDaysBetween } from './dates.js';
 
 // Carteira padrão do board por PAPEL.
 //
@@ -153,16 +154,22 @@ const fmtKanbanRelDateTime = (d) => {
 // uma vez enchem a coluna sem ninguém ler o fim.
 const KANBAN_PAGE_SIZE = 10;
 
+// Dias do CALENDÁRIO desde a última interação (23h50 de ontem visto às 0h10 já
+// é 1 dia), nunca negativo. null para data ausente ou inválida. É a conta do
+// rodapé do card (kanbanSilence) e a dos "dias sem registro" do relatório de
+// Leads parados, que por isso dizem o mesmo número para o mesmo lead.
+const silenceDaysOf = (lastDate, now = new Date()) => {
+  if (!(lastDate instanceof Date) || isNaN(lastDate.getTime())) return null;
+  const days = calendarDaysBetween(lastDate, now);
+  return days === null ? null : Math.max(0, days);
+};
+
 // Rodapé do card: quanto tempo o lead está em SILÊNCIO (dias desde a última
 // interação). Substitui o emoji 🔥/❄️ pelo número que existia atrás dele — os
 // cortes espelham isHotLeadFromDate/isColdLeadFromDate (lib/leadStatus.js).
 const kanbanSilence = (lastDate, now = new Date()) => {
-  if (!(lastDate instanceof Date) || isNaN(lastDate.getTime())) {
-    return { text: 'sem contato', tone: 'muted' };
-  }
-  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const startThat = new Date(lastDate.getFullYear(), lastDate.getMonth(), lastDate.getDate()).getTime();
-  const days = Math.max(0, Math.round((startToday - startThat) / 86400000));
+  const days = silenceDaysOf(lastDate, now);
+  if (days === null) return { text: 'sem contato', tone: 'muted' };
   if (days === 0) return { text: 'contato hoje', tone: 'muted' };
   if (days <= 3) return { text: `${days}d sem contato`, tone: 'muted' };
   if (days <= 6) return { text: `${days}d sem contato`, tone: 'warn' };
@@ -181,4 +188,4 @@ const monthWindow = (ref = new Date()) => {
   };
 };
 
-export { KANBAN_COLUMN_ACCENT, getKanbanColumnAccent, KANBAN_AVATAR_PALETTES, getKanbanAvatarPalette, getKanbanInitials, fmtKanbanRelDate, fmtKanbanRelDateTime, KANBAN_PAGE_SIZE, kanbanSilence, monthWindow };
+export { KANBAN_COLUMN_ACCENT, getKanbanColumnAccent, KANBAN_AVATAR_PALETTES, getKanbanAvatarPalette, getKanbanInitials, fmtKanbanRelDate, fmtKanbanRelDateTime, KANBAN_PAGE_SIZE, silenceDaysOf, kanbanSilence, monthWindow };

@@ -6,18 +6,22 @@
 //   (openLeadsOf e noNextStepOf, as contas do pipelineNowOf);
 // - o atraso é o do Atrasado da Meta (overdueDaysOf), e fica com o dono do lead
 //   mesmo quando o contato foi delegado, como lá;
-// - os dias sem registro são os do selo "N dias sem contato" do Pipeline
-//   (getDaysSinceFromDate, com a última interação pelo lastInteractionDateOf,
-//   que junta o campo do lead e as interações do mês que chegam ao vivo).
+// - os dias sem registro são os do rodapé "Nd sem contato" do card do Pipeline
+//   (silenceDaysOf, a conta do kanbanSilence: dias do calendário, e não
+//   períodos de 24 horas), a partir da última interação pelo
+//   lastInteractionDateOf, que junta o campo do lead e as interações do mês que
+//   chegam ao vivo. Sem registro nenhum, conta do cadastro, e sem data de
+//   cadastro de verdade (createdAtMissing) os dias são desconhecidos.
 // O consultor é o dono do lead hoje. Puro.
 //
 // O dailyGoal.js importa o lucide-react. Aqui não faz mal, porque os Relatórios
 // só rodam no navegador, mas nenhuma função de api/ pode importar este arquivo.
 
-import { getSafeDateOrNull, calendarDaysBetween } from '../../dates.js';
+import { getSafeDateOrNull, calendarDaysBetween, startOfLocalDay } from '../../dates.js';
 import { STAGE_TRACKING_SINCE } from '../../crm/scope.js';
 import { openLeadsOf, noNextStepOf } from '../../crm/stages.js';
-import { buildInteractionIndex, lastInteractionDateOf, getDaysSinceFromDate } from '../../leadStatus.js';
+import { buildInteractionIndex, lastInteractionDateOf } from '../../leadStatus.js';
+import { silenceDaysOf } from '../../kanban.js';
 import { overdueDaysOf } from '../../dailyGoal.js';
 import { DIAS_PARADOS_PADRAO } from '../../screenParams.js';
 import {
@@ -46,11 +50,15 @@ export const PARADOS_COLUMNS = Object.freeze([
 // entrada (statusEnteredAt) desde 14/09/2026, e o lead novo também, menos o da
 // indicação pelo link público (api/tenant-resolve.js): para ele, o cadastro.
 // Lead que não troca de etapa desde antes disso não tem como saber: null.
+// A fronteira é o DIA 14/09/2026 e não o instante das 18h10: os dias na etapa
+// são do calendário, e uma troca sem registro de 14/09 antes das 18h10 cai no
+// mesmo dia do cadastro, então a conta é a mesma.
+const STAGE_SINCE_DAY = startOfLocalDay(STAGE_TRACKING_SINCE);
 export function stageSinceOf(lead) {
   const entered = getSafeDateOrNull(lead?.statusEnteredAt);
   if (entered) return entered;
   const created = lead?.createdAtMissing ? null : getSafeDateOrNull(lead?.createdAt);
-  return created && created >= STAGE_TRACKING_SINCE ? created : null;
+  return created && created >= STAGE_SINCE_DAY ? created : null;
 }
 
 // Ordem da lista: quem está há mais dias sem registro primeiro, depois o nome e o id.
@@ -64,7 +72,9 @@ export function paradosReport(ctx, { userIds = [], funnelId = null, origem = nul
   // O funnelOk do reportScope já leva a origem, como o painel entrega ao pipelineNowOf.
   const open = openLeadsOf(ctx.liveLeads, { ownerOk: scope.ownerOk, funnelOk: scope.funnelOk }).map((l) => {
     const lastAt = lastInteractionDateOf(l, index);
-    const quiet = getDaysSinceFromDate(l, lastAt, ctx.now.getTime());
+    // Sem registro nenhum, conta do cadastro. O lead sem data de cadastro de verdade (createdAtMissing, que o
+    // app monta com a hora da carga) fica sem dias: ler 0 diria que ele acabou de chegar.
+    const quiet = silenceDaysOf(lastAt || (l.createdAtMissing ? null : l.createdAt), ctx.now);
     return {
       lead: l,
       lastAt,
