@@ -93,11 +93,18 @@ describe('GerencialKpis', () => {
     expect(html).toContain('>/mês</span>');
   });
 
-  it('o ticket médio mensal sai da carteira e conta só os contratos com valor', () => {
+  it('o ticket médio mensal diz quantos contratos ficam de fora, sem repetir a contagem da carteira', () => {
     const html = kpis({ wallet: { ...WALLET, count: 1122, blind: 494 } });
     expect(html).toContain('Ticket médio mensal');
     expect(html).toContain('R$ 214');
-    expect(html).toContain('média de 628 contratos com valor'); // 1.122 menos 494 sem valor
+    expect(html).toContain('494 contratos sem valor ficam de fora');
+    expect(html).not.toContain('média de');
+  });
+
+  it('sem importados, o ticket só diz de onde sai a conta', () => {
+    const html = kpis();
+    expect(html).toContain('carteira ÷ contratos');
+    expect(html).not.toContain('ficam de fora');
   });
 
   it('o risco dos 90 dias não é mais um dos quatro números', () => {
@@ -115,7 +122,7 @@ describe('GerencialKpis', () => {
 
   it('carteira vazia não quebra a conta', () => {
     const html = kpis({ wallet: { count: 0, monthly: 0, ticket: 0, blind: 0, lockedCount: 0 } });
-    expect(html).toContain('média de 0 contratos com valor');
+    expect(html).toContain('R$ 0');
   });
 });
 
