@@ -65,7 +65,6 @@ export const CONVERSAO_COLUMNS = Object.freeze([
   Object.freeze({ key: 'dataDesfecho', label: 'Data do desfecho' }),
 ]);
 
-
 // O primeiro contato olha até o fim do mês seguinte ao do cadastro de cada
 // lead, ou até o instante da safra, o que vier antes (a regra do painel).
 const contactLimitOf = (lead, asOf) => Math.min(
