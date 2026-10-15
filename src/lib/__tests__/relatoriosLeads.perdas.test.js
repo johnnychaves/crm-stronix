@@ -2,7 +2,7 @@
 // a lista de repescagem e a planilha. No mês inteiro, os números são os do card
 // de perdas do painel CRM (metricsOf).
 import { describe, it, expect } from 'vitest';
-import { perdasReport, stageBaseOf, PERDAS_COLUMNS } from '../relatorios/leads/perdas.js';
+import { perdasReport, stageBaseOf, STAGE_NO_BASE_TEXT, PERDAS_COLUMNS } from '../relatorios/leads/perdas.js';
 import { STAGE_SINCE_TEXT } from '../relatorios/leads/base.js';
 import { metricsOf, crmDelta } from '../crm/metrics.js';
 import { comparisonCut } from '../operacional/month.js';
@@ -74,6 +74,10 @@ describe('Perdas', () => {
     expect(stageBaseOf(periodFromParams({ de: '2026-09-01', ate: '2026-09-13' }, NOW))).toBe('none');
     const r = rel(ctxOf(), {}, agosto);
     expect([r.stageBase, r.byStage]).toEqual(['none', []]);
+    // A linha da lista e a planilha dizem o mesmo que o cartão da tela: sem base, e não "Sem etapa".
+    expect(STAGE_NO_BASE_TEXT).toBe('Sem base');
+    expect(r.rows.map((x) => x.stage)).toEqual([STAGE_NO_BASE_TEXT]);
+    expect(r.exportRows.map((x) => x.etapa)).toEqual([STAGE_NO_BASE_TEXT]);
     // Sem base, o recorte de etapa não existe e é ignorado.
     expect(rel(ctxOf(), { recorte: 'etapa:Sem etapa' }, agosto).cut).toBeNull();
 

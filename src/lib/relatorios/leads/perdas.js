@@ -40,6 +40,12 @@ export function stageBaseOf(period) {
   return period.start < STAGE_TRACKING_SINCE ? 'partial' : 'full';
 }
 
+// O que a etapa diz quando o período não tem base nenhuma: o cartão da tela, a
+// linha da lista e a planilha usam este texto, para não dizerem coisas
+// diferentes ("Sem base" no cartão e "Sem etapa" na linha). No parcial, o
+// "Sem etapa" é o do card do painel (lossStageOf), e a tela o mostra como está.
+export const STAGE_NO_BASE_TEXT = 'Sem base';
+
 // Ordem da lista: a perda mais recente primeiro, depois o nome e o id.
 const byLatestLoss = (a, b) => (b.lostAt?.getTime?.() ?? 0) - (a.lostAt?.getTime?.() ?? 0)
   || a.name.localeCompare(b.name, 'pt-BR') || a.id.localeCompare(b.id);
@@ -52,7 +58,9 @@ export function perdasReport(ctx, { period, cmp = null, userIds = [], funnelId =
   const leads = lostIn(period);
   const before = cmp ? lostIn(cmp).length : null;
   const stageBase = stageBaseOf(period);
-  const stageOf = (l) => lossStageOf(l, { moves: index.moves, start: period.start, end: period.end });
+  const stageOf = (l) => (stageBase === 'none'
+    ? STAGE_NO_BASE_TEXT
+    : lossStageOf(l, { moves: index.moves, start: period.start, end: period.end }));
 
   const byReason = countRows(leads, lossReasonOf, (id) => id, 'motivo');
   const byStage = stageBase === 'none' ? [] : countRows(leads, stageOf, (id) => id, 'etapa');
