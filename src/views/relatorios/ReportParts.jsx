@@ -318,7 +318,9 @@ function DayBar({ day, max, unit }) {
 
 /**
  * O gráfico de colunas por dia, à direita do herói na Entrada e nas Perdas.
- * Não desenha nada com menos de 2 dias (Hoje, Ontem): aí o herói fica sozinho.
+ * Não desenha nada com menos de 2 dias (Hoje, Ontem) nem com mais de
+ * DAY_BARS_MAX: no Personalizado longo as colunas sumiriam e o fim do período
+ * ficaria cortado. Nos dois casos o herói fica sozinho.
  *
  * @param {object} props
  * @param {Array<{key: string, date: Date, count: number, today: boolean}>} props.days O resultado de porDia(...).
@@ -326,8 +328,12 @@ function DayBar({ day, max, unit }) {
  * @param {[string, string]} [props.unit] O nome no singular e no plural, para a dica ("lead", "leads").
  * @param {string} [props.className]
  */
+// Até dois meses de colunas cabem no painel; acima disso o gráfico sai.
+export const DAY_BARS_MAX = 62;
+const chartFits = (days) => (days?.length ?? 0) >= 2 && days.length <= DAY_BARS_MAX;
+
 export function DayBars({ days, label, unit = ['lead', 'leads'], className }) {
-  if (!days || days.length < 2) return null;
+  if (!chartFits(days)) return null;
   const max = Math.max(1, ...days.map((d) => d.count));
   const peak = days.reduce((top, d) => (d.count > top.count ? d : top), days[0]);
   const last = days.at(-1);
@@ -371,7 +377,7 @@ export function ReportBand({ label, value, percent = false, tone = 'neutral', de
   const empty = value == null;
   const text = empty ? 'sem base' : percent ? `${value}%` : fmtNum(value);
   const hasCells = Boolean(cells?.length);
-  const hasChart = !hasCells && (chart?.days?.length ?? 0) >= 2;
+  const hasChart = !hasCells && chartFits(chart?.days);
   const side = cn('flex min-w-0 flex-1 border-t md:border-l md:border-t-0', RULE);
   return (
     <section className={cn('flex flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-card md:flex-row', className)}>

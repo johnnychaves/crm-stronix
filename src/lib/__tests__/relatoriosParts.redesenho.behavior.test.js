@@ -7,7 +7,7 @@ import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { createElement as h, act } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
-  ReportBand, BandCell, DayBars, CutTabs, StatusPill, NameCell, ReportList, ReportNotice,
+  ReportBand, BandCell, DayBars, CutTabs, StatusPill, NameCell, ReportList, ReportNotice, DAY_BARS_MAX,
 } from '../../views/relatorios/ReportParts.jsx';
 import { FOCUS_RING } from '../../components/focusRing.js';
 import { porDia } from '../relatorios/leads/porDia.js';
@@ -132,6 +132,13 @@ describe('painel de números', () => {
     await remontar(h(ReportBand, { label: 'Leads novos', value: 3, chart: { days: mes, label: 'Por dia de cadastro' } }));
     expect(heroi().className).toContain('md:w-[236px]');
     expect(container.querySelector('[role="group"]').getAttribute('aria-label')).toBe('Por dia de cadastro');
+    // Personalizado longo: acima de dois meses de colunas o gráfico sai e o herói fica sozinho.
+    const dias = (n) => Array.from({ length: n }, (_, i) => ({ key: `d${i}`, date: new Date(2026, 0, 1 + i), count: 1, today: false }));
+    await remontar(h(ReportBand, { label: 'Leads novos', value: 3, chart: { days: dias(DAY_BARS_MAX), label: 'Por dia de cadastro' } }));
+    expect(container.querySelector('[role="group"]')).not.toBeNull();
+    await remontar(h(ReportBand, { label: 'Leads novos', value: 3, chart: { days: dias(DAY_BARS_MAX + 1), label: 'Por dia de cadastro' } }));
+    expect(container.querySelector('section').children).toHaveLength(1);
+    expect(heroi().className).not.toContain('md:w-[236px]');
   });
 });
 
