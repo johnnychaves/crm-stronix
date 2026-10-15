@@ -116,12 +116,41 @@ describe('Visitas e aulas experimentais', () => {
     expect(rel({ ...ctx, months: meses }).rows.find((x) => x.id === 'r8').professor).toBe('Professor');
   });
 
-  it('o registro de um lead que não existe mais entra na equipe toda, com o nome do registro', () => {
+  it('o registro de um lead não encontrado entra na equipe toda, com o nome do registro', () => {
     const ctx = ctxOf();
     const apagado = A('r7', 'apagado', 'attended', D(9, 3), D(9, 1), { type: 'visita', leadName: 'Lia Antiga', unit: 'Centro' });
     ctx.months['2026-09'] = { ...ctx.months['2026-09'], aulas: [...ctx.months['2026-09'].aulas, apagado] };
     expect(rel(ctx).rows.find((x) => x.id === 'r7')).toMatchObject({ name: 'Lia Antiga', owner: 'Sem responsável' });
     expect(rel(ctx, { userIds: ['ana'] }).rows.map((x) => x.id)).not.toContain('r7');
+  });
+
+  it('Por professor: as aulas em que o lead veio, quantos matricularam, e a linha filtra a lista com a mesma regra', () => {
+    const ctx = ctxOf();
+    const mais = [
+      // Do mesmo professor, veio e não matriculou, em outra modalidade.
+      A('r10', 's4', 'attended', D(9, 9), D(9, 8), { professorId: 'p1', professorName: 'Paula Nunes', modality: 'Pilates' }),
+      // Falta: não pesa contra o professor e não entra na aba.
+      A('r11', 's2', 'no_show', D(9, 10), D(9, 8), { professorId: 'p2', professorName: 'Rui Lopes', modality: 'Funcional' }),
+      // Treinou sozinho e veio.
+      A('r12', 's5', 'attended', D(9, 11), D(9, 8), { soloTraining: true, modality: 'Musculação' }),
+    ];
+    ctx.months['2026-09'] = { ...ctx.months['2026-09'], aulas: [...ctx.months['2026-09'].aulas, ...mais] };
+    const r = rel(ctx);
+    expect(r.byProfessor.map((x) => [x.key, x.name, x.leads, x.enrolled, x.conv, x.channel ?? null, x.note ?? null])).toEqual([
+      ['professor:p1', 'Paula Nunes', 2, 1, 50, 'Funcional, Pilates', null],
+      ['sozinho:sim', 'Treinou sozinho', 1, 0, 0, null, 'sem professor'],
+    ]);
+    // A linha e a lista contam o mesmo: o número da linha é o tamanho da lista filtrada.
+    for (const row of r.byProfessor) {
+      const filtrada = rel(ctx, { recorte: row.key });
+      expect(filtrada.rows.length, row.key).toBe(row.leads);
+      expect(filtrada.rows.every((x) => x.outcome === 'veio' && x.type === 'Aula experimental'), row.key).toBe(true);
+    }
+    expect(rel(ctx, { recorte: 'professor:p1' }).rows.map((x) => x.id)).toEqual(['r1', 'r10']);
+    expect(rel(ctx, { recorte: 'professor:p1' }).cutLabel).toBe('Professor: Paula Nunes');
+    expect(rel(ctx, { recorte: 'sozinho:sim' }).cutLabel).toBe('Treinou sozinho');
+    // Quem só faltou não tem linha, então o recorte dele é ignorado.
+    expect(rel(ctx, { recorte: 'professor:p2' })).toMatchObject({ cut: null, cutLabel: null });
   });
 
   it('a semana que atravessa o fim do mês vai só até o fim do mês atual', () => {

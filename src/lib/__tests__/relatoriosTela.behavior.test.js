@@ -174,7 +174,8 @@ const balao = () => document.querySelector('[data-slot="popover-content"]');
 const opcaoDoPeriodo = (texto) => [...balao().querySelectorAll('button')].find((b) => b.textContent.trim() === texto);
 const sonda = () => container.querySelector('output[data-sonda]').textContent;
 const linhas = () => [...container.querySelectorAll('tbody tr')];
-const nomesDaLista = () => linhas().map((tr) => tr.firstElementChild.textContent);
+// O nome do lead fica no title da célula do nome (NameCell), que também mostra as iniciais.
+const nomesDaLista = () => linhas().map((tr) => tr.firstElementChild.querySelector('[title]').getAttribute('title'));
 // Os ids das fichas que a lista linka, em ordem de id: a ordem da lista não é o que se confere aqui.
 const fichas = () => [...container.querySelectorAll('tbody a[href]')].map((a) => a.getAttribute('href').split('/').pop()).sort();
 const linhaDe = (id) => linhas().find((tr) => tr.querySelector(`a[href$="/ficha/${id}"]`));
@@ -186,8 +187,16 @@ const limpar = () => container.querySelector('[aria-label="Limpar filtro da list
 const numeroGrande = () => [...container.querySelectorAll('.num.font-display')].find((el) => !el.closest('nav'));
 const heroi = () => numeroGrande()?.textContent;
 const regiaoDeEstado = () => container.querySelector('[role="status"]');
-// A grade que reúne os cartões de recorte: o pai do cartão que tem o título.
-const grade = (titulo) => [...container.querySelectorAll('h3')].find((t) => t.textContent === titulo).closest('section').parentElement;
+// As abas dos recortes: só a aba aberta desenha as linhas. O Radix ativa a aba no mousedown, e não no click.
+const abas = () => [...container.querySelectorAll('[role="tab"]')];
+const aba = (nome) => abas().find((t) => t.textContent === nome);
+const abrirAba = async (nome) => {
+  await act(async () => { aba(nome).dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })); });
+};
+const painelAberto = () => container.querySelector('[role="tabpanel"]:not([hidden])');
+// As barras do gráfico por dia, e o número de cada uma, lido do nome dela ("02/09: 1 lead").
+const barras = (rotulo) => [...container.querySelectorAll(`[role="group"][aria-label="${rotulo}"] [role="img"]`)];
+const somaDasBarras = (rotulo) => barras(rotulo).reduce((s, b) => s + Number(b.getAttribute('aria-label').match(/: (\d+) /)[1]), 0);
 const AVISO = 'os agendamentos estão incompletos';
 // O comparado do mês em andamento (dia 14 às 12h): os mesmos primeiros dias do mês anterior, como o painel CRM diz.
 const PRORATA = 'vs. os 14 primeiros dias de Agosto 2026';
@@ -200,10 +209,17 @@ describe('número que filtra a lista', () => {
     expect(sonda()).toBe('');
     expect(fichas()).toEqual(['s1', 's2', 's3', 's4', 's5']);
     expect(botao('Leads da safra').getAttribute('aria-pressed')).toBe('true');
-    // A rapidez do primeiro contato chega com as quatro faixas do painel.
+    // As etapas vêm ligadas por seta, e Perderam e Em aberto ficam depois de uma régua.
+    expect(botao('Perderam').textContent).toContain('1');
+    expect(botao('Em aberto').textContent).toContain('ainda no funil');
+    // A rapidez do primeiro contato chega com as quatro faixas do painel, na aba dela.
+    await abrirAba('Rapidez do 1º contato');
+    expect(painelAberto().textContent).not.toBe('');
     for (const faixa of ['Até 1 hora', 'Até 24 horas', 'Mais de 24 horas', 'Sem contato']) {
       expect(recorte(faixa), faixa).toBeTruthy();
     }
+    // O primeiro contato é qualquer interação registrada da equipe, e não só conversa (isContactInteraction).
+    expect(container.textContent).toContain('do cadastro à primeira interação da equipe');
 
     await clicar(botao('Matricularam'));
     expect(sonda()).toBe('?recorte=situacao%3Amatricularam');
@@ -212,13 +228,50 @@ describe('número que filtra a lista', () => {
     expect(botao('Leads da safra').getAttribute('aria-pressed')).toBe('false');
     // A lista repete o filtro e o número de nomes que ela mostra agora, e a tabela se chama por esse número.
     expect(limpar().parentElement.textContent).toContain('Matricularam');
-    expect(numeroDaLista().textContent).toBe('1 lead');
+    expect(numeroDaLista().textContent).toBe('1 lead da safra');
     expect(document.getElementById(container.querySelector('table').getAttribute('aria-labelledby'))).toBe(numeroDaLista());
+    // O número da célula é o número da lista: a mesma regra filtra os dois.
+    expect(botao('Matricularam').textContent).toContain('1');
 
     await clicar(botao('Matricularam'));
     expect(sonda()).toBe('');
     expect(fichas()).toEqual(['s1', 's2', 's3', 's4', 's5']);
     expect(limpar()).toBeNull();
+  });
+
+  it('na Conversão, a linha de uma origem filtra a lista com o número dela; de novo, limpa', async () => {
+    await montar('/acad/relatorios/conversao', { section: 'conversao' });
+    const linha = recorte('Indicação');
+    expect(linha.getAttribute('aria-label')).toBe('Indicação: 1 lead, 0 matrículas, 0% de conversão');
+    await clicar(linha);
+    expect(sonda()).toBe(`?recorte=${encodeURIComponent('origem:Indicação')}`);
+    expect(fichas()).toEqual(['s2']);
+    expect(recorte('Indicação').getAttribute('aria-pressed')).toBe('true');
+    expect(limpar().parentElement.textContent).toContain('Origem: Indicação');
+    expect(numeroDaLista().textContent).toBe('1 lead da safra');
+    await clicar(recorte('Indicação'));
+    expect(sonda()).toBe('');
+    expect(fichas()).toHaveLength(5);
+  });
+
+  it('na Entrada, a linha de uma origem filtra a lista com o número dela, e o gráfico por dia continua o total', async () => {
+    await montar('/acad/relatorios');
+    // Um dia por barra, de 1 a 14 de setembro, e a soma das barras é o total do painel.
+    expect(barras('Por dia de cadastro')).toHaveLength(14);
+    expect(somaDasBarras('Por dia de cadastro')).toBe(5);
+    expect(heroi()).toBe('5');
+    expect(recorte('Instagram').getAttribute('aria-label')).toBe('Instagram (Pago): 4 de 5, 80%');
+    await clicar(recorte('Instagram'));
+    expect(sonda()).toBe('?recorte=origem%3AInstagram');
+    expect(fichas()).toEqual(['s1', 's3', 's4', 's5']);
+    expect(numeroDaLista().textContent).toBe('4 leads');
+    expect(limpar().parentElement.textContent).toContain('Origem: Instagram');
+    // Filtrar a lista não muda o total nem o gráfico.
+    expect(heroi()).toBe('5');
+    expect(somaDasBarras('Por dia de cadastro')).toBe(5);
+    await clicar(recorte('Instagram'));
+    expect(sonda()).toBe('');
+    expect(fichas()).toHaveLength(5);
   });
 
   it('a linha de uma origem de nome comprido filtra a lista, em vez de clicar e não fazer nada', async () => {
@@ -405,21 +458,22 @@ describe('véu enquanto o período novo carrega', () => {
 
 describe('Conversão sem leads no período', () => {
   // Hoje (dia 14, meio-dia) ainda não chegou lead nas fixtures; ontem chegou o s4.
-  const cartao = (titulo) => [...container.querySelectorAll('h3')].find((t) => t.textContent === titulo).closest('section');
-
   it('o número grande diz "sem base" uma vez, com o comparado, e a rapidez diz que não há nada, como os outros recortes', async () => {
     await montar('/acad/relatorios/conversao?periodo=hoje', { section: 'conversao' });
     const topo = numeroGrande().parentElement.textContent;
     expect(topo.split('sem base')).toHaveLength(2);
     expect(comparado()).toBe('vs. 13 set');
-    for (const titulo of ['Por origem', 'Por consultor', 'Rapidez do primeiro contato']) {
-      expect(cartao(titulo).textContent, titulo).toContain('Nada no período.');
+    for (const nome of ['Por origem', 'Por consultor', 'Rapidez do 1º contato']) {
+      await abrirAba(nome);
+      expect(aba(nome).getAttribute('aria-selected'), nome).toBe('true');
+      expect(painelAberto().textContent, nome).toContain('Nada no período.');
     }
     expect(recorte('Até 1 hora')).toBeFalsy();
-    // Com leads no período (o mês), as quatro faixas voltam.
+    // Com leads no período (o mês), as quatro faixas voltam, e a aba aberta continua a mesma.
     await clicar(gatilho('Período'));
     await clicar(opcaoDoPeriodo('Mês'));
     expect(sonda()).toBe('');
+    expect(aba('Rapidez do 1º contato').getAttribute('aria-selected')).toBe('true');
     for (const faixa of ['Até 1 hora', 'Até 24 horas', 'Mais de 24 horas', 'Sem contato']) {
       expect(recorte(faixa), faixa).toBeTruthy();
     }
@@ -524,25 +578,38 @@ describe('agendamentos sem base', () => {
   });
 });
 
-describe('grade dos recortes', () => {
-  it('a Entrada põe três cartões lado a lado só a partir de xl, e a Conversão nunca põe três', async () => {
+describe('recortes em abas', () => {
+  it('a Entrada tem três abas, uma por vez, e abre na primeira', async () => {
     await montar('/acad/relatorios');
-    // Com a lista de relatórios ao lado, três colunas a partir de lg deixavam o nome sem espaço.
-    expect(grade('Por origem').className).toContain('sm:grid-cols-2');
-    expect(grade('Por origem').className).toContain('xl:grid-cols-3');
-    expect(grade('Por origem').className).not.toContain('lg:grid-cols');
-    expect(grade('Por consultor')).toBe(grade('Por origem'));
-    expect(grade('Por funil')).toBe(grade('Por origem'));
-    // O título do relatório é h2, e os cartões abaixo dele são h3 (e não h4, que pulava um nível).
+    expect(abas().map((t) => t.textContent)).toEqual(['Por origem', 'Por consultor', 'Por funil']);
+    expect(aba('Por origem').getAttribute('aria-selected')).toBe('true');
+    expect(recorte('Instagram')).toBeTruthy();
+    expect(recorte('Vendas')).toBeFalsy();
+    await abrirAba('Por funil');
+    expect(recorte('Vendas')).toBeTruthy();
+    expect(recorte('Instagram')).toBeFalsy();
+    // A aba não é filtro: não vai para o endereço.
+    expect(sonda()).toBe('');
+    // O título do relatório é h2, e nada pula de nível embaixo dele.
     expect(container.querySelectorAll('h4')).toHaveLength(0);
-    expect(container.querySelectorAll('h3')).toHaveLength(3);
 
-    // Cada recorte da Conversão já traz leads, matrículas e a barra da conversão ao lado do nome.
     await remontar('/acad/relatorios/conversao', { section: 'conversao' });
-    expect(grade('Por origem').className).toContain('xl:grid-cols-2');
-    expect(grade('Por origem').className).not.toMatch(/grid-cols-3/);
-    expect(grade('Rapidez do primeiro contato')).toBe(grade('Por origem'));
-    expect(container.querySelectorAll('h4')).toHaveLength(0);
+    expect(abas().map((t) => t.textContent)).toEqual(['Por origem', 'Por consultor', 'Rapidez do 1º contato']);
+  });
+
+  it('o recorte do endereço abre a aba dele, e com o recorte aceso dá para trocar de aba', async () => {
+    await montar('/acad/relatorios?recorte=consultor%3Adiego', {}, undefined, { useTransitions: false });
+    expect(aba('Por consultor').getAttribute('aria-selected')).toBe('true');
+    expect(recorte('Diego Santos').getAttribute('aria-pressed')).toBe('true');
+    expect(fichas()).toEqual(['s2', 's4']);
+    await abrirAba('Por funil');
+    expect(aba('Por funil').getAttribute('aria-selected')).toBe('true');
+    expect(sonda()).toBe('?recorte=consultor%3Adiego');
+    expect(fichas()).toEqual(['s2', 's4']);
+    // Limpar o filtro deixa a aba onde está.
+    await clicar(limpar());
+    expect(sonda()).toBe('');
+    expect(aba('Por funil').getAttribute('aria-selected')).toBe('true');
   });
 });
 
@@ -598,6 +665,7 @@ describe('lista que não quebra linha', () => {
 describe('linha Outros', () => {
   it('quem saiu da equipe e o lead sem dono se chamam Outros, com a explicação em letra menor e o texto inteiro no title', async () => {
     await montar('/acad/relatorios');
+    await abrirAba('Por consultor');
     const linha = recorte('Outros');
     expect(linha.textContent).toContain('Outros');
     expect(linha.textContent).toContain('fora da equipe ou sem responsável');

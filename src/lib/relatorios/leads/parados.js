@@ -106,7 +106,8 @@ export function paradosReport(ctx, { userIds = [], funnelId = null, origem = nul
       lead: l,
       name: l.name || 'Sem nome',
       stage: l.status || '',
-      stageDays: stageSince ? calendarDaysBetween(stageSince, ctx.now) : null,
+      // Nunca negativo: a entrada gravada com o relógio do aparelho adiantado cairia no dia seguinte.
+      stageDays: stageSince ? Math.max(0, calendarDaysBetween(stageSince, ctx.now)) : null,
       lastAt: x.lastAt,
       quiet: x.quiet,
       next: getSafeDateOrNull(l.nextFollowUp),
@@ -120,6 +121,8 @@ export function paradosReport(ctx, { userIds = [], funnelId = null, origem = nul
   const { cut, rows: visible } = applyCut(rows, recorte, new Set(items.map((i) => i.key)));
 
   return {
+    // O instante do retrato, que a tela escreve ao lado do número ("15/10 às 15:40").
+    at: ctx.now,
     open: open.length,
     total: stuck.length,
     dias,

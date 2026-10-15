@@ -133,7 +133,16 @@ export function RelatoriosView({
   // só acontece quando o endereço, a carga ou o relógio de um minuto mudam: a
   // useCrmSources entrega os mesmos months e leadsById enquanto nada mudou, e
   // sem isso este ajuste não pararia de rodar.
-  const current = report ? { secao, report, period, cmp } : null;
+  // Os mesmos relatórios de período sem o recorte da lista: dão o número da
+  // lista ao lado e as linhas do gráfico por dia, que é o total distribuído e
+  // não muda quando um número ou uma linha de recorte filtra a lista.
+  const uncutReports = useMemo(
+    () => (ready && !snapshot
+      ? Object.fromEntries(PERIOD_IDS.map((id) => [id, REPORTS[id](ctx, { period, cmp, userIds: resp, funnelId, origem })]))
+      : null),
+    [ready, snapshot, ctx, period, cmp, resp, funnelId, origem]
+  );
+  const current = report ? { secao, report, period, cmp, allRows: (uncutReports?.[secao] ?? report).rows } : null;
   const [lastGood, setLastGood] = useState(null);
   if (current && lastGood?.report !== report) setLastGood(current);
   const shown = current || (!failed && lastGood?.secao === secao ? lastGood : null);
@@ -169,10 +178,10 @@ export function RelatoriosView({
   // (que é de cada submenu e não muda o número principal). Leads parados sai das
   // listas ao vivo e tem número sempre; os outros, só com os meses carregados.
   const periodRail = useMemo(
-    () => (ready && !snapshot
-      ? Object.fromEntries(PERIOD_IDS.map((id) => [id, railNumberOf(id, REPORTS[id](ctx, { period, cmp, userIds: resp, funnelId, origem }))]))
+    () => (uncutReports
+      ? Object.fromEntries(PERIOD_IDS.map((id) => [id, railNumberOf(id, uncutReports[id])]))
       : null),
-    [ready, snapshot, ctx, period, cmp, resp, funnelId, origem]
+    [uncutReports]
   );
   const paradosRail = useMemo(
     () => railNumberOf(SNAPSHOT, paradosReport(ctx, { userIds: resp, funnelId, origem, dias })),
@@ -270,6 +279,9 @@ export function RelatoriosView({
               onCut={onCut}
               exportAction={exportAction}
               apptsPartial={apptsPartialOf(shown.period, shown.cmp)}
+              allRows={shown.allRows}
+              period={shown.period}
+              now={now}
             />
           </div>
         )}

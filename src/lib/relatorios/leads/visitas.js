@@ -17,7 +17,7 @@ import { AULA_STATUS, isAulaRecord } from '../../aulas.js';
 import { appointmentRowsOf, isSoloTrainingRecord } from '../../crm/appointments.js';
 import { SOLO_TRAINING_LABEL } from '../../professores.js';
 import { crmDelta } from '../../crm/metrics.js';
-import { pct } from '../../crm/stats.js';
+import { pct, rankCounts } from '../../crm/stats.js';
 import { reportIndex } from './janela.js';
 import {
   reportScope, namesOf, cutCode, countRows, applyCut, cutLabelOf, contactCells, CONTACT_COLUMNS, fmtDateTime, apptsPartialOf,
@@ -100,6 +100,49 @@ const unitOf = (x) => String(x.record.unit || '').trim() || 'Sem unidade';
 const modalityOf = (x) => String(x.record.modality || '').trim() || 'Sem modalidade';
 const professorOf = (r) => (isSoloTrainingRecord(r) ? SOLO_TRAINING_LABEL : (r.professorName || 'Professor'));
 
+// A aba Por professor (handoff dos Relatórios, §4): as aulas experimentais em
+// que o lead veio, por professor, e quantos desses leads matricularam depois,
+// pelo `converted` do registro (pickConvertingAula marca a última aula atendida
+// antes da matrícula). A falta não depende do professor e não pesa contra ele.
+// Quem treinou sozinho (isSoloTrainingRecord) é uma linha à parte, no fim. A
+// linha sai das mesmas linhas da lista, e o recorte dela (professor:<id>, ou o
+// SOLO_CUT) filtra a lista com a mesma regra, então a linha e a lista nunca
+// discordam. O código do sozinho não leva o prefixo professor, porque o id do
+// cadastro poderia ser qualquer texto, e o chip dele diz só "Treinou sozinho".
+//
+// É a conta do cartão de professores do painel (professorsOf, em
+// src/lib/crm/appointments.js), com quatro diferenças, todas por ser a lista:
+// - a barra vale (consultor, funil e origem); o painel conta a academia
+//   inteira. Sem filtro, "Todos os funis" ainda deixa de fora Renovações,
+//   Vencidos e Upgrade;
+// - fica fora a aula com data na primeira matrícula do lead ou depois dela
+//   (appointmentRowsOf), que o painel conta;
+// - o professor que só teve falta no período não aparece, porque a linha conta
+//   as aulas em que o lead veio; no painel ele aparece com zero realizadas;
+// - a ordem é a mesma (conversão, aulas e nome), com quem treinou sozinho no fim.
+// O relatoriosLeads.professor.test.js compara as duas contas.
+export const SOLO_CUT = 'sozinho:sim';
+export const SOLO_NAME = 'Treinou sozinho';
+const professorCutOf = (r) => (isSoloTrainingRecord(r) ? SOLO_CUT : cutCode('professor', r.professorId));
+const cameToAula = (x) => tipoOf(x) === 'aula' && x.outcome === 'veio';
+
+export function professorRowsOf(list) {
+  const map = new Map();
+  list.filter(cameToAula).forEach((x) => {
+    const r = x.record;
+    const key = professorCutOf(r);
+    const row = map.get(key) || { key, solo: key === SOLO_CUT, name: key === SOLO_CUT ? SOLO_NAME : (r.professorName || 'Professor'), leads: 0, enrolled: 0, mods: new Map() };
+    row.leads += 1;
+    if (r.converted === true) row.enrolled += 1;
+    row.mods.set(modalityOf(x), (row.mods.get(modalityOf(x)) || 0) + 1);
+    map.set(key, row);
+  });
+  return [...map.values()].map((row) => {
+    const mods = rankCounts(row.mods);
+    return { ...row, mods, conv: pct(row.enrolled, row.leads), ...(row.solo ? { note: 'sem professor' } : { channel: mods.map((m) => m.name).join(', ') }) };
+  }).sort((a, b) => Number(a.solo) - Number(b.solo) || (b.conv ?? -1) - (a.conv ?? -1) || b.leads - a.leads || a.name.localeCompare(b.name, 'pt-BR'));
+}
+
 // Ordem da lista: a data, depois o nome e o id do registro.
 const byDate = (a, b) => a.at - b.at || a.name.localeCompare(b.name, 'pt-BR') || a.id.localeCompare(b.id);
 
@@ -132,6 +175,7 @@ export function visitasReport(ctx, { period, cmp = null, userIds = [], funnelId 
   const byOwner = countRows(list, (x) => names.ownerKey(x.lead), names.ownerName, 'consultor', (id) => ({ note: names.ownerNote(id) }));
   const byUnit = countRows(list.filter((x) => tipoOf(x) === 'visita'), unitOf, (id) => id, 'unidade');
   const byModality = countRows(list.filter((x) => tipoOf(x) === 'aula'), modalityOf, (id) => id, 'modalidade');
+  const byProfessor = professorRowsOf(list);
 
   const rows = list.map((x) => {
     const r = x.record;
@@ -154,11 +198,12 @@ export function visitasReport(ctx, { period, cmp = null, userIds = [], funnelId 
         cutCode('tipo', tipoOf(x)),
         cutCode('consultor', names.ownerKey(x.lead)),
         aula ? cutCode('modalidade', modalityOf(x)) : cutCode('unidade', unitOf(x)),
+        ...(cameToAula(x) ? [professorCutOf(r)] : []),
       ],
     };
   }).sort(byDate);
 
-  const items = [...tiles.filter((t) => t.key), ...byType, ...byOwner, ...byUnit, ...byModality];
+  const items = [...tiles.filter((t) => t.key), ...byType, ...byOwner, ...byUnit, ...byModality, ...byProfessor];
   const { cut, rows: visible } = applyCut(rows, recorte, new Set(items.map((i) => i.key)));
 
   return {
@@ -172,6 +217,7 @@ export function visitasReport(ctx, { period, cmp = null, userIds = [], funnelId 
     byOwner,
     byUnit,
     byModality,
+    byProfessor,
     cut,
     cutLabel: cut ? cutLabelOf(cut, items) : null,
     rows: visible,

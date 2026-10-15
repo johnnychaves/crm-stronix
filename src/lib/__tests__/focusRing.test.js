@@ -11,7 +11,7 @@ import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { MemoryRouter } from 'react-router';
 import { FOCUS_RING } from '../../components/focusRing.js';
-import { NumberTiles, CountBreakdown, ConversionBreakdown, ReportList, ExportButton } from '../../views/relatorios/ReportParts.jsx';
+import { ReportBand, CutTabs, ReportList, ExportButton } from '../../views/relatorios/ReportParts.jsx';
 import { RelatoriosToolbar, ConsultoresMenu } from '../../views/relatorios/RelatoriosToolbar.jsx';
 import { RelatoriosRail } from '../../views/relatorios/RelatoriosRail.jsx';
 import { PeriodControl, PeriodMenu } from '../../components/period/PeriodControl.jsx';
@@ -57,20 +57,24 @@ describe('o anel chega aos controles do teclado', () => {
     expect(tokens.length).toBeGreaterThan(0);
   });
 
-  it('números, linhas de recorte, lista e exportar', () => {
-    const tiles = [{ key: null, name: 'Leads', value: 5 }, { key: 'situacao:matricularam', name: 'Matricularam', value: 1 }];
-    const html = renderToString(createElement(NumberTiles, { tiles, cut: null, onCut: noop }));
+  it('células do painel, abas e linhas de recorte, lista e exportar', () => {
+    const cells = [
+      { key: 'total', label: 'Leads', value: 5, onClick: noop },
+      { key: 'situacao:matricularam', label: 'Matricularam', value: 1, onClick: noop, arrow: true },
+    ];
+    const html = renderToString(createElement(ReportBand, { label: 'Conversão', value: 20, percent: true, cells }));
     expect(tagsOf(html, 'button')).toHaveLength(2);
     expect(semAnel(tagsOf(html, 'button'))).toEqual([]);
 
-    const contagem = renderToString(createElement(CountBreakdown, {
-      title: 'Por origem', rows: [{ key: 'origem:Instagram', name: 'Instagram', count: 4 }], cut: null, onCut: noop,
+    // Duas abas e uma linha na aba aberta: os dois botões das abas e o da linha levam o anel.
+    const abas = (kind, rows) => renderToString(createElement(CutTabs, {
+      tabs: [{ value: 'a', label: 'Por origem', kind, rows }, { value: 'b', label: 'Por consultor', kind, rows: [] }],
+      value: 'a', onValueChange: noop, activeRow: null, onRow: noop,
     }));
-    const conversao = renderToString(createElement(ConversionBreakdown, {
-      title: 'Por origem', rows: [{ key: 'origem:Instagram', name: 'Instagram', leads: 4, enrolled: 1, conv: 25 }], cut: null, onCut: noop,
-    }));
+    const contagem = abas('count', [{ key: 'origem:Instagram', name: 'Instagram', count: 4 }]);
+    const conversao = abas('conv', [{ key: 'origem:Instagram', name: 'Instagram', leads: 4, enrolled: 1, conv: 25 }]);
     for (const recorte of [contagem, conversao]) {
-      expect(tagsOf(recorte, 'button')).toHaveLength(1);
+      expect(tagsOf(recorte, 'button')).toHaveLength(3);
       expect(semAnel(tagsOf(recorte, 'button'))).toEqual([]);
     }
 

@@ -1,93 +1,92 @@
-// Perdas (spec 2026-10-09, submenu 4): o total com a variação (cair é bom), o
-// aviso fixo de quem volta ao funil, os recortes por motivo, etapa, origem e
-// consultor, e a lista de repescagem. Desenhada com a skill frontend-design, no
-// molde da Entrada de leads.
+// Perdas (spec 2026-10-09, submenu 4), no desenho do handoff
+// (docs/superpowers/specs/handoff-relatorios/): o painel com o total, a
+// variação (cair é bom, então subir sai vermelho) e o gráfico por dia da perda,
+// os avisos sob o painel, os recortes em abas (motivo, etapa, origem e
+// consultor) e a lista de repescagem.
 //
-// O número grande não leva cor: um zero vermelho diria que algo deu errado. A
-// variação diz se piorou ou melhorou (lowerBetter). Os quatro recortes ficam em
-// duas colunas a partir de sm. A etapa só é gravada desde 14/09/2026: o período
-// que acaba antes fica sem base (o cartão, a lista e a planilha dizem
-// STAGE_NO_BASE_TEXT), e o que atravessa a data diz que é parcial.
-//
-// A lista não quebra linha, como as outras: motivo, etapa, origem e consultor
-// cortam em 9rem com o texto inteiro no title, e a perda diz o dia e há quanto
-// tempo ("12/09 · há 8 dias").
-import { LeadLink } from '../../components/nav/AppLink.jsx';
+// O número grande não leva cor: um zero vermelho diria que algo deu errado. O
+// gráfico é o total distribuído pelo dia da perda, das linhas sem o recorte da
+// lista (allRows). A etapa só é gravada desde 14/09/2026: o período que acaba
+// antes fica sem base (a aba, a lista e a planilha dizem STAGE_NO_BASE_TEXT), e
+// o que atravessa a data diz que é parcial. O aviso de quem volta ao funil é
+// fixo. A lista não quebra linha, e a perda diz o dia e há quanto tempo ("06/09"
+// e "14 dias", ou "hoje").
 import { fmtScreenDate, STAGE_SINCE_TEXT } from '../../lib/relatorios/leads/base.js';
 import { STAGE_NO_BASE_TEXT } from '../../lib/relatorios/leads/perdas.js';
+import { porDia } from '../../lib/relatorios/leads/porDia.js';
 import { plural } from '../../lib/crm/format.js';
-import { ReportHeader, HeroNumber, CountBreakdown, ReportList, ReportNotice, CellText } from './ReportParts.jsx';
+import { ReportHeader, ReportBand, CutTabs, ReportList, ReportNotice, NameCell, CellText } from './ReportParts.jsx';
+import { useCutTab } from './useCutTab.js';
 
-const sinceText = (days) => (days === 0 ? 'hoje' : `há ${plural(days, 'dia', 'dias')}`);
+// Há quanto tempo foi a perda: "hoje" no próprio dia, nunca "0 dias".
+const sinceText = (days) => (days == null ? '' : days <= 0 ? 'hoje' : plural(days, 'dia', 'dias'));
 
 const columnsOf = (year) => [
+  { key: 'nome', label: 'Nome', className: 'min-w-[10rem]', render: (r) => <NameCell id={r.id} name={r.name} /> },
+  { key: 'motivo', label: 'Motivo', className: 'font-semibold text-foreground', render: (r) => <CellText text={r.reason} /> },
   {
-    key: 'nome',
-    label: 'Nome',
-    className: 'min-w-[10rem]',
-    render: (r) => (
-      <LeadLink leadId={r.id} className="font-semibold text-foreground hover:text-brand-700 hover:underline dark:hover:text-brand-300">
-        {r.name}
-      </LeadLink>
-    ),
+    key: 'etapa',
+    label: 'Etapa',
+    render: (r) => (r.stage === STAGE_NO_BASE_TEXT ? <span className="text-muted-foreground">{r.stage}</span> : <CellText text={r.stage} />),
   },
-  { key: 'motivo', label: 'Motivo', render: (r) => <CellText text={r.reason} /> },
-  { key: 'etapa', label: 'Etapa', render: (r) => <CellText text={r.stage} /> },
-  {
-    key: 'perda',
-    label: 'Perda',
-    className: 'num whitespace-nowrap',
-    render: (r) => `${fmtScreenDate(r.lostAt, year)} · ${sinceText(r.days)}`,
-  },
+  { key: 'perda', label: 'Perdeu em', className: 'num whitespace-nowrap', render: (r) => fmtScreenDate(r.lostAt, year) },
+  { key: 'ha', label: 'Há', className: 'num whitespace-nowrap text-muted-foreground', render: (r) => sinceText(r.days) },
   { key: 'origem', label: 'Origem', render: (r) => <CellText text={r.source} /> },
   { key: 'consultor', label: 'Consultor', render: (r) => <CellText text={r.owner} /> },
 ];
 
-const STAGE_HINT = Object.freeze({
-  partial: `Parcial: a etapa só é gravada desde ${STAGE_SINCE_TEXT}. As perdas de antes ficam em Sem etapa.`,
+const STAGE_NOTICE = Object.freeze({
+  partial: `A etapa da perda só é gravada desde ${STAGE_SINCE_TEXT}. As perdas de antes ficam em Sem etapa.`,
+  none: `A etapa da perda só é gravada desde ${STAGE_SINCE_TEXT}. Neste período ela fica como ${STAGE_NO_BASE_TEXT}.`,
 });
 
-export function PerdasSection({ report, compareText, listId, year, onCut, exportAction }) {
+export function PerdasSection({ report, compareText, listId, year, onCut, exportAction, allRows, period, now }) {
+  const tabs = [
+    { value: 'motivo', label: 'Por motivo', rows: report.byReason },
+    {
+      value: 'etapa',
+      label: 'Por etapa',
+      rows: report.byStage,
+      emptyText: report.stageBase === 'none'
+        ? `${STAGE_NO_BASE_TEXT}: a etapa da perda só é gravada desde ${STAGE_SINCE_TEXT}.`
+        : 'Nada no período.',
+    },
+    { value: 'origem', label: 'Por origem', rows: report.bySource },
+    { value: 'consultor', label: 'Por consultor', rows: report.byOwner },
+  ];
+  const [tab, onTab] = useCutTab(tabs, report.cut);
+  const days = period && now ? porDia(allRows ?? report.rows, period, (r) => r.lostAt, now) : null;
+  const total = report.rows.length;
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-4">
       <ReportHeader
         title="Perdas"
-        question="Quantos leads se perderam no período, por qual motivo e em que etapa."
+        question="Os leads perdidos no período, com o motivo e a etapa em que saíram."
         action={exportAction}
       />
-      <HeroNumber
-        value={report.total}
-        label={report.total === 1 ? 'perda' : 'perdas'}
-        delta={report.delta}
-        lowerBetter
-        compareText={compareText}
-      />
-      <ReportNotice>
-        Esta conta mostra só quem continua perdido hoje. Quando um lead perdido volta ao funil ou matricula, o sistema apaga a data e o motivo da perda, e ele sai daqui.
-      </ReportNotice>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <CountBreakdown title="Por motivo" rows={report.byReason} cut={report.cut} onCut={onCut} />
-        <CountBreakdown
-          title="Por etapa"
-          hint={STAGE_HINT[report.stageBase]}
-          rows={report.byStage}
-          cut={report.cut}
-          onCut={onCut}
-          emptyText={report.stageBase === 'none' ? `${STAGE_NO_BASE_TEXT}: a etapa da perda só é gravada desde ${STAGE_SINCE_TEXT}.` : 'Nada no período.'}
+      <div className="flex flex-col gap-2.5">
+        <ReportBand
+          label={report.total === 1 ? 'Perda' : 'Perdas'}
+          value={report.total}
+          delta={report.delta}
+          lowerBetter
+          sub={compareText}
+          chart={days && { days, label: 'Por dia da perda', unit: ['perda', 'perdas'] }}
         />
-        <CountBreakdown title="Por origem" rows={report.bySource} cut={report.cut} onCut={onCut} />
-        <CountBreakdown title="Por consultor" rows={report.byOwner} cut={report.cut} onCut={onCut} />
+        <ReportNotice>
+          Esta conta mostra só quem continua perdido hoje. Quando um lead perdido volta ao funil ou matricula, o sistema apaga a data e o motivo da perda, e ele sai daqui.
+        </ReportNotice>
+        {STAGE_NOTICE[report.stageBase] && <ReportNotice>{STAGE_NOTICE[report.stageBase]}</ReportNotice>}
       </div>
+      <CutTabs tabs={tabs} value={tab} onValueChange={onTab} activeRow={report.cut} onRow={onCut} />
       <ReportList
         listId={listId}
-        total={report.rows.length}
-        noun={report.rows.length === 1 ? 'lead' : 'leads'}
+        total={total}
+        noun={total === 1 ? 'lead perdido' : 'leads perdidos'}
         cutLabel={report.cutLabel}
         onClearCut={() => onCut(null)}
         columns={columnsOf(year)}
         rows={report.rows}
-        emptyTitle={report.cut ? 'Nenhum lead neste filtro.' : 'Nenhuma perda neste período.'}
-        emptyText={report.cut ? 'Limpe o filtro da lista para ver todos.' : 'Escolha outro período ou limpe os filtros.'}
       />
     </div>
   );

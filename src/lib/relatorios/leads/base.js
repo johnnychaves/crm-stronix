@@ -91,7 +91,7 @@ export function applyCut(rows, recorte, available) {
 
 const CUT_PREFIX = Object.freeze({
   origem: 'Origem', consultor: 'Consultor', funil: 'Funil', faixa: 'Primeiro contato',
-  tipo: 'Tipo', unidade: 'Unidade', modalidade: 'Modalidade', motivo: 'Motivo', etapa: 'Etapa',
+  tipo: 'Tipo', unidade: 'Unidade', modalidade: 'Modalidade', motivo: 'Motivo', etapa: 'Etapa', professor: 'Professor',
 });
 
 // Texto do filtro aplicado, que a lista mostra: "Origem: Instagram". Os

@@ -1,28 +1,28 @@
-// Leads parados (spec 2026-10-09, submenu 5): quantos leads em aberto estão
-// parados agora, os três números que filtram a lista (sem próximo passo,
-// contato atrasado e sem registro há mais de N dias), o recorte por consultor e
-// a lista. É retrato de agora: sem período, sem comparação e sem variação. O N
-// vem do corte da barra. Desenhada com a skill frontend-design, no molde da
-// Conversão.
+// Leads parados (spec 2026-10-09, submenu 5), no desenho do handoff
+// (docs/superpowers/specs/handoff-relatorios/): um painel com quantos leads em
+// aberto estão parados agora e os três números que filtram a lista (sem próximo
+// passo, contato atrasado e sem registro há mais de N dias), o recorte por
+// consultor e a lista. É retrato de agora: sem período, sem comparação e sem
+// variação. O N vem do corte da barra.
 //
-// O número grande é a lista sem filtro, com cada lead uma vez, e o texto ao
-// lado dá a base ("de 210 em aberto agora"). Os três números ficam numa linha a
-// partir de sm (sm:grid-cols-3 e xl:grid-cols-3), sem as colunas vazias da
-// grade padrão. Um lead pode estar em mais de um número, e a frase embaixo diz
-// isso, porque a soma dos três passa do número grande.
+// O número grande é a lista sem filtro, com cada lead uma vez, e o texto dele dá
+// a base e o instante do retrato. Um lead pode estar em mais de um número, então
+// a soma dos três passa do número grande.
 //
-// A lista não quebra linha: etapa, dias na etapa, último registro e próximo
-// contato numa linha só, e o consultor corta em 9rem. O atraso é o único
-// vermelho da lista. O lead sem data de cadastro de verdade não tem dias para
-// contar (quiet nulo): a célula do último registro diz "Nenhum", nunca 0.
+// O lead sem data de cadastro de verdade não tem dias para contar (quiet nulo):
+// a célula do último registro diz "Nenhum", nunca 0. Quem entrou na etapa hoje
+// está "hoje" na etapa, nunca "0 dias".
 import { fmtNum } from '../../lib/format.js';
 import { plural } from '../../lib/crm/format.js';
-import { LeadLink } from '../../components/nav/AppLink.jsx';
 import { STAGE_TRACKING_SINCE } from '../../lib/crm/scope.js';
 import { fmtScreenDate } from '../../lib/relatorios/leads/base.js';
-import { ReportHeader, HeroNumber, NumberTiles, CountBreakdown, ReportList, CellText } from './ReportParts.jsx';
+import { cn } from '../../lib/utils.js';
+import {
+  ReportHeader, ReportBand, CutTabs, ReportList, CellText, StatusPill, NameCell,
+} from './ReportParts.jsx';
 
 const days = (n) => plural(n, 'dia', 'dias');
+const hhmm = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 
 // "12/10 · há 3 dias", ou só o dia quando o registro é de hoje (dias do
 // calendário, como no rodapé do card do Pipeline). Sem registro nenhum, conta
@@ -34,43 +34,62 @@ function lastRecordText(r, year) {
   return ago ? `${day} · ${ago}` : day;
 }
 
-const columnsOf = (year) => [
-  {
-    key: 'nome',
-    label: 'Nome',
-    className: 'min-w-[10rem]',
-    render: (r) => (
-      <LeadLink leadId={r.id} className="font-semibold text-foreground hover:text-brand-700 hover:underline dark:hover:text-brand-300">
-        {r.name}
-      </LeadLink>
-    ),
-  },
-  { key: 'etapa', label: 'Etapa', className: 'whitespace-nowrap', render: (r) => r.stage },
-  {
-    key: 'naEtapa',
-    label: 'Na etapa',
-    className: 'num whitespace-nowrap',
-    render: (r) => (r.stageDays == null
-      ? <span className="text-muted-foreground">{`antes de ${fmtScreenDate(STAGE_TRACKING_SINCE, year)}`}</span>
-      : days(r.stageDays)),
-  },
-  { key: 'registro', label: 'Último registro', className: 'num whitespace-nowrap', render: (r) => lastRecordText(r, year) },
-  {
-    key: 'proximo',
-    label: 'Próximo contato',
-    className: 'num whitespace-nowrap',
-    render: (r) => {
-      if (!r.next) return <span className="text-muted-foreground">Sem próximo passo</span>;
-      const day = fmtScreenDate(r.next, year);
-      return r.late > 0
-        ? <span className="font-semibold text-rose-700 dark:text-rose-400">{`${day} · ${days(r.late)} de atraso`}</span>
-        : day;
+const columnsOf = (report, year) => {
+  const today = fmtScreenDate(report.at, year);
+  return [
+    { key: 'nome', label: 'Nome', className: 'min-w-[10rem]', render: (r) => <NameCell id={r.id} name={r.name} /> },
+    { key: 'etapa', label: 'Etapa', render: (r) => <CellText text={r.stage} /> },
+    {
+      key: 'naEtapa',
+      label: 'Na etapa',
+      className: 'num whitespace-nowrap',
+      render: (r) => (r.stageDays == null
+        ? <span className="text-muted-foreground">{`antes de ${fmtScreenDate(STAGE_TRACKING_SINCE, year)}`}</span>
+        : r.stageDays === 0 ? 'hoje' : days(r.stageDays)),
     },
-  },
-  { key: 'consultor', label: 'Consultor', render: (r) => <CellText text={r.owner} /> },
-];
+    {
+      key: 'registro',
+      label: 'Último registro',
+      className: 'num whitespace-nowrap',
+      // Quem passou do corte da barra fica em destaque, como no handoff.
+      render: (r) => <span className={cn(r.quiet != null && r.quiet > report.dias && 'font-semibold text-foreground')}>{lastRecordText(r, year)}</span>,
+    },
+    {
+      key: 'proximo',
+      label: 'Próximo contato',
+      className: 'num whitespace-nowrap',
+      render: (r) => {
+        if (!r.next) return <StatusPill tone="amber">Sem próximo passo</StatusPill>;
+        if (r.late > 0) return <StatusPill tone="rose">{`Atrasado ${days(r.late)}`}</StatusPill>;
+        const day = fmtScreenDate(r.next, year);
+        return day === today ? 'hoje' : day;
+      },
+    },
+    { key: 'consultor', label: 'Consultor', render: (r) => <CellText text={r.owner} /> },
+  ];
+};
+
+// O tom e a nota de cada número, na ordem do paradosReport.
+const TILE_LOOK = Object.freeze([
+  { tone: 'amber', note: 'fora quem chegou há menos de 24h' },
+  { tone: 'rose', note: 'a data já passou' },
+  { tone: 'neutral', note: 'nada na ficha' },
+]);
 
 export function ParadosSection({ report, listId, year, onCut, exportAction }) {
+  const cells = report.tiles.map((t, i) => ({
+    key: t.key,
+    // "Sem registro há mais de 7 dias" fica curto na célula; o nome inteiro vai no title e no chip da lista.
+    label: i === 2 ? `Sem registro há +${report.dias} dias` : t.name,
+    title: t.name,
+    value: t.value,
+    ...TILE_LOOK[i],
+    active: report.cut === t.key,
+    onClick: () => onCut(report.cut === t.key ? null : t.key),
+  }));
+  const at = `${fmtScreenDate(report.at, year)} às ${hhmm(report.at)}`;
+  const tabs = [{ value: 'consultor', label: 'Por consultor', rows: report.byOwner, hint: 'o dono de hoje, mesmo com o contato delegado', emptyText: 'Nenhum lead parado agora.' }];
+
   return (
     <div className="flex flex-col gap-5">
       <ReportHeader
@@ -78,28 +97,23 @@ export function ParadosSection({ report, listId, year, onCut, exportAction }) {
         question="Quem está em aberto agora sem próximo passo, com contato atrasado ou sem registro há dias."
         action={exportAction}
       />
-      <HeroNumber
+      <ReportBand
+        label="Leads parados"
         value={report.total}
-        label={report.total === 1 ? 'lead parado' : 'leads parados'}
-        compareText={`de ${fmtNum(report.open)} em aberto agora`}
+        sub={`de ${fmtNum(report.open)} em aberto agora, ${at} · cada lead conta uma vez`}
+        cells={cells}
       />
-      <NumberTiles tiles={report.tiles} cut={report.cut} onCut={onCut} className="sm:grid-cols-3 xl:grid-cols-3" />
-      <p className="m-0 text-pretty text-[12px] text-muted-foreground">
-        Um lead pode estar em mais de um número. A lista mostra cada um uma vez.
-      </p>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <CountBreakdown title="Por consultor" hint="O dono do lead hoje." rows={report.byOwner} cut={report.cut} onCut={onCut} emptyText="Nenhum lead parado agora." />
-      </div>
+      <CutTabs tabs={tabs} value="consultor" onValueChange={() => {}} activeRow={report.cut} onRow={onCut} />
       <ReportList
         listId={listId}
         total={report.rows.length}
-        noun={report.rows.length === 1 ? 'lead' : 'leads'}
+        noun={report.rows.length === 1 ? 'lead parado' : 'leads parados'}
         cutLabel={report.cutLabel}
         onClearCut={() => onCut(null)}
-        columns={columnsOf(year)}
+        columns={columnsOf(report, year)}
         rows={report.rows}
-        emptyTitle={report.cut ? 'Nenhum lead neste filtro.' : 'Nenhum lead parado agora.'}
-        emptyText={report.cut ? 'Limpe o filtro da lista para ver todos.' : 'Todos os leads em aberto têm próximo passo, contato em dia e registro recente.'}
+        emptyTitle={report.cut ? undefined : 'Nenhum lead parado.'}
+        emptyText={report.cut ? undefined : 'Todos os leads em aberto têm próximo passo, contato em dia e registro recente.'}
       />
     </div>
   );

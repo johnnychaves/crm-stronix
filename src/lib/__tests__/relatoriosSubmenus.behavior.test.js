@@ -118,66 +118,128 @@ const abrirGrupo = async () => {
 const radio = (nome) => container.querySelector(`[role="radio"][aria-label="${nome}"]`);
 const sonda = () => container.querySelector('output[data-sonda]').textContent;
 const linhas = () => [...container.querySelectorAll('tbody tr')];
-const nomesDaLista = () => linhas().map((tr) => tr.firstElementChild.textContent);
 const fichas = () => [...container.querySelectorAll('tbody a[href]')].map((a) => a.getAttribute('href').split('/').pop()).sort();
 const linhaDe = (id) => linhas().find((tr) => tr.querySelector(`a[href$="/ficha/${id}"]`));
 const celula = (tr, coluna) => tr.children[[...container.querySelectorAll('thead th')].findIndex((th) => th.textContent === coluna)];
 // O número grande do relatório, fora da lista ao lado (que também mostra números em Space Grotesk).
 const heroi = () => [...container.querySelectorAll('.num.font-display')].find((el) => !el.closest('nav'))?.textContent;
-const cartao = (titulo) => [...container.querySelectorAll('h3')].find((t) => t.textContent === titulo).closest('section');
-const grade = (titulo) => cartao(titulo).parentElement;
 const AVISO = 'os agendamentos estão incompletos';
+
+// Peças das telas de Visitas e aulas e de Leads parados: o nome do lead sem as
+// iniciais (que são aria-hidden), as abas dos recortes e a aba aberta. O Radix
+// ativa a aba no mousedown, e não no click, e só a aba aberta desenha as linhas.
+const semOculto = (el) => {
+  const copia = el.cloneNode(true);
+  copia.querySelectorAll('[aria-hidden="true"]').forEach((n) => n.remove());
+  return copia.textContent;
+};
+const nomesNaLista = () => linhas().map((tr) => semOculto(tr.firstElementChild));
+const abaDe = (nome) => [...container.querySelectorAll('[role="tab"]')].find((t) => t.textContent === nome);
+const escolherAba = async (nome) => {
+  await act(async () => { abaDe(nome).dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })); });
+};
+const abaAberta = () => container.querySelector('[role="tab"][data-state="active"]')?.textContent;
+// O número de uma célula do painel, pelo rótulo dela.
+const numeroDaCelula = (rotulo) => botao(rotulo).querySelector('.num.font-display');
+const comAulas = (...aulas) => {
+  const mes = m.all.months['2026-09'];
+  m.all.months['2026-09'] = { ...mes, aulas: [...mes.aulas, ...aulas] };
+};
 
 describe('Visitas e aulas experimentais', () => {
   const abrir = (url = '/acad/relatorios/visitas-e-aulas') => montar(url, { section: 'visitas-e-aulas' });
 
-  it('o comparecimento, os cinco números, o aviso do mês em andamento e a lista em ordem de data', async () => {
+  it('o comparecimento em verde, os cinco números, o aviso do mês em andamento e a lista em ordem de data', async () => {
     await abrir();
     expect(container.querySelector('h2').textContent).toBe('Visitas e aulas experimentais');
     expect(heroi()).toBe('50%');
+    const herói = [...container.querySelectorAll('.num.font-display')].find((el) => !el.closest('nav'));
+    expect(herói.className).toContain('text-emerald-700');
+    expect(container.textContent).toContain('vieram ÷ (vieram + faltaram) · vs. os 14 primeiros dias de Agosto 2026');
     expect(submenu('Visitas e aulas').getAttribute('aria-current')).toBe('page');
     const numero = (nome) => botao(nome).textContent;
     expect(numero('Marcados')).toContain('3');
     expect(numero('A acontecer')).toContain('1');
     // Marcados soma os que ainda vão acontecer e fica sem variação; os outros ficam sem base contra agosto.
     expect(numero('Marcados')).not.toContain('sem base');
+    expect(numero('Marcados')).toContain('com os que virão');
+    expect(botao('Marcados').title).toBe('Inclui os agendamentos que vão acontecer, por isso fica sem variação.');
     expect(numero('Vieram')).toContain('sem base');
-    expect(container.textContent).toContain('Marcados inclui os agendamentos que vão acontecer');
+    expect(numero('A acontecer')).toContain('data ainda vem');
+    expect(numeroDaCelula('Vieram').className).toContain('text-emerald-700');
+    expect(numeroDaCelula('Faltaram').className).toContain('text-rose-700');
+    expect(numeroDaCelula('Sem desfecho').className).toContain('text-amber-700');
+    // O aviso diz o que a tela mostra: a pílula "sem base".
     expect(container.textContent).toContain(AVISO);
-    expect(nomesDaLista()).toEqual(['Sofia Alves', 'Samuel Brito', 'Sérgio Dias']);
+    expect(container.textContent).toContain('a variação dos números aparece como "sem base"');
+    expect(container.textContent).not.toContain('ficam sem variação');
+    expect(nomesNaLista()).toEqual(['Sofia Alves', 'Samuel Brito', 'Sérgio Dias']);
     expect(celula(linhaDe('s1'), 'Dia e hora').textContent).toBe('04/09 10:00');
+    expect(celula(linhaDe('s1'), 'Tipo').textContent).toBe('Aula');
   });
 
-  it('"Faltaram" filtra a lista, e a célula do que não se aplica é um traço que se lê', async () => {
+  it('o desfecho é um selo: veio em verde, faltou em vermelho, sem desfecho em âmbar e a acontecer em cinza', async () => {
+    // Uma visita de 09/09 que ninguém marcou.
+    comAulas(A('r9', 's5', 'agendada', D(9, 9), D(9, 8), { type: 'visita', unit: 'Centro' }));
+    await abrir();
+    const selo = (id) => celula(linhaDe(id), 'Desfecho').firstElementChild;
+    expect([selo('s1').textContent, selo('s1').className]).toEqual(['Veio', expect.stringContaining('text-emerald-700')]);
+    expect([selo('s2').textContent, selo('s2').className]).toEqual(['Faltou', expect.stringContaining('text-rose-700')]);
+    expect([selo('s5').textContent, selo('s5').className]).toEqual(['Sem desfecho', expect.stringContaining('text-amber-700')]);
+    expect([selo('s4').textContent, selo('s4').className]).toEqual(['A acontecer', expect.stringContaining('text-slate-700')]);
+    expect(numeroDaCelula('Sem desfecho').textContent).toBe('1');
+  });
+
+  it('"Faltaram" filtra a lista e clicar de novo limpa, e a célula do que não se aplica é um traço que se lê', async () => {
     await abrir();
     await clicar(botao('Faltaram'));
     expect(sonda()).toBe('?recorte=situacao%3Afaltaram');
+    expect(botao('Faltaram').getAttribute('aria-pressed')).toBe('true');
+    expect(botao('Marcados').getAttribute('aria-pressed')).toBe('false');
     expect(fichas()).toEqual(['s2']);
     const modalidade = celula(linhaDe('s2'), 'Modalidade');
     expect(modalidade.querySelector('[aria-hidden="true"]').textContent).toBe('—');
     expect(modalidade.querySelector('.sr-only').textContent).toBe('não se aplica');
-    expect(celula(linhaDe('s2'), 'Desfecho').firstElementChild.className).toContain('text-rose-700');
+    await clicar(botao('Faltaram'));
+    expect(sonda()).toBe('');
+    expect(fichas()).toEqual(['s1', 's2', 's4']);
+    expect(botao('Marcados').getAttribute('aria-pressed')).toBe('true');
   });
 
-  it('os cinco números numa linha a partir de xl, e os quatro recortes dois por dois, com de quem é o dado', async () => {
+  it('os recortes em abas, com Por professor em segundo, e a linha do professor filtra a lista com a mesma regra', async () => {
+    // Uma falta da Paula: não entra na aba nem na lista filtrada pela linha dela.
+    comAulas(A('r9', 's5', 'no_show', D(9, 9), D(9, 8), { professorId: 'p1', professorName: 'Paula Nunes', modality: 'Funcional' }));
     await abrir();
-    expect(botao('Marcados').parentElement.className).toContain('xl:grid-cols-5');
-    expect(botao('Marcados').parentElement.className).not.toContain('xl:grid-cols-6');
-    expect(grade('Por tipo').className).toContain('sm:grid-cols-2');
-    expect(grade('Por tipo').className).not.toMatch(/grid-cols-3/);
-    for (const t of ['Por consultor', 'Por unidade', 'Por modalidade']) expect(grade(t), t).toBe(grade('Por tipo'));
-    expect(cartao('Por unidade').textContent).toContain('Só a visita guarda a unidade.');
-    expect(cartao('Por modalidade').textContent).toContain('Só a aula experimental guarda a modalidade.');
+    expect([...container.querySelectorAll('[role="tab"]')].map((t) => t.textContent))
+      .toEqual(['Visita ou aula', 'Por professor', 'Por consultor', 'Por unidade', 'Por modalidade']);
+    expect(abaAberta()).toBe('Visita ou aula');
+    await escolherAba('Por professor');
+    expect(abaAberta()).toBe('Por professor');
+    expect(container.textContent).toContain('só aulas experimentais · quantos matricularam depois da aula · clique numa linha para filtrar a lista');
+    const paula = recorte('Paula Nunes');
+    expect(paula.getAttribute('aria-label')).toBe('Paula Nunes (Funcional): 1 aula, 1 matrícula, 100% de conversão');
+    await clicar(paula);
+    expect(sonda()).toBe('?recorte=professor%3Ap1');
+    expect(fichas()).toEqual(['s1']);
+    expect(container.textContent).toContain('Professor: Paula Nunes');
+    // A aba fica na do recorte, e clicar de novo na linha limpa o filtro.
+    expect(abaAberta()).toBe('Por professor');
+    await clicar(recorte('Paula Nunes'));
+    expect(sonda()).toBe('');
+    expect(fichas()).toEqual(['s1', 's2', 's4', 's5']);
   });
 
-  it('no período fechado com base dos dois lados, sem o aviso e sem a frase de Marcados', async () => {
-    await abrir('/acad/relatorios/visitas-e-aulas?de=2026-09-08&ate=2026-09-13');
-    expect(container.textContent).not.toContain(AVISO);
-    expect(container.textContent).not.toContain('Marcados inclui');
-    expect(botao('Marcados').textContent).toContain('▼ 100%');
+  it('quem treinou sozinho é uma linha própria, e o link com o recorte de professor abre na aba dele', async () => {
+    comAulas(A('r9', 's5', 'attended', D(9, 9), D(9, 8), { soloTraining: true, modality: 'Musculação' }));
+    await abrir('/acad/relatorios/visitas-e-aulas?recorte=sozinho%3Asim');
+    expect(abaAberta()).toBe('Por professor');
+    expect(recorte('Treinou sozinho').getAttribute('aria-pressed')).toBe('true');
+    expect(semOculto(recorte('Treinou sozinho').firstElementChild)).toBe('Treinou sozinho sem professor');
+    expect(fichas()).toEqual(['s5']);
+    expect(container.textContent).toContain('Treinou sozinho');
   });
 
-  it('o exportar leva a lista até o fim do mês, com as colunas dela', async () => {
+  it('o exportar leva a lista até o fim do mês, com as colunas dela, e só o recorte quando há um', async () => {
     await abrir();
     await clicar(botao('Exportar lista'));
     const [arquivo, csv] = m.download.mock.calls[0];
@@ -186,15 +248,16 @@ describe('Visitas e aulas experimentais', () => {
     expect(tabela[0]).toBe(VISITAS_COLUMNS.map((c) => c.label).join(';'));
     expect(tabela).toHaveLength(1 + 3);
     expect(csv).toContain('20/09/2026 10:00');
+    await clicar(botao('Faltaram'));
+    await clicar(botao('Exportar lista'));
+    expect(m.download.mock.calls[1][1].split('\r\n')).toHaveLength(1 + 1);
   });
 
-  it('o agendamento de um lead que não existe mais mostra o nome sem link, porque a ficha não abriria', async () => {
-    // O registro fica no mês, o lead foi excluído (não está em leadsById): o nome vem do registro.
-    const mes = m.all.months['2026-09'];
-    const sumido = A('r9', 'sumido', 'attended', D(9, 6), D(9, 3), { type: 'visita', leadName: 'Lia Antiga', unit: 'Centro' });
-    m.all.months['2026-09'] = { ...mes, aulas: [...mes.aulas, sumido] };
+  it('o agendamento de um lead não encontrado mostra o nome sem link', async () => {
+    // O registro fica no mês, e o lead não está em leadsById (excluído, ou a leitura falhou): o nome vem do registro.
+    comAulas(A('r9', 'sumido', 'attended', D(9, 6), D(9, 3), { type: 'visita', leadName: 'Lia Antiga', unit: 'Centro' }));
     await abrir();
-    expect(nomesDaLista()).toEqual(['Sofia Alves', 'Samuel Brito', 'Lia Antiga', 'Sérgio Dias']);
+    expect(nomesNaLista()).toEqual(['Sofia Alves', 'Samuel Brito', 'Lia Antiga', 'Sérgio Dias']);
     const lia = linhas()[2];
     expect(lia.querySelector('a')).toBeNull();
     expect(lia.firstElementChild.textContent).toBe('Lia Antiga');
@@ -208,29 +271,68 @@ describe('Perdas', () => {
   // As fixtures param antes de a etapa da perda começar a ser gravada (14/09, 18h10). Em 20/09 setembro tem a etapa.
   beforeEach(() => { vi.setSystemTime(D(9, 20, 12)); });
   const abrir = (url = '/acad/relatorios/perdas') => montar(url, { section: 'perdas' });
+  // Peças da tela das Perdas, daqui só: o nome do lead fica no title da célula do nome (NameCell, com as iniciais),
+  // e só a aba aberta dos recortes desenha as linhas. O Radix ativa a aba no mousedown, e não no click.
+  const nomes = () => linhas().map((tr) => tr.firstElementChild.querySelector('[title]').getAttribute('title'));
+  const numeroGrande = () => [...container.querySelectorAll('.num.font-display')].find((el) => !el.closest('nav'));
+  const aba = (nome) => [...container.querySelectorAll('[role="tab"]')].find((t) => t.textContent === nome);
+  const abrirAba = async (nome) => {
+    await act(async () => { aba(nome).dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })); });
+  };
+  const painelAberto = () => container.querySelector('[role="tabpanel"]:not([hidden])');
+  const somaDasBarras = () => [...container.querySelectorAll('[role="group"][aria-label="Por dia da perda"] [role="img"]')]
+    .reduce((s, b) => s + Number(b.getAttribute('aria-label').match(/: (\d+) /)[1]), 0);
+  // Mais perdas no mês, com o nome e o lead na carga.
+  const comPerdas = (key, ...leads) => {
+    const mes = m.all.months[key];
+    m.all.months[key] = { ...mes, lost: [...mes.lost, ...leads] };
+    m.all.leadsById = new Map([...m.all.leadsById, ...leads.map((l) => [l.id, l])]);
+  };
 
-  it('o total, o aviso fixo, a etapa parcial e a lista com há quanto tempo foi a perda', async () => {
+  it('o total, o gráfico por dia, os avisos, a etapa parcial e a lista com há quanto tempo foi a perda', async () => {
     await abrir();
     expect(container.querySelector('h2').textContent).toBe('Perdas');
     expect(heroi()).toBe('1');
+    expect(somaDasBarras()).toBe(1);
     expect(container.textContent).toContain('Esta conta mostra só quem continua perdido hoje.');
-    expect(cartao('Por etapa').textContent).toContain('Parcial: a etapa só é gravada desde 14/09/2026.');
-    expect(cartao('Por etapa').textContent).toContain('Contato feito');
-    expect(nomesDaLista()).toEqual(['Sílvia Costa']);
-    expect(celula(linhaDe('s3'), 'Perda').textContent).toBe('06/09 · há 14 dias');
+    expect(container.textContent).toContain('A etapa da perda só é gravada desde 14/09/2026. As perdas de antes ficam em Sem etapa.');
+    await abrirAba('Por etapa');
+    expect(painelAberto().textContent).toContain('Contato feito');
+    expect(nomes()).toEqual(['Sílvia Costa']);
+    expect(celula(linhaDe('s3'), 'Perdeu em').textContent).toBe('06/09');
+    expect(celula(linhaDe('s3'), 'Há').textContent).toBe('14 dias');
     // O número grande não leva cor.
-    expect(container.querySelector('.num.font-display').className).not.toMatch(/text-(rose|emerald)/);
+    expect(numeroGrande().className).not.toMatch(/text-(rose|emerald)/);
   });
 
-  it('em agosto a etapa fica sem base, e a lista e a planilha dizem o mesmo que o cartão', async () => {
+  it('subir as perdas pinta a variação de vermelho', async () => {
+    // Agosto, de 1 a 20, com uma perda; setembro, de 1 a 20, com duas: subiu 100%, e subir é ruim.
+    comPerdas('2026-08', L('p1', { name: 'Paula Reis', createdAt: D(8, 1), status: 'Perda', lostAt: D(8, 10), lossReason: 'Preço' }));
+    comPerdas('2026-09', L('p3', { name: 'Pietra Melo', createdAt: D(9, 1), status: 'Perda', lostAt: D(9, 12), lossReason: 'Horário' }));
+    await abrir();
+    expect(heroi()).toBe('2');
+    const pilula = [...numeroGrande().parentElement.querySelectorAll('span')].find((s) => s.textContent.startsWith('▲'));
+    expect(pilula.textContent).toBe('▲ 100%');
+    expect(pilula.className).toContain('text-rose-700');
+    expect(pilula.className).not.toContain('text-emerald-700');
+  });
+
+  it('a perda de hoje diz "hoje", e não "0 dias"', async () => {
+    comPerdas('2026-09', L('p4', { name: 'Priscila Nunes', createdAt: D(9, 1), status: 'Perda', lostAt: D(9, 20, 9), lossReason: 'Preço' }));
+    await abrir();
+    expect(celula(linhaDe('p4'), 'Perdeu em').textContent).toBe('20/09');
+    expect(celula(linhaDe('p4'), 'Há').textContent).toBe('hoje');
+    expect(linhaDe('p4').textContent).not.toMatch(/\b0 dias?\b|há 0/);
+  });
+
+  it('em agosto a etapa fica sem base, e a lista e a planilha dizem o mesmo que a aba', async () => {
     // Uma perda de agosto, para a lista ter linha no período sem etapa gravada.
-    const p2 = L('p2', { name: 'Paulo Dias', createdAt: D(8, 1), status: 'Perda', lostAt: D(8, 10), lossReason: 'Preço' });
-    const mes = m.all.months['2026-08'];
-    m.all.months['2026-08'] = { ...mes, lost: [p2] };
-    m.all.leadsById = new Map([...m.all.leadsById, ['p2', p2]]);
+    comPerdas('2026-08', L('p2', { name: 'Paulo Dias', createdAt: D(8, 1), status: 'Perda', lostAt: D(8, 10), lossReason: 'Preço' }));
     await abrir('/acad/relatorios/perdas?mes=2026-08');
-    expect(cartao('Por etapa').textContent).toContain('Sem base: a etapa da perda só é gravada desde 14/09/2026.');
-    expect(nomesDaLista()).toEqual(['Paulo Dias']);
+    expect(container.textContent).toContain('Neste período ela fica como Sem base.');
+    await abrirAba('Por etapa');
+    expect(painelAberto().textContent).toContain('Sem base: a etapa da perda só é gravada desde 14/09/2026.');
+    expect(nomes()).toEqual(['Paulo Dias']);
     expect(celula(linhaDe('p2'), 'Etapa').textContent).toBe('Sem base');
     await clicar(botao('Exportar lista'));
     const [linhaCsv] = m.download.mock.calls[0][1].split('\r\n').slice(1);
@@ -238,28 +340,43 @@ describe('Perdas', () => {
     expect(linhaCsv.split(';')[colunas.indexOf('Etapa')]).toBe('Sem base');
   });
 
-  it('no período parcial a perda sem troca gravada continua em "Sem etapa", como no cartão', async () => {
-    // Perdida em setembro, sem a troca para Perda gravada: a etapa não se sabe, e o cartão já usa "Sem etapa".
-    const p5 = L('p5', { name: 'Pedro Alves', status: 'Perda', lostAt: D(9, 15), lossReason: 'Preço' });
-    const mes = m.all.months['2026-09'];
-    m.all.months['2026-09'] = { ...mes, lost: [...mes.lost, p5] };
-    m.all.leadsById = new Map([...m.all.leadsById, ['p5', p5]]);
+  it('no período parcial a perda sem troca gravada continua em "Sem etapa", como na aba', async () => {
+    // Perdida em setembro, sem a troca para Perda gravada: a etapa não se sabe, e a aba já usa "Sem etapa".
+    comPerdas('2026-09', L('p5', { name: 'Pedro Alves', status: 'Perda', lostAt: D(9, 15), lossReason: 'Preço' }));
     await abrir();
-    expect(cartao('Por etapa').textContent).toContain('Sem etapa');
-    expect(cartao('Por etapa').textContent).not.toContain('Sem base');
+    await abrirAba('Por etapa');
+    expect(painelAberto().textContent).toContain('Sem etapa');
+    expect(painelAberto().textContent).not.toContain('Sem base');
     expect(celula(linhaDe('p5'), 'Etapa').textContent).toBe('Sem etapa');
   });
 
-  it('um motivo filtra a lista e o exportar baixa a lista de repescagem', async () => {
+  it('um motivo filtra a lista com o número dele, de novo limpa, e o exportar baixa a lista de repescagem', async () => {
+    comPerdas('2026-09', L('p3', { name: 'Pietra Melo', createdAt: D(9, 1), status: 'Perda', lostAt: D(9, 12), lossReason: 'Horário' }));
     await abrir();
+    expect(recorte('Preço').getAttribute('aria-label')).toBe('Preço: 1 de 2, 50%');
     await clicar(recorte('Preço'));
     expect(sonda()).toBe(`?recorte=${encodeURIComponent('motivo:Preço')}`);
-    expect(container.textContent).toContain('Motivo: Preço');
+    expect(recorte('Preço').getAttribute('aria-pressed')).toBe('true');
+    expect(container.querySelector('[aria-label="Limpar filtro da lista"]').parentElement.textContent).toContain('Motivo: Preço');
+    expect(nomes()).toEqual(['Sílvia Costa']);
+    // Filtrar a lista não muda o total nem o gráfico.
+    expect(heroi()).toBe('2');
+    expect(somaDasBarras()).toBe(2);
     await clicar(botao('Exportar lista'));
     const [arquivo, csv] = m.download.mock.calls[0];
     expect(arquivo).toBe('leads-perdas-2026-09-01-a-2026-09-20.csv');
     expect(csv.split('\r\n')[0]).toBe(PERDAS_COLUMNS.map((c) => c.label).join(';'));
+    expect(csv.split('\r\n')).toHaveLength(1 + 1);
     expect(csv.split('\r\n')[1]).toContain('Sílvia Costa;');
+    await clicar(recorte('Preço'));
+    expect(sonda()).toBe('');
+    expect(nomes()).toHaveLength(2);
+  });
+
+  it('o recorte de consultor do endereço abre a aba Por consultor', async () => {
+    await abrir('/acad/relatorios/perdas?recorte=consultor%3Aana');
+    expect(aba('Por consultor').getAttribute('aria-selected')).toBe('true');
+    expect(recorte('Ana Ribeiro').getAttribute('aria-pressed')).toBe('true');
   });
 });
 
@@ -283,6 +400,7 @@ describe('números da lista ao lado', () => {
 
 describe('Leads parados', () => {
   const abrir = (url = '/acad/relatorios/parados', props = {}) => montar(url, { section: 'parados', ...props });
+  const linhaChamada = (nome) => linhas().find((tr) => semOculto(tr.firstElementChild) === nome);
 
   it('sem período na barra, sem mês para carregar, e os números saem dos leads em aberto que o app já tem', async () => {
     await abrir();
@@ -291,13 +409,18 @@ describe('Leads parados', () => {
     expect(m.args.monthKeys).toEqual([]);
     expect(container.querySelector('[role="status"]').textContent).toBe('');
     expect(heroi()).toBe('4');
-    expect(container.textContent).toContain('de 5 em aberto agora');
+    expect(container.textContent).toContain('de 5 em aberto agora, 14/09 às 12:00 · cada lead conta uma vez');
+    // Retrato de agora: nenhuma variação no painel.
+    expect(container.textContent).not.toContain('sem base');
     expect(botao('Sem próximo passo').textContent).toContain('3');
-    expect(botao('Sem registro há mais de 7 dias').textContent).toContain('4');
-    expect(container.textContent).toContain('A lista mostra cada um uma vez.');
+    expect(botao('Sem registro há +7 dias').textContent).toContain('4');
+    expect(botao('Sem registro há +7 dias').title).toBe('Sem registro há mais de 7 dias');
+    expect(numeroDaCelula('Sem próximo passo').className).toContain('text-amber-700');
+    expect(numeroDaCelula('Contato atrasado').className).toContain('text-rose-700');
     // Quem está há mais dias sem registro primeiro.
-    expect(nomesDaLista()).toEqual(['Alice Gomes', 'André Lima', 'Sandra Esteves', 'Samuel Brito']);
-    expect(celula(linhaDe('a3'), 'Próximo contato').textContent).toBe('Sem próximo passo');
+    expect(nomesNaLista()).toEqual(['Alice Gomes', 'André Lima', 'Sandra Esteves', 'Samuel Brito']);
+    const semPasso = celula(linhaDe('a3'), 'Próximo contato').firstElementChild;
+    expect([semPasso.textContent, semPasso.className]).toEqual(['Sem próximo passo', expect.stringContaining('text-amber-700')]);
     expect(celula(linhaDe('a3'), 'Na etapa').textContent).toBe('antes de 14/09');
   });
 
@@ -307,7 +430,7 @@ describe('Leads parados', () => {
     await clicar(radio('30 dias'));
     expect(sonda()).toBe('?dias=30');
     expect(radio('30 dias').getAttribute('aria-checked')).toBe('true');
-    expect(botao('Sem registro há mais de 30 dias').textContent).toContain('2');
+    expect(botao('Sem registro há +30 dias').textContent).toContain('2');
     // Pelo teclado também: a seta volta um corte e escreve no endereço.
     radio('30 dias').focus();
     await tecla(radio('30 dias'), 'ArrowLeft');
@@ -319,7 +442,7 @@ describe('Leads parados', () => {
     expect(onSection).toHaveBeenCalledWith('entrada', '?dias=30');
   });
 
-  it('"Sem próximo passo" filtra a lista, e o exportar leva o dia de hoje no nome', async () => {
+  it('"Sem próximo passo" filtra a lista e clicar de novo limpa, e o exportar leva o dia de hoje no nome', async () => {
     await abrir();
     await clicar(botao('Sem próximo passo'));
     expect(sonda()).toBe('?recorte=situacao%3Asem-proximo-passo');
@@ -329,20 +452,48 @@ describe('Leads parados', () => {
     expect(arquivo).toBe('leads-parados-2026-09-14.csv');
     expect(csv.split('\r\n')[0]).toBe(PARADOS_COLUMNS.map((c) => c.label).join(';'));
     expect(csv.split('\r\n')).toHaveLength(1 + 3);
+    await clicar(botao('Sem próximo passo'));
+    expect(sonda()).toBe('');
+    expect(fichas()).toEqual(['a2', 'a3', 's2', 's5']);
   });
 
-  it('os três números ficam numa linha a partir de sm', async () => {
+  it('a aba Por consultor diz que é o dono de hoje, e a linha filtra a lista pelo mesmo dono', async () => {
     await abrir();
-    const numeros = botao('Sem próximo passo').parentElement.className.split(/\s+/);
-    expect(numeros).toEqual(expect.arrayContaining(['sm:grid-cols-3', 'xl:grid-cols-3']));
-    expect(numeros).not.toContain('xl:grid-cols-6');
+    expect([...container.querySelectorAll('[role="tab"]')].map((t) => t.textContent)).toEqual(['Por consultor']);
+    expect(container.textContent).toContain('o dono de hoje, mesmo com o contato delegado · clique numa linha para filtrar a lista');
+    const diego = recorte('Diego Santos');
+    expect(diego.getAttribute('aria-label')).toBe('Diego Santos: 2 de 4, 50%');
+    await clicar(diego);
+    expect(sonda()).toBe('?recorte=consultor%3Adiego');
+    expect(fichas()).toEqual(['a2', 's2']);
+    expect(container.textContent).toContain('Consultor: Diego Santos');
+    await clicar(recorte('Diego Santos'));
+    expect(sonda()).toBe('');
+  });
+
+  it('o último registro, os dias na etapa e o contato atrasado em cada caso', async () => {
+    // Registro e entrada na etapa de hoje, com o contato atrasado desde 10/09.
+    const hoje = L('h1', { name: 'Hugo Hoje', nextFollowUp: D(9, 10), lastInteractionAt: D(9, 14, 9), statusEnteredAt: D(9, 14, 8) });
+    // Registro de 03/09 e a entrada na etapa gravada no futuro (relógio adiantado): fica "hoje", nunca -1.
+    const antigo = L('h2', { name: 'Iara Antiga', nextFollowUp: null, lastInteractionAt: D(9, 3, 12), statusEnteredAt: D(9, 15, 9) });
+    // Sem registro nenhum: conta do cadastro, em 01/09.
+    const semRegistro = L('h3', { name: 'Júlio Novo', createdAt: D(9, 1), nextFollowUp: null });
+    await abrir('/acad/relatorios/parados', { liveLeads: [...TELA.liveLeads, hoje, antigo, semRegistro] });
+    expect(celula(linhaChamada('Hugo Hoje'), 'Último registro').textContent).toBe('14/09');
+    expect(celula(linhaChamada('Hugo Hoje'), 'Na etapa').textContent).toBe('hoje');
+    const atraso = celula(linhaChamada('Hugo Hoje'), 'Próximo contato').firstElementChild;
+    expect([atraso.textContent, atraso.className]).toEqual(['Atrasado 4 dias', expect.stringContaining('text-rose-700')]);
+    expect(celula(linhaChamada('Iara Antiga'), 'Último registro').textContent).toBe('03/09 · há 11 dias');
+    expect(celula(linhaChamada('Iara Antiga'), 'Na etapa').textContent).toBe('hoje');
+    expect(celula(linhaChamada('Júlio Novo'), 'Último registro').textContent).toBe('Nenhum · cadastro há 13 dias');
+    expect(container.querySelector('tbody').textContent).not.toMatch(/-1 dia|\b0 dias?\b/);
   });
 
   it('o lead sem data de cadastro de verdade não mostra 0 nem NaN no último registro', async () => {
     // O app monta o createdAt dele com a hora da carga e marca createdAtMissing: não há dias para contar.
     const semData = L('sd', { name: 'Marta Sem Data', createdAt: NOW, createdAtMissing: true, nextFollowUp: null });
     await abrir('/acad/relatorios/parados', { liveLeads: [...TELA.liveLeads, semData] });
-    const linha = linhas().find((tr) => tr.firstElementChild.textContent === 'Marta Sem Data');
+    const linha = linhaChamada('Marta Sem Data');
     expect(linha).toBeDefined();
     expect(celula(linha, 'Último registro').textContent).toBe('Nenhum');
     expect(celula(linha, 'Na etapa').textContent).toBe('antes de 14/09');
@@ -353,5 +504,10 @@ describe('Leads parados', () => {
     const celulas = csv.find((l) => l.startsWith('Marta Sem Data;')).split(';');
     expect(celulas[colunas.indexOf('Dias sem registro')]).toBe('');
     expect(celulas[colunas.indexOf('Último registro')]).toBe('Nenhum');
+  });
+
+  it('sem lead parado, a lista diz que não há nenhum', async () => {
+    await abrir('/acad/relatorios/parados', { liveLeads: [] });
+    expect(container.textContent).toContain('Nenhum lead parado.');
   });
 });

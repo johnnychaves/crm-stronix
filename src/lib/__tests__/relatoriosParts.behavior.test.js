@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 // Peças dos Relatórios em uso (jsdom): o que o relatoriosParts.test.js, que só
-// lê o HTML, não alcança. Número e linha de recorte que filtram e limpam, o
-// "Mostrar mais" e o foco, a lista que volta aos 50 só quando o filtro muda, o
-// foco depois de limpar o filtro e a cor da variação em cada número.
+// lê o HTML, não alcança. O texto pequeno das linhas de recorte, o "Mostrar
+// mais" e o foco, a lista que volta aos 50 só quando o filtro muda e o foco
+// depois de limpar o filtro.
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { createElement as h, act, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { NumberTiles, CountBreakdown, ConversionBreakdown, ReportList } from '../../views/relatorios/ReportParts.jsx';
+import { CutTabs, ReportList } from '../../views/relatorios/ReportParts.jsx';
 import { FOCUS_RING } from '../../components/focusRing.js';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -40,74 +40,6 @@ const clicar = async (el) => { await act(async () => { el.click(); }); };
 // Quem clica com o mouse já deixa o foco no botão: o teste faz o mesmo antes do clique.
 const clicarComFoco = async (el) => { el.focus(); await clicar(el); };
 
-describe('números e linhas que filtram a lista', () => {
-  const numeros = [
-    { key: null, name: 'Leads da safra', value: 5 },
-    { key: 'situacao:matricularam', name: 'Matricularam', value: 1, tone: 'good' },
-    { key: 'situacao:perderam', name: 'Perderam', value: 2, tone: 'bad' },
-  ];
-  const contagem = [
-    { key: 'origem:Instagram', name: 'Instagram', count: 4 },
-    { key: 'origem:Indicação', name: 'Indicação', count: 1 },
-  ];
-  const conversao = [
-    { key: 'origem:Instagram', name: 'Instagram', leads: 4, enrolled: 1, conv: 25 },
-    { key: 'origem:Indicação', name: 'Indicação', leads: 1, enrolled: 0, conv: 0 },
-  ];
-
-  it('um número filtra, o mesmo número de novo limpa, e o total limpa', async () => {
-    const onCut = vi.fn();
-    await montar(h(NumberTiles, { tiles: numeros, cut: null, onCut }));
-    expect(botao('Leads da safra').getAttribute('aria-pressed')).toBe('true');
-    await clicar(botao('Matricularam'));
-    expect(onCut).toHaveBeenLastCalledWith('situacao:matricularam');
-    // A tela devolve o filtro aceso, e o segundo clique no mesmo número o desliga.
-    await remontar(h(NumberTiles, { tiles: numeros, cut: 'situacao:matricularam', onCut }));
-    expect(botao('Matricularam').getAttribute('aria-pressed')).toBe('true');
-    expect(botao('Leads da safra').getAttribute('aria-pressed')).toBe('false');
-    await clicar(botao('Matricularam'));
-    expect(onCut).toHaveBeenLastCalledWith(null);
-    // O total não tem filtro próprio: clicar nele só limpa o que estiver aceso.
-    await clicar(botao('Leads da safra'));
-    expect(onCut).toHaveBeenLastCalledWith(null);
-    // Com um filtro aceso, outro número troca o filtro.
-    await clicar(botao('Perderam'));
-    expect(onCut).toHaveBeenLastCalledWith('situacao:perderam');
-    expect(onCut).toHaveBeenCalledTimes(4);
-  });
-
-  it.each([
-    ['contagem', CountBreakdown, contagem],
-    ['conversão', ConversionBreakdown, conversao],
-  ])('a linha do recorte de %s filtra, clicar de novo limpa, e outra linha troca o filtro', async (_, Recorte, rows) => {
-    const onCut = vi.fn();
-    const recorte = (cut) => h(Recorte, { title: 'Por origem', rows, cut, onCut });
-    await montar(recorte(null));
-    await clicar(botao('Instagram'));
-    expect(onCut).toHaveBeenLastCalledWith('origem:Instagram');
-    await remontar(recorte('origem:Instagram'));
-    expect(botao('Instagram').getAttribute('aria-pressed')).toBe('true');
-    expect(botao('Indicação').getAttribute('aria-pressed')).toBe('false');
-    await clicar(botao('Instagram'));
-    expect(onCut).toHaveBeenLastCalledWith(null);
-    await clicar(botao('Indicação'));
-    expect(onCut).toHaveBeenLastCalledWith('origem:Indicação');
-  });
-
-  it('a variação pinta pela regra de cada número: matricular mais é verde, perder mais é vermelho', async () => {
-    const tiles = [
-      { key: 'situacao:matricularam', name: 'Matricularam', value: 8, tone: 'good', delta: { up: true, value: 20, text: '20%' } },
-      { key: 'situacao:perderam', name: 'Perderam', value: 30, tone: 'bad', delta: { up: true, value: 20, text: '20%' }, lowerBetter: true },
-    ];
-    await montar(h(NumberTiles, { tiles, cut: null, onCut: () => {} }));
-    const pilula = (nome) => [...botao(nome).querySelectorAll('span')].find((s) => s.textContent.startsWith('▲'));
-    expect(pilula('Matricularam').className).toContain('bg-emerald-50');
-    expect(pilula('Matricularam').className).not.toContain('bg-rose-50');
-    expect(pilula('Perderam').className).toContain('bg-rose-50');
-    expect(pilula('Perderam').className).not.toContain('bg-emerald-50');
-  });
-});
-
 describe('nome e texto pequeno da linha', () => {
   const linhas = [
     { key: 'origem:Instagram', name: 'Instagram', channel: 'Pago' },
@@ -115,13 +47,14 @@ describe('nome e texto pequeno da linha', () => {
   ];
 
   it.each([
-    ['contagem', CountBreakdown, (r) => ({ ...r, count: 1 })],
-    ['conversão', ConversionBreakdown, (r) => ({ ...r, leads: 1, enrolled: 0, conv: 0 })],
-  ])('na %s, o texto da linha lê o nome e o texto pequeno separados por um espaço', async (_, Recorte, comNumeros) => {
-    await montar(h(Recorte, { title: 'Por consultor', rows: linhas.map(comNumeros), cut: null, onCut: () => {} }));
+    ['contagem', 'count', (r) => ({ ...r, count: 1 })],
+    ['conversão', 'conv', (r) => ({ ...r, leads: 1, enrolled: 0, conv: 0 })],
+  ])('na aba de %s, o texto da linha lê o nome e o texto pequeno separados por um espaço', async (_, kind, comNumeros) => {
+    const tabs = [{ value: 'a', label: 'Por consultor', kind, rows: linhas.map(comNumeros) }];
+    await montar(h(CutTabs, { tabs, value: 'a', onValueChange: () => {}, activeRow: null, onRow: () => {} }));
     // É o que o leitor de tela encontra no nome: sem o espaço, "InstagramPago" e "Outrosfora da equipe...".
     const texto = (nome) => botao(nome).querySelector('[title]').textContent;
-    if (Recorte === CountBreakdown) expect(texto('Instagram')).toBe('Instagram Pago');
+    expect(texto('Instagram')).toBe('Instagram Pago');
     expect(texto('Outros')).toBe('Outros fora da equipe ou sem responsável');
   });
 });

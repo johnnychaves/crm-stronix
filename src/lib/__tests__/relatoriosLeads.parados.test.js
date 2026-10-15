@@ -77,6 +77,12 @@ describe('Leads parados', () => {
     const naEtapa = rel(ctxCom(entrou('e1', D(9, 12, 22)), entrou('e2', D(9, 14, 9)))).rows;
     expect(naEtapa.find((x) => x.id === 'e1')).toMatchObject({ stageDays: 2, quiet: 0 });
     expect(naEtapa.find((x) => x.id === 'e2')).toMatchObject({ stageDays: 0, quiet: 0 });
+    // A entrada gravada no futuro (relógio do aparelho adiantado) fica em 0, nunca -1.
+    expect(rel(ctxCom(entrou('e3', D(9, 15, 9)))).rows.find((x) => x.id === 'e3').stageDays).toBe(0);
+  });
+
+  it('o retrato leva o instante em que foi tirado, que a tela escreve ao lado do número', () => {
+    expect(rel(ctxOf()).at).toEqual(NOW);
   });
 
   it('o corte de dias muda só o terceiro número, e a lista acompanha', () => {

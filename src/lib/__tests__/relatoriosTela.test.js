@@ -44,7 +44,8 @@ describe('tela dos Relatórios', () => {
     carregado();
     const out = render('/acad/relatorios');
     expect(out).toContain('Entrada de leads');
-    expect(out).toContain('leads novos');
+    expect(out).toContain('Leads novos');
+    expect(out).toContain('Por dia de cadastro');
     expect(out).toContain('Por origem');
     expect(out).toContain('Instagram');
     expect(out).toContain('Exportar lista');
@@ -57,9 +58,7 @@ describe('tela dos Relatórios', () => {
     const out = render('/acad/relatorios/conversao?recorte=situacao%3Amatricularam', { section: 'conversao' });
     expect(out).toContain('Conversão');
     expect(out).toContain('20%');
-    expect(out).toContain('Rapidez do primeiro contato');
-    // O primeiro contato é qualquer interação registrada da equipe, e não só conversa (isContactInteraction).
-    expect(out).toContain('Do cadastro à primeira interação da equipe.');
+    expect(out).toContain('Rapidez do 1º contato');
     expect(out).toContain('aria-label="Limpar filtro da lista"');
     expect(out).toContain(ficha('s1'));
     expect(out).not.toContain(ficha('s4'));
@@ -73,7 +72,7 @@ describe('tela dos Relatórios', () => {
     h.sources = { months: c.months, leadsById: c.leadsById, loading: false, failedKeys: ['2026-09'] };
     const out = render('/acad/relatorios');
     expect(out).toContain('Não deu para carregar o período.');
-    expect(out).not.toContain('leads novos');
+    expect(out).not.toContain('Leads novos');
   });
 
   it('quem não pode exportar não vê o botão', () => {
