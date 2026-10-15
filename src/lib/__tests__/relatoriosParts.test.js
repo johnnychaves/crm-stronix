@@ -45,6 +45,15 @@ describe('números do topo', () => {
     expect(sem).toContain('<span aria-hidden="true" class="h-5"></span>');
   });
 
+  it('quem tem menos números troca as colunas da grade, sem sobrar coluna vazia', () => {
+    const tiles = [{ key: null, name: 'Marcados', value: 4 }];
+    const grade = (className) => /^<div class="([^"]*)"/.exec(html(createElement(NumberTiles, { tiles, cut: null, onCut: noop, className })))[1].split(' ');
+    expect(grade()).toContain('xl:grid-cols-6');
+    expect(grade('xl:grid-cols-5')).toContain('xl:grid-cols-5');
+    expect(grade('xl:grid-cols-5')).not.toContain('xl:grid-cols-6');
+    expect(grade('sm:grid-cols-3 xl:grid-cols-3')).not.toContain('xl:grid-cols-6');
+  });
+
   it('o número grande leva a variação e o período comparado', () => {
     const out = html(createElement(HeroNumber, { value: 1280, label: 'leads novos', delta: { up: true, text: '25%' }, compareText: 'vs. Agosto 2026' }));
     expect(out).toContain('1.280');

@@ -69,10 +69,12 @@ export function HeroNumber({ value, label, delta = null, lowerBetter = false, co
 // O número que é melhor quando cai (lowerBetter, como os que perderam) pinta
 // a variação ao contrário: subir fica vermelho. O número sem variação (Em
 // aberto) guarda o lugar dela, com a altura da pílula (h-5), para o número
-// ficar na mesma linha dos outros.
-export function NumberTiles({ tiles, cut, onCut }) {
+// ficar na mesma linha dos outros. A grade padrão é a de seis números; quem
+// tem menos passa as colunas em className (o cn() troca as do mesmo tamanho de
+// tela), para não sobrar coluna vazia no fim da linha.
+export function NumberTiles({ tiles, cut, onCut, className }) {
   return (
-    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-6">
+    <div className={cn('grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-6', className)}>
       {tiles.map((t) => {
         const active = t.key === null ? cut === null : cut === t.key;
         return (
