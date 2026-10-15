@@ -247,9 +247,9 @@ const ddmm = (d) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth
  */
 export function BandCell({ label, value, tone = 'neutral', delta = null, lowerBetter = false, note = '', active = false, onClick, arrow = false, rule = false, title }) {
   return (
-    <div className="flex min-w-[104px] grow basis-0 items-stretch">
+    <div className="flex min-w-[104px] grow basis-0 items-stretch xl:min-w-0">
       {arrow && (
-        <span aria-hidden="true" className="grid w-3.5 flex-none place-items-center text-slate-400 dark:text-slate-500">
+        <span aria-hidden="true" className="grid w-3.5 flex-none place-items-center text-slate-400 xl:w-3 dark:text-slate-500">
           <ChevronRight size={12} strokeWidth={2.4} />
         </span>
       )}
@@ -260,7 +260,7 @@ export function BandCell({ label, value, tone = 'neutral', delta = null, lowerBe
         onClick={onClick}
         title={title}
         className={cn(
-          'relative flex min-w-0 flex-1 flex-col items-start px-3.5 pb-3.5 pt-[18px] text-left transition-[background-color,box-shadow] duration-200 motion-reduce:transition-none',
+          'relative flex min-w-0 flex-1 flex-col items-start px-3.5 pb-3.5 pt-[18px] text-left xl:px-2 transition-[background-color,box-shadow] duration-200 motion-reduce:transition-none',
           'hover:inset-ring hover:inset-ring-brand-200 dark:hover:inset-ring-brand-500/50',
           FOCUS_RING,
           active && 'bg-brand-50 dark:bg-brand-500/15'
@@ -279,7 +279,7 @@ export function BandCell({ label, value, tone = 'neutral', delta = null, lowerBe
         <span className={cn('num mt-2.5 font-display text-[27px] font-bold leading-none tracking-[-0.025em]', TONE_700[tone])}>{fmtNum(value)}</span>
         <span className="mt-2.5 flex min-h-5 max-w-full items-center">
           {delta ? <DeltaPill delta={delta} lowerBetter={lowerBetter} />
-            : note ? <span className="truncate text-[11px] text-muted-foreground">{note}</span> : null}
+            : note ? <span className="line-clamp-2 text-[11px] leading-[1.3] text-muted-foreground">{note}</span> : null}
         </span>
       </button>
     </div>
@@ -523,7 +523,7 @@ export function CutTabs({ tabs, value, onValueChange, activeRow = null, onRow, c
   return (
     <Tabs value={current.value} onValueChange={onValueChange} className={cn('gap-0 overflow-hidden rounded-2xl border border-border bg-card shadow-card', className)}>
       <div className={cn('flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-4 py-3', RULE)}>
-        <TabsList aria-label="Recortes" className="h-auto max-w-full justify-start gap-0.5 overflow-x-auto overscroll-x-contain rounded-[11px] p-[3px]">
+        <TabsList aria-label="Recortes" className="h-auto max-w-full justify-start gap-0.5 overflow-x-auto overflow-y-hidden overscroll-x-contain rounded-[11px] p-[3px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {tabs.map((t) => (
             <TabsTrigger
               key={t.value}

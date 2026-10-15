@@ -292,11 +292,11 @@ export function DiasControl({ dias, onDias, compact = false }) {
     <div
       className={cn(
         'flex items-center gap-2 rounded-xl border border-border bg-card shadow-card',
-        compact ? 'w-full flex-col items-stretch gap-1.5 p-2' : 'h-[38px] py-[3px] pl-3 pr-[3px]'
+        compact ? 'w-full flex-col items-stretch gap-1.5 p-2' : 'h-[38px] py-[3px] pl-2.5 pr-[3px]'
       )}
     >
       <span id={labelId} className="whitespace-nowrap text-[12px] font-semibold text-muted-foreground">Sem registro há mais de</span>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5">
         <div role="radiogroup" aria-labelledby={labelId} className={cn('flex gap-0.5 rounded-[9px] bg-muted p-0.5', compact && 'flex-1')}>
           {DIAS_PARADOS.map((d, i) => (
             <button
@@ -309,7 +309,7 @@ export function DiasControl({ dias, onDias, compact = false }) {
               onClick={() => { if (d !== dias) onDias(d); }}
               onKeyDown={(e) => onKey(e, i)}
               className={cn(
-                'num h-[26px] min-w-[34px] rounded-[7px] px-[9px] text-[12px] font-semibold transition-[background-color,color,box-shadow] duration-150 motion-reduce:transition-none',
+                'num h-[26px] min-w-[30px] rounded-[7px] px-2 text-[12px] font-semibold transition-[background-color,color,box-shadow] duration-150 motion-reduce:transition-none',
                 FOCUS_RING,
                 compact && 'flex-1',
                 d === dias ? 'bg-card text-foreground shadow-card' : 'text-muted-foreground hover:text-foreground'
@@ -351,7 +351,7 @@ export function RelatoriosToolbar(props) {
       ) : (
         <DiasControl dias={props.dias} onDias={props.onDias} compact={compact} />
       )}
-      {!compact && <span aria-hidden="true" className="mx-1 h-[22px] w-px shrink-0 bg-border" />}
+      {!compact && <span aria-hidden="true" className="h-[22px] w-px shrink-0 bg-border" />}
       <ConsultoresControl resp={props.resp} people={props.people} onResp={props.onResp} compact={compact} />
       <OrigemControl origem={props.origem} origens={props.origens} onOrigem={props.onOrigem} compact={compact} />
       <FunilControl funnel={props.funnel} funnels={props.funnels} onFunnel={props.onFunnel} compact={compact} />
