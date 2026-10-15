@@ -59,7 +59,7 @@ As mais frequentes, repetidas aqui de propósito. A fonte e as demais estão no 
 - **Caveman**: conversa concisa em português. Código, documentação e commits têm redação normal.
 - **Context7**: consulte para API de biblioteca, resolvendo o identificador e perguntando um conceito por vez. Nunca envie segredo nem dado de cliente.
 - **RTK**: o hook do usuário já reescreve os comandos suportados. Não prefixe `rtk` à mão. Use `rtk proxy <comando>` para a saída original.
-- **Graphify**: não instalado. Consulte o `docs/setup.md` antes de depender dele.
+- **Graphify**: CLI instalada na máquina (0.9.91, via pipx). O grafo não é versionado: gere com `GRAPHIFY_NO_AUTO_REFRESH=1 graphify extract . --code-only --no-cluster` e consulte com `graphify query`. Confirme o achado no código, e veja o escopo e os limites em `docs/setup.md`.
 - **Skills do projeto** (`.claude/skills/`; o `skills-lock.json` registra a origem, e as duas últimas foram adaptadas à mão, então o hash delas é o de antes): `vercel-react-best-practices`, `vercel-composition-patterns`, `web-design-guidelines` e `writing-guidelines`. As duas últimas leem regras locais (`rules.md`) em vez de buscar na rede. Parte das regras de React é de Next.js ou de servidor (SWR, `after()`, `next/dynamic`) e não se aplica a este app em Vite. Skill instalada não executa nada sozinha, e não se instala skill nova sem pedido.
 
 ## Delegação e revisão

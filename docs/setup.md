@@ -37,7 +37,7 @@ Cada peça do catálogo do toolkit recebeu uma decisão. Escopo: "usuário" é a
 | Ponytail (`04`) | Reaproveitar. Plugin `ponytail@ponytail` ativo. | Usuário | Configurado. A intensidade `full` não foi verificada |
 | Caveman (`05`) | Reaproveitar. Skill presente, ativada só por pedido. | Usuário | Configurado, sem execução |
 | ESLint e quality gates (`06`) | Medir `max-lines` e `no-direct-console` sem alterar o lint. `no-direct-data-access` e perfis Next/Drizzle não se aplicam. O `verify.mjs` não foi copiado porque as regras não entraram no projeto. | Projeto | Validado: medição em `docs/quality.md` |
-| Graphify (`07`) | Bloqueado. A skill aparece na sessão, a CLI não está instalada. `.graphifyignore` criado e `graphify-out/` ignorado no Git. | Projeto | Pendente: instalar a CLI (ver Pendências) |
+| Graphify (`07`) | Reaproveitar. A CLI `graphifyy` 0.9.91 já estava instalada na máquina (via pipx), então nada foi reinstalado. `.graphifyignore` criado e `graphify-out/` ignorado no Git. Sem `graphify install` e sem hook de Git. | Usuário (CLI) e projeto (ignores) | Validado em 15/10/2026: extração só de código e consulta. Ver "Graphify: o que foi medido" |
 | Obsidian (`08`) | Inaplicável. Memória do Claude e documentos versionados cobrem o uso, e não há destino autorizado para um vault. | Não se aplica | Decisão registrada |
 | Memória do Claude (`09`) | Reaproveitar. Índice `MEMORY.md` com notas por assunto. | Usuário | Validado: o índice foi carregado nesta sessão |
 | Hooks (`10`) | Só referência. O hook do RTK foi preservado e nenhum outro foi criado. | Usuário | Sem mudança |
@@ -98,11 +98,28 @@ Documentos que já existiam e foram mantidos como fontes próprias: `docs/APPCHE
 | Reexecução das skills | não se aplica | `skills-lock.json` e os 99 arquivos com o mesmo hash, antes da adaptação | `shasum` antes e depois de repetir os dois comandos de instalação |
 | `rules.md` das duas skills de revisão | não se aplica | idêntico ao `command.md` do commit fixado | `cmp` entre o arquivo lido do `main` e o baixado pelo SHA |
 | Context7 | não testado | consulta real respondida | Seção Componentes |
+| Graphify | CLI ausente na primeira checagem | 0.9.91 presente, grafo de código gerado e consulta respondida | Seção "Graphify: o que foi medido" |
 | Importação do `AGENTS.md` pelo `CLAUDE.md` | não se aplica | linha presente, **carregamento em sessão nova não observado** | Pendência abaixo |
 
 O código da aplicação (`src/`, `api/`, `scripts/`) não foi alterado. Recursos temporários criados: um clone do toolkit e scripts de medição no scratchpad da sessão, fora do projeto.
 
 Recebeu só revisão estática: os links entre documentos e a precisão dos números de `docs/quality.md` (conferidos contra a saída dos comandos desta sessão).
+
+## Graphify: o que foi medido
+
+Validação de 15/10/2026, feita no checkout do projeto, sem chave de API e sem modelo.
+
+| Item | Valor |
+|---|---|
+| CLI | `graphifyy` 0.9.91, instalada com pipx no usuário. Não foi reinstalada |
+| Comando | `GRAPHIFY_NO_AUTO_REFRESH=1 graphify extract . --code-only --no-cluster` |
+| Resultado | 605 arquivos de código lidos por AST local, 4548 nós e 16310 arestas em `graphify-out/graph.json` (cerca de 5 MB), em 11 s |
+| Fora do grafo | 120 arquivos que não são código (115 documentos e 5 imagens), pelo `--code-only`. 7 sem extensão suportada, entre eles `.env.example`, `.gitignore`, `.graphifyignore`, `console.css` e `firestore.rules`. 32 arquivos de código sem símbolos (testes de `api/`, `eslint.config.js` e outros) |
+| Consulta testada | `graphify query "quem usa roleOf do acesso.js"` achou `roleOf()` em `src/lib/acesso.js` e quem o usa: `api/admin-users.js` (`handleSetRole` e `handleDelete`), `api/invite-accept.js`, `src/lib/teamRoles.js`, `TeamAccessSection.jsx`, `OverviewSection.jsx` e testes. A travessia chegou a 210 nós, e o teto de tokens exibiu 82 |
+| Limite visto | `graphify explain "roleOf"` pediu desambiguação, porque há dois nós com esse nome, um deles em teste. A relação vem de AST e pode errar em chamada dinâmica, então o achado se confirma no código |
+| Versionado | Não. `graphify-out/` está no `.gitignore`, e o `.graphifyignore` impede indexar segredo, dependências e as skills copiadas |
+| Atualizar | Repetir o comando, ou `graphify update .` (reextrai o código sem modelo). Depois de uma refatoração que apaga código, `--force` |
+| Não feito | `graphify install` (copia skill e pode mexer em instruções e hooks), hook de Git, extração semântica com modelo e exportação para serviço externo |
 
 ## Como manter e repetir
 
@@ -124,7 +141,7 @@ Ao repetir, o agente descobre o estado real. Documentos e `AGENTS.md` são conci
 
 | Pendência | Causa | Próxima ação |
 |---|---|---|
-| Graphify não instalado | A CLI é global (`uv tool install graphifyy` ou `pipx install graphifyy`) e o setup não altera a máquina | O Johnny autoriza a instalação. Depois: `GRAPHIFY_NO_AUTO_REFRESH=1 graphify --version`, geração por modo determinístico e registro da cobertura aqui |
+| Grafo só de código, sem documentos | A extração usou `--code-only`: documentos e `PRODUCT.md` ficam fora, e não houve agrupamento em comunidades | Se for útil, extração semântica pela integração nativa autorizada, nunca por chave de API configurada às pressas. Ver "Graphify: o que foi medido" |
 | Descoberta das skills em sessão nova | Arquivo em disco prova a instalação, não o carregamento | Abrir sessão nova na raiz e conferir `vercel-react-best-practices` e o import do `AGENTS.md` |
 | 46 arquivos acima de 350 linhas | Dívida anterior ao setup | Reduzir por responsabilidade quando a tela passar por mudança, com `max-lines` em `warn` e contagem. Proposta própria, não neste PR |
 | 23 achados de `npm audit` em produção | Dependências do `firebase-admin`, `exceljs` e `postcss` | Decisão por pacote. `exceljs` só fecha trocando para a 3.4.0 |
