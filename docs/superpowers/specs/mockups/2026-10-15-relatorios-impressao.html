@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Relatórios impressos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Formato de impressão dos Relatórios de leads (mockup para aprovação).
+   Papel A4 retrato. Feito para impressora preto e branco: nenhuma informação
+   depende só da cor, e não há bloco cheio de tinta. */
+:root{
+  --tinta:#0E1A40; --grafite:#4B5567; --apagado:#7A8496;
+  --regua:#C9D1DE; --fio:#E3E8F0; --zebra:#F6F8FB;
+  --azul:#2B59FF; --azul-fraco:#C9D6FF; --verde:#047857; --rosa:#BE123C; --ambar:#B45309;
+  --mesa:#DDE2EB;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background:var(--mesa); color:var(--tinta);
+  font-family:'Geist',ui-sans-serif,system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;
+  -webkit-print-color-adjust:exact; print-color-adjust:exact;
+}
+.num{font-family:'Space Grotesk','Geist',sans-serif;font-variant-numeric:tabular-nums}
+
+/* ---------- Só na tela: a mesa onde as folhas ficam ---------- */
+.mesa{max-width:1040px;margin:0 auto;padding:36px 24px 72px}
+.legenda{max-width:210mm;margin:0 auto 22px;color:var(--grafite);font-size:14px;line-height:1.55}
+.legenda h2{font:700 22px/1.2 'Space Grotesk',sans-serif;color:var(--tinta);margin:0 0 8px;letter-spacing:-.01em}
+.legenda p{margin:0 0 6px;max-width:68ch}
+.tela{max-width:210mm;margin:0 auto 26px;background:#F5F7FB;border:1px solid #D5DCE8;border-radius:14px;padding:16px 18px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.tela-titulo{font:700 19px/1.2 'Space Grotesk',sans-serif}
+.tela-sub{font-size:12.5px;color:var(--grafite);margin-top:3px}
+.botoes{display:flex;gap:8px;flex:none}
+.btn{display:inline-flex;align-items:center;gap:7px;height:38px;padding:0 15px;border-radius:999px;font:600 13px/1 'Geist',sans-serif;border:1px solid transparent;cursor:pointer}
+.btn svg{width:15px;height:15px}
+.btn-sec{background:#fff;border-color:#D5DCE8;color:var(--tinta)}
+.btn-pri{background:var(--azul);color:#fff}
+.rotulo-folha{max-width:210mm;margin:0 auto 8px;font-size:12px;color:var(--grafite)}
+
+/* ---------- A folha ---------- */
+.folha{
+  width:210mm;height:297mm;margin:0 auto 30px;background:#fff;
+  padding:12mm 14mm 10mm;display:flex;flex-direction:column;overflow:hidden;
+  box-shadow:0 1px 2px rgba(14,26,64,.08),0 22px 44px -22px rgba(14,26,64,.38);
+}
+.corpo{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+
+/* Cabeçalho da primeira folha */
+.cab-topo{display:flex;justify-content:space-between;align-items:baseline;padding-bottom:2.2mm;border-bottom:1.4pt solid var(--azul)}
+.academia{font:600 9pt/1 'Geist',sans-serif}
+.marca{display:inline-flex;align-items:center;gap:1.6mm;font:700 8.5pt/1 'Space Grotesk',sans-serif;color:var(--grafite)}
+.marca svg{width:3.6mm;height:3.6mm}
+.titulo{font:700 23pt/1 'Space Grotesk',sans-serif;letter-spacing:-.02em;margin:5mm 0 1.6mm}
+.pergunta{font-size:9.5pt;line-height:1.4;color:var(--grafite);margin:0 0 4mm;max-width:150mm}
+
+/* Ficha do recorte: o que está valendo nesta impressão, como campos de formulário */
+.ficha{display:grid;grid-template-columns:2.2fr 1fr 1fr 1fr;gap:0;border:0.75pt solid var(--regua);border-radius:2mm;margin:0}
+.ficha > div{padding:1.8mm 2.6mm 2mm;border-left:0.75pt solid var(--regua);min-width:0}
+.ficha > div:first-child{border-left:0}
+.ficha .linha2{grid-column:1 / -1;border-left:0;border-top:0.75pt solid var(--regua)}
+.ficha dt{font-size:7pt;color:var(--apagado);margin:0 0 .8mm}
+.ficha dd{margin:0;font-size:8.6pt;font-weight:600;line-height:1.3}
+.ficha dd .fraco{font-weight:400;color:var(--grafite)}
+
+/* Placar: o painel de números, a peça que se lê de longe */
+.placar{display:grid;grid-template-columns:40mm 1fr;margin-top:5mm;border-top:0.75pt solid var(--regua);border-bottom:0.75pt solid var(--regua)}
+.heroi{padding:3.6mm 4mm 3.6mm 0;border-right:0.75pt solid var(--regua)}
+.rot{font-size:7.6pt;color:var(--grafite);font-weight:500}
+.grande{font:700 31pt/1 'Space Grotesk',sans-serif;letter-spacing:-.035em;margin:2.2mm 0 1.8mm}
+.var{font-size:7.4pt;color:var(--grafite);line-height:1.35}
+.var b{font-weight:700}
+.sobe-bom{color:var(--verde)} .desce-ruim{color:var(--rosa)} .sobe-ruim{color:var(--rosa)} .desce-bom{color:var(--verde)}
+.verde{color:var(--verde)} .rosa{color:var(--rosa)} .ambar{color:var(--ambar)}
+
+.etapas{display:flex;align-items:stretch;list-style:none;margin:0;padding:0}
+.etapa{flex:1;min-width:0;padding:3.6mm 1.4mm 3.2mm 2.8mm}
+.etapa .rot{display:block;white-space:nowrap}
+.etapa .d{display:block;line-height:1.3}
+.etapa .v{font:700 17pt/1 'Space Grotesk',sans-serif;letter-spacing:-.02em;display:block;margin:2mm 0 1.6mm}
+.etapa .d{font-size:7pt;color:var(--grafite)}
+.seta{flex:none;width:3.4mm;display:flex;align-items:center;justify-content:center;color:var(--azul)}
+.seta svg{width:2.6mm;height:2.6mm}
+.corte{flex:none;width:0;border-left:0.75pt solid var(--regua);margin:2.4mm 1mm}
+.etapa.lista{background:linear-gradient(var(--azul),var(--azul)) top/100% .9mm no-repeat}
+
+/* Gráfico por dia (Entrada e Perdas) */
+.dias{padding:3.6mm 0 3mm 4.4mm;display:flex;flex-direction:column}
+.dias-topo{display:flex;justify-content:space-between;font-size:7.4pt;color:var(--grafite)}
+.barras{flex:1;display:flex;align-items:flex-end;gap:1.2mm;margin-top:2mm;min-height:17mm}
+.barras span{flex:1;background:var(--azul);border-radius:.4mm .4mm 0 0}
+.barras span.zero{background:var(--fio);height:.8mm !important}
+.barras span.fds{background:var(--azul-fraco)}
+.dias-eixo{display:flex;justify-content:space-between;font-size:6.8pt;color:var(--apagado);border-top:0.6pt solid var(--regua);margin-top:1mm;padding-top:1mm}
+
+/* Recortes: no papel não há aba, então saem todos, lado a lado */
+.recortes{display:grid;gap:5mm;margin-top:5mm}
+.recortes.dois{grid-template-columns:1fr 1fr}
+.recortes.tres{grid-template-columns:1fr 1fr 1fr}
+.rec h3{font:700 9.4pt/1.2 'Space Grotesk',sans-serif;margin:0 0 1.6mm}
+.rec table{width:100%;border-collapse:collapse;font-size:7.8pt}
+.rec th{font-size:6.8pt;font-weight:600;color:var(--apagado);text-align:right;padding:0 0 1mm;border-bottom:0.6pt solid var(--regua)}
+.rec th:first-child{text-align:left}
+.rec td{padding:1.15mm 0;border-bottom:0.5pt solid var(--fio);text-align:right;white-space:nowrap}
+.rec td:first-child{text-align:left;max-width:0;overflow:hidden;text-overflow:ellipsis;width:42%}
+.rec td.n{font-family:'Space Grotesk',sans-serif;font-weight:600;font-variant-numeric:tabular-nums}
+.rec td.barra{width:28%;padding-left:2mm}
+.mini{display:flex;align-items:center;gap:1.4mm;justify-content:flex-end}
+.mini i{display:block;height:1.6mm;border-radius:1mm;background:var(--azul)}
+.mini i.v{background:var(--verde)}
+.mini .trilho{flex:1;height:1.6mm;border-radius:1mm;background:var(--fio);display:block;position:relative;overflow:hidden}
+.mini .trilho i{position:absolute;inset:0 auto 0 0}
+.mini b{font-family:'Space Grotesk',sans-serif;font-variant-numeric:tabular-nums;font-weight:600;min-width:7mm;text-align:right}
+
+.rapidez{display:grid;grid-template-columns:repeat(4,1fr);border:0.75pt solid var(--regua);border-radius:2mm;margin-top:1.6mm}
+.rapidez > div{padding:2mm 3mm;border-left:0.75pt solid var(--regua)}
+.rapidez > div:first-child{border-left:0}
+.rapidez .rot{display:block}
+.rapidez .v{font:700 13pt/1 'Space Grotesk',sans-serif;margin-top:1.2mm;display:block}
+.rapidez-titulo{font:700 9.4pt/1.2 'Space Grotesk',sans-serif;margin:4.6mm 0 0}
+
+/* Aviso do dado */
+.aviso{margin-top:4mm;border-left:1.4pt solid var(--ambar);padding:1mm 0 1mm 3mm;font-size:7.6pt;line-height:1.4;color:var(--grafite)}
+
+/* Lista */
+.lista-cab{display:flex;align-items:baseline;justify-content:space-between;margin-top:6mm;padding-bottom:1.6mm}
+.lista-cab h3{margin:0;font:700 9.4pt/1 'Space Grotesk',sans-serif;display:flex;align-items:baseline;gap:2mm}
+.lista-cab h3 .num{font-size:15pt;letter-spacing:-.02em}
+.lista-cab .obs{font-size:7.4pt;color:var(--grafite)}
+.nomes{width:100%;border-collapse:collapse;font-size:7.9pt;table-layout:fixed}
+.nomes thead th{font-size:6.9pt;font-weight:600;color:var(--grafite);text-align:left;padding:1.2mm 1.6mm;border-top:0.75pt solid var(--tinta);border-bottom:0.75pt solid var(--tinta)}
+.nomes td{padding:1.25mm 1.6mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-bottom:0.5pt solid var(--fio)}
+.nomes tbody tr:nth-child(even) td{background:var(--zebra)}
+.nomes td.nome{font-weight:600}
+.nomes td.c, .nomes th.c{text-align:center}
+.nomes td.r, .nomes th.r{text-align:right}
+.st{font-weight:600}
+.st::before{display:inline-block;width:3.2mm;font-weight:700}
+.st.aberto{color:var(--grafite)} .st.aberto::before{content:'○'}
+.st.matr{color:var(--verde)} .st.matr::before{content:'✓'}
+.st.perdeu{color:var(--rosa)} .st.perdeu::before{content:'✕'}
+.st.atras{color:var(--rosa)} .st.atras::before{content:'!'}
+.st.sempasso{color:var(--ambar)} .st.sempasso::before{content:'–'}
+.continua{font-size:7.2pt;color:var(--apagado);text-align:right;margin-top:1.4mm}
+
+/* Cabeçalho das folhas seguintes */
+.cab-cont{display:flex;justify-content:space-between;align-items:baseline;padding-bottom:2mm;border-bottom:0.75pt solid var(--regua);font-size:8pt;color:var(--grafite);margin-bottom:4mm}
+.cab-cont strong{color:var(--tinta);font-weight:600}
+
+/* Rodapé de toda folha */
+.rodape{display:flex;justify-content:space-between;gap:6mm;padding-top:2mm;border-top:0.6pt solid var(--regua);font-size:6.9pt;color:var(--apagado);margin-top:3mm}
+
+@page{size:A4;margin:0}
+@media print{
+  body{background:#fff}
+  .mesa{padding:0;max-width:none}
+  .so-tela{display:none !important}
+  .folha{margin:0;box-shadow:none;break-after:page}
+}
+</style>
+</head>
+<body>
+<div class="mesa">
+
+  <div class="legenda so-tela">
+    <h2>Relatório impresso</h2>
+    <p>O botão Imprimir fica ao lado de Exportar lista e abre a impressão do navegador já com este formato: A4 em pé, com o período e os filtros escritos no topo, o painel de números, todos os recortes lado a lado e a lista inteira, com o filtro da lista aplicado.</p>
+    <p>Funciona em impressora preto e branco: a situação de cada lead vai com um símbolo além da cor (✓ matriculou, ✕ perdeu, ○ em aberto).</p>
+  </div>
+
+  <div class="tela so-tela" aria-label="Como fica na tela">
+    <div>
+      <div class="tela-titulo">Conversão</div>
+      <div class="tela-sub">Dos leads que chegaram no período, quantos agendaram, vieram e se matricularam até hoje.</div>
+    </div>
+    <div class="botoes">
+      <button class="btn btn-sec" type="button" onclick="window.print()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
+        Imprimir
+      </button>
+      <button class="btn btn-pri" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>
+        Exportar lista
+      </button>
+    </div>
+  </div>
+
+  <!-- ===================== Conversão, folha 1 ===================== -->
+  <div class="rotulo-folha so-tela">Conversão, folha 1 de 2</div>
+  <section class="folha">
+    <div class="corpo">
+      <div class="cab-topo">
+        <span class="academia">STRONIX Academia</span>
+        <span class="marca"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14l8-6 8 6" fill="none" stroke="#FF6A2B" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 20l8-6 8 6" fill="none" stroke="#2B59FF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>Stronilead</span>
+      </div>
+      <h1 class="titulo">Conversão</h1>
+      <p class="pergunta">Dos leads que chegaram no período, quantos agendaram, vieram e se matricularam até hoje.</p>
+      <dl class="ficha">
+        <div><dt>Período</dt><dd>1 a 15 de outubro de 2026 <span class="fraco">(mês em andamento)</span></dd></div>
+        <div><dt>Consultor</dt><dd>Equipe toda</dd></div>
+        <div><dt>Origem</dt><dd>Todas</dd></div>
+        <div><dt>Funil</dt><dd>Todos</dd></div>
+        <div class="linha2"><dt>Comparado com</dt><dd>1 a 15 de setembro de 2026 <span class="fraco">(os mesmos dias do mês anterior)</span></dd></div>
+      </dl>
+
+      <div class="placar">
+        <div class="heroi">
+          <div class="rot">Conversão da safra</div>
+          <div class="grande verde">8%</div>
+          <div class="var"><b class="sobe-bom">▲ 3 p.p.</b> sobre 1 a 15 de setembro</div>
+        </div>
+        <ol class="etapas" aria-label="Etapas da safra">
+          <li class="etapa lista"><span class="rot">Leads da safra</span><span class="v">51</span><span class="d"><b class="sobe-bom">▲ 30,8%</b></span></li>
+          <li class="seta" aria-hidden="true"><svg viewBox="0 0 10 10"><path d="M3 1l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></li>
+          <li class="etapa"><span class="rot">Agendaram</span><span class="v">23</span><span class="d"><b class="sobe-bom">▲ 43,8%</b></span></li>
+          <li class="seta" aria-hidden="true"><svg viewBox="0 0 10 10"><path d="M3 1l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></li>
+          <li class="etapa"><span class="rot">Vieram</span><span class="v">8</span><span class="d"><b class="sobe-bom">▲ 33,3%</b></span></li>
+          <li class="seta" aria-hidden="true"><svg viewBox="0 0 10 10"><path d="M3 1l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></li>
+          <li class="etapa"><span class="rot">Matricularam</span><span class="v verde">4</span><span class="d"><b class="sobe-bom">▲ 100%</b></span></li>
+          <li class="corte" aria-hidden="true"></li>
+          <li class="etapa"><span class="rot">Perderam</span><span class="v">9</span><span class="d"><b class="sobe-ruim">▲ 350%</b></span></li>
+          <li class="etapa"><span class="rot">Em aberto</span><span class="v">38</span><span class="d">ainda no funil</span></li>
+        </ol>
+      </div>
+
+      <div class="recortes dois">
+        <div class="rec">
+          <h3>Por origem</h3>
+          <table>
+            <thead><tr><th>Origem</th><th>Leads</th><th>Matr.</th><th>Conversão</th></tr></thead>
+            <tbody id="c-origem"></tbody>
+          </table>
+        </div>
+        <div class="rec">
+          <h3>Por consultor</h3>
+          <table>
+            <thead><tr><th>Consultor</th><th>Leads</th><th>Matr.</th><th>Conversão</th></tr></thead>
+            <tbody id="c-consultor"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <p class="rapidez-titulo">Rapidez do 1º contato</p>
+      <div class="rapidez">
+        <div><span class="rot">Até 1 hora</span><span class="v">12</span></div>
+        <div><span class="rot">1 a 24 horas</span><span class="v">18</span></div>
+        <div><span class="rot">Mais de 24 horas</span><span class="v">9</span></div>
+        <div><span class="rot">Sem contato ainda</span><span class="v">12</span></div>
+      </div>
+
+      <div class="lista-cab">
+        <h3><span class="num">51</span> leads da safra</h3>
+        <span class="obs">Lista completa, sem filtro</span>
+      </div>
+      <table class="nomes">
+        <colgroup><col style="width:22%"><col style="width:13%"><col style="width:15%"><col style="width:9%"><col style="width:13%"><col style="width:8%"><col style="width:7%"><col style="width:13%"></colgroup>
+        <thead><tr><th>Nome</th><th>Origem</th><th>Consultor</th><th>Cadastro</th><th>1º contato</th><th class="c">Agendou</th><th class="c">Veio</th><th>Desfecho</th></tr></thead>
+        <tbody id="c-lista-1"></tbody>
+      </table>
+      <div class="continua">A lista continua na folha 2</div>
+    </div>
+    <div class="rodape"><span>Gerado pelo Stronilead em 15/10/2026 às 20:40 por Ana Ribeiro</span><span>Folha 1 de 2</span></div>
+  </section>
+
+  <!-- ===================== Conversão, folha 2 ===================== -->
+  <div class="rotulo-folha so-tela">Conversão, folha 2 de 2: as folhas seguintes repetem o cabeçalho da lista</div>
+  <section class="folha">
+    <div class="corpo">
+      <div class="cab-cont"><span><strong>STRONIX Academia</strong>, Conversão</span><span>1 a 15 de outubro de 2026</span></div>
+      <table class="nomes">
+        <colgroup><col style="width:22%"><col style="width:13%"><col style="width:15%"><col style="width:9%"><col style="width:13%"><col style="width:8%"><col style="width:7%"><col style="width:13%"></colgroup>
+        <thead><tr><th>Nome</th><th>Origem</th><th>Consultor</th><th>Cadastro</th><th>1º contato</th><th class="c">Agendou</th><th class="c">Veio</th><th>Desfecho</th></tr></thead>
+        <tbody id="c-lista-2"></tbody>
+      </table>
+      <div class="continua">Fim da lista: 51 leads</div>
+    </div>
+    <div class="rodape"><span>Gerado pelo Stronilead em 15/10/2026 às 20:40 por Ana Ribeiro</span><span>Folha 2 de 2</span></div>
+  </section>
+
+  <!-- ===================== Entrada de leads, folha 1 ===================== -->
+  <div class="rotulo-folha so-tela">Entrada de leads, folha 1: com o gráfico por dia e a lista filtrada por um consultor</div>
+  <section class="folha">
+    <div class="corpo">
+      <div class="cab-topo">
+        <span class="academia">STRONIX Academia</span>
+        <span class="marca"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14l8-6 8 6" fill="none" stroke="#FF6A2B" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 20l8-6 8 6" fill="none" stroke="#2B59FF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>Stronilead</span>
+      </div>
+      <h1 class="titulo">Entrada de leads</h1>
+      <p class="pergunta">Quantos leads chegaram no período, de onde e para qual consultor.</p>
+      <dl class="ficha">
+        <div><dt>Período</dt><dd>1 a 15 de outubro de 2026 <span class="fraco">(mês em andamento)</span></dd></div>
+        <div><dt>Consultor</dt><dd>Equipe toda</dd></div>
+        <div><dt>Origem</dt><dd>Todas</dd></div>
+        <div><dt>Funil</dt><dd>Todos</dd></div>
+        <div class="linha2"><dt>Lista filtrada por</dt><dd>Consultor: Bruno Lima <span class="fraco">(14 dos 51 leads; os números de cima são de todos)</span></dd></div>
+      </dl>
+
+      <div class="placar">
+        <div class="heroi">
+          <div class="rot">Leads novos</div>
+          <div class="grande">51</div>
+          <div class="var"><b class="sobe-bom">▲ 30,8%</b> sobre 1 a 15 de setembro</div>
+        </div>
+        <div class="dias">
+          <div class="dias-topo"><span>Por dia de cadastro</span><span>pico de 7 em 13/10</span></div>
+          <div class="barras" id="e-barras" aria-hidden="true"></div>
+          <div class="dias-eixo"><span>01/10</span><span>hoje, 15/10</span></div>
+        </div>
+      </div>
+
+      <div class="recortes tres">
+        <div class="rec">
+          <h3>Por origem</h3>
+          <table><thead><tr><th>Origem</th><th>Leads</th><th>Fatia</th></tr></thead><tbody id="e-origem"></tbody></table>
+        </div>
+        <div class="rec">
+          <h3>Por consultor</h3>
+          <table><thead><tr><th>Consultor</th><th>Leads</th><th>Fatia</th></tr></thead><tbody id="e-consultor"></tbody></table>
+        </div>
+        <div class="rec">
+          <h3>Por funil</h3>
+          <table><thead><tr><th>Funil</th><th>Leads</th><th>Fatia</th></tr></thead><tbody id="e-funil"></tbody></table>
+        </div>
+      </div>
+
+      <div class="lista-cab">
+        <h3><span class="num">14</span> leads de Bruno Lima</h3>
+        <span class="obs">Lista filtrada por consultor</span>
+      </div>
+      <table class="nomes">
+        <colgroup><col style="width:25%"><col style="width:14%"><col style="width:15%"><col style="width:14%"><col style="width:16%"><col style="width:9%"><col style="width:13%"></colgroup>
+        <thead><tr><th>Nome</th><th>Origem</th><th>Consultor</th><th>Funil</th><th>Etapa</th><th>Cadastro</th><th>Situação</th></tr></thead>
+        <tbody id="e-lista"></tbody>
+      </table>
+      <div class="continua">Fim da lista: 14 leads</div>
+    </div>
+    <div class="rodape"><span>Gerado pelo Stronilead em 15/10/2026 às 20:42 por Ana Ribeiro</span><span>Folha 1 de 1</span></div>
+  </section>
+
+  <!-- ===================== Leads parados, folha 1 ===================== -->
+  <div class="rotulo-folha so-tela">Leads parados, folha 1: retrato de agora, sem período</div>
+  <section class="folha">
+    <div class="corpo">
+      <div class="cab-topo">
+        <span class="academia">STRONIX Academia</span>
+        <span class="marca"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14l8-6 8 6" fill="none" stroke="#FF6A2B" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 20l8-6 8 6" fill="none" stroke="#2B59FF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>Stronilead</span>
+      </div>
+      <h1 class="titulo">Leads parados</h1>
+      <p class="pergunta">Quem está em aberto agora sem próximo passo, com contato atrasado ou sem registro há dias.</p>
+      <dl class="ficha">
+        <div><dt>Retrato de</dt><dd>15/10/2026 às 20:44</dd></div>
+        <div><dt>Sem registro há mais de</dt><dd>7 dias</dd></div>
+        <div><dt>Consultor</dt><dd>Equipe toda</dd></div>
+        <div><dt>Origem e funil</dt><dd>Todas, todos</dd></div>
+      </dl>
+
+      <div class="placar">
+        <div class="heroi">
+          <div class="rot">Leads parados</div>
+          <div class="grande">35</div>
+          <div class="var">de 54 em aberto agora. Cada lead conta uma vez.</div>
+        </div>
+        <ol class="etapas" aria-label="Por que estão parados">
+          <li class="etapa"><span class="rot">Sem próximo passo</span><span class="v ambar">11</span><span class="d">fora quem chegou há menos de 24 horas</span></li>
+          <li class="corte" aria-hidden="true"></li>
+          <li class="etapa"><span class="rot">Contato atrasado</span><span class="v rosa">9</span><span class="d">a data do contato já passou</span></li>
+          <li class="corte" aria-hidden="true"></li>
+          <li class="etapa"><span class="rot">Sem registro há mais de 7 dias</span><span class="v">23</span><span class="d">nada anotado na ficha</span></li>
+        </ol>
+      </div>
+
+      <div class="recortes dois">
+        <div class="rec">
+          <h3>Por consultor</h3>
+          <table><thead><tr><th>Consultor</th><th>Leads</th><th>Fatia</th></tr></thead><tbody id="p-consultor"></tbody></table>
+        </div>
+        <div class="rec">
+          <div class="aviso" style="margin-top:6.4mm">O consultor é o dono do lead hoje, mesmo quando o contato foi passado para outra pessoa. Um lead pode estar em mais de um motivo, e por isso os três números somam mais que 35.</div>
+        </div>
+      </div>
+
+      <div class="lista-cab">
+        <h3><span class="num">35</span> leads parados</h3>
+        <span class="obs">Quem está há mais dias sem registro vem primeiro</span>
+      </div>
+      <table class="nomes">
+        <colgroup><col style="width:22%"><col style="width:14%"><col style="width:9%"><col style="width:18%"><col style="width:22%"><col style="width:15%"></colgroup>
+        <thead><tr><th>Nome</th><th>Etapa</th><th class="r">Na etapa</th><th>Último registro</th><th>Próximo contato</th><th>Consultor</th></tr></thead>
+        <tbody id="p-lista"></tbody>
+      </table>
+      <div class="continua">A lista continua na folha 2</div>
+    </div>
+    <div class="rodape"><span>Gerado pelo Stronilead em 15/10/2026 às 20:44 por Ana Ribeiro</span><span>Folha 1 de 2</span></div>
+  </section>
+
+</div>
+
+<script>
+// Dados de exemplo, fixos, só para o mockup.
+let s = 7;
+const r = () => (s = (s * 9301 + 49297) % 233280) / 233280;
+const pick = (a) => a[Math.floor(r() * a.length)];
+const nomes = ['André Martins','Camila Gomes','Aline Gomes','Rodrigo Menegatti','Otávio Pinho','Sabrina Wrasse','Carla Bragança','Sérgio Kunz','Luana Farias','Hugo Luz','Lucas Steffen','Rafael Kunz','Simone Peixoto','Kelly Cimadon','Lucas Deppe','Sérgio Bragança','Amanda Rocha','Renata Kunz','Patrícia Steffen','Aline Prado','Camila Tavares','Mateus Luz','Juliana Lemos','Felipe Weber','Bruno Sampaio','Tatiane Balbi','Gabriel Xavier','Larissa Gomes','Mariana Dias','Carolina Vieira','Bruno Silva','Patrícia Costa','Diego Ost','Igor Pilla','Thiago Cattani','Manuela Rocha','Débora Néri','Vitor Andrade','Carla Pinho','Sérgio Bastos','Rafael Weber','Hugo Sampaio','Rafael Cattani','Leo Peixoto','Fabiana Menegatti','Bianca Farias','Felipe Kunz','Caio Bragança','Manuela Kraemer','Natália Ost','Alex Néri'];
+const origens = ['Instagram','Indicação','Google','Site','WhatsApp','Passante'];
+const consultores = ['Bruno Lima','Diego Santos','Camila Torres','Ana Ribeiro','Marcos Silva'];
+const etapas = ['Novo lead','Contato feito','Aula agendada','Negociação'];
+const fill = (id, html) => { document.getElementById(id).innerHTML = html; };
+const mini = (pct, cls = '') => `<span class="mini"><span class="trilho"><i class="${cls}" style="width:${pct}%"></i></span><b>${pct}%</b></span>`;
+
+// Conversão
+const cOrig = [['Instagram',17,0],['Indicação',13,0],['Google',7,0],['Site',6,3],['WhatsApp',6,0],['Passante',2,1]];
+fill('c-origem', cOrig.map(([n,l,m]) => `<tr><td>${n}</td><td class="n">${l}</td><td class="n verde">${m}</td><td class="barra">${mini(Math.round(m*100/l),'v')}</td></tr>`).join(''));
+const cCons = [['Bruno Lima',14,2],['Diego Santos',12,1],['Camila Torres',10,1],['Ana Ribeiro',8,0],['Marcos Silva',5,0],['Outros',2,0]];
+fill('c-consultor', cCons.map(([n,l,m]) => `<tr><td>${n}</td><td class="n">${l}</td><td class="n verde">${m}</td><td class="barra">${mini(Math.round(m*100/l),'v')}</td></tr>`).join(''));
+const contato = ['Sem contato','15h, 15/10','2 dias, 15/10','52 min, 15/10','1 dia, 15/10','8 min, 13/10','21h, 13/10','5h, 12/10'];
+const linhaConv = (i) => {
+  const ag = r() > .55, veio = ag && r() > .6, matr = veio && r() > .55, perdeu = !matr && r() > .82;
+  const st = matr ? '<span class="st matr">Matriculou</span>' : perdeu ? '<span class="st perdeu">Perdeu</span>' : '<span class="st aberto">Em aberto</span>';
+  const dia = String(15 - Math.floor(i / 3.6)).padStart(2,'0');
+  return `<tr><td class="nome">${nomes[i % nomes.length]}</td><td>${pick(origens)}</td><td>${pick(consultores)}</td><td>${dia}/10</td><td>${pick(contato)}</td><td class="c">${ag?'Sim':'Não'}</td><td class="c">${veio?'Sim':'Não'}</td><td>${st}</td></tr>`;
+};
+fill('c-lista-1', Array.from({length:12}, (_, i) => linhaConv(i)).join(''));
+fill('c-lista-2', Array.from({length:39}, (_, i) => linhaConv(i + 12)).join(''));
+
+// Entrada
+const porDia = [3,3,2,4,3,4,4,5,4,2,5,1,7,3,6];
+fill('e-barras', porDia.map((n, i) => `<span class="${[3,4,10,11].includes(i) ? 'fds' : ''}" style="height:${n*100/7}%"></span>`).join(''));
+const fatia = (rows, tot) => rows.map(([n,v]) => `<tr><td>${n}</td><td class="n">${v}</td><td class="barra">${mini(Math.round(v*100/tot))}</td></tr>`).join('');
+fill('e-origem', fatia([['Instagram',17],['Indicação',13],['Google',7],['Site',6],['WhatsApp',6],['Passante',2]], 51));
+fill('e-consultor', fatia([['Bruno Lima',14],['Diego Santos',12],['Camila Torres',10],['Ana Ribeiro',8],['Marcos Silva',5],['Outros',2]], 51));
+fill('e-funil', fatia([['Vendas',38],['Indicações',9],['Reativação',4]], 51));
+fill('e-lista', Array.from({length:14}, (_, i) => {
+  const st = i === 4 ? '<span class="st matr">Cliente</span>' : i === 9 ? '<span class="st perdeu">Perdido</span>' : '<span class="st aberto">Em aberto</span>';
+  const dia = String(15 - i).padStart(2,'0');
+  return `<tr><td class="nome">${nomes[(i*3+2) % nomes.length]}</td><td>${pick(origens)}</td><td>Bruno Lima</td><td>Vendas</td><td>${pick(etapas)}</td><td>${dia}/10</td><td>${st}</td></tr>`;
+}).join(''));
+
+// Leads parados
+fill('p-consultor', fatia([['Diego Santos',11],['Bruno Lima',9],['Camila Torres',8],['Outros',5],['Ana Ribeiro',2]], 35));
+fill('p-lista', Array.from({length:19}, (_, i) => {
+  const dias = 42 - i * 1.6 | 0;
+  const d = new Date(2026, 9, 15 - dias);
+  const ult = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}, há ${dias} dias`;
+  const tipo = i % 3;
+  const prox = tipo === 0 ? `<span class="st atras">Atrasado há ${Math.max(2, dias - 20)} dias</span>` : tipo === 1 ? '<span class="st sempasso">Sem próximo passo</span>' : `${String(16 + (i % 9)).padStart(2,'0')}/10`;
+  return `<tr><td class="nome">${nomes[(i*5+1) % nomes.length]}</td><td>${pick(etapas)}</td><td class="r">${dias - (i % 4)} dias</td><td>${ult}</td><td>${prox}</td><td>${pick(consultores)}</td></tr>`;
+}).join(''));
+</script>
+</body>
+</html>
