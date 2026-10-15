@@ -2742,7 +2742,7 @@ describe('Leads parados', () => {
     expect(botao('Sem registro há mais de 7 dias').textContent).toContain('4');
     expect(container.textContent).toContain('A lista mostra cada um uma vez.');
     // Quem está há mais dias sem registro primeiro.
-    expect(nomesDaLista()).toEqual(['Alice Gomes', 'André Lima', 'Samuel Brito', 'Sandra Esteves']);
+    expect(nomesDaLista()).toEqual(['Alice Gomes', 'André Lima', 'Sandra Esteves', 'Samuel Brito']);
     expect(celula(linhaDe('a3'), 'Próximo contato').textContent).toBe('Sem próximo passo');
     expect(celula(linhaDe('a3'), 'Na etapa').textContent).toBe('antes de 14/09');
   });
@@ -3138,8 +3138,8 @@ import { ReportHeader, HeroNumber, NumberTiles, CountBreakdown, ReportList, Cell
 
 const days = (n) => plural(n, 'dia', 'dias');
 
-// "12/10 · há 3 dias", ou só o dia quando faz menos de um dia (a régua do selo
-// de dias sem contato, que não conta o dia parcial). Sem registro nenhum, conta
+// "12/10 · há 3 dias", ou só o dia quando o registro é de hoje (dias do
+// calendário, como no rodapé do card do Pipeline). Sem registro nenhum, conta
 // do cadastro.
 function lastRecordText(r, year) {
   const ago = r.quiet >= 1 ? `há ${days(r.quiet)}` : null;
@@ -3616,7 +3616,7 @@ Logo antes da linha que começa com `- **Visual.** Montado com a skill frontend-
 ```markdown
 - **Visitas e aulas experimentais.** `src/lib/relatorios/leads/visitas.js` e `src/views/relatorios/VisitasSection.jsx`. Os agendamentos de `stronix_aulas` com data no período, pela regra do painel (`appointmentRowsOf`, com o `effectiveStatus`: sem cancelados e sem os marcados a partir da primeira matrícula), um por linha. O número grande é o comparecimento (quem veio sobre quem veio mais quem faltou). Os números do topo são Marcados (o total), Vieram, Faltaram, Sem desfecho (a data passou e ninguém marcou) e A acontecer. O desfecho marcado antes da hora já conta. O painel conta, no mês em andamento, só os de data já passada, e o relatório vai até o fim do período: no mês fechado os números são os do painel, e no mês em andamento todos são, menos Marcados, que soma os que vão acontecer e por isso fica sem variação enquanto o período anda (a tela diz isso). A lista nunca passa do fim do mês atual (`visitasEndOf`), porque pedir o mês seguinte ao `useCrmSources` deixaria na memória da sessão uma entrada fechada para um mês que vai abrir, e o `shouldStoreMonthEntry` não troca entrada fechada por aberta; só a "Esta semana" que atravessa o fim do mês perde os dias do mês seguinte. Só a visita guarda a unidade e só a aula guarda a modalidade e o professor, então "Por unidade" conta só visitas, "Por modalidade" só aulas, e a célula do que não se aplica é um traço que o leitor de tela lê como "não se aplica". O consultor é o dono de hoje do lead.
 - **Perdas.** `src/lib/relatorios/leads/perdas.js` e `src/views/relatorios/PerdasSection.jsx`. Os leads com a data da perda no período, pela regra do painel (`lossesOf`: quem está em Perda hoje), por motivo (`lossReasonOf`), etapa (`lossStageOf`), origem e consultor. O número grande não leva cor, e a variação usa `lowerBetter`. A etapa só é gravada desde 14/09/2026 (`STAGE_TRACKING_SINCE`, com o texto em `STAGE_SINCE_TEXT`, na `base.js`): o período que acaba antes fica sem base na etapa, e o que atravessa a data é parcial, com as perdas de antes em "Sem etapa", como no card do painel, para o motivo e a etapa somarem o mesmo total. Um aviso fixo diz que a conta mostra só quem continua perdido: quem volta ao funil ou matricula perde a data e o motivo da perda (`planStageMove` e `commitMatricula` apagam `lostAt` e `lossReason`). O aviso sai quando o PR 4 da entrega A gravar a perda como fato. Filtrar um motivo e exportar dá a lista de repescagem.
-- **Leads parados.** `src/lib/relatorios/leads/parados.js` e `src/views/relatorios/ParadosSection.jsx`. Retrato de agora, sem período, sem comparação e sem variação. A base são os leads em aberto da carteira de agora do painel (`openLeadsOf`, a mesma conta do `pipelineNowOf`), e os três números são: sem próximo passo (`noNextStepOf`, fora quem chegou há menos de 24 horas, que a Meta cobra), contato atrasado (`overdueDaysOf`, do `dailyGoal.js`, que fica com o dono do lead mesmo com o contato delegado, como o Atrasado da Meta) e sem registro há mais de N dias (a régua do selo "N dias sem contato" do Pipeline: `getDaysSinceFromDate` com o `lastInteractionDateOf`, que junta o `lastInteractionAt` e as interações do mês ao vivo; sem registro, conta do cadastro). O número grande é a lista sem recorte, com cada lead uma vez, e a base ao lado ("de 210 em aberto agora"). Os dias na etapa saem do `statusEnteredAt`, gravado desde 14/09/2026, ou do cadastro de depois disso (a indicação pelo link público não grava a entrada); antes disso, "antes de 14/09" (`stageSinceOf`). A lista vai de quem está há mais dias sem registro para quem está há menos. O `dailyGoal.js` importa o `lucide-react`, então nenhuma função de `api/` pode importar o `parados.js`.
+- **Leads parados.** `src/lib/relatorios/leads/parados.js` e `src/views/relatorios/ParadosSection.jsx`. Retrato de agora, sem período, sem comparação e sem variação. A base são os leads em aberto da carteira de agora do painel (`openLeadsOf`, a mesma conta do `pipelineNowOf`), e os três números são: sem próximo passo (`noNextStepOf`, fora quem chegou há menos de 24 horas, que a Meta cobra), contato atrasado (`overdueDaysOf`, do `dailyGoal.js`, que fica com o dono do lead mesmo com o contato delegado, como o Atrasado da Meta) e sem registro há mais de N dias (a conta do rodapé do card do Pipeline, "N dias sem contato": dias do calendário pelo `silenceDaysOf`, em `src/lib/kanban.js`, com o `lastInteractionDateOf`, que junta o `lastInteractionAt` e as interações do mês ao vivo; sem registro, conta do cadastro, e o lead sem data de cadastro fica sem os dias). O número grande é a lista sem recorte, com cada lead uma vez, e a base ao lado ("de 210 em aberto agora"). Os dias na etapa saem do `statusEnteredAt`, gravado desde 14/09/2026, ou do cadastro do dia 14/09/2026 em diante (a indicação pelo link público não grava a entrada); antes disso, "antes de 14/09" (`stageSinceOf`). A lista vai de quem está há mais dias sem registro para quem está há menos. O `dailyGoal.js` importa o `lucide-react`, então nenhuma função de `api/` pode importar o `parados.js`.
 ```
 
 - [ ] **Step 3: A grade dos números**
@@ -3720,7 +3720,7 @@ Plano: `docs/superpowers/plans/2026-10-15-relatorios-de-leads-pr2.md`
 - O aviso dos agendamentos incompletos segue a regra da Conversão: período ou comparado antes de setembro de 2026.
 - A etapa da perda segue o card do painel, com as perdas de antes de 14/09/2026 em "Sem etapa" e o aviso de parcial.
 - Os dias na etapa saem da entrada gravada na etapa, ou do cadastro de 14/09/2026 em diante.
-- Os dias sem registro seguem o selo "N dias sem contato" do Pipeline.
+- Os dias sem registro são os do rodapé do card do Pipeline ("N dias sem contato"), contados por dia do calendário.
 - O número grande de Leads parados é a lista sem recorte, com os leads em aberto ao lado.
 - O balão "Novo" vai até 15/11/2026, ou até uns 30 dias depois do merge, se o PR entrar depois de 01/11/2026.
 
