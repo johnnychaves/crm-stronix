@@ -1,9 +1,9 @@
 // Os quatro números da tela Gerencial (handoff v2, §2 L1): vendido no mês,
-// carteira mensal, o que está em risco nos próximos 90 dias e o que já venceu
-// sem renovar. Só apresentação: cada valor sai das props que o viewModel monta.
+// carteira mensal, ticket médio mensal e o que já venceu sem renovar. O risco
+// dos próximos 90 dias fica no card Vencimentos. Só apresentação: cada valor sai das props que o viewModel monta.
 //
 // Duas moedas que nunca se somam: "Vendido" é valor de contrato inteiro, e
-// carteira e risco são valor por mês. O "/mês" fica num elemento irmão do
+// carteira e ticket são valor por mês. O "/mês" fica num elemento irmão do
 // número, no mesmo baseline, para nunca se soltar dele.
 import { cn } from '../../lib/utils.js';
 import { fmtNum } from '../../lib/format.js';
@@ -41,16 +41,13 @@ function SoldDelta({ delta }) {
 
 // Props:
 //   sold    { mix, ticket, delta } — o vendido e a contagem saem do mix
-//   wallet  { count, monthly, lockedCount }
-//   risk    { horizon, walletMonthly, lapsedCount }
+//   wallet  { count, monthly, ticket, blind, lockedCount }
+//   risk    { lapsedCount }
 export function GerencialKpis({ sold, wallet, risk }) {
   const mix = sold?.mix || [];
   const soldTotal = mix.reduce((s, m) => s + (Number(m.value) || 0), 0);
   const soldCount = mix.reduce((s, m) => s + (Number(m.count) || 0), 0);
-  const horizon = risk?.horizon || [];
-  const riskValue = horizon.reduce((s, h) => s + (Number(h.v) || 0), 0);
-  const walletMonthly = Number(risk?.walletMonthly) || 0;
-  const share = walletMonthly > 0 ? Math.round((riskValue / walletMonthly) * 100) : 0;
+  const withValue = Math.max((Number(wallet?.count) || 0) - (Number(wallet?.blind) || 0), 0);
   const lapsed = Number(risk?.lapsedCount) || 0;
 
   return (
@@ -88,14 +85,14 @@ export function GerencialKpis({ sold, wallet, risk }) {
 
       <section className={CARD}>
         <div className="flex items-center gap-1.5">
-          <span className={LABEL}>Em risco · 90 dias</span>
-          <DashHelpTip text={HELP.risk} label='O que é "Em risco · 90 dias"?' />
+          <span className={LABEL}>Ticket médio mensal</span>
+          <DashHelpTip text={HELP.ticket} label='O que é "Ticket médio mensal"?' />
         </div>
-        <div className="mt-3 flex flex-wrap items-baseline gap-x-1 gap-y-0.5 text-amber-700 dark:text-amber-300">
-          <span className={VALUE}>{fmtMoneyShort(riskValue)}</span>
-          <span className="text-[13px] font-semibold">/mês</span>
+        <div className="mt-3 flex flex-wrap items-baseline gap-x-1 gap-y-0.5">
+          <span className={VALUE}>{fmtMoney(wallet?.ticket)}</span>
+          <span className="text-[13px] font-semibold text-muted-foreground">/mês</span>
         </div>
-        <div className={SUB}>{`${share}% da carteira`}</div>
+        <div className={SUB}>{`média de ${plural(withValue, 'contrato', 'contratos')} com valor`}</div>
       </section>
 
       <section className={cn(CARD, 'col-span-2 xl:col-span-1')}>

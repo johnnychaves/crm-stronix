@@ -39,7 +39,7 @@ export function emptyMonth() {
 export const HELP = {
   sold: 'Soma do valor dos contratos fechados no mês: matrículas novas, renovações, upgrades e retornos. Conta no mês em que o contrato foi fechado, mesmo que comece depois. É valor de contrato, não dinheiro que já entrou no caixa.',
   wallet: 'Quanto os contratos ativos hoje valem por mês. Cada contrato entra pelo valor dividido pelos meses do plano. Os trancados entram, porque voltam a valer. Contrato importado sem valor conta na quantidade, mas não soma em reais. Não muda com o mês escolhido.',
-  risk: 'O que deixa de entrar por mês se os contratos que vencem nos próximos 90 dias não forem renovados. Quem já renovou não entra. Contrato importado sem valor não soma em reais, mas aparece na contagem do card Vencimentos.',
+  ticket: 'Valor médio por mês de cada contrato ativo hoje: o valor por mês da carteira dividido pelos contratos que têm valor. Contrato importado sem valor fica fora da conta, para não puxar a média para baixo. Não muda com o mês escolhido.',
   lapsed: 'Contratos que já passaram do fim e não têm renovação nem outro contrato depois. Já saíram da carteira. É a lista de quem vale recuperar.',
   mix: 'Cada contrato fechado no mês entra em um tipo só: matrícula nova, renovação, upgrade ou retorno de ex-cliente. O desconto é quanto os contratos saíram abaixo do preço de tabela. Com a comparação ligada, a seta mostra a variação contra o mês comparado.',
   sellers: 'O consultor dono do lead na hora da venda. Vendas é a quantidade de contratos. Ticket/mês é o valor médio por mês de cada venda, e mostra quem vende planos mais longos ou mais caros, não só quem vende mais.',

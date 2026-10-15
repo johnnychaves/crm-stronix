@@ -6,7 +6,7 @@
 //
 // Props:
 //   sold     { mix, delta, ticket, discount, clawback: { count, value } }
-//   wallet   { count, monthly, lockedCount }
+//   wallet   { count, monthly, ticket, blind, lockedCount }
 //   risk     { horizon, walletMonthly, lapsedCount }
 //   exits    { items }
 //   sellers  { rows }

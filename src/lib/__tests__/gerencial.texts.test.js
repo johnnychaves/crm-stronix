@@ -49,7 +49,7 @@ describe('vazios', () => {
 
 describe('dicas do "?"', () => {
   it('cada card tem uma explicação escrita, sem travessão no meio da frase', () => {
-    const keys = ['sold', 'wallet', 'risk', 'lapsed', 'mix', 'sellers', 'expiry', 'exits', 'plans', 'sources'];
+    const keys = ['sold', 'wallet', 'ticket', 'lapsed', 'mix', 'sellers', 'expiry', 'exits', 'plans', 'sources'];
     expect(Object.keys(HELP).sort()).toEqual([...keys].sort());
     keys.forEach((k) => {
       expect(HELP[k].length, k).toBeGreaterThan(40);
@@ -57,8 +57,8 @@ describe('dicas do "?"', () => {
     });
   });
 
-  it('a da carteira e a do risco dizem que contrato sem valor não soma em reais', () => {
+  it('a da carteira e a do ticket dizem que contrato sem valor fica fora da soma em reais', () => {
     expect(HELP.wallet).toContain('sem valor');
-    expect(HELP.risk).toContain('sem valor');
+    expect(HELP.ticket).toContain('sem valor');
   });
 });

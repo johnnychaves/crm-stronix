@@ -24,7 +24,7 @@ const MIX = [
   { type: 'retorno', count: 2, value: 3500 }
 ];
 const SOLD = { mix: MIX, ticket: 214, discount: { pct: 8, abs: 6800 }, clawback: { count: 2, value: 3100 } };
-const WALLET = { count: 628, monthly: 134200, lockedCount: 19 };
+const WALLET = { count: 628, monthly: 134200, ticket: 214, blind: 0, lockedCount: 19 };
 const HORIZON = [
   { days: 30, label: 'Em 30 dias', count: 63, v: 13100, blind: 0 },
   { days: 60, label: 'Em 60 dias', count: 48, v: 9800, blind: 0 },
@@ -86,13 +86,24 @@ describe('GerencialKpis', () => {
     expect(html).not.toContain('▼');
   });
 
-  it('a carteira e o risco usam dinheiro curto, e o /mês é um elemento à parte', () => {
+  it('a carteira usa dinheiro curto, e o /mês é um elemento à parte', () => {
     const html = kpis();
     expect(html).toContain('R$ 134,2 mil');
     expect(html).toContain('628 contratos · 19 trancados');
-    expect(html).toContain('R$ 34,3 mil'); // 13.100 + 9.800 + 11.400
-    expect(html).toContain('26% da carteira');
     expect(html).toContain('>/mês</span>');
+  });
+
+  it('o ticket médio mensal sai da carteira e conta só os contratos com valor', () => {
+    const html = kpis({ wallet: { ...WALLET, count: 1122, blind: 494 } });
+    expect(html).toContain('Ticket médio mensal');
+    expect(html).toContain('R$ 214');
+    expect(html).toContain('média de 628 contratos com valor'); // 1.122 menos 494 sem valor
+  });
+
+  it('o risco dos 90 dias não é mais um dos quatro números', () => {
+    const html = kpis();
+    expect(html).not.toContain('Em risco');
+    expect(html).not.toContain('da carteira');
   });
 
   it('a fila de recuperação vem do que já venceu e ninguém renovou', () => {
@@ -102,9 +113,9 @@ describe('GerencialKpis', () => {
     expect(html).toContain('contratos para recuperar');
   });
 
-  it('carteira vazia não divide por zero', () => {
-    const html = kpis({ risk: { ...RISK, walletMonthly: 0 } });
-    expect(html).toContain('0% da carteira');
+  it('carteira vazia não quebra a conta', () => {
+    const html = kpis({ wallet: { count: 0, monthly: 0, ticket: 0, blind: 0, lockedCount: 0 } });
+    expect(html).toContain('média de 0 contratos com valor');
   });
 });
 
@@ -384,14 +395,14 @@ describe('GerencialDashboard', () => {
     expect(html).toContain('Carteira mensal');
     expect(html).toContain('Vencimentos');
     expect(html).toContain('Saídas do mês');
-    expect(html).toContain('26% da carteira');
+    expect(html).toContain('Ticket médio mensal');
   });
 });
 
 describe('dicas "?" da tela', () => {
   it('cada card do corpo tem o seu "?", com o nome do card no rótulo', () => {
     const html = render(createElement(GerencialDashboard, BODY));
-    ['Vendido no mês', 'Carteira mensal', 'Em risco · 90 dias', 'Vencidos sem renovar', 'Vendas por tipo', 'Consultores', 'Vencimentos', 'Saídas do mês', 'Planos', 'Origem das vendas']
+    ['Vendido no mês', 'Carteira mensal', 'Ticket médio mensal', 'Vencidos sem renovar', 'Vendas por tipo', 'Consultores', 'Vencimentos', 'Saídas do mês', 'Planos', 'Origem das vendas']
       .forEach((t) => expect(html, t).toContain(`aria-label="O que é &quot;${t}&quot;?"`));
   });
 });
