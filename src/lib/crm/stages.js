@@ -214,7 +214,7 @@ export function openLeadsOf(liveLeads, { ownerOk, funnelOk }) {
 // cobre.
 export function noNextStepOf(lead, now = null) {
   if (getSafeDateOrNull(lead?.nextFollowUp)) return false;
-  const coveredByMeta = now instanceof Date && !lead.createdAtMissing && lead.createdAt instanceof Date
+  const coveredByMeta = now instanceof Date && !lead?.createdAtMissing && lead?.createdAt instanceof Date
     && now.getTime() - lead.createdAt.getTime() < DAY_MS;
   return !coveredByMeta;
 }

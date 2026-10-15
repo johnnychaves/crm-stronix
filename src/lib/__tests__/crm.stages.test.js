@@ -273,6 +273,12 @@ describe('etapa da perda de um lead', () => {
     expect(lossStageOf({ id: 'z' }, win)).toBe('Sem etapa');
     expect(lossStageOf(leadOf('a'), { ...win, start: T(9, 0) })).toBe('Sem etapa');
   });
+
+  it('tira os espaços das pontas do nome da etapa, e etapa só de espaços vira Sem etapa', () => {
+    const mv = movesByLead([M('t1', 't', ' Ligação ', 'Perda', 3), M('u1', 'u', '   ', 'Perda', 3)]);
+    expect(lossStageOf({ id: 't' }, { moves: mv, ...MONTH })).toBe('Ligação');
+    expect(lossStageOf({ id: 'u' }, { moves: mv, ...MONTH })).toBe('Sem etapa');
+  });
 });
 
 describe('leads em jogo e sem próximo passo', () => {
@@ -299,6 +305,8 @@ describe('leads em jogo e sem próximo passo', () => {
     expect(open.filter((l) => noNextStepOf(l, now)).map((l) => l.id)).toEqual(['sem-data', 'sem-cadastro', 'diego']);
     // Sem o instante, ninguém está coberto pela Meta.
     expect(noNextStepOf(live[2])).toBe(true);
+    // Sem lead, com o instante dado, também não lança: não há cadastro que a Meta cubra.
+    expect(noNextStepOf(null, now)).toBe(true);
   });
 
   it('a carteira de agora conta o mesmo que as duas funções', () => {
