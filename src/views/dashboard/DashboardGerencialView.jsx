@@ -93,11 +93,18 @@ export function DashboardGerencialView({ usersList, liveLeads, db, listenersActi
     [comparing, ctx, cmpKey, monthKey, currentKey, now]
   );
 
+  // O mês comparado inteiro, só para a curva do topo seguir pontilhada até o
+  // fim do mês. Os números continuam saindo do `cmp`, com o corte pró-rata.
+  const cmpFull = useMemo(
+    () => (comparing ? metricsOf(ctx, { monthKey: cmpKey }) : null),
+    [comparing, ctx, cmpKey]
+  );
+
   const users = useMemo(() => (usersList || []).filter((u) => u?.id), [usersList]);
   const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
   const props = useMemo(
-    () => dashboardProps({ cur, cmp, comparing, roleOf: (id) => sellerRoleText(userById.get(id)) }),
-    [cur, cmp, comparing, userById]
+    () => dashboardProps({ cur, cmp, cmpFull, comparing, roleOf: (id) => sellerRoleText(userById.get(id)) }),
+    [cur, cmp, cmpFull, comparing, userById]
   );
 
   const oldestKey = addMonthsToKey(currentKey, -11);

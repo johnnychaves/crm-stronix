@@ -7,6 +7,7 @@
 import { monthRange, effectiveEnd, isCurrentMonthKey } from '../operacional/month.js';
 import { computeChurn } from '../operacional/base.js';
 import { salesOf } from './sales.js';
+import { cumulativeByDay } from './series.js';
 import { walletAt } from './wallet.js';
 import { expiryHorizons, expiredWithoutSuccessor, exitsInWindow } from './risk.js';
 import { sellersOf, plansOf, sourcesOf } from './people.js';
@@ -72,6 +73,7 @@ function computeMetrics(ctx, cache, { monthKey, cutEnd }) {
   const { wallet, risk } = snapshotOf(ctx, cache);
 
   const sold = salesOf(contracts, { start, end });
+  const curve = cumulativeByDay(sold.rows, { start, end });
   const exits = exitsInWindow(contracts, { start, end });
   // Churn é conta do mês, não retrato de hoje: pessoas que saíram de vez no
   // mês ÷ clientes ativos no início dele. Mês em andamento conta até agora.
@@ -86,6 +88,7 @@ function computeMetrics(ctx, cache, { monthKey, cutEnd }) {
     start,
     end,
     sold,
+    curve,
     wallet,
     risk,
     exits,

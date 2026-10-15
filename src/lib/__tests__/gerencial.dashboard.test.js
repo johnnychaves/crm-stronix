@@ -253,3 +253,28 @@ describe('churn na tela', () => {
     expect(html).not.toContain('0%');
   });
 });
+
+describe('curva do topo', () => {
+  const mk = (monthKey, curve, running = true) => ({
+    monthKey, running, curve,
+    sold: { sold: 0, count: 0, ticket: 0, discPct: 0, discAbs: 0, clawCount: 0, clawValue: 0, mix: [] },
+    wallet: { count: 0, monthly: 0, ticket: 0, lockedCount: 0 },
+    risk: { horizon: [], expired: { count: 0 } },
+    exits: { items: [] }, churn: { exits: 0, base: 0, pct: null }, sellers: [], plans: [], sources: [],
+    flags: { gymEmpty: false, monthNoSales: false }
+  });
+
+  it('o mês exibido vai até o dia em que está, e o comparado vem inteiro', () => {
+    const cur = mk('2026-09', [10, 20, 30, null, null]);
+    const full = mk('2026-08', [5, 15, 25, 40, 60], false);
+    const cmp = mk('2026-08', [5, 15, 25, null, null], false);
+    const p = dashboardProps({ cur, cmp, cmpFull: full, comparing: true });
+    expect(p.curve).toMatchObject({ days: 5, cutDay: 3, cur: [10, 20, 30, null, null], prev: [5, 15, 25, 40, 60], prevName: 'agosto' });
+    expect(p.period).toEqual({ monthName: 'setembro', running: true, day: 3 });
+  });
+
+  it('sem comparação não há linha do mês comparado', () => {
+    const p = dashboardProps({ cur: mk('2026-09', [10, 20]), cmp: null, cmpFull: null, comparing: false });
+    expect(p.curve.prev).toBeNull();
+  });
+});

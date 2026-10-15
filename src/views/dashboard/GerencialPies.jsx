@@ -1,244 +1,129 @@
-// Os gráficos de pizza da tela Gerencial (handoff v2, §2 L2 e L4): a rosca das
-// vendas por tipo, a pizza cheia dos planos e a meia-rosca da origem.
+// As faixas de venda da tela Gerencial (mockup A): de onde veio a venda por
+// tipo, e planos e origem em barras ordenadas. Planos e origem eram pizza no
+// handoff v2; cinco fatias de pizza se leem pior que cinco barras alinhadas,
+// e a barra deixa ver a variação ao lado de cada linha.
 //
-// O desenho é SVG puro (círculos com stroke-dasharray), no molde do Donut do
-// app: o projeto não tem Recharts, e três gráficos de um card cada não pagam
-// uma dependência. Cada fatia é uma ChartMark, então tem dica no hover e no
-// foco do teclado (§5). Entre as fatias há um vão de 2px, que é o "separador
-// na cor do card" do handoff.
-//
-// Toda porcentagem sai do valor das próprias fatias: nada de número pronto.
+// Toda porcentagem sai do valor das próprias linhas: nada de número pronto.
 import { RotateCcw } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { fmtNum } from '../../lib/format.js';
 import { HELP } from '../../lib/gerencial/texts.js';
+import { Band } from './Band.jsx';
 import { ChartMark } from './ChartMark.jsx';
-import { DashHelpTip } from './DashPrimitives.jsx';
 import { ItemDelta } from './ItemDelta.jsx';
-import { BREAKDOWN_PALETTE, fmtMoney, fmtMoneyShort } from './dashTokens.js';
+import { fmtMoney, fmtMoneyShort } from './dashTokens.js';
 
-const CARD = 'rounded-2xl border border-border bg-card px-[22px] py-5 shadow-card';
-const TITLE = 'm-0 font-display text-[15px] font-bold tracking-[-0.01em]';
-const RULE = 'border-slate-100 dark:border-white/[0.06]';
-const GAP = 2;
-
-// Os quatro tipos de venda do handoff §6. Rótulo e cor são apresentação: o mix
-// chega só com o tipo, a contagem e o valor.
+// Os quatro tipos de venda. Rótulo e cor são apresentação: o mix chega só com
+// o tipo, a contagem e o valor.
 const TYPES = {
-  nova: { label: 'Matrícula nova', stroke: 'stroke-brand-600 dark:stroke-brand-500', swatch: 'bg-brand-600 dark:bg-brand-500' },
-  renovacao: { label: 'Renovação', stroke: 'stroke-success dark:stroke-[#0E9F6E]', swatch: 'bg-success dark:bg-[#0E9F6E]' },
-  upgrade: { label: 'Upgrade', stroke: 'stroke-violet-500', swatch: 'bg-violet-500' },
-  retorno: { label: 'Retorno de ex-cliente', stroke: 'stroke-slate-400 dark:stroke-slate-500', swatch: 'bg-slate-400 dark:bg-slate-500' }
+  nova: { label: 'Matrícula nova', fill: 'bg-brand-600 dark:bg-brand-500' },
+  renovacao: { label: 'Renovação', fill: 'bg-success dark:bg-[#0E9F6E]' },
+  upgrade: { label: 'Upgrade', fill: 'bg-violet-500' },
+  retorno: { label: 'Retorno de ex-cliente', fill: 'bg-slate-400 dark:bg-slate-500' }
 };
-
-// Mesma ordem de BREAKDOWN_PALETTE (dashTokens.js), em stroke para o SVG.
-const BREAKDOWN_STROKES = [
-  'stroke-accent-500',
-  'stroke-brand-600 dark:stroke-brand-500',
-  'stroke-ink-900 dark:stroke-slate-400',
-  'stroke-slate-400 dark:stroke-slate-600',
-  'stroke-success'
-];
 
 const plural = (n, one, many) => `${fmtNum(n)} ${n === 1 ? one : many}`;
 const pctOf = (v, total) => (total > 0 ? Math.round(((Number(v) || 0) / total) * 100) : 0);
 
-// Anel, pizza (thickness = metade do tamanho) ou meia-rosca. `slices` é
-// [{ key, value, tip, stroke }]; `children` é o que fica no centro.
-function Ring({ slices, size, thickness, half = false, label, children }) {
-  const total = slices.reduce((s, x) => s + (Number(x.value) || 0), 0);
-  const r = (size - thickness) / 2;
-  const c = size / 2;
-  const circ = 2 * Math.PI * r;
-  const sweep = half ? 0.5 : 1;
-  const many = slices.filter((s) => Number(s.value) > 0).length > 1;
-  const rotate = `rotate(${half ? -180 : -90} ${c} ${c})`;
-  let acc = 0;
-  const arcs = total > 0
-    ? slices.filter((s) => Number(s.value) > 0).map((s) => {
-        const frac = Number(s.value) / total;
-        const len = frac * circ * sweep;
-        const arc = {
-          ...s,
-          dash: `${Math.max(len - (many ? GAP : 0), 0.5).toFixed(2)} ${circ.toFixed(2)}`,
-          offset: (-acc * circ * sweep).toFixed(2)
-        };
-        acc += frac;
-        return arc;
-      })
-    : [];
-  const h = half ? size / 2 : size;
-  return (
-    <div className="relative flex-none" style={{ width: size, height: h }} role="img" aria-label={label}>
-      <svg width={size} height={h} viewBox={`0 0 ${size} ${h}`} className="overflow-visible">
-        <circle
-          cx={c}
-          cy={c}
-          r={r}
-          fill="none"
-          strokeWidth={thickness}
-          strokeDasharray={half ? `${(circ / 2).toFixed(2)} ${circ.toFixed(2)}` : undefined}
-          transform={rotate}
-          className="stroke-muted"
-        />
-        {arcs.map((a) => (
-          <ChartMark
-            key={a.key}
-            as="circle"
-            tip={a.tip}
-            cx={c}
-            cy={c}
-            r={r}
-            fill="none"
-            strokeWidth={thickness}
-            strokeDasharray={a.dash}
-            strokeDashoffset={a.offset}
-            transform={rotate}
-            className={a.stroke}
-          />
-        ))}
-      </svg>
-      {children}
-    </div>
-  );
-}
-
-// Linha da legenda: amostra, rótulo, participação, variação contra o mês
-// comparado (quando há) e valor, com régua em cima. `showDelta` reserva a
-// coluna da variação para todas as linhas da legenda, as que não têm também.
-function LegendRow({ swatch, round, label, pct, value, tight, delta, showDelta }) {
-  return (
-    <div className={cn('flex items-center gap-2.5 border-t', RULE, tight ? 'py-[7px]' : 'py-2')}>
-      <span className={cn('block size-[9px] flex-none', round ? 'rounded-full' : 'rounded-[3px]', swatch)} />
-      <span className="min-w-0 flex-1 truncate text-[13px]">{label}</span>
-      <span className="num w-9 flex-none text-right text-[12px] text-muted-foreground">{`${pct}%`}</span>
-      {showDelta && <span className="hidden w-[54px] flex-none text-right sm:block"><ItemDelta delta={delta} /></span>}
-      <span className="num w-20 flex-none text-right font-display text-[13.5px] font-bold">{value}</span>
-    </div>
-  );
-}
-
 // Props:
-//   mix       [{ type, count, value }] — nova, renovacao, upgrade e retorno
-//   discount  { pct, abs }
+//   mix       [{ type, count, value, delta }] — nova, renovacao, upgrade e retorno
+//   discount  { pct, abs, prevPct }
 //   clawback  { count, value } — vendas do mês que já foram canceladas
 export function SalesTypeCard({ mix, discount, clawback }) {
-  const list = (mix || []).map((m) => ({ ...m, ...(TYPES[m.type] || TYPES.retorno), label: TYPES[m.type]?.label || m.type }));
+  const list = (mix || []).map((m) => ({ ...m, label: TYPES[m.type]?.label || m.type, fill: TYPES[m.type]?.fill || TYPES.retorno.fill }));
   const sold = list.reduce((s, m) => s + (Number(m.value) || 0), 0);
   const pct = Number(discount?.pct) || 0;
-  const slices = list.map((m) => ({
-    key: m.type,
-    value: m.value,
-    stroke: m.stroke,
-    tip: `${m.label}: ${plural(m.count, 'contrato', 'contratos')} · ${fmtMoney(m.value)} · ${pctOf(m.value, sold)}% do vendido`
-  }));
+  const heavy = pct >= 12;
 
   return (
-    <section className={CARD}>
-      <div className="flex items-baseline gap-2.5">
-        <h3 className={TITLE}>Vendas por tipo</h3>
-        <DashHelpTip text={HELP.mix} label='O que é "Vendas por tipo"?' />
-        <div className="flex-1" />
-        <span
-          className="num text-[12px] text-muted-foreground"
-          title={discount?.prevPct != null ? `Mês comparado: ${fmtNum(discount.prevPct)}%` : undefined}
-        >
-          {'desconto '}
-          <b className={cn('font-bold text-foreground', pct >= 12 && 'text-amber-700 dark:text-amber-300')}>{`${fmtNum(pct)}%`}</b>
-        </span>
+    <Band
+      title="De onde veio a venda"
+      help={HELP.mix}
+      question={
+        <>
+          {'Cada contrato entra em um tipo só. Desconto médio de '}
+          <b
+            className={cn('font-semibold text-foreground', heavy && 'text-amber-700 dark:text-amber-300')}
+            title={discount?.prevPct != null ? `Mês comparado: ${fmtNum(discount.prevPct)}%` : undefined}
+          >
+            {`${fmtNum(pct)}%`}
+          </b>
+          {' sobre a tabela.'}
+        </>
+      }
+    >
+      <div className="flex h-[34px] overflow-hidden rounded-[10px] bg-muted">
+        {list.map((m) => (
+          <ChartMark
+            key={m.type}
+            tip={`${m.label}: ${plural(m.count, 'contrato', 'contratos')} · ${fmtMoney(m.value)} · ${pctOf(m.value, sold)}% do vendido`}
+            className={cn('flex h-full min-w-[6px] items-center border-l-2 border-card px-2.5 first:border-l-0', m.fill)}
+            style={{ width: `${pctOf(m.value, sold)}%` }}
+          >
+            {pctOf(m.value, sold) >= 10 && <span className="num whitespace-nowrap font-display text-[12px] font-bold text-white">{`${pctOf(m.value, sold)}%`}</span>}
+          </ChartMark>
+        ))}
       </div>
 
-      <div className="mt-4 flex flex-col items-center gap-6 sm:flex-row">
-        <Ring
-          slices={slices}
-          size={148}
-          thickness={22}
-          label={`Vendas por tipo: ${list.map((m) => `${m.label} ${pctOf(m.value, sold)}%`).join(', ')}`}
-        />
-        <div className="flex w-full min-w-0 flex-1 flex-col">
-          {list.map((m) => (
-            <LegendRow
-              key={m.type}
-              swatch={m.swatch}
-              label={m.label}
-              pct={pctOf(m.value, sold)}
-              value={fmtMoneyShort(m.value)}
-              delta={m.delta}
-              showDelta={list.some((x) => x.delta)}
-            />
-          ))}
-        </div>
+      <div className="mt-5 grid grid-cols-2 gap-x-5 gap-y-5 md:grid-cols-4">
+        {list.map((m) => (
+          <div key={m.type} className="min-w-0">
+            <div className="flex items-center gap-2 font-medium text-foreground/80">
+              <i className={cn('block size-2.5 flex-none rounded-[3px]', m.fill)} />
+              <span className="truncate">{m.label}</span>
+            </div>
+            <div className="num mb-0.5 mt-1.5 font-display text-[24px] font-bold leading-tight tracking-[-0.02em] sm:text-[26px]">{fmtMoneyShort(m.value)}</div>
+            <div className="num flex flex-wrap items-center gap-x-1.5 text-[12.5px] text-muted-foreground">
+              {`${plural(m.count, 'contrato', 'contratos')} · ${pctOf(m.value, sold)}%`}
+              <ItemDelta delta={m.delta} />
+            </div>
+          </div>
+        ))}
       </div>
 
       {clawback?.count > 0 && (
-        <div className={cn('num mt-1.5 flex items-center gap-2 border-t pt-3 text-[12px] text-rose-700 dark:text-rose-300', RULE)}>
+        <div className="num mt-5 flex items-center gap-2 text-[13px] text-rose-700 dark:text-rose-300">
           <RotateCcw size={14} strokeWidth={2.1} className="flex-none" />
-          {`${plural(clawback.count, 'venda já cancelada', 'vendas já canceladas')} · ${fmtMoney(clawback.value)}`}
+          {`${plural(clawback.count, 'venda deste mês já foi cancelada', 'vendas deste mês já foram canceladas')}, somando ${fmtMoney(clawback.value)}.`}
         </div>
       )}
-    </section>
+    </Band>
   );
 }
 
-// Planos (pizza cheia) ou origem das vendas (meia-rosca). Grandeza é valor
-// vendido; `times` é o número de vendas e entra só na dica.
+// Planos ou origem: uma barra por linha, a primeira em azul cheio, e ao lado o
+// valor, a participação e a variação. Grandeza é valor vendido; `times` é o
+// número de vendas e entra só na dica.
 //
 // Props:
-//   title, variant ('pie' | 'half'), total
-//   items  [{ name, count (valor), times }] — já ordenados, o líder primeiro
-export function PieCard({ title, variant = 'pie', items, total }) {
-  const list = (items || []).map((it, i) => ({
-    ...it,
-    stroke: BREAKDOWN_STROKES[i % BREAKDOWN_STROKES.length],
-    swatch: BREAKDOWN_PALETTE[i % BREAKDOWN_PALETTE.length]
-  }));
-  const slices = list.map((it) => ({
-    key: it.name,
-    value: it.count,
-    stroke: it.stroke,
-    tip: `${it.name}: ${fmtMoney(it.count)} em ${plural(it.times, 'venda', 'vendas')} · ${pctOf(it.count, total)}% do vendido`
-  }));
-  const leader = list[0];
-  const half = variant === 'half';
-
+//   title, question, help, total
+//   items  [{ name, count (valor), times, delta }] — já ordenados, o líder primeiro
+export function RankCard({ title, question, help, items, total }) {
+  const list = items || [];
+  const max = Math.max(1, ...list.map((it) => Number(it.count) || 0));
   return (
-    <section className={CARD}>
-      <div className="flex items-center gap-2">
-        <h3 className={TITLE}>{title}</h3>
-        <DashHelpTip text={half ? HELP.sources : HELP.plans} label={`O que é "${title}"?`} />
+    <Band title={title} question={question} help={help}>
+      {list.length === 0 && <span className="text-[13px] text-muted-foreground">Nenhuma venda no mês.</span>}
+      <div className="flex flex-col">
+        {list.map((it, i) => (
+          <div
+            key={it.name}
+            className="grid grid-cols-[minmax(0,1fr)_84px] items-center gap-x-3 gap-y-1.5 border-t border-slate-100 py-[9px] first:border-t-0 dark:border-white/[0.06] sm:grid-cols-[minmax(150px,1fr)_minmax(60px,1.4fr)_84px_40px_52px]"
+          >
+            <span className="min-w-0 truncate font-medium">{it.name}</span>
+            <span className="num text-right font-display text-[14px] font-bold sm:order-3">{fmtMoneyShort(it.count)}</span>
+            <span className="col-span-2 flex h-2 overflow-hidden rounded-full bg-muted sm:order-2 sm:col-span-1">
+              <ChartMark
+                tip={`${it.name}: ${fmtMoney(it.count)} em ${plural(it.times, 'venda', 'vendas')} · ${pctOf(it.count, total)}% do vendido`}
+                className={cn('block h-full rounded-full', i === 0 ? 'bg-brand-600' : 'bg-brand-200 dark:bg-brand-500/40')}
+                style={{ width: `${Math.max(Math.round(((Number(it.count) || 0) / max) * 100), 3)}%` }}
+              />
+            </span>
+            <span className="num hidden text-right text-[12px] text-muted-foreground sm:order-4 sm:block">{`${pctOf(it.count, total)}%`}</span>
+            <span className="hidden text-right sm:order-5 sm:block"><ItemDelta delta={it.delta} /></span>
+          </div>
+        ))}
       </div>
-      <div className="mt-4 flex flex-col items-center gap-6 sm:flex-row">
-        <Ring
-          slices={slices}
-          size={half ? 180 : 140}
-          thickness={half ? 30 : 70}
-          half={half}
-          label={`${title}: ${list.map((it) => `${it.name} ${pctOf(it.count, total)}%`).join(', ')}`}
-        >
-          {half && leader && (
-            <div className="pointer-events-none absolute inset-x-[30px] bottom-0 text-center">
-              <div className="num font-display text-[18px] font-bold leading-none">{`${pctOf(leader.count, total)}%`}</div>
-              <div className="mt-[3px] truncate text-[10.5px] text-muted-foreground">{leader.name}</div>
-            </div>
-          )}
-        </Ring>
-        <div className="flex w-full min-w-0 flex-1 flex-col">
-          {list.length === 0 && <span className="text-[13px] text-muted-foreground">Nenhuma venda no mês.</span>}
-          {list.map((it) => (
-            <LegendRow
-              key={it.name}
-              round
-              tight
-              swatch={it.swatch}
-              label={it.name}
-              pct={pctOf(it.count, total)}
-              value={fmtMoneyShort(it.count)}
-              delta={it.delta}
-              showDelta={list.some((x) => x.delta)}
-            />
-          ))}
-        </div>
-      </div>
-    </section>
+    </Band>
   );
 }

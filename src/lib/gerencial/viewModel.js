@@ -17,9 +17,9 @@ export function soldDelta(cur, cmp, { comparing }) {
   if (!comparing || !cmp) return null;
   const cmpName = monthLabel(cmp.monthKey, { capitalized: false, withYear: false });
   const baseline = `${fmtMoney(cmp.sold.sold)} em ${cmp.sold.count} contratos ${cur.running ? `nos mesmos dias de ${cmpName}` : `em ${cmpName}`}`;
-  if (!(cmp.sold.sold > 0)) return { none: true, text: 'sem base', baseline };
+  if (!(cmp.sold.sold > 0)) return { none: true, text: 'sem base', baseline, name: cmpName };
   const pct = Math.round(((cur.sold.sold - cmp.sold.sold) / cmp.sold.sold) * 100);
-  return { up: pct >= 0, text: `${Math.abs(pct)}%`, baseline };
+  return { up: pct >= 0, text: `${Math.abs(pct)}%`, baseline, name: cmpName };
 }
 
 // Variação de uma linha contra a mesma linha do mês comparado. `lowerBetter`
@@ -52,8 +52,10 @@ const breakdown = (rows, total, deltaOf) => ({
   total
 });
 
-export function dashboardProps({ cur, cmp, comparing, roleOf = () => null }) {
+export function dashboardProps({ cur, cmp, cmpFull = null, comparing, roleOf = () => null }) {
   const on = Boolean(comparing && cmp);
+  const curve = cur.curve || [];
+  const cutDay = curve.filter((v) => v != null).length;
   // Mês em andamento compara os mesmos dias do outro mês (pró-rata), e a dica
   // de cada linha diz a base com essa frase.
   const cmpName = on ? monthLabel(cmp.monthKey, { capitalized: false, withYear: false }) : '';
@@ -68,6 +70,17 @@ export function dashboardProps({ cur, cmp, comparing, roleOf = () => null }) {
   const prevExits = on ? byKey(cmp.exits.items, 'kind', (r) => r.count) : null;
 
   return {
+    // O topo: o vendido contado dia a dia contra o mês comparado inteiro. O
+    // mês comparado vem sem corte (cmpFull), para a linha pontilhada seguir
+    // até o fim e o marcador cair no mesmo dia do mês exibido.
+    period: { monthName: monthLabel(cur.monthKey, { capitalized: false, withYear: false }), running: Boolean(cur.running), day: cutDay },
+    curve: {
+      days: curve.length,
+      cur: curve,
+      cutDay,
+      prev: on && cmpFull ? cmpFull.curve : null,
+      prevName: cmpName
+    },
     sold: {
       mix: cur.sold.mix.map((m) => ({ ...m, delta: moneyDelta(m.value, prevMix?.get(m.type)) })),
       discount: { pct: cur.sold.discPct, abs: cur.sold.discAbs, prevPct: on ? cmp.sold.discPct : null },

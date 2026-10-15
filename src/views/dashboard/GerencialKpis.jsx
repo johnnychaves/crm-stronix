@@ -1,135 +1,123 @@
-// Os números do topo da tela Gerencial (handoff v2, §2 L1): vendido no mês,
-// carteira mensal, ticket médio mensal, churn e o que já venceu sem renovar. O
-// risco dos próximos 90 dias fica no card Vencimentos. Só apresentação: cada
-// valor sai das props que o viewModel monta.
-//
-// Layout: o Vendido ocupa a altura das duas linhas à esquerda, e os outros
-// quatro ficam em 2×2. Em cima o que a carteira vale (carteira e ticket), em
-// baixo o que se perde (churn e vencidos). Cinco cartões na mesma linha não
-// cabem na largura sem quebrar o valor da carteira.
+// O topo da tela Gerencial (mockup A, "Placar"): o herói escuro com o vendido
+// do mês e a curva dele contra o mês comparado, e logo abaixo a faixa dos
+// quatro números sem caixa: carteira, ticket médio, churn e vencidos.
 //
 // Duas moedas que nunca se somam: "Vendido" é valor de contrato inteiro, e
 // carteira e ticket são valor por mês. O "/mês" fica num elemento irmão do
-// número, no mesmo baseline, para nunca se soltar dele.
+// número, para nunca se soltar dele. Só apresentação: cada valor sai das props
+// que o viewModel monta.
 import { cn } from '../../lib/utils.js';
 import { fmtNum } from '../../lib/format.js';
 import { HELP } from '../../lib/gerencial/texts.js';
 import { DashHelpTip } from './DashPrimitives.jsx';
 import { ItemDelta } from './ItemDelta.jsx';
+import { SalesCurve } from './SalesCurve.jsx';
 import { fmtMoney, fmtMoneyShort } from './dashTokens.js';
 
 export const CASH_WARNING = 'Valor de contrato vendido, não caixa recebido';
 
-const CARD = 'rounded-2xl border border-border bg-card px-4 py-5 shadow-card sm:px-[22px]';
-// No celular os cards da segunda linha dividem a largura: o número não quebra.
-const VALUE = 'num whitespace-nowrap font-display text-[22px] font-bold leading-none tracking-[-0.03em] sm:text-[30px]';
-const LABEL = 'text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground';
-const SUB = 'num mt-2.5 text-[12.5px] text-muted-foreground';
 const plural = (n, one, many) => `${fmtNum(n)} ${n === 1 ? one : many}`;
+const LABEL = 'text-[13px] font-medium text-muted-foreground';
+const VALUE = 'num whitespace-nowrap font-display text-[24px] font-bold leading-[1.1] tracking-[-0.03em] sm:text-[36px]';
 
-// Variação sobre o mês comparado. Sem base (mês comparado sem venda) a pílula
-// fica neutra, e o `title` diz de onde a variação saiu.
-function SoldDelta({ delta }) {
-  const quiet = Boolean(delta.none);
+// Props:
+//   sold    { mix, delta } — o vendido e a contagem saem do mix
+//   period  { monthName, running, day }
+//   curve   { days, cur, cutDay, prev, prevName }
+export function SoldHero({ sold, period, curve }) {
+  const mix = sold?.mix || [];
+  const total = mix.reduce((s, m) => s + (Number(m.value) || 0), 0);
+  const count = mix.reduce((s, m) => s + (Number(m.count) || 0), 0);
+  const delta = sold?.delta;
+  const monthName = period?.monthName || '';
+  const head = period?.running ? `Vendido em ${monthName}, até o dia ${period.day}` : `Vendido em ${monthName}`;
+
   return (
-    <span
-      title={delta.baseline}
-      className={cn(
-        'num inline-flex h-6 flex-none items-center whitespace-nowrap rounded-lg px-2 text-[12.5px] font-bold',
-        quiet ? 'bg-muted text-muted-foreground'
-          : delta.up ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
-            : 'bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300'
+    <section className="grid grid-cols-1 items-center gap-8 rounded-[22px] bg-ink-900 bg-[radial-gradient(900px_340px_at_85%_-20%,#22357a_0,transparent_60%)] px-6 py-8 text-white md:px-[38px] lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
+      <div>
+        <div className="flex items-center gap-2 text-[15px] text-white/70">
+          {head}
+          <DashHelpTip text={HELP.sold} label='O que é "Vendido no mês"?' />
+        </div>
+        <div className="num mt-3.5 font-display text-[clamp(52px,7vw,92px)] font-bold leading-[0.95] tracking-[-0.045em]">{fmtMoney(total)}</div>
+        <div className="mt-[18px] flex flex-wrap items-center gap-3">
+          {delta && (
+            <span
+              title={delta.baseline}
+              className={cn(
+                'num inline-flex h-[26px] items-center whitespace-nowrap rounded-lg px-2.5 text-[12.5px] font-bold',
+                delta.none ? 'bg-white/10 text-white/70'
+                  : delta.up ? 'bg-emerald-400/15 text-emerald-300' : 'bg-rose-400/15 text-rose-300'
+              )}
+            >
+              {delta.none ? delta.text : `${delta.up ? '▲' : '▼'} ${delta.text} sobre ${delta.name}`}
+            </span>
+          )}
+          <span className="num text-white/80">{plural(count, 'contrato', 'contratos')}</span>
+        </div>
+        <p className="mt-4 text-[13px] text-white/60" title={CASH_WARNING}>Valor de contrato fechado, não dinheiro que já entrou no caixa.</p>
+      </div>
+      {curve && curve.days > 0 && (
+        <SalesCurve days={curve.days} cur={curve.cur} prev={curve.prev} cutDay={curve.cutDay} curName={monthName} prevName={curve.prevName} />
       )}
-    >
-      {quiet ? delta.text : `${delta.up ? '▲' : '▼'} ${delta.text}`}
-    </span>
+    </section>
+  );
+}
+
+function Cell({ label, help, helpLabel, children, className }) {
+  return (
+    <div className={cn('min-w-0 px-1 py-1 md:border-l md:border-border md:px-6 md:first:border-l-0 md:first:pl-1', className)}>
+      <div className="flex items-center gap-1.5">
+        <span className={LABEL}>{label}</span>
+        <DashHelpTip text={help} label={helpLabel || `O que é "${label}"?`} />
+      </div>
+      {children}
+    </div>
   );
 }
 
 // Props:
-//   sold    { mix, delta } — o vendido e a contagem saem do mix
 //   wallet  { count, monthly, ticket, lockedCount }
 //   risk    { lapsedCount }
 //   churn   { pct, exits, base, delta }
-export function GerencialKpis({ sold, wallet, risk, churn }) {
-  const mix = sold?.mix || [];
-  const soldTotal = mix.reduce((s, m) => s + (Number(m.value) || 0), 0);
-  const soldCount = mix.reduce((s, m) => s + (Number(m.count) || 0), 0);
+export function GerencialTape({ wallet, risk, churn }) {
   const lapsed = Number(risk?.lapsedCount) || 0;
   const churnBase = Number(churn?.base) || 0;
   const churnExits = Number(churn?.exits) || 0;
-
+  const locked = Number(wallet?.lockedCount) || 0;
   return (
-    <div className="grid grid-cols-2 gap-4 xl:grid-cols-[minmax(0,1.35fr)_repeat(2,minmax(0,1fr))]">
-      <section className={cn(CARD, 'col-span-2 border-t-[3px] border-t-brand-600 xl:col-span-1 xl:row-span-2 xl:flex xl:flex-col xl:justify-center')}>
-        <div className="flex items-center gap-2">
-          <span className={LABEL}>Vendido no mês</span>
-          <DashHelpTip text={HELP.sold} label='O que é "Vendido no mês"?' />
-          <div className="flex-1" />
-          <span
-            title={CASH_WARNING}
-            className="whitespace-nowrap rounded-full bg-amber-500/10 px-2 py-[3px] text-[10.5px] font-semibold text-amber-700 dark:bg-amber-500/20 dark:text-amber-300"
-          >
-            não é caixa
-          </span>
-        </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2.5">
-          <span className="num font-display text-[40px] font-bold leading-none tracking-[-0.035em] xl:text-[46px]">{fmtMoney(soldTotal)}</span>
-          {sold?.delta && <SoldDelta delta={sold.delta} />}
-        </div>
-        <div className={SUB}>{plural(soldCount, 'contrato', 'contratos')}</div>
-      </section>
-
-      <section className={CARD}>
-        <div className="flex items-center gap-1.5">
-          <span className={LABEL}>Carteira mensal</span>
-          <DashHelpTip text={HELP.wallet} label='O que é "Carteira mensal"?' />
-        </div>
-        <div className="mt-3 flex flex-wrap items-baseline gap-x-1 gap-y-0.5">
+    <div className="grid grid-cols-2 gap-x-4 gap-y-6 md:grid-cols-4 md:gap-x-0">
+      <Cell label="Carteira mensal" help={HELP.wallet}>
+        <div className="mt-1.5 flex flex-wrap items-baseline gap-x-1.5">
           <span className={VALUE}>{fmtMoneyShort(wallet?.monthly)}</span>
-          <span className="text-[13px] font-semibold text-muted-foreground">/mês</span>
+          <span className="text-[14px] font-semibold text-muted-foreground">/mês</span>
         </div>
-        <div className={SUB}>{`${plural(wallet?.count, 'contrato', 'contratos')} · ${fmtNum(wallet?.lockedCount)} ${Number(wallet?.lockedCount) === 1 ? 'trancado' : 'trancados'}`}</div>
-      </section>
-
-      <section className={CARD}>
-        <div className="flex items-center gap-1.5">
-          <span className={LABEL}>Ticket médio mensal</span>
-          <DashHelpTip text={HELP.ticket} label='O que é "Ticket médio mensal"?' />
-        </div>
-        <div className="mt-3 flex flex-wrap items-baseline gap-x-1 gap-y-0.5">
+        <div className="num text-[13px] text-muted-foreground">{`${plural(wallet?.count, 'contrato', 'contratos')} · ${plural(locked, 'trancado', 'trancados')}`}</div>
+      </Cell>
+      <Cell label="Ticket médio mensal" help={HELP.ticket}>
+        <div className="mt-1.5 flex flex-wrap items-baseline gap-x-1.5">
           <span className={VALUE}>{fmtMoney(wallet?.ticket)}</span>
-          <span className="text-[13px] font-semibold text-muted-foreground">/mês</span>
+          <span className="text-[14px] font-semibold text-muted-foreground">/mês</span>
         </div>
-        <div className={SUB}>média por contrato</div>
-      </section>
-
-      <section className={CARD}>
-        <div className="flex items-center gap-1.5">
-          <span className={LABEL}>Churn</span>
-          <DashHelpTip text={HELP.churn} label='O que é "Churn"?' />
-        </div>
-        <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1">
+        <div className="text-[13px] text-muted-foreground">média por contrato</div>
+      </Cell>
+      <Cell label="Churn" help={HELP.churn}>
+        <div className="mt-1.5">
           <span className={VALUE}>{churn?.pct == null ? '—' : `${churn.pct.toLocaleString('pt-BR')}%`}</span>
-          <ItemDelta delta={churn?.delta} />
         </div>
-        <div className={SUB}>
+        <div className="num flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted-foreground">
           {churnBase > 0
             ? `${fmtNum(churnExits)} de ${fmtNum(churnBase)} ${churnExits === 1 ? 'cliente saiu' : 'clientes saíram'}`
             : 'sem clientes ativos no início'}
+          <ItemDelta delta={churn?.delta} />
         </div>
-      </section>
-
-      <section className={CARD}>
-        <div className="flex items-center gap-1.5">
-          <span className={LABEL}>Vencidos sem renovar</span>
-          <DashHelpTip text={HELP.lapsed} label='O que é "Vencidos sem renovar"?' />
-        </div>
-        <div className="mt-3">
+      </Cell>
+      <Cell label="Vencidos sem renovar" help={HELP.lapsed}>
+        <div className="mt-1.5">
           <span className={cn(VALUE, 'text-rose-700 dark:text-rose-300')}>{fmtNum(lapsed)}</span>
         </div>
-        <div className={SUB}>{lapsed === 1 ? 'contrato para recuperar' : 'contratos para recuperar'}</div>
-      </section>
+        <div className="text-[13px] text-muted-foreground">{lapsed === 1 ? 'contrato para recuperar' : 'contratos para recuperar'}</div>
+      </Cell>
     </div>
   );
 }
