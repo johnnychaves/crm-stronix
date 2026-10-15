@@ -9,7 +9,8 @@
 // O relatório vai até o fim do período, para mostrar os que ainda vão
 // acontecer. Por isso, no mês fechado, todos os números são os do painel, e no
 // mês em andamento Vieram, Faltaram, Sem desfecho e o comparecimento são os do
-// painel, e Marcados soma também os que vão acontecer.
+// painel, e Marcados soma também os que vão acontecer. O desfecho marcado
+// antes da hora já conta aqui; o painel só o conta depois da hora.
 
 import { monthKeyOf, monthRange } from '../../operacional/month.js';
 import { AULA_STATUS, isAulaRecord } from '../../aulas.js';

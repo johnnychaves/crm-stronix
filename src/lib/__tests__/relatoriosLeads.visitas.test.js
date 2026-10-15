@@ -1,7 +1,8 @@
 // Visitas e aulas experimentais: os agendamentos do período um por um, os
 // números, os recortes, a lista e a planilha. No mês fechado, os números são os
-// do painel CRM (metricsOf); no mês em andamento, também, e Marcados soma os que
-// ainda vão acontecer.
+// do painel CRM (metricsOf); no mês em andamento, também, desde que ninguém
+// tenha marcado desfecho antes da hora, e Marcados soma os que ainda vão
+// acontecer.
 import { describe, it, expect } from 'vitest';
 import { visitasReport, visitasEndOf, VISITAS_COLUMNS } from '../relatorios/leads/visitas.js';
 import { metricsOf, crmDelta } from '../crm/metrics.js';
@@ -66,6 +67,16 @@ describe('Visitas e aulas experimentais', () => {
     expect(row.r5).toMatchObject({ type: 'Visita', unit: 'Centro', owner: 'Fora da equipe', outcome: 'sem-desfecho' });
     expect(row.r3).toMatchObject({ modality: 'Sem modalidade', outcome: 'a-acontecer' });
     expect(r.window).toEqual({ start: setembro.start, end: setembro.fullEnd });
+
+    // No mesmo horário, o nome desempata, e o id desempata o mesmo nome. Os ids ficam
+    // fora da ordem dos nomes e o 'r9' entra antes do 'r8', para a ordem só sair certa pela regra.
+    const empate = ctxOf();
+    const noMesmoHorario = (id, leadName) => A(id, `apagado-${id}`, 'attended', D(9, 6, 9), D(9, 1), { type: 'visita', leadName });
+    empate.months['2026-09'] = {
+      ...empate.months['2026-09'],
+      aulas: [...empate.months['2026-09'].aulas, noMesmoHorario('r7', 'Bia'), noMesmoHorario('r9', 'Ana'), noMesmoHorario('r8', 'Ana')],
+    };
+    expect(rel(empate).rows.map((x) => x.id)).toEqual(['r1', 'r2', 'r8', 'r9', 'r7', 'r5', 'r3']);
   });
 
   it('os recortes: tipo, consultor, unidade só das visitas e modalidade só das aulas', () => {
@@ -97,6 +108,12 @@ describe('Visitas e aulas experimentais', () => {
     const r = rel(ctx);
     expect(r.rows.find((x) => x.id === 'r6')).toMatchObject({ outcome: 'veio', professor: 'Treina sozinho' });
     expect(r.totals).toMatchObject({ came: 2, upcoming: 1 });
+
+    // Aula com professor e sem o nome dele no registro: o rótulo genérico, e não o treina sozinho.
+    const semNome = A('r8', 's4', 'agendada', D(9, 25), D(9, 13), { professorId: 'p2' });
+    // Objeto de meses novo, porque o índice fica guardado pelo objeto (reportIndex).
+    const meses = { ...ctx.months, '2026-09': { ...ctx.months['2026-09'], aulas: [...ctx.months['2026-09'].aulas, semNome] } };
+    expect(rel({ ...ctx, months: meses }).rows.find((x) => x.id === 'r8').professor).toBe('Professor');
   });
 
   it('o registro de um lead que não existe mais entra na equipe toda, com o nome do registro', () => {
@@ -126,7 +143,7 @@ describe('Visitas e aulas experimentais', () => {
     }]);
   });
 
-  it('no mês fechado os números são os do painel CRM, e no mês em andamento também, com os que vão acontecer em Marcados', () => {
+  it('no mês fechado os números são os do painel CRM, e no mês em andamento também (sem desfecho marcado antes da hora), com os que vão acontecer em Marcados', () => {
     const ctx = ctxOf();
     const cut = comparisonCut('2026-09', '2026-08', NOW);
     const sem = (t) => ({ total: t.total, came: t.came, missed: t.missed, pending: t.pending, decided: t.decided, rate: t.rate });
