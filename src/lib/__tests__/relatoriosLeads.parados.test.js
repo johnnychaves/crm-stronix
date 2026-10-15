@@ -5,6 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import { paradosReport, stageSinceOf, PARADOS_COLUMNS } from '../relatorios/leads/parados.js';
 import { metricsOf } from '../crm/metrics.js';
+import { STAGE_TRACKING_SINCE } from '../crm/scope.js';
 import { makeCtx, L, D, s2, s4, s5, a2, a3 } from './fixtures/crmCtx.js';
 
 // Agora: 14/09, segunda, meio-dia.
@@ -21,6 +22,11 @@ const A2 = { ...a2, lastInteractionAt: D(9, 3, 12) };
 const ctxOf = () => {
   const c = makeCtx();
   return { ...c, liveLeads: [s2, s4, s5, A2, a3, X1, X2, X3], interactions: c.months['2026-09'].interactions, sources: [] };
+};
+// O ctxOf com mais leads em aberto, para as bordas que os leads de cima não têm.
+const ctxCom = (...extra) => {
+  const c = ctxOf();
+  return { ...c, liveLeads: [...c.liveLeads, ...extra] };
 };
 const rel = (ctx, extra = {}) => paradosReport(ctx, extra);
 const valores = (r) => r.tiles.map((t) => [t.key, t.name, t.value]);
@@ -46,6 +52,24 @@ describe('Leads parados', () => {
     // O último registro vem das interações que chegam ao vivo quando o lead não tem o campo.
     expect(r.rows.find((x) => x.id === 's2').lastAt).toEqual(D(9, 3, 12));
     expect(r.rows.find((x) => x.id === 'a3')).toMatchObject({ lastAt: null, stageDays: null, next: null, late: 0 });
+
+    // No mesmo número de dias, o nome desempata e depois o id. Os ids ficam fora da ordem dos nomes
+    // e o 't9' entra antes do 't8', para a ordem só sair certa pela regra. Quem não tem nome é
+    // "Sem nome" e fica depois.
+    const parado11 = (id, name) => L(id, { name, nextFollowUp: null, lastInteractionAt: D(9, 3, 12) });
+    const empate = rel(ctxCom(parado11('t7', 'Bia'), parado11('t9', 'Ana'), parado11('t8', 'Ana')));
+    expect(empate.rows.map((x) => x.id)).toEqual(['a3', 't8', 't9', 't7', 'a2', 's2', 's5', 'x1']);
+
+    // Lead sem nenhuma data (nem registro, nem cadastro): sem dias, e na lista por último.
+    const semData = rel(ctxCom(L('v1', { createdAt: null, nextFollowUp: null }))).rows;
+    expect(semData.at(-1)).toMatchObject({ id: 'v1', quiet: null, lastAt: null, stageDays: null });
+
+    // Dias na etapa em dias de calendário, e não em períodos de 24 horas: da entrada de 12/09 às 22h
+    // até 14/09 ao meio-dia são 2 dias no calendário e 1 de 24 horas. Entrar hoje dá 0.
+    const entrou = (id, entered) => L(id, { nextFollowUp: null, statusEnteredAt: entered, lastInteractionAt: D(9, 14, 9) });
+    const naEtapa = rel(ctxCom(entrou('e1', D(9, 12, 22)), entrou('e2', D(9, 14, 9)))).rows;
+    expect(naEtapa.find((x) => x.id === 'e1')).toMatchObject({ stageDays: 2, quiet: 0 });
+    expect(naEtapa.find((x) => x.id === 'e2')).toMatchObject({ stageDays: 0, quiet: 0 });
   });
 
   it('o corte de dias muda só o terceiro número, e a lista acompanha', () => {
@@ -54,6 +78,14 @@ describe('Leads parados', () => {
     // O a2 só estava parado pelo registro: com 15 dias ele sai da lista.
     expect(r15.rows.map((x) => x.id)).toEqual(['a3', 's2', 's5', 'x1']);
     expect(rel(ctxOf(), { dias: 3 }).tiles[2].value).toBe(4);
+    expect([rel(ctxOf()).dias, r15.dias]).toEqual([7, 15]);
+
+    // "Mais de N dias" é estrito: o lead com próximo contato e o último registro há exatamente 7 dias
+    // só entra com o corte de 3 (ou de 6).
+    const dia7 = L('c7', { nextFollowUp: D(9, 20), lastInteractionAt: D(9, 7, 12) });
+    expect(rel(ctxCom(dia7)).rows.map((x) => x.id)).not.toContain('c7');
+    expect(rel(ctxCom(dia7), { dias: 6 }).rows.map((x) => x.id)).toContain('c7');
+    expect(rel(ctxCom(dia7), { dias: 3 }).tiles[2].value).toBe(5);
   });
 
   it('o recorte filtra a lista: cada número e o consultor', () => {
@@ -82,6 +114,9 @@ describe('Leads parados', () => {
     expect(stageSinceOf({ createdAt: D(9, 20) })).toEqual(D(9, 20));
     expect(stageSinceOf({ createdAt: D(9, 2) })).toBeNull();
     expect(stageSinceOf({ createdAt: D(9, 20), createdAtMissing: true })).toBeNull();
+    // A fronteira é o instante em que a troca de etapa passou a ser gravada: nele já vale, um minuto antes não.
+    expect(stageSinceOf({ createdAt: STAGE_TRACKING_SINCE })).toEqual(STAGE_TRACKING_SINCE);
+    expect(stageSinceOf({ createdAt: new Date(STAGE_TRACKING_SINCE.getTime() - 60000) })).toBeNull();
   });
 
   it('a planilha tem o contato, o CPF e as colunas da lista, com os dias à parte', () => {
@@ -100,6 +135,15 @@ describe('Leads parados', () => {
         etapa: 'Novo lead', diasNaEtapa: 9, ultimoRegistro: '12/09/2026', diasSemRegistro: 2, proximoContato: '10/09/2026', diasAtraso: 4, consultor: 'Ana Ribeiro',
       },
     ]);
+
+    // Zero é número, e não falta: entrou na etapa hoje e registrou hoje.
+    const hoje = L('e2', { nextFollowUp: null, statusEnteredAt: D(9, 14, 9), lastInteractionAt: D(9, 14, 9) });
+    const [, , zeros] = rel(ctxCom(hoje), { recorte: 'consultor:ana' }).exportRows;
+    expect(zeros).toMatchObject({ diasNaEtapa: 0, ultimoRegistro: '14/09/2026', diasSemRegistro: 0, diasAtraso: '' });
+
+    // Sem nenhuma data: dias em branco, e a etapa diz que é de antes da gravação.
+    const [semData] = rel(ctxCom(L('v1', { createdAt: null, nextFollowUp: null })), { recorte: 'consultor:ana' }).exportRows.slice(-1);
+    expect(semData).toMatchObject({ diasNaEtapa: 'antes de 14/09/2026', ultimoRegistro: 'Nenhum', diasSemRegistro: '' });
   });
 
   it('o em aberto e o sem próximo passo são os da carteira de agora do painel CRM, para cada pessoa e funil', () => {
