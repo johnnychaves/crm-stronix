@@ -335,6 +335,18 @@ const recorte = param(
   (v) => (recorteValido(v) ? v : null),
 );
 
+// Corte de Leads parados (Relatórios): "sem registro há mais de" 3, 7, 15 ou 30
+// dias. O 7 é o padrão e não é escrito, e o que não é um desses quatro cai nele.
+// Mora aqui, e não em src/lib/relatorios/, porque a conta de Leads parados
+// importa o dailyGoal.js, que traz o lucide-react, e este arquivo é puro.
+export const DIAS_PARADOS = Object.freeze([3, 7, 15, 30]);
+export const DIAS_PARADOS_PADRAO = 7;
+const diasParados = param(
+  'dias',
+  (raw) => (DIAS_PARADOS.map(String).includes(raw) ? Number(raw) : DIAS_PARADOS_PADRAO),
+  (v) => (DIAS_PARADOS.includes(v) && v !== DIAS_PARADOS_PADRAO ? String(v) : null),
+);
+
 // Tabela por tela. A ordem aqui é a ordem no endereço.
 const TABELA = {
   dashOperacional: { mes, comparar, 'comparar-com': compararCom, pessoa },
@@ -351,6 +363,7 @@ const TABELA = {
     periodo: periodoDoPainel,
     de: dataDoPainel('de'),
     ate: dataDoPainel('ate'),
+    dias: diasParados,
     resp,
     origem,
     funil: funilRecorte,

@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   readScreenParams, screenParamsQuery, funnelFromSearch, SCREEN_PARAM_NAMES, FASE_VENDA, FASE_PERDA,
-  diaAoLimparPeriodo,
+  diaAoLimparPeriodo, DIAS_PARADOS,
 } from '../screenParams.js';
 import { CONTRACT_STATUS } from '../contracts.js';
 import { SOLO_TRAINING } from '../professores.js';
@@ -557,12 +557,12 @@ describe('Relatórios', () => {
   const rel = { currentKey: HOJE, todayKey: '2026-09-25', users, podeResp: true, respPadrao: [], funis, origens };
 
   it('os nomes, na ordem do endereço', () => {
-    expect(SCREEN_PARAM_NAMES.relatorios).toEqual(['mes', 'periodo', 'de', 'ate', 'resp', 'origem', 'funil', 'recorte']);
+    expect(SCREEN_PARAM_NAMES.relatorios).toEqual(['mes', 'periodo', 'de', 'ate', 'dias', 'resp', 'origem', 'funil', 'recorte']);
   });
 
   it('endereço limpo é o mês atual, a equipe toda, todas as origens e todos os funis, e nada é escrito', () => {
     const v = ler('relatorios', '', rel);
-    expect(v).toEqual({ monthKey: HOJE, periodo: null, de: null, ate: null, resp: [], origem: null, funnel: 'all', recorte: null });
+    expect(v).toEqual({ monthKey: HOJE, periodo: null, de: null, ate: null, dias: 7, resp: [], origem: null, funnel: 'all', recorte: null });
     expect(montar('relatorios', v, rel)).toBe('');
   });
 
@@ -619,6 +619,23 @@ describe('Relatórios', () => {
     expect(montar('relatorios', { ...v, recorte: comprido(201) }, rel)).toBe('');
     // A regra do caractere de controle continua valendo no tamanho novo.
     expect(ler('relatorios', `?recorte=${encodeURIComponent(`origem:${'x'.repeat(100)}\t${'y'.repeat(50)}`)}`, rel).recorte).toBeNull();
+  });
+
+  it('o corte de Leads parados: 3, 15 e 30 dias são escritos, e o 7, que é o padrão, não', () => {
+    expect(DIAS_PARADOS).toEqual([3, 7, 15, 30]);
+    for (const n of [3, 15, 30]) {
+      expect(ler('relatorios', `?dias=${n}`, rel).dias, `${n}`).toBe(n);
+      expect(volta('relatorios', `?dias=${n}`, rel), `${n}`).toBe(`?dias=${n}`);
+    }
+    expect(volta('relatorios', '?dias=7', rel)).toBe('');
+    // O que não é um dos quatro cai no padrão, sem aviso.
+    for (const q of ['?dias=10', '?dias=07', '?dias=15.0', '?dias=', '?dias=abc']) {
+      expect(ler('relatorios', q, rel).dias, q).toBe(7);
+      expect(volta('relatorios', q, rel), q).toBe('');
+    }
+    // Vem depois do período e antes dos consultores, e anda junto com os outros filtros.
+    const v = ler('relatorios', '?periodo=semana&resp=u1', rel);
+    expect(montar('relatorios', { ...v, dias: 15 }, rel)).toBe('?periodo=semana&dias=15&resp=u1');
   });
 
   it('o que a tela monta ao escolher o período: o mês antigo não vai junto, e o intervalo ganha', () => {
