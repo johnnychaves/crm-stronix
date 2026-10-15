@@ -369,3 +369,68 @@
 /* Spinner. */
 @keyframes spin { to { transform: rotate(360deg); } }
 .spin { animation: spin .7s linear infinite; }
+/* ===== Relatório impresso (Relatórios → Imprimir) =====
+   A folha (src/views/relatorios/ReportPrint.jsx) entra num portal em
+   document.body só enquanto imprime. Na tela ela não aparece; na impressão, só
+   ela aparece. Sem a folha no body nada daqui vale, e as outras telas imprimem
+   como antes. As cores são as do mockup aprovado
+   (docs/superpowers/specs/mockups/2026-10-15-relatorios-impressao.html), sem
+   bloco cheio de tinta, para impressora preto e branco. O @page e o rodapé
+   ficam na própria folha, porque só valem enquanto ela existe. */
+[data-relatorio-impresso] { display: none; }
+@media print {
+  body:has(> [data-relatorio-impresso]) { background: #fff !important; }
+  body:has(> [data-relatorio-impresso]) > :not([data-relatorio-impresso]) { display: none !important; }
+  [data-relatorio-impresso] {
+    display: block;
+    color: #0E1A40;
+    background: #fff;
+    font-family: 'Geist', ui-sans-serif, system-ui, sans-serif;
+    line-height: 1.25;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  [data-relatorio-impresso] .ri-num { font-family: 'Space Grotesk', 'Geist', sans-serif; font-variant-numeric: tabular-nums; }
+  [data-relatorio-impresso] .ri-topo { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 2.2mm; border-bottom: 1.4pt solid #2B59FF; }
+  [data-relatorio-impresso] .ri-academia { font: 600 9pt/1 'Geist', sans-serif; }
+  [data-relatorio-impresso] .ri-marca { display: inline-flex; align-items: center; gap: 1.6mm; font: 700 8.5pt/1 'Space Grotesk', sans-serif; color: #4B5567; }
+  [data-relatorio-impresso] .ri-marca svg { width: 3.6mm; height: 3.6mm; }
+  [data-relatorio-impresso] .ri-titulo { font: 700 23pt/1 'Space Grotesk', sans-serif; letter-spacing: -0.02em; margin: 5mm 0 1.6mm; }
+  [data-relatorio-impresso] .ri-pergunta { font-size: 9.5pt; line-height: 1.4; color: #4B5567; margin: 0 0 4mm; max-width: 150mm; }
+
+  /* A ficha: o que esta folha mostra, como campos de formulário. */
+  [data-relatorio-impresso] .ri-ficha { display: grid; grid-template-columns: 2.2fr 1fr 1fr 1fr; margin: 0; border: 0.75pt solid #C9D1DE; border-radius: 2mm; }
+  [data-relatorio-impresso] .ri-ficha > div { min-width: 0; padding: 1.8mm 2.6mm 2mm; border-left: 0.75pt solid #C9D1DE; }
+  [data-relatorio-impresso] .ri-ficha > div:first-child { border-left: 0; }
+  [data-relatorio-impresso] .ri-ficha > .ri-linha2 { grid-column: 1 / -1; border-left: 0; border-top: 0.75pt solid #C9D1DE; }
+  [data-relatorio-impresso] .ri-ficha dt { font-size: 7pt; color: #7A8496; margin: 0 0 0.8mm; }
+  [data-relatorio-impresso] .ri-ficha dd { font-size: 8.6pt; font-weight: 600; line-height: 1.3; margin: 0; }
+  [data-relatorio-impresso] .ri-fraco { font-weight: 400; color: #4B5567; }
+
+  /* A lista. */
+  [data-relatorio-impresso] .ri-lista-cab { display: flex; align-items: baseline; justify-content: space-between; gap: 4mm; margin-top: 5mm; padding-bottom: 1.6mm; font-size: 7.4pt; color: #4B5567; }
+  [data-relatorio-impresso] .ri-lista-cab h2 { display: flex; align-items: baseline; gap: 2mm; margin: 0; font: 700 9.4pt/1 'Space Grotesk', sans-serif; color: #0E1A40; }
+  [data-relatorio-impresso] .ri-lista-cab .ri-num { font-size: 15pt; letter-spacing: -0.02em; }
+  [data-relatorio-impresso] .ri-nomes { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 7.9pt; }
+  [data-relatorio-impresso] .ri-nomes thead { display: table-header-group; }
+  [data-relatorio-impresso] .ri-nomes tr { break-inside: avoid; }
+  [data-relatorio-impresso] .ri-nomes th { padding: 1.2mm 1.6mm; text-align: left; font-size: 6.9pt; font-weight: 600; color: #4B5567; border-top: 0.75pt solid #0E1A40; border-bottom: 0.75pt solid #0E1A40; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  [data-relatorio-impresso] .ri-nomes td { padding: 1.25mm 1.6mm; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-bottom: 0.5pt solid #E3E8F0; }
+  [data-relatorio-impresso] .ri-nomes tbody tr:nth-child(even) td { background: #F6F8FB; }
+  [data-relatorio-impresso] .ri-nomes td:first-child { font-weight: 600; }
+  [data-relatorio-impresso] .ri-fim { margin: 1.4mm 0 0; text-align: right; font-size: 7.2pt; color: #7A8496; }
+
+  /* As células são as da tela (nome, texto cortado, selo): no papel elas perdem
+     o tamanho, o fundo e a cor do tema, e cortam na largura da coluna. */
+  [data-relatorio-impresso] td * { max-width: 100% !important; font-size: inherit !important; color: inherit !important; }
+  [data-relatorio-impresso] td .text-muted-foreground { color: #7A8496 !important; }
+  [data-relatorio-impresso] td a > span[aria-hidden] { display: none; }
+  [data-relatorio-impresso] [data-tone] { height: auto; padding: 0; gap: 0; border-radius: 0; background: none !important; font-weight: 600; }
+  [data-relatorio-impresso] [data-tone='emerald'] { color: #047857 !important; }
+  [data-relatorio-impresso] [data-tone='rose'] { color: #BE123C !important; }
+  [data-relatorio-impresso] [data-tone='amber'] { color: #B45309 !important; }
+  [data-relatorio-impresso] [data-tone='slate'],
+  [data-relatorio-impresso] [data-tone='brand'] { color: #4B5567 !important; }
+  [data-relatorio-impresso] [data-mark] { width: 3.2mm; height: auto; border-radius: 0; background: none !important; font-weight: 700; }
+  [data-relatorio-impresso] [data-mark]::before { content: attr(data-mark); }
+}

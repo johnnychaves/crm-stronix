@@ -11,7 +11,7 @@ import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { MemoryRouter } from 'react-router';
 import { FOCUS_RING } from '../../components/focusRing.js';
-import { ReportBand, CutTabs, ReportList, ExportButton } from '../../views/relatorios/ReportParts.jsx';
+import { ReportBand, CutTabs, ReportList, ExportButton, PrintButton } from '../../views/relatorios/ReportParts.jsx';
 import { RelatoriosToolbar, ConsultoresMenu } from '../../views/relatorios/RelatoriosToolbar.jsx';
 import { RelatoriosRail } from '../../views/relatorios/RelatoriosRail.jsx';
 import { PeriodControl, PeriodMenu } from '../../components/period/PeriodControl.jsx';
@@ -57,7 +57,7 @@ describe('o anel chega aos controles do teclado', () => {
     expect(tokens.length).toBeGreaterThan(0);
   });
 
-  it('células do painel, abas e linhas de recorte, lista e exportar', () => {
+  it('células do painel, abas e linhas de recorte, lista, exportar e imprimir', () => {
     const cells = [
       { key: 'total', label: 'Leads', value: 5, onClick: noop },
       { key: 'situacao:matricularam', label: 'Matricularam', value: 1, onClick: noop, arrow: true },
@@ -91,6 +91,7 @@ describe('o anel chega aos controles do teclado', () => {
     expect(comAnel(numero[0])).toBe(true);
 
     expect(semAnel(tagsOf(renderToString(createElement(ExportButton, { onExport: noop })), 'button'))).toEqual([]);
+    expect(semAnel(tagsOf(renderToString(createElement(PrintButton, { onPrint: noop })), 'button'))).toEqual([]);
   });
 
   it('a lista ao lado: o cabeçalho do grupo e os links dos submenus', () => {

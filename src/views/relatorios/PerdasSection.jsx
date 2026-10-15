@@ -40,6 +40,12 @@ const STAGE_NOTICE = Object.freeze({
   none: `A etapa da perda só é gravada desde ${STAGE_SINCE_TEXT}. Neste período ela fica como ${STAGE_NO_BASE_TEXT}.`,
 });
 
+// O título e a pergunta, na tela e na folha impressa.
+const HEADING = Object.freeze({
+  title: 'Perdas',
+  question: 'Os leads perdidos no período, com o motivo e a etapa em que saíram.',
+});
+
 export function PerdasSection({ report, compareText, listId, year, onCut, exportAction, allRows, period, now }) {
   const tabs = [
     { value: 'motivo', label: 'Por motivo', rows: report.byReason },
@@ -59,11 +65,7 @@ export function PerdasSection({ report, compareText, listId, year, onCut, export
   const total = report.rows.length;
   return (
     <div className="flex flex-col gap-4">
-      <ReportHeader
-        title="Perdas"
-        question="Os leads perdidos no período, com o motivo e a etapa em que saíram."
-        action={exportAction}
-      />
+      <ReportHeader {...HEADING} action={exportAction} />
       <div className="flex flex-col gap-2.5">
         <ReportBand
           label={report.total === 1 ? 'Perda' : 'Perdas'}
@@ -87,6 +89,7 @@ export function PerdasSection({ report, compareText, listId, year, onCut, export
         onClearCut={() => onCut(null)}
         columns={columnsOf(year)}
         rows={report.rows}
+        heading={HEADING}
       />
     </div>
   );

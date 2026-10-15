@@ -58,6 +58,12 @@ const columnsOf = (year) => [
   },
 ];
 
+// O título e a pergunta, na tela e na folha impressa.
+const HEADING = Object.freeze({
+  title: 'Visitas e aulas experimentais',
+  question: 'As visitas e aulas experimentais marcadas para o período e o que aconteceu em cada uma.',
+});
+
 export function VisitasSection({ report, compareText, listId, year, onCut, exportAction, apptsPartial = false }) {
   const tabs = [
     { value: 'tipo', label: 'Visita ou aula', rows: report.byType },
@@ -93,11 +99,7 @@ export function VisitasSection({ report, compareText, listId, year, onCut, expor
 
   return (
     <div className="flex flex-col gap-5">
-      <ReportHeader
-        title="Visitas e aulas experimentais"
-        question="As visitas e aulas experimentais marcadas para o período e o que aconteceu em cada uma."
-        action={exportAction}
-      />
+      <ReportHeader {...HEADING} action={exportAction} />
       <ReportBand
         label="Comparecimento"
         value={report.attendance.value}
@@ -129,6 +131,7 @@ export function VisitasSection({ report, compareText, listId, year, onCut, expor
         onClearCut={() => onCut(null)}
         columns={columnsOf(year)}
         rows={report.rows}
+        heading={HEADING}
       />
     </div>
   );

@@ -9,7 +9,7 @@
 // painéis.
 import { useId, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { ChevronRight, CircleAlert, Download, X } from 'lucide-react';
+import { ChevronRight, CircleAlert, Download, Printer, X } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { fmtNum } from '../../lib/format.js';
 import { FOCUS_RING } from '../../components/focusRing.js';
@@ -17,6 +17,7 @@ import { LeadLink } from '../../components/nav/AppLink.jsx';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs.jsx';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip.jsx';
 import { DeltaPill } from '../dashboard/CrmParts.jsx';
+import { ReportPrint } from './ReportPrint.jsx';
 
 // O verde das tabelas do painel (ChannelTable e PeopleConversionTable). É o
 // único verde do texto pequeno: matrícula e conversão dos recortes, a situação
@@ -69,8 +70,10 @@ function SideText({ row }) {
 // leva à primeira linha que apareceu. A tabela se chama pelo número do
 // cabeçalho ("120 leads"). Sem emptyTitle e emptyText, a lista vazia usa os
 // textos do handoff: "Ninguém neste filtro." com filtro e "Nada neste
-// período." sem ele (Leads parados passa "Nenhum lead parado.").
-export function ReportList({ listId = '', total, noun, cutLabel = null, onClearCut, columns, rows, emptyTitle, emptyText, pageSize = 50 }) {
+// período." sem ele (Leads parados passa "Nenhum lead parado."). O heading (o
+// título e a pergunta do submenu) vai para a folha impressa, que leva todas as
+// linhas, nas mesmas colunas (ReportPrint).
+export function ReportList({ listId = '', total, noun, cutLabel = null, onClearCut, columns, rows, emptyTitle, emptyText, pageSize = 50, heading = null }) {
   const [more, setMore] = useState({ listId, extra: 0 });
   if (more.listId !== listId) setMore({ listId, extra: 0 });
   const extra = more.listId === listId ? more.extra : 0;
@@ -173,6 +176,7 @@ export function ReportList({ listId = '', total, noun, cutLabel = null, onClearC
           )}
         </>
       )}
+      <ReportPrint heading={heading} total={total} noun={noun} columns={columns} rows={rows} />
     </section>
   );
 }
@@ -185,6 +189,21 @@ export function ReportList({ listId = '', total, noun, cutLabel = null, onClearC
 // quebrava em 42 de 50 linhas.
 export function CellText({ text }) {
   return <span className="block max-w-[9rem] truncate" title={text}>{text}</span>;
+}
+
+// Imprimir, ao lado do exportar: o botão secundário, com a mesma altura.
+export function PrintButton({ onPrint, disabled = false }) {
+  return (
+    <button
+      type="button"
+      onClick={onPrint}
+      disabled={disabled}
+      className={cn('inline-flex h-[38px] flex-none items-center gap-2 whitespace-nowrap rounded-full border border-border bg-card px-4 text-[12.5px] font-semibold text-foreground transition-colors hover:bg-muted motion-reduce:transition-none disabled:pointer-events-none disabled:opacity-40', FOCUS_RING)}
+    >
+      <Printer size={14} strokeWidth={2.2} aria-hidden="true" />
+      Imprimir
+    </button>
+  );
 }
 
 export function ExportButton({ onExport, disabled = false }) {
@@ -569,6 +588,9 @@ const PILL_TONE = Object.freeze({
   brand: { bg: 'bg-brand-50 dark:bg-brand-500/15', dot: 'bg-brand-600 dark:bg-brand-400' },
   slate: { bg: 'bg-slate-500/[0.12] dark:bg-slate-400/15', dot: 'bg-slate-400' },
 });
+// O símbolo que toma o lugar do ponto no papel, para a impressora preto e branco
+// ler a situação sem a cor (o CSS de impressão troca o ponto por ele).
+const PILL_MARK = Object.freeze({ emerald: '✓', rose: '✕', amber: '–', brand: '○', slate: '○' });
 
 /**
  * O selo de situação da lista: um ponto e o texto escrito. A cor só reforça,
@@ -577,12 +599,14 @@ const PILL_TONE = Object.freeze({
  * @param {object} props
  * @param {'emerald'|'rose'|'amber'|'brand'|'slate'} [props.tone] emerald para cliente, veio e matriculou; rose para perdido, faltou e atrasado; amber para sem desfecho e sem próximo passo; brand para a acontecer; slate para em aberto.
  * @param {import('react').ReactNode} props.children O texto ("Matriculou em 02/09").
+ * @param {string} [props.mark] O símbolo do papel, quando não é o do tom (o "!" do contato atrasado).
  */
-export function StatusPill({ tone = 'slate', children }) {
-  const t = PILL_TONE[tone] ?? PILL_TONE.slate;
+export function StatusPill({ tone = 'slate', mark, children }) {
+  const key = PILL_TONE[tone] ? tone : 'slate';
+  const t = PILL_TONE[key];
   return (
-    <span className={cn('num inline-flex h-6 max-w-full items-center gap-1.5 overflow-hidden whitespace-nowrap rounded-[7px] px-[9px] text-[11.5px] font-semibold', t.bg, TONE_700[tone] ?? TONE_700.slate)}>
-      <span aria-hidden="true" className={cn('size-1.5 flex-none rounded-full', t.dot)} />
+    <span data-tone={key} className={cn('num inline-flex h-6 max-w-full items-center gap-1.5 overflow-hidden whitespace-nowrap rounded-[7px] px-[9px] text-[11.5px] font-semibold', t.bg, TONE_700[tone] ?? TONE_700.slate)}>
+      <span aria-hidden="true" data-mark={mark ?? PILL_MARK[key]} className={cn('size-1.5 flex-none rounded-full', t.dot)} />
       <span className="min-w-0 truncate">{children}</span>
     </span>
   );

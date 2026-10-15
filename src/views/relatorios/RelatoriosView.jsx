@@ -15,7 +15,12 @@
 // total é guardado. Os quatro relatórios de período só têm número com os meses
 // carregados, e em Leads parados não há mês carregado (ele não pede nenhum, e
 // pedir só para a lista seria leitura nova): ali eles ficam sem número.
+//
+// O Imprimir monta a folha impressa (ReportPrint) só durante a impressão: o
+// clique preenche a ficha, a folha entra no body na hora (flushSync) e o
+// afterprint a tira.
 import { useEffect, useMemo, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { useLocation } from 'react-router';
 import { cn } from '../../lib/utils.js';
 import { ACTIONS, can, isSeller } from '../../lib/acesso.js';
@@ -34,11 +39,12 @@ import { conversaoReport } from '../../lib/relatorios/leads/conversao.js';
 import { visitasReport } from '../../lib/relatorios/leads/visitas.js';
 import { perdasReport } from '../../lib/relatorios/leads/perdas.js';
 import { paradosReport } from '../../lib/relatorios/leads/parados.js';
+import { ReportPrintContext, printSheetOf } from '../../lib/relatorios/leads/impressao.js';
 import { downloadCsv, toCsv } from '../../lib/csvExport.js';
 import { DashedNote } from '../dashboard/CrmParts.jsx';
 import { RelatoriosRail } from './RelatoriosRail.jsx';
 import { RelatoriosToolbar } from './RelatoriosToolbar.jsx';
-import { ExportButton } from './ReportParts.jsx';
+import { ExportButton, PrintButton } from './ReportParts.jsx';
 import { EntradaSection } from './EntradaSection.jsx';
 import { ConversaoSection } from './ConversaoSection.jsx';
 import { VisitasSection } from './VisitasSection.jsx';
@@ -66,7 +72,7 @@ const SNAPSHOT = 'parados';
 const PERIOD_IDS = RELATORIOS_RAIL_IDS.filter((id) => id !== SNAPSHOT);
 
 export function RelatoriosView({
-  db, appUser, usersList, funnels, sources, liveLeads, interactions, listenersActive = true, section, onSection,
+  db, appUser, usersList, funnels, sources, liveLeads, interactions, listenersActive = true, section, onSection, tenantName = '',
 }) {
   // Relógio da tela: vira o minuto (período em andamento e corte do comparado).
   const [now, setNow] = useState(() => new Date());
@@ -210,7 +216,41 @@ export function RelatoriosView({
     const fileName = snapshot ? snapshotFileName(secao, now) : exportFileName(secao, shown.report.window || shown.period);
     downloadCsv(fileName, toCsv(shown.report.exportRows, shown.report.exportColumns));
   };
-  const exportAction = canExport ? <ExportButton onExport={doExport} disabled={!exportable} /> : null;
+
+  // A hora do clique em Imprimir, enquanto a folha impressa existe.
+  const [printAt, setPrintAt] = useState(null);
+  useEffect(() => {
+    const done = () => setPrintAt(null);
+    window.addEventListener('afterprint', done);
+    return () => window.removeEventListener('afterprint', done);
+  }, []);
+  const doPrint = () => {
+    if (!exportable) return;
+    flushSync(() => setPrintAt(new Date()));
+    window.print();
+  };
+  const funnelName = funnel === 'all' ? null : leadFunnels.find((f) => f.id === funnel)?.name || null;
+  const printSheet = printAt && shown
+    ? printSheetOf({
+      secao,
+      report: shown.report,
+      period: snapshot ? null : shown.period,
+      listWindow: shown.report.window,
+      baseTotal: snapshot ? shown.report.total : shown.allRows.length,
+      consultor: people.filter((p) => resp.includes(p.id)).map((p) => p.name).join(', ') || 'Equipe toda',
+      origem,
+      funil: funnelName,
+      academy: tenantName,
+      author: appUser?.name || '',
+      at: printAt,
+    })
+    : null;
+  const exportAction = canExport ? (
+    <div className="flex flex-none items-center gap-2">
+      <PrintButton onPrint={doPrint} disabled={!exportable} />
+      <ExportButton onExport={doExport} disabled={!exportable} />
+    </div>
+  ) : null;
   // A tela do submenu do resultado que está na tela (o de agora ou o de sob o véu, que é sempre o mesmo submenu).
   const Section = SECTIONS[secao];
 
@@ -271,18 +311,20 @@ export function RelatoriosView({
               veiled && 'pointer-events-none opacity-35'
             )}
           >
-            <Section
-              report={shown.report}
-              compareText={compareText}
-              listId={listId}
-              year={year}
-              onCut={onCut}
-              exportAction={exportAction}
-              apptsPartial={apptsPartialOf(shown.period, shown.cmp)}
-              allRows={shown.allRows}
-              period={shown.period}
-              now={now}
-            />
+            <ReportPrintContext.Provider value={printSheet}>
+              <Section
+                report={shown.report}
+                compareText={compareText}
+                listId={listId}
+                year={year}
+                onCut={onCut}
+                exportAction={exportAction}
+                apptsPartial={apptsPartialOf(shown.period, shown.cmp)}
+                allRows={shown.allRows}
+                period={shown.period}
+                now={now}
+              />
+            </ReportPrintContext.Provider>
           </div>
         )}
       </div>

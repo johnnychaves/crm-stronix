@@ -60,7 +60,7 @@ const columnsOf = (report, year) => {
       className: 'num whitespace-nowrap',
       render: (r) => {
         if (!r.next) return <StatusPill tone="amber">Sem próximo passo</StatusPill>;
-        if (r.late > 0) return <StatusPill tone="rose">{`Atrasado ${days(r.late)}`}</StatusPill>;
+        if (r.late > 0) return <StatusPill tone="rose" mark="!">{`Atrasado ${days(r.late)}`}</StatusPill>;
         const day = fmtScreenDate(r.next, year);
         return day === today ? 'hoje' : day;
       },
@@ -75,6 +75,12 @@ const TILE_LOOK = Object.freeze([
   { tone: 'rose', note: 'a data já passou' },
   { tone: 'neutral', note: 'nada na ficha' },
 ]);
+
+// O título e a pergunta, na tela e na folha impressa.
+const HEADING = Object.freeze({
+  title: 'Leads parados',
+  question: 'Quem está em aberto agora sem próximo passo, com contato atrasado ou sem registro há dias.',
+});
 
 export function ParadosSection({ report, listId, year, onCut, exportAction }) {
   const cells = report.tiles.map((t, i) => ({
@@ -92,11 +98,7 @@ export function ParadosSection({ report, listId, year, onCut, exportAction }) {
 
   return (
     <div className="flex flex-col gap-5">
-      <ReportHeader
-        title="Leads parados"
-        question="Quem está em aberto agora sem próximo passo, com contato atrasado ou sem registro há dias."
-        action={exportAction}
-      />
+      <ReportHeader {...HEADING} action={exportAction} />
       <ReportBand
         label="Leads parados"
         value={report.total}
@@ -112,6 +114,7 @@ export function ParadosSection({ report, listId, year, onCut, exportAction }) {
         onClearCut={() => onCut(null)}
         columns={columnsOf(report, year)}
         rows={report.rows}
+        heading={HEADING}
         emptyTitle={report.cut ? undefined : 'Nenhum lead parado.'}
         emptyText={report.cut ? undefined : 'Todos os leads em aberto têm próximo passo, contato em dia e registro recente.'}
       />

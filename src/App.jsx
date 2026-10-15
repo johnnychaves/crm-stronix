@@ -1876,7 +1876,7 @@ useEffect(() => {
               {activeTab === 'visitas' && <AppointmentTrackingView appUser={appUser} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="visita" />}
               {/* Relatórios (spec 2026-10-09): o submenu vem do endereço (sub), e
                   trocar de submenu leva o período e os filtros junto. */}
-              {activeTab === 'relatorios' && <RelatoriosView db={db} appUser={appUser} usersList={usersList} funnels={funnels} sources={sources} liveLeads={metaLeads} interactions={interactions} listenersActive={listenersActive} section={sub} onSection={(id, query) => goToSub('relatorios', id, undefined, query)} />}
+              {activeTab === 'relatorios' && <RelatoriosView db={db} appUser={appUser} tenantName={tenantDisplayName} usersList={usersList} funnels={funnels} sources={sources} liveLeads={metaLeads} interactions={interactions} listenersActive={listenersActive} section={sub} onSection={(id, query) => goToSub('relatorios', id, undefined, query)} />}
               {activeTab === 'settings' && isGestor(appUser) && <SettingsView section={sub} onSection={(id) => goToSub('settings', id)} sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} dores={dores} funnels={funnels} modalities={modalities} planos={planos} trialClassOptions={trialClassOptions} units={units} metaWeekdays={metaWeekdays} />}
               {activeTab === 'rotinas' && isGestor(appUser) && (
                 <RotinasView

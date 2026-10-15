@@ -89,7 +89,7 @@ export function applyCut(rows, recorte, available) {
   return { cut, rows: cut ? rows.filter((r) => r.cuts.includes(cut)) : rows };
 }
 
-const CUT_PREFIX = Object.freeze({
+export const CUT_PREFIX = Object.freeze({
   origem: 'Origem', consultor: 'Consultor', funil: 'Funil', faixa: 'Primeiro contato',
   tipo: 'Tipo', unidade: 'Unidade', modalidade: 'Modalidade', motivo: 'Motivo', etapa: 'Etapa', professor: 'Professor',
 });

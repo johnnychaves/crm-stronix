@@ -31,6 +31,12 @@ const columnsOf = (year) => [
   },
 ];
 
+// O título e a pergunta, na tela e na folha impressa.
+const HEADING = Object.freeze({
+  title: 'Entrada de leads',
+  question: 'Quantos leads chegaram no período, de onde e para qual consultor.',
+});
+
 export function EntradaSection({ report, compareText, listId, year, onCut, exportAction, allRows, period, now }) {
   const tabs = [
     { value: 'origem', label: 'Por origem', rows: report.bySource },
@@ -41,11 +47,7 @@ export function EntradaSection({ report, compareText, listId, year, onCut, expor
   const days = period && now ? porDia(allRows ?? report.rows, period, (r) => r.createdAt, now) : null;
   return (
     <div className="flex flex-col gap-4">
-      <ReportHeader
-        title="Entrada de leads"
-        question="Quantos leads chegaram no período, de onde e para qual consultor."
-        action={exportAction}
-      />
+      <ReportHeader {...HEADING} action={exportAction} />
       <ReportBand
         label={report.total === 1 ? 'Lead novo' : 'Leads novos'}
         value={report.total}
@@ -62,6 +64,7 @@ export function EntradaSection({ report, compareText, listId, year, onCut, expor
         onClearCut={() => onCut(null)}
         columns={columnsOf(year)}
         rows={report.rows}
+        heading={HEADING}
       />
     </div>
   );
