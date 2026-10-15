@@ -7,8 +7,16 @@
 // meses do início do comparado até o mês atual. Leads parados é retrato de
 // agora: não pede mês nenhum e lê os leads em aberto que o app já tem
 // (liveLeads) e as interações do mês que chegam ao vivo. Desenhada com a skill
-// frontend-design.
+// frontend-design, no molde do handoff em
+// docs/superpowers/specs/handoff-relatorios/.
+//
+// A lista ao lado mostra o número principal de cada relatório, com os filtros
+// da barra, pelas mesmas contas da tela de cada submenu (railNumberOf): nenhum
+// total é guardado. Os quatro relatórios de período só têm número com os meses
+// carregados, e em Leads parados não há mês carregado (ele não pede nenhum, e
+// pedir só para a lista seria leitura nova): ali eles ficam sem número.
 import { useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router';
 import { cn } from '../../lib/utils.js';
 import { ACTIONS, can, isSeller } from '../../lib/acesso.js';
 import { useScreenParams } from '../../hooks/useScreenParams.js';
@@ -17,7 +25,8 @@ import { screenParamsQuery } from '../../lib/screenParams.js';
 import { periodFromParams, previousPeriod } from '../../lib/period.js';
 import { addMonthsToKey, dayKeyOf, monthKeyOf, monthLabel } from '../../lib/operacional/month.js';
 import { leadFunnelsOf } from '../../lib/crm/scope.js';
-import { relatoriosSection } from '../../lib/relatoriosRail.js';
+import { RELATORIOS_RAIL_IDS, railNumberOf, relatoriosSection } from '../../lib/relatoriosRail.js';
+import { hrefFor, parseAppPath } from '../../lib/routes.js';
 import { loadState, reportMonthKeys } from '../../lib/relatorios/leads/janela.js';
 import { exportFileName, snapshotFileName, compareTextOf, apptsPartialOf } from '../../lib/relatorios/leads/base.js';
 import { entradaReport } from '../../lib/relatorios/leads/entrada.js';
@@ -53,6 +62,8 @@ const SECTIONS = Object.freeze({
 });
 // O retrato de agora: sem período na barra, sem mês para carregar e com o dia de hoje no nome do arquivo.
 const SNAPSHOT = 'parados';
+// Os relatórios de período, que dependem dos meses carregados.
+const PERIOD_IDS = RELATORIOS_RAIL_IDS.filter((id) => id !== SNAPSHOT);
 
 export function RelatoriosView({
   db, appUser, usersList, funnels, sources, liveLeads, interactions, listenersActive = true, section, onSection,
@@ -143,11 +154,31 @@ export function RelatoriosView({
   // lista, que é de cada submenu. Clicar no submenu que já está aberto não
   // troca nada: o App navegaria para o mesmo endereço sem o recorte, e a lista
   // perderia o filtro sem ninguém ter pedido. O seletor do celular já só avisa
-  // quando o valor muda.
+  // quando o valor muda. O link de cada item leva o mesmo endereço, para o
+  // Ctrl+clique abrir o submenu em outra aba com o período e os filtros.
+  const sectionQuery = screenParamsQuery('relatorios', { ...params, recorte: null }, paramsCtx);
+  const { pathname } = useLocation();
+  const tenantSlug = parseAppPath(pathname).tenantSlug;
+  const hrefOf = (id) => `${hrefFor(tenantSlug, 'relatorios', { sub: id }) || pathname}${sectionQuery}`;
   const goSection = (id) => {
     if (id === secao) return;
-    onSection(id, screenParamsQuery('relatorios', { ...params, recorte: null }, paramsCtx));
+    onSection(id, sectionQuery);
   };
+
+  // Os números da lista ao lado: os mesmos relatórios, sem o recorte da lista
+  // (que é de cada submenu e não muda o número principal). Leads parados sai das
+  // listas ao vivo e tem número sempre; os outros, só com os meses carregados.
+  const periodRail = useMemo(
+    () => (ready && !snapshot
+      ? Object.fromEntries(PERIOD_IDS.map((id) => [id, railNumberOf(id, REPORTS[id](ctx, { period, cmp, userIds: resp, funnelId, origem }))]))
+      : null),
+    [ready, snapshot, ctx, period, cmp, resp, funnelId, origem]
+  );
+  const paradosRail = useMemo(
+    () => railNumberOf(SNAPSHOT, paradosReport(ctx, { userIds: resp, funnelId, origem, dias })),
+    [ctx, resp, funnelId, origem, dias]
+  );
+  const railNumbers = useMemo(() => ({ ...periodRail, [SNAPSHOT]: paradosRail }), [periodRail, paradosRail]);
   const onCut = (code) => setParams({ recorte: code });
   const onPeriod = (kind) => setParams(kind === 'mes'
     ? { periodo: null, de: null, ate: null, monthKey: currentKey }
@@ -175,11 +206,10 @@ export function RelatoriosView({
   const Section = SECTIONS[secao];
 
   return (
-    <div className="animate-fade-in flex flex-col gap-6 font-sans lg:flex-row lg:items-start lg:gap-8">
-      {/* A lista de relatórios sem título: o título da tela é o do cabeçalho do App.
-          O top-0 faz a lista começar na altura da barra, parada ou rolando. */}
-      <aside className="lg:sticky lg:top-0 lg:w-[232px] lg:shrink-0">
-        <RelatoriosRail section={secao} onSection={goSection} />
+    <div className="animate-fade-in flex flex-col gap-6 font-sans lg:grid lg:grid-cols-[248px_minmax(0,1fr)] lg:items-start lg:gap-7">
+      {/* A lista de relatórios sem título: o título da tela é o do cabeçalho do App. */}
+      <aside className="lg:sticky lg:top-6">
+        <RelatoriosRail section={secao} onSection={goSection} hrefOf={hrefOf} numbers={railNumbers} />
       </aside>
       <div className="min-w-0 flex-1">
         <RelatoriosToolbar

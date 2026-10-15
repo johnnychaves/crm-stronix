@@ -163,7 +163,12 @@ const clicarComFoco = async (el) => { el.focus(); await clicar(el); };
 const botao = (texto) => [...container.querySelectorAll('button')].find((b) => b.textContent.includes(texto));
 // A linha de recorte tem o nome no title, e o canal da origem entra no texto do botão.
 const recorte = (nome) => container.querySelector(`button [title^="${nome}"]`)?.closest('button');
-const submenu = (texto) => [...container.querySelectorAll('nav[aria-label="Relatórios"] button')].find((b) => b.textContent.includes(texto));
+// Os submenus são links dentro do grupo Leads, que abre fechado: quem clica abre o grupo antes, como na tela.
+const submenu = (texto) => [...container.querySelectorAll('nav[aria-label="Relatórios"] a')].find((a) => a.textContent.includes(texto));
+const abrirGrupo = async () => {
+  const fechado = container.querySelector('nav[aria-label="Relatórios"] button[aria-expanded="false"]');
+  if (fechado) await act(async () => { fechado.click(); });
+};
 const gatilho = (nome) => container.querySelector(`button[aria-label="${nome}"]`);
 const balao = () => document.querySelector('[data-slot="popover-content"]');
 const opcaoDoPeriodo = (texto) => [...balao().querySelectorAll('button')].find((b) => b.textContent.trim() === texto);
@@ -177,7 +182,9 @@ const linhaDe = (id) => linhas().find((tr) => tr.querySelector(`a[href$="/ficha/
 const celula = (tr, coluna) => tr.children[[...container.querySelectorAll('thead th')].findIndex((th) => th.textContent === coluna)];
 const numeroDaLista = () => container.querySelector('p[aria-live="polite"]');
 const limpar = () => container.querySelector('[aria-label="Limpar filtro da lista"]');
-const heroi = () => container.querySelector('.num.font-display')?.textContent;
+// O número grande do relatório, fora da lista ao lado (que também mostra números em Space Grotesk).
+const numeroGrande = () => [...container.querySelectorAll('.num.font-display')].find((el) => !el.closest('nav'));
+const heroi = () => numeroGrande()?.textContent;
 const regiaoDeEstado = () => container.querySelector('[role="status"]');
 // A grade que reúne os cartões de recorte: o pai do cartão que tem o título.
 const grade = (titulo) => [...container.querySelectorAll('h3')].find((t) => t.textContent === titulo).closest('section').parentElement;
@@ -236,6 +243,9 @@ describe('lista ao lado', () => {
   it('"Conversão" chama onSection com o período e os filtros e sem o recorte da lista', async () => {
     const onSection = vi.fn();
     await montar('/acad/relatorios?periodo=semana-passada&resp=diego&origem=Instagram&funil=ven&recorte=origem%3AInstagram', { onSection });
+    await abrirGrupo();
+    // O link leva o mesmo endereço, para o Ctrl+clique abrir o submenu em outra aba.
+    expect(submenu('Conversão').getAttribute('href')).toBe('/acad/relatorios/conversao?periodo=semana-passada&resp=diego&origem=Instagram&funil=ven');
     await clicar(submenu('Conversão'));
     expect(onSection).toHaveBeenCalledTimes(1);
     expect(onSection).toHaveBeenCalledWith('conversao', '?periodo=semana-passada&resp=diego&origem=Instagram&funil=ven');
@@ -251,6 +261,7 @@ describe('lista ao lado', () => {
     expect(fichas()).toEqual(['s4']);
     expect(limpar()).not.toBeNull();
 
+    await abrirGrupo();
     await clicar(submenu('Entrada de leads'));
     expect(onSection).not.toHaveBeenCalled();
     expect(sonda()).toBe('?resp=diego&recorte=origem%3AInstagram');
@@ -273,10 +284,13 @@ describe('lista ao lado', () => {
     expect(aside.textContent).not.toContain('Os números do período');
     expect(container.querySelector('h1')).toBeNull();
     expect(container.querySelector('h2').textContent).toBe('Entrada de leads');
-    // Com o top-0 ela para na altura da barra; o top-20 a deixava 80px abaixo dela.
+    // Fixa a 24px do alto da área que rola, como no handoff; o top-20 a deixava 80px abaixo da barra.
     expect(aside.className).toContain('lg:sticky');
-    expect(aside.className).toContain('lg:top-0');
+    expect(aside.className).toContain('lg:top-6');
     expect(aside.className).not.toContain('lg:top-20');
+    // A grade do handoff: a lista com 248px e 28px até o conteúdo.
+    expect(aside.parentElement.className).toContain('lg:grid-cols-[248px_minmax(0,1fr)]');
+    expect(aside.parentElement.className).toContain('lg:gap-7');
   });
 });
 
@@ -284,14 +298,15 @@ describe('período da barra', () => {
   it('"Hoje" escreve periodo=hoje e tira o mês do endereço', async () => {
     await montar('/acad/relatorios?mes=2026-08');
     expect(sonda()).toBe('?mes=2026-08');
-    expect(gatilho('Mês de competência')).not.toBeNull();
+    expect(gatilho('Mês anterior')).not.toBeNull();
     await clicar(gatilho('Período'));
     await clicar(opcaoDoPeriodo('Hoje'));
     expect(sonda()).toBe('?periodo=hoje');
     expect(balao()).toBeNull();
-    // O botão passa a dizer o dia, e o mês e as setas saem da barra com o modo mês.
+    // O botão passa a dizer o dia, e as setas do mês saem da caixa com o modo mês.
     expect(gatilho('Período').textContent).toContain('Hoje');
-    expect(gatilho('Mês de competência')).toBeNull();
+    expect(gatilho('Mês anterior')).toBeNull();
+    expect(gatilho('Próximo mês')).toBeNull();
   });
 });
 
@@ -300,6 +315,8 @@ describe('filtros da barra chegam aos números', () => {
     await montar('/acad/relatorios?resp=diego');
     expect(fichas()).toEqual(['s2', 's4']);
     expect(heroi()).toBe('2');
+    // O número da lista ao lado sai da mesma base filtrada.
+    expect(submenu('Entrada de leads').querySelector('.font-display').textContent).toBe('2');
   });
 
   it('a origem do endereço recorta a lista', async () => {
@@ -392,7 +409,7 @@ describe('Conversão sem leads no período', () => {
 
   it('o número grande diz "sem base" uma vez, com o comparado, e a rapidez diz que não há nada, como os outros recortes', async () => {
     await montar('/acad/relatorios/conversao?periodo=hoje', { section: 'conversao' });
-    const topo = container.querySelector('.num.font-display').parentElement.textContent;
+    const topo = numeroGrande().parentElement.textContent;
     expect(topo.split('sem base')).toHaveLength(2);
     expect(comparado()).toBe('vs. 13 set');
     for (const titulo of ['Por origem', 'Por consultor', 'Rapidez do primeiro contato']) {

@@ -109,15 +109,21 @@ const tecla = async (el, key) => {
 const botao = (texto) => [...container.querySelectorAll('button')].find((b) => b.textContent.includes(texto));
 const recorte = (nome) => container.querySelector(`button [title^="${nome}"]`)?.closest('button');
 const gatilho = (nome) => container.querySelector(`button[aria-label="${nome}"]`);
-const opcao = (texto) => [...document.querySelectorAll('[role="option"]')].find((o) => o.textContent.trim() === texto);
-const submenu = (texto) => [...container.querySelectorAll('nav[aria-label="Relatórios"] button')].find((b) => b.textContent.includes(texto));
+// Os submenus são links dentro do grupo Leads, que abre fechado: quem clica abre o grupo antes, como na tela.
+const submenu = (texto) => [...container.querySelectorAll('nav[aria-label="Relatórios"] a')].find((a) => a.textContent.includes(texto));
+const abrirGrupo = async () => {
+  const fechado = container.querySelector('nav[aria-label="Relatórios"] button[aria-expanded="false"]');
+  if (fechado) await act(async () => { fechado.click(); });
+};
+const radio = (nome) => container.querySelector(`[role="radio"][aria-label="${nome}"]`);
 const sonda = () => container.querySelector('output[data-sonda]').textContent;
 const linhas = () => [...container.querySelectorAll('tbody tr')];
 const nomesDaLista = () => linhas().map((tr) => tr.firstElementChild.textContent);
 const fichas = () => [...container.querySelectorAll('tbody a[href]')].map((a) => a.getAttribute('href').split('/').pop()).sort();
 const linhaDe = (id) => linhas().find((tr) => tr.querySelector(`a[href$="/ficha/${id}"]`));
 const celula = (tr, coluna) => tr.children[[...container.querySelectorAll('thead th')].findIndex((th) => th.textContent === coluna)];
-const heroi = () => container.querySelector('.num.font-display')?.textContent;
+// O número grande do relatório, fora da lista ao lado (que também mostra números em Space Grotesk).
+const heroi = () => [...container.querySelectorAll('.num.font-display')].find((el) => !el.closest('nav'))?.textContent;
 const cartao = (titulo) => [...container.querySelectorAll('h3')].find((t) => t.textContent === titulo).closest('section');
 const grade = (titulo) => cartao(titulo).parentElement;
 const AVISO = 'os agendamentos estão incompletos';
@@ -129,7 +135,7 @@ describe('Visitas e aulas experimentais', () => {
     await abrir();
     expect(container.querySelector('h2').textContent).toBe('Visitas e aulas experimentais');
     expect(heroi()).toBe('50%');
-    expect(submenu('Visitas e aulas experimentais').getAttribute('aria-current')).toBe('page');
+    expect(submenu('Visitas e aulas').getAttribute('aria-current')).toBe('page');
     const numero = (nome) => botao(nome).textContent;
     expect(numero('Marcados')).toContain('3');
     expect(numero('A acontecer')).toContain('1');
@@ -257,13 +263,31 @@ describe('Perdas', () => {
   });
 });
 
+describe('números da lista ao lado', () => {
+  const numeroDe = (texto) => submenu(texto).querySelector('.font-display')?.textContent ?? null;
+
+  it('cada item mostra o número principal do relatório dele, pela mesma conta da tela', async () => {
+    await montar('/acad/relatorios/visitas-e-aulas', { section: 'visitas-e-aulas' });
+    expect(numeroDe('Visitas e aulas')).toBe(heroi());
+    for (const nome of ['Entrada de leads', 'Conversão', 'Perdas']) expect(numeroDe(nome), nome).not.toBeNull();
+    // Leads parados sai das listas ao vivo, então tem número em qualquer submenu.
+    expect(numeroDe('Leads parados')).toBe('4');
+  });
+
+  it('em Leads parados, que não carrega mês, os relatórios de período ficam sem número', async () => {
+    await montar('/acad/relatorios/parados', { section: 'parados' });
+    expect(numeroDe('Leads parados')).toBe(heroi());
+    for (const nome of ['Entrada de leads', 'Conversão', 'Visitas e aulas', 'Perdas']) expect(numeroDe(nome), nome).toBeNull();
+  });
+});
+
 describe('Leads parados', () => {
   const abrir = (url = '/acad/relatorios/parados', props = {}) => montar(url, { section: 'parados', ...props });
 
   it('sem período na barra, sem mês para carregar, e os números saem dos leads em aberto que o app já tem', async () => {
     await abrir();
     expect(gatilho('Período')).toBeNull();
-    expect(gatilho('Sem registro há mais de').textContent).toContain('7 dias');
+    expect(radio('7 dias').getAttribute('aria-checked')).toBe('true');
     expect(m.args.monthKeys).toEqual([]);
     expect(container.querySelector('[role="status"]').textContent).toBe('');
     expect(heroi()).toBe('4');
@@ -280,11 +304,17 @@ describe('Leads parados', () => {
   it('o corte de dias vai para o endereço, muda o terceiro número e anda junto ao trocar de submenu', async () => {
     const onSection = vi.fn();
     await abrir('/acad/relatorios/parados', { onSection });
-    gatilho('Sem registro há mais de').focus();
-    await tecla(gatilho('Sem registro há mais de'), 'Enter');
-    await tecla(opcao('30 dias'), 'Enter');
+    await clicar(radio('30 dias'));
     expect(sonda()).toBe('?dias=30');
+    expect(radio('30 dias').getAttribute('aria-checked')).toBe('true');
     expect(botao('Sem registro há mais de 30 dias').textContent).toContain('2');
+    // Pelo teclado também: a seta volta um corte e escreve no endereço.
+    radio('30 dias').focus();
+    await tecla(radio('30 dias'), 'ArrowLeft');
+    expect(sonda()).toBe('?dias=15');
+    expect(document.activeElement).toBe(radio('15 dias'));
+    await clicar(radio('30 dias'));
+    await abrirGrupo();
     await clicar(submenu('Entrada de leads'));
     expect(onSection).toHaveBeenCalledWith('entrada', '?dias=30');
   });

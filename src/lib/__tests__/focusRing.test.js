@@ -9,6 +9,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
+import { MemoryRouter } from 'react-router';
 import { FOCUS_RING } from '../../components/focusRing.js';
 import { NumberTiles, CountBreakdown, ConversionBreakdown, ReportList, ExportButton } from '../../views/relatorios/ReportParts.jsx';
 import { RelatoriosToolbar, ConsultoresMenu } from '../../views/relatorios/RelatoriosToolbar.jsx';
@@ -88,11 +89,14 @@ describe('o anel chega aos controles do teclado', () => {
     expect(semAnel(tagsOf(renderToString(createElement(ExportButton, { onExport: noop })), 'button'))).toEqual([]);
   });
 
-  it('a lista ao lado', () => {
-    const html = renderToString(createElement(RelatoriosRail, { section: 'entrada', onSection: noop }));
+  it('a lista ao lado: o cabeçalho do grupo e os links dos submenus', () => {
+    const html = renderToString(createElement(MemoryRouter, null, createElement(RelatoriosRail, {
+      section: 'entrada', onSection: noop, hrefOf: (id) => `/acad/relatorios/${id}`, numbers: null,
+    })));
     const nav = /<nav\b[\s\S]*?<\/nav>/.exec(html)[0];
-    expect(tagsOf(nav, 'button')).toHaveLength(5);
-    expect(semAnel(tagsOf(nav, 'button'))).toEqual([]);
+    expect(tagsOf(nav, 'button')).toHaveLength(1);
+    expect(tagsOf(nav, 'a')).toHaveLength(5);
+    expect(semAnel([...tagsOf(nav, 'button'), ...tagsOf(nav, 'a')])).toEqual([]);
   });
 
   it('o seletor de período e os itens do balão dele', () => {
@@ -118,7 +122,7 @@ describe('o anel chega aos controles do teclado', () => {
       resp: [], people, onResp: noop, origem: null, origens: ['Instagram'], onOrigem: noop,
       funnel: 'all', funnels: [{ id: 'f1', name: 'Vendas' }], onFunnel: noop,
     }));
-    for (const rotulo of ['Consultores', 'Origem', 'Funil', 'Período', 'Filtros dos relatórios']) {
+    for (const rotulo of ['Consultor', 'Origem', 'Funil', 'Período', 'Mês anterior', 'Próximo mês', 'Filtros dos relatórios']) {
       expect(botaoDe(barra, rotulo), rotulo).toHaveLength(1);
       expect(semAnel(botaoDe(barra, rotulo)), rotulo).toEqual([]);
     }
@@ -128,8 +132,9 @@ describe('o anel chega aos controles do teclado', () => {
       resp: [], people, onResp: noop, origem: null, origens: ['Instagram'], onOrigem: noop,
       funnel: 'all', funnels: [{ id: 'f1', name: 'Vendas' }], onFunnel: noop,
     }));
-    expect(botaoDe(parados, 'Sem registro há mais de')).toHaveLength(1);
-    expect(semAnel(botaoDe(parados, 'Sem registro há mais de'))).toEqual([]);
+    const cortes = tagsOf(parados, 'button').filter((tag) => tag.includes('role="radio"'));
+    expect(cortes).toHaveLength(4);
+    expect(semAnel(cortes)).toEqual([]);
     const menu = renderToString(createElement(ConsultoresMenu, { resp: [], people, onResp: noop }));
     const equipe = tagsOf(menu, 'button').filter((tag) => tag.includes('aria-pressed'));
     expect(equipe).toHaveLength(1);
