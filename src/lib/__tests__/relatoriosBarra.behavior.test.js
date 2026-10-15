@@ -196,12 +196,52 @@ describe('corte de Leads parados', () => {
     // O nome do botão é o texto inteiro, e o combobox lê os dias como valor.
     expect(gatilho('Sem registro há mais de').getAttribute('role')).toBe('combobox');
     expect(gatilho('Sem registro há mais de').textContent).toContain('7 dias');
+    // Os dias com algarismos de largura fixa, como o período e o mês.
+    expect(gatilho('Sem registro há mais de').querySelector('.num').textContent).toBe('7 dias');
     await abrir('Sem registro há mais de');
     expect(lista().className).toContain('border-border');
     expect([...document.querySelectorAll('[role="option"]')].map((o) => o.textContent.trim())).toEqual(['3 dias', '7 dias', '15 dias', '30 dias']);
+    // O corte de agora vem marcado na lista (o Select só o reconhece com o valor em texto).
+    expect(opcao('7 dias').getAttribute('aria-selected')).toBe('true');
+    expect(opcao('15 dias').getAttribute('aria-selected')).not.toBe('true');
     await tecla(opcao('15 dias'), 'Enter');
     expect(onDias).toHaveBeenCalledTimes(1);
     expect(onDias).toHaveBeenCalledWith(15);
+  });
+
+  it('clicar no texto de fora abre a lista do corte', async () => {
+    await montar(h(DiasControl, { dias: 7, onDias: noop }));
+    const rotulo = container.querySelector('label');
+    expect(rotulo.textContent).toBe('Sem registro há mais de');
+    // Ligado ao botão pelo id: é o que leva o clique no texto até ele.
+    expect(gatilho('Sem registro há mais de').id).not.toBe('');
+    expect(rotulo.htmlFor).toBe(gatilho('Sem registro há mais de').id);
+    expect(lista()).toBeNull();
+    await clicar(rotulo);
+    expect(lista()).not.toBeNull();
+  });
+
+  it('o leitor de tela lê o nome do corte uma vez só: o texto de fora fica escondido', async () => {
+    await montar(h(DiasControl, { dias: 7, onDias: noop }));
+    const botaoDias = gatilho('Sem registro há mais de');
+    // O nome é o aria-label, e o rótulo de fora não entra nele por outro caminho.
+    expect(botaoDias.getAttribute('aria-label')).toBe('Sem registro há mais de');
+    expect(botaoDias.hasAttribute('aria-labelledby')).toBe(false);
+    // Nenhum texto "Sem registro há mais de" fora do botão fica à vista do leitor de tela.
+    const lidos = [...container.querySelectorAll('*')].filter((el) => !el.children.length && el.textContent.trim() === 'Sem registro há mais de' && !el.closest('[aria-hidden="true"]'));
+    expect(lidos).toEqual([]);
+  });
+
+  it('no balão do celular o corte fica compacto, com o texto em cima do botão de largura total, e no computador não', async () => {
+    await montar(h(RelatoriosToolbar, { ...barra, showPeriod: false, dias: 30, onDias: noop }));
+    const computador = gatilho('Sem registro há mais de');
+    expect(computador.className).not.toContain('w-full');
+    expect(computador.parentElement.className).not.toContain('flex-col');
+    await clicar(gatilho('Filtros dos relatórios'));
+    const celular = balao().querySelector('[aria-label="Sem registro há mais de"]');
+    expect(celular.className).toContain('w-full');
+    expect(celular.parentElement.className).toContain('flex-col');
+    expect(celular.parentElement.firstElementChild.tagName).toBe('LABEL');
   });
 
   it('a barra sem período traz o corte no computador e no balão do celular, e o corte não acende o botão de filtros', async () => {

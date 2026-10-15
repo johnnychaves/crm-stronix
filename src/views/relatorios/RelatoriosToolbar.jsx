@@ -133,17 +133,19 @@ export function FunilControl({ funnel, funnels, onFunnel, compact = false }) {
 }
 
 // O corte de Leads parados: "Sem registro há mais de" e os dias, que o botão
-// diz. O texto de fora é só visual (aria-hidden): o nome do botão já o leva, e
-// o combobox lê os dias como valor. Os dias saem da mesma lista do endereço
-// (DIAS_PARADOS). Exportado para o teste.
+// diz. O texto de fora é um label ligado ao botão pelo id: clicar nele abre a
+// lista. O aria-hidden o tira da leitura, porque o nome do botão (aria-label)
+// já o leva, e o combobox lê os dias como valor. Os dias saem da mesma lista do
+// endereço (DIAS_PARADOS). Exportado para o teste.
 const diasText = (d) => `${d} dias`;
 export function DiasControl({ dias, onDias, compact = false }) {
+  const id = useId();
   return (
     <div className={cn('flex items-center gap-2', compact && 'flex-col items-stretch gap-1')}>
-      <span aria-hidden="true" className="whitespace-nowrap text-[12.5px] font-semibold text-muted-foreground">Sem registro há mais de</span>
+      <label htmlFor={id} aria-hidden="true" className="whitespace-nowrap text-[12.5px] font-semibold text-muted-foreground">Sem registro há mais de</label>
       <Select value={String(dias)} onValueChange={(v) => onDias(Number(v))}>
         <SelectPrimitive.Trigger asChild>
-          <FilterButton label="Sem registro há mais de" icon={Clock} active={false} text={diasText(dias)} compact={compact} />
+          <FilterButton id={id} label="Sem registro há mais de" icon={Clock} active={false} text={<span className="num">{diasText(dias)}</span>} compact={compact} />
         </SelectPrimitive.Trigger>
         <SelectContent position="popper" className="border-border">
           {DIAS_PARADOS.map((d) => (
