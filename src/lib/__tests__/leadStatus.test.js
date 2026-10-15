@@ -230,6 +230,13 @@ describe('getDaysSinceFromDate', () => {
     expect(getDaysSinceFromDate(l, { seconds: 1780000000 })).toBe(5);
   });
 
+  it('aceita o instante de quem calcula, com a mesma régua', () => {
+    const l = lead({ createdAt: ago(30 * DAY_MS) });
+    const umDiaDepois = NOW.getTime() + DAY_MS;
+    expect(getDaysSinceFromDate(l, ago(3 * DAY_MS), umDiaDepois)).toBe(4);
+    expect(getDaysSinceFromDate(lead({ createdAt: ago(10 * DAY_MS) }), null, umDiaDepois)).toBe(11);
+  });
+
   it('retorna null sem nenhuma data utilizável', () => {
     expect(getDaysSinceFromDate(lead({ createdAt: undefined }), null)).toBeNull();
     expect(getDaysSinceFromDate(lead({ createdAt: 'não é Date' }), null)).toBeNull();

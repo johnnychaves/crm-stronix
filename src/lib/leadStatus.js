@@ -107,10 +107,12 @@ const isLeadActive = (lead) => {
 // já resolvida (via buildInteractionIndex.get(id)?.lastDate), sem varrer o
 // array por lead — O(1) por lead em listas. ---
 
-const getDaysSinceFromDate = (lead, lastInteractionDate) => {
+// `nowMs` deixa quem calcula num instante próprio (os Relatórios, com o relógio
+// da tela) usar a mesma régua do selo. Sem ele, vale o Date.now().
+const getDaysSinceFromDate = (lead, lastInteractionDate, nowMs = Date.now()) => {
   const last = (lastInteractionDate instanceof Date ? lastInteractionDate : null) || lead?.createdAt;
   if (!(last instanceof Date) || isNaN(last.getTime())) return null;
-  return Math.max(0, Math.floor((Date.now() - last.getTime()) / DAY_MS));
+  return Math.max(0, Math.floor((nowMs - last.getTime()) / DAY_MS));
 };
 
 const isHotLeadFromDate = (lead, lastInteractionDate) => {
