@@ -42,7 +42,7 @@ src/
 api/                funções e módulos de apoio
 ```
 
-Regra de negócio fica em `src/lib/`, em módulos puros, e as telas só chamam. Exemplos: `dailyGoal.js` (Meta Diária), `contracts.js` e `contractHistory.js` (contratos), `leads.js` e `leadDerived.js` (lead).
+Regra de negócio fica em `src/lib/`, em módulos em geral puros (`dailyGoal.js` é a exceção, porque importa `lucide-react`), e as telas só chamam. Exemplos: `dailyGoal.js` (Meta Diária), `contracts.js` e `contractHistory.js` (contratos), `leads.js` e `leadDerived.js` (lead).
 
 ## Fronteiras que não se cruzam
 
@@ -68,7 +68,7 @@ Onze funções, de um limite de doze no plano Hobby: `admin-users`, `asaas`, `im
 ## Deploy e publicação
 
 - A Vercel publica o app e as funções no merge na `main`.
-- As `firestore.rules` são publicadas à mão, pelo console do Firebase (já houve publicação pela CLI quando a colagem no console falhou). Os índices saem por `firebase deploy --only firestore:indexes` ou pelo console. Em qualquer caso, antes do merge de quem depende deles.
+- As `firestore.rules` são publicadas à mão, pelo console do Firebase, e não pela CLI (regra do `README.md` e do `CLAUDE.md`). Os índices saem por `firebase deploy --only firestore:indexes` ou pelo console. Em qualquer caso, antes do merge de quem depende deles.
 - Versão nova do app entra sozinha na volta da pausa por inatividade (`src/lib/appUpdate.js`), lendo o `version.json` do build.
 
 ## Onde achar a decisão

@@ -34,15 +34,15 @@ O ramp laranja do app é `accent-50` a `accent-600`, sempre com sufixo numérico
 
 ## Acessibilidade e comportamento
 
-Regras já praticadas, que valem para tela nova:
+Regras praticadas nas telas de entrada (`src/views/auth/`) e nas Rotinas. Os formulários grandes, como o Novo lead e o cadastro do cliente, ainda não seguem todas. Use nas telas novas:
 
 - Erro de campo em região viva educada (`aria-live="polite"`) presente desde o primeiro render, e foco no primeiro campo com erro.
 - Erro fora de campo com `role="alert"` e aviso com `role="status"`.
-- Janela (`Dialog`, do Radix) devolve o foco ao elemento que a abriu. Na apresentação das Rotinas, o foco inicial vai ao botão principal, porque o primeiro focável seria decorativo. Faça o mesmo onde essa situação se repetir.
+- Janela (`Dialog`, do Radix) devolve o foco ao elemento que a abriu. Na apresentação das Rotinas, o foco inicial vai ao botão principal, porque o primeiro focável seria um indicador de passo, não a ação principal. Faça o mesmo onde essa situação se repetir. Outras janelas, como o Novo lead, focam o primeiro campo.
 - Animação de entrada com `motion-reduce:` e sem a classe `fade-in` solta do `index.css` (ela vence o `motion-reduce`).
 - Rolador horizontal leva `overscroll-x-contain`.
 - Abrir ficha é `<a href>`, para Ctrl+clique e "Abrir em nova aba" funcionarem.
-- Dado pessoal não entra em `title`, `alt` nem no título da aba.
+- Dado pessoal não entra no endereço, na query nem no título da aba. `title` e `alt` podem levar nome (o `Avatar` usa o nome no `alt`), e o `src/lib/sentryScrub.js` os mascara antes de o Sentry receber.
 
 ## Estados e dados na tela
 
@@ -52,7 +52,7 @@ Regras já praticadas, que valem para tela nova:
 
 ## Celular
 
-A tela funciona no celular, mas o layout mobile está em segundo plano por decisão do Johnny (28/09/2026). Não abra tarefa mobile por conta própria. O que já existe, como o menu em gaveta e o rodapé que quebra linha, segue valendo.
+A tela funciona no celular, mas o layout mobile está em segundo plano por decisão do Johnny (28/09/2026), registrada só aqui, sem registro no `CLAUDE.md`. Não abra tarefa mobile por conta própria. O que já existe, como o menu em gaveta e o rodapé que quebra linha, segue valendo.
 
 ## Quando não se aplica
 

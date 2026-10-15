@@ -20,7 +20,7 @@ O front funciona sem `.env.local`, porque cai no projeto `crm-stronix` (src/lib/
 
 ## Cuidado: o desenvolvimento aponta para produção
 
-Sem variável de ambiente, `npm run dev` lê e escreve no Firebase de produção. A medição de leituras de agosto de 2026 achou uma sessão de desenvolvimento aberta assim entre as causas de um pico; o registro dessa medição não está neste repositório. Regras:
+Sem variável de ambiente, `npm run dev` lê e escreve no Firebase de produção. A medição de leituras de agosto de 2026 achou uma sessão de desenvolvimento aberta assim entre as causas de um pico; o registro dessa medição não está neste repositório, mas o mecanismo está descrito em `docs/auditoria-leitura-2026-07-28.md` (seção 5.1). Regras:
 
 - Teste escrita só em academia de teste, nunca em conta de cliente real.
 - Feche as abas de desenvolvimento ao terminar. A leitura contínua custa cota.
@@ -52,18 +52,21 @@ git status                                # lockfile não deve mudar
 4. Rode a base inteira antes de abrir o PR.
 5. Atualize o `CLAUDE.md` e os documentos que a mudança toca.
 6. Abra o PR. O merge só acontece com aprovação do Johnny.
-7. Se o PR mexe em `firestore.rules` ou `firestore.indexes.json`, publique no console antes do merge.
+7. Se o PR mexe em `firestore.rules`, publique no console do Firebase antes do merge. Se mexe em `firestore.indexes.json`, publique por `firebase deploy --only firestore:indexes` ou pelo console (ver `docs/scale-migration.md`).
 
 ## Variáveis de ambiente
 
-`.env.example` lista todas as chaves, sem valor.
+`.env.example` lista todas as chaves, sem valor, e é a lista completa. A tabela abaixo mostra os grupos principais.
 
 | Grupo | Chaves | Observação |
 |---|---|---|
 | Firebase Web | `VITE_FIREBASE_*` | Públicas. Opcionais, há fallback |
 | Firebase Admin | `FIREBASE_ADMIN_PROJECT_ID`, `FIREBASE_ADMIN_CLIENT_EMAIL`, `FIREBASE_ADMIN_PRIVATE_KEY` | Secretas, só no backend. A chave privada mantém os `\n` escapados |
 | Asaas | `ASAAS_API_KEY` e a base de URL | Sem a chave, a cobrança fica desligada |
-| Resend | `RESEND_API_KEY` | Só em produção. Sem ela o "Esqueci a senha" responde 503 |
+| Asaas, webhook | `ASAAS_WEBHOOK_TOKEN` | Sem ele o webhook de cobrança não valida. `ASAAS_USER_AGENT` identifica as chamadas |
+| Resend | `RESEND_API_KEY`, `MAIL_FROM` | A chave só existe em produção, e sem ela o "Esqueci a senha" responde 503. No Preview, sem a chave, o e-mail inteiro vai para o log da Vercel |
+| Sentry | `SENTRY_DSN`, `VITE_SENTRY_DSN`, `VITE_SENTRY_ENVIRONMENT`, `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` | Os três últimos são do build |
+| App Check | `VITE_RECAPTCHA_ENTERPRISE_SITE_KEY`, `VITE_APPCHECK_DEBUG_TOKEN` | Ver `docs/APPCHECK_SETUP.md` |
 
 Valor real nunca entra no repositório.
 
@@ -76,7 +79,7 @@ Ver a seção "Ferramentas" do `AGENTS.md` e o estado de cada peça em `docs/set
 | Sintoma | Primeira coisa a conferir |
 |---|---|
 | Teste ou build quebra em worktree nova | `npm ci` e a diferença para `origin/main` |
-| Função de `api/` falha em produção | `vercel logs --environment production --since 1h --query <rota> --expand`, no checkout principal |
+| Função de `api/` falha em produção | `vercel logs --environment production --since 1h --query <rota> --expand`, no checkout principal (procedimento do time, sem registro em outro documento deste repositório; confira as opções com `vercel logs --help`) |
 | Tela branca depois de deploy | Aba aberta com a versão antiga. O app recarrega sozinho na volta da pausa. Confira também o papel de quem estava logado |
 | Tela branca com texto em inglês | Página traduzida pelo Chrome (`font > font` nos cliques do Sentry) |
 | Permissão negada ao gravar | `firestore.rules` publicado e o teste de regras correspondente |

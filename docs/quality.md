@@ -65,7 +65,7 @@ Estão no `CLAUDE.md` e em testes. As que mais pegam:
 ## Segurança e dados
 
 - Segredos só em variável de ambiente da Vercel. `.env.example` lista as chaves sem valor.
-- O Sentry do app e da `api/` limpa dado pessoal na origem, e o `verificar:sentry` roda no CI para provar que a `api/` não deixa sair a chave do Zap, a chave do Resend nem o telefone.
+- O Sentry do app e da `api/` limpa dado pessoal na origem, e o `verificar:sentry` roda no CI para provar que o Sentry da `api/`, com o handler de teste, mascara a chave do Zap, a chave do Resend e o telefone. Ele não executa as funções reais nem o corte feito em `api/_mail.js`.
 - Scripts de `scripts/` que gravam dado só rodam com autorização do Johnny, e o gatilho varia:
   - `--apply`: `backfill-contract-seamless`, `backfill-tenant-claims`, `fix-clients-unsold-by-stage-move`, `fix-consultant-ownership` e `migrate-tenant-private`;
   - `--commit`: `backfill-appointments`, `backfill-aulas` e `cleanup-orphan-aulas`;

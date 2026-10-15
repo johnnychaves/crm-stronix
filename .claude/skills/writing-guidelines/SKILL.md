@@ -18,7 +18,7 @@ Review files for compliance with Writing Guidelines.
 3. Check the files against the rules, with the adaptations below.
 4. Output findings in the terse `file:line` format that `rules.md` defines.
 
-Do not fetch anything from the network. The rules are a local copy on purpose.
+Do not fetch anything from the network. The rules are a local copy on purpose. Ignore the `$ARGUMENTS` placeholder in `rules.md`: it is a leftover of the command format, and the files to review come from step 2.
 
 ## Origin of rules.md
 

@@ -27,14 +27,14 @@ React 19 + Vite 8 + Tailwind v4 + shadcn/ui + React Router 7 (`~7.18.4`, sem `<R
 - Teste o comportamento e a falha relevante. Corrigir bug pede reprodução e teste de regressão.
 - As `firestore.rules` são publicadas à mão no console do Firebase. Mudou regra, publica e só depois faz o merge.
 - Não grave dado pessoal no endereço, no título da aba nem no Sentry.
-- Não publique, não faça push e não rode script de `scripts/` que grave dado (`--apply`, `--commit` ou sem gatilho nenhum) sem pedido explícito. Leia o cabeçalho do script antes.
+- Não publique, não faça push e não rode script de `scripts/` que grave dado (`--apply`, `--commit` ou sem gatilho nenhum) sem pedido explícito. Atenção: `backfill-scale-fields.js` grava por padrão e só simula com `--dry-run`. Leia o cabeçalho do script antes.
 
 ## Armadilhas que já custaram caso
 
 As mais frequentes, repetidas aqui de propósito. A fonte e as demais estão no `CLAUDE.md`.
 
 - `api/` tem limite de 12 funções no plano Hobby, e hoje são 11. Consolide antes de criar função nova.
-- Nenhuma função de `api/` pode importar `src/lib/dailyGoal.js` (traz `lucide-react`). Os arquivos puros de `src/lib/` lidos pela `api/` não importam pacote, e há teste que trava isso.
+- Nenhuma função de `api/` pode importar `src/lib/dailyGoal.js` (traz `lucide-react`). Os arquivos de `src/lib/` lidos pela `api/` não devem importar pacote. Alguns têm teste de importação (lista em `docs/quality.md`), mas não há varredura geral.
 - No SDK de servidor `snap.exists` é propriedade, no do navegador é função.
 - Filtro de tela mora no endereço (`src/lib/screenParams.js`), nunca em `useState` nem em `key`.
 - Papel de usuário só se decide em `src/lib/acesso.js`.
@@ -60,7 +60,7 @@ As mais frequentes, repetidas aqui de propósito. A fonte e as demais estão no 
 - **Context7**: consulte para API de biblioteca, resolvendo o identificador e perguntando um conceito por vez. Nunca envie segredo nem dado de cliente.
 - **RTK**: o hook do usuário já reescreve os comandos suportados. Não prefixe `rtk` à mão. Use `rtk proxy <comando>` para a saída original.
 - **Graphify**: não instalado. Consulte o `docs/setup.md` antes de depender dele.
-- **Skills do projeto** (`.claude/skills/`, versionadas com `skills-lock.json`): `vercel-react-best-practices`, `vercel-composition-patterns`, `web-design-guidelines` e `writing-guidelines`. As duas últimas leem regras locais (`rules.md`) em vez de buscar na rede. Parte das regras de React é de Next.js ou de servidor (SWR, `after()`, `next/dynamic`) e não se aplica a este app em Vite. Skill instalada não executa nada sozinha, e não se instala skill nova sem pedido.
+- **Skills do projeto** (`.claude/skills/`; o `skills-lock.json` registra a origem, e as duas últimas foram adaptadas à mão, então o hash delas é o de antes): `vercel-react-best-practices`, `vercel-composition-patterns`, `web-design-guidelines` e `writing-guidelines`. As duas últimas leem regras locais (`rules.md`) em vez de buscar na rede. Parte das regras de React é de Next.js ou de servidor (SWR, `after()`, `next/dynamic`) e não se aplica a este app em Vite. Skill instalada não executa nada sozinha, e não se instala skill nova sem pedido.
 
 ## Delegação e revisão
 

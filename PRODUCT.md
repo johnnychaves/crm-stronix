@@ -13,7 +13,7 @@ Fatos observados em `README.md`, `CLAUDE.md` e no código. O que for hipótese v
 | Super-admin (dono do STRONILEAD) | Cria, suspende e reativa academias, define plano e teste, liga módulos por academia e acompanha uso e cobrança pelo Console. |
 | Gestor (admin da academia) | Configura funis, origens, planos, metas e rotinas, cadastra a equipe, vê todos os leads e os dashboards. |
 | Consultor | Trabalha os próprios leads, cumpre a Meta Diária e a rotina do dia. |
-| Professor | Só existe com o módulo `faltosos` ligado. Abre a Meta diária (hoje só um aviso, a Meta dos faltosos é o PR 3), Clientes e a ficha, e registra anotação, contato e agendamento. |
+| Professor | Só existe com o módulo `faltosos` ligado. Abre a Meta diária (hoje só um aviso, porque a lista de faltosos ainda não existe), Clientes e a ficha, e registra anotação, contato e agendamento. |
 
 ## Fluxos críticos
 
@@ -27,7 +27,7 @@ Fatos observados em `README.md`, `CLAUDE.md` e no código. O que for hipótese v
 ## O que o produto não é
 
 - Não é financeiro. Todo valor do Gerencial é valor de contrato vendido, e o sistema não guarda pagamento, parcela nem inadimplência do aluno.
-- Não é app de celular. A tela existe no celular, mas o layout mobile está em segundo plano por decisão do Johnny, registrada em `docs/design.md`.
+- Não é app de celular. A tela existe no celular, mas o layout mobile está em segundo plano por decisão do Johnny (28/09/2026). A única fonte escrita é a seção "Celular" de `docs/design.md`.
 - Não é o atendimento. Conversa e histórico de mensagens vivem no Stronizap. O CRM entrega o cartão de contexto de quem escreve e recebe o cadastro e o agendamento feitos por lá.
 
 ## Escopo atual e limites conhecidos
@@ -36,8 +36,8 @@ Fatos observados em `README.md`, `CLAUDE.md` e no código. O que for hipótese v
 - A Parte B da ponte com o Stronizap (mensagem enviada virando interação, Meta Diária deixando de ser autodeclarada) está desenhada e sem plano escrito.
 - Folga, férias e falta ainda não entram nas Rotinas, e o histórico das Rotinas no Operacional é a parte 3, pendente.
 - A importação de clientes só aceita o modelo de planilha do Stronilead.
-- A Meta dos faltosos do professor (PR 3) ainda não existe.
-- A tela de Relatórios está em implementação nas branches `claude/relatorios-entrega-a-spec` (auditoria e spec) e `claude/relatorios-de-leads` (relatório de Leads), ainda sem merge na `main`.
+- O professor ainda não tem lista de faltosos nem Meta própria. Faltam dois passos da spec `docs/superpowers/specs/2026-10-02-professor-e-faltosos-design.md`: as importações com as abas Faltosos e Presenças (PR 2) e a Meta do professor (PR 3, que depende do PR 2). Só o PR 1, do papel e do módulo, está na `main`.
+- A tela de Relatórios está em desenvolvimento, começando pelo relatório de Leads, e ainda não está na `main`. O primeiro passo da gravação de dados que ela exige, o dono da interação no dia do fato, já está (`CLAUDE.md`, regra do "dono do lead gravado numa interação"). Estado em 15/10/2026.
 
 ## Critério de pronto de uma entrega
 

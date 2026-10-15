@@ -148,16 +148,18 @@ Três ciclos de revisão em modo leitura, depois do primeiro commit: fatos dos d
 - `.claude/settings.local.json` saiu do índice do Git e entrou no `.gitignore`;
 - CLI de skills com versão fixa nos comandos e padrões de credencial acrescentados ao `.graphifyignore`.
 
+Uma segunda revisão, de 3 ciclos sobre o segundo commit, achou uma regressão minha (a menção à publicação das regras pela CLI, que contradiz a regra do repositório) e 16 imprecisões menores. Todas foram corrigidas no terceiro commit: publicação de regras e índices, o que o `verificar:sentry` prova de fato, o escopo dos testes de importação, a lista de variáveis de ambiente, a situação do professor e dos Relatórios, e a origem de decisões que só existiam fora do repositório.
+
 ### Sugestão de code review posterior
 
-Sugiro **3 ciclos**, porque o segundo commit é pequeno, mas mexeu em conteúdo que o agente segue (as duas skills adaptadas) e em fatos que alguém vai citar.
+Sugiro **3 ciclos**. As duas rodadas anteriores acharam imprecisão em cada passada, o que indica que parte dos fatos dos documentos ainda se apoia em memória de trabalho e não em arquivo do repositório.
 
-1. **Skills adaptadas.** Conferir que `rules.md` das duas skills é igual ao `command.md` do commit citado e que os `SKILL.md` não perderam nenhuma regra.
-2. **Fatos corrigidos.** Reconferir contra o código cada trecho alterado nos documentos, e procurar a mesma imprecisão em `docs/design.md` e `docs/onboarding.md`.
-3. **Efeito da saída do `settings.local.json`.** Confirmar que nada no repositório depende do arquivo e que o `.gitignore` o cobre.
+1. **Reconferir os trechos do terceiro commit** contra o código e o `CLAUDE.md`, com atenção ao `PRODUCT.md` (professor e Relatórios) e à tabela de variáveis do `docs/onboarding.md`.
+2. **Procurar a mesma deriva fora dos documentos novos.** O `README.md` e o `CLAUDE.md` têm trechos antigos (lista de `api/`, regras de publicação) que podem contradizer os documentos novos.
+3. **Sessão nova.** Confirmar que o `CLAUDE.md` carrega o `@AGENTS.md` e que as quatro skills são descobertas, que é a pendência de observação que o setup não conseguiu fechar.
 
 Prompt de continuação:
 
 ```text
-Faça 3 ciclos de code review no branch claude/vibe-toolkit-setup-06fba2 do stronilead, em modo leitura, com achados por severidade, caminho e evidência. Ciclo 1: compare .claude/skills/web-design-guidelines/rules.md e .claude/skills/writing-guidelines/rules.md com o command.md dos commits citados nos SKILL.md e confira se os SKILL.md mantêm todas as regras. Ciclo 2: reconfira contra src/, api/ e CLAUDE.md cada trecho alterado em PRODUCT.md, docs/architecture.md e docs/quality.md, e procure a mesma imprecisão em docs/design.md e docs/onboarding.md. Ciclo 3: confirme que nada depende de .claude/settings.local.json e que o .gitignore o cobre. Rode npm run lint, npm test, npm run verificar:sentry e npm run build ao final. Não corrija nada sem eu aprovar e não faça push.
+Faça 3 ciclos de code review no branch claude/vibe-toolkit-setup-06fba2 do stronilead, em modo leitura, com achados por severidade, caminho e evidência. Ciclo 1: reconfira contra src/, api/ e CLAUDE.md cada trecho alterado no commit mais recente em PRODUCT.md, AGENTS.md, docs/architecture.md, docs/quality.md, docs/design.md e docs/onboarding.md, e a tabela de variáveis de ambiente contra .env.example. Ciclo 2: compare README.md e CLAUDE.md com os documentos novos e liste contradições. Ciclo 3: em uma sessão nova na raiz, confirme que o CLAUDE.md carrega o AGENTS.md e que vercel-react-best-practices, vercel-composition-patterns, web-design-guidelines e writing-guidelines são descobertas. Rode npm run lint, npm test, npm run verificar:sentry e npm run build ao final. Não corrija nada sem eu aprovar e não faça push.
 ```
