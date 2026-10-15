@@ -1,0 +1,82 @@
+# Primeiro dia
+
+Do clone ao primeiro PR. O passo a passo de super-admin, academia e convites está no `README.md`.
+
+## Pré-requisitos
+
+- Node 22 ou superior (o CI usa 22; o desenvolvimento rodou em 24) e npm.
+- Acesso ao repositório e ao projeto Firebase `crm-stronix` (para ler dado e publicar regra).
+- Para rodar as funções de `api/` localmente: credenciais do Firebase Admin e a CLI da Vercel (`vercel dev`).
+
+## Preparar
+
+```bash
+npm ci
+cp .env.example .env.local   # opcional para o front, obrigatório para api/
+npm run dev
+```
+
+O front funciona sem `.env.local`, porque cai no projeto `crm-stronix` (src/lib/firebase.js).
+
+## Cuidado: o desenvolvimento aponta para produção
+
+Sem variável de ambiente, `npm run dev` lê e escreve no Firebase de produção. Em agosto de 2026, uma sessão de desenvolvimento aberta assim chegou a pesar no pico de leitura do banco. Regras:
+
+- Teste escrita só em academia de teste, nunca em conta de cliente real.
+- Feche as abas de desenvolvimento ao terminar. A leitura contínua custa cota.
+- Prévia da Vercel também usa o Firebase de produção. Use conta de academia de teste.
+
+## Worktree
+
+O trabalho acontece em worktrees do Git (`.claude/worktrees/`). A `node_modules` de uma worktree nova pode estar atrás da `main`. Antes de medir qualquer coisa:
+
+```bash
+npm ci
+git rev-list --count HEAD..origin/main   # deve ser 0
+git status                                # lockfile não deve mudar
+```
+
+## Onde ler primeiro
+
+1. `PRODUCT.md`, para saber o que o produto faz e o que não faz.
+2. `AGENTS.md`, para comandos e acordos.
+3. `docs/architecture.md`, para a estrutura e as fronteiras.
+4. A seção do `CLAUDE.md` da área em que for mexer (Meta Diária, contratos, Stronizap, Professor, Rotinas, e assim por diante).
+5. A spec da área em `docs/superpowers/specs/`.
+
+## Fluxo de uma mudança
+
+1. Branch a partir da `main` (`claude/<assunto>` ou `feat/<assunto>`).
+2. Para feature ou comportamento novo, brainstorming e spec antes do código. Para mudança grande, plano em `docs/superpowers/plans/`.
+3. Teste primeiro quando houver lógica. Veja `docs/quality.md`.
+4. Rode a base inteira antes de abrir o PR.
+5. Atualize o `CLAUDE.md` e os documentos que a mudança toca.
+6. Abra o PR. O merge só acontece com aprovação do Johnny.
+7. Se o PR mexe em `firestore.rules` ou `firestore.indexes.json`, publique no console antes do merge.
+
+## Variáveis de ambiente
+
+`.env.example` lista todas as chaves, sem valor.
+
+| Grupo | Chaves | Observação |
+|---|---|---|
+| Firebase Web | `VITE_FIREBASE_*` | Públicas. Opcionais, há fallback |
+| Firebase Admin | `FIREBASE_ADMIN_PROJECT_ID`, `FIREBASE_ADMIN_CLIENT_EMAIL`, `FIREBASE_ADMIN_PRIVATE_KEY` | Secretas, só no backend. A chave privada mantém os `\n` escapados |
+| Asaas | `ASAAS_API_KEY` e a base de URL | Sem a chave, a cobrança fica desligada |
+| Resend | `RESEND_API_KEY` | Só em produção. Sem ela o "Esqueci a senha" responde 503 |
+
+Valor real nunca entra no repositório.
+
+## Ferramentas do agente
+
+Ver a seção "Ferramentas" do `AGENTS.md` e o estado de cada peça em `docs/setup.md`.
+
+## Se algo não funciona
+
+| Sintoma | Primeira coisa a conferir |
+|---|---|
+| Teste ou build quebra em worktree nova | `npm ci` e a diferença para `origin/main` |
+| Função de `api/` falha em produção | `vercel logs --environment production --since 1h --query <rota> --expand`, no checkout principal |
+| Tela branca depois de deploy | Aba aberta com a versão antiga. O app recarrega sozinho na volta da pausa. Confira também o papel de quem estava logado |
+| Tela branca com texto em inglês | Página traduzida pelo Chrome (`font > font` nos cliques do Sentry) |
+| Permissão negada ao gravar | `firestore.rules` publicado e o teste de regras correspondente |

@@ -1,5 +1,9 @@
 # STRONILEAD — CRM para academias
 
+@AGENTS.md
+
+Este arquivo guarda as regras de domínio e as decisões de cada área. Comandos, acordos de trabalho e o mapa dos documentos estão no `AGENTS.md`, importado acima. Produto em `PRODUCT.md`, estrutura em `docs/architecture.md`.
+
 React 19 + Vite + Tailwind v4 (tokens em `src/index.css` via `@theme`) + Firebase (Firestore/Auth) + React Router 7 (`~7.18.4`, endereço por tela sem `<Routes>`) + Vercel serverless (`api/`, **limite 12 funções** no plano Hobby — consolidar antes de criar função nova). Multi-tenant por claim `tenantId`. Sem TypeScript (JS/JSX).
 
 ## Padrão de UI — shadcn/ui (adotado 2026-06-12)
