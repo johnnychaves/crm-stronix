@@ -1,6 +1,12 @@
-// Os quatro números da tela Gerencial (handoff v2, §2 L1): vendido no mês,
-// carteira mensal, ticket médio mensal e o que já venceu sem renovar. O risco
-// dos próximos 90 dias fica no card Vencimentos. Só apresentação: cada valor sai das props que o viewModel monta.
+// Os números do topo da tela Gerencial (handoff v2, §2 L1): vendido no mês,
+// carteira mensal, ticket médio mensal, churn e o que já venceu sem renovar. O
+// risco dos próximos 90 dias fica no card Vencimentos. Só apresentação: cada
+// valor sai das props que o viewModel monta.
+//
+// Layout: o Vendido ocupa a altura das duas linhas à esquerda, e os outros
+// quatro ficam em 2×2. Em cima o que a carteira vale (carteira e ticket), em
+// baixo o que se perde (churn e vencidos). Cinco cartões na mesma linha não
+// cabem na largura sem quebrar o valor da carteira.
 //
 // Duas moedas que nunca se somam: "Vendido" é valor de contrato inteiro, e
 // carteira e ticket são valor por mês. O "/mês" fica num elemento irmão do
@@ -9,6 +15,7 @@ import { cn } from '../../lib/utils.js';
 import { fmtNum } from '../../lib/format.js';
 import { HELP } from '../../lib/gerencial/texts.js';
 import { DashHelpTip } from './DashPrimitives.jsx';
+import { ItemDelta } from './ItemDelta.jsx';
 import { fmtMoney, fmtMoneyShort } from './dashTokens.js';
 
 export const CASH_WARNING = 'Valor de contrato vendido, não caixa recebido';
@@ -43,15 +50,18 @@ function SoldDelta({ delta }) {
 //   sold    { mix, delta } — o vendido e a contagem saem do mix
 //   wallet  { count, monthly, ticket, lockedCount }
 //   risk    { lapsedCount }
-export function GerencialKpis({ sold, wallet, risk }) {
+//   churn   { pct, exits, base, delta }
+export function GerencialKpis({ sold, wallet, risk, churn }) {
   const mix = sold?.mix || [];
   const soldTotal = mix.reduce((s, m) => s + (Number(m.value) || 0), 0);
   const soldCount = mix.reduce((s, m) => s + (Number(m.count) || 0), 0);
   const lapsed = Number(risk?.lapsedCount) || 0;
+  const churnBase = Number(churn?.base) || 0;
+  const churnExits = Number(churn?.exits) || 0;
 
   return (
-    <div className="grid grid-cols-2 gap-4 xl:grid-cols-[minmax(0,1.35fr)_repeat(3,minmax(0,1fr))]">
-      <section className={cn(CARD, 'col-span-2 border-t-[3px] border-t-brand-600 xl:col-span-1')}>
+    <div className="grid grid-cols-2 gap-4 xl:grid-cols-[minmax(0,1.35fr)_repeat(2,minmax(0,1fr))]">
+      <section className={cn(CARD, 'col-span-2 border-t-[3px] border-t-brand-600 xl:col-span-1 xl:row-span-2 xl:flex xl:flex-col xl:justify-center')}>
         <div className="flex items-center gap-2">
           <span className={LABEL}>Vendido no mês</span>
           <DashHelpTip text={HELP.sold} label='O que é "Vendido no mês"?' />
@@ -64,7 +74,7 @@ export function GerencialKpis({ sold, wallet, risk }) {
           </span>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2.5">
-          <span className="num font-display text-[40px] font-bold leading-none tracking-[-0.035em]">{fmtMoney(soldTotal)}</span>
+          <span className="num font-display text-[40px] font-bold leading-none tracking-[-0.035em] xl:text-[46px]">{fmtMoney(soldTotal)}</span>
           {sold?.delta && <SoldDelta delta={sold.delta} />}
         </div>
         <div className={SUB}>{plural(soldCount, 'contrato', 'contratos')}</div>
@@ -94,7 +104,23 @@ export function GerencialKpis({ sold, wallet, risk }) {
         <div className={SUB}>média por contrato</div>
       </section>
 
-      <section className={cn(CARD, 'col-span-2 xl:col-span-1')}>
+      <section className={CARD}>
+        <div className="flex items-center gap-1.5">
+          <span className={LABEL}>Churn</span>
+          <DashHelpTip text={HELP.churn} label='O que é "Churn"?' />
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className={VALUE}>{churn?.pct == null ? '—' : `${churn.pct.toLocaleString('pt-BR')}%`}</span>
+          <ItemDelta delta={churn?.delta} />
+        </div>
+        <div className={SUB}>
+          {churnBase > 0
+            ? `${fmtNum(churnExits)} de ${fmtNum(churnBase)} ${churnExits === 1 ? 'cliente saiu' : 'clientes saíram'}`
+            : 'sem clientes ativos no início'}
+        </div>
+      </section>
+
+      <section className={CARD}>
         <div className="flex items-center gap-1.5">
           <span className={LABEL}>Vencidos sem renovar</span>
           <DashHelpTip text={HELP.lapsed} label='O que é "Vencidos sem renovar"?' />

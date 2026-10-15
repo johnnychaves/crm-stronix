@@ -1,5 +1,5 @@
 // Corpo da tela Gerencial, só apresentação (handoff v2, §1): quatro linhas por
-// ordem de importância. Os quatro números no topo, a venda no meio, o risco
+// ordem de importância. Os números no topo, a venda no meio, o risco
 // detalhado e, por último, planos e origem. Recebe as métricas prontas de
 // DashboardGerencialView e não calcula nada; cada card deriva do próprio
 // detalhe o que precisa mostrar.
@@ -17,7 +17,7 @@
 //   texts    { emptyMonth: { title, text } }
 import { GerencialKpis } from './GerencialKpis.jsx';
 import { SalesTypeCard, PieCard } from './GerencialPies.jsx';
-import { SellersCard, ExpiryCard, ExitsCard, ChurnCard } from './GerencialRows.jsx';
+import { SellersCard, ExpiryCard, ExitsCard } from './GerencialRows.jsx';
 import { GerencialEmpty } from './GerencialParts.jsx';
 
 const ROW_2 = 'grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)]';
@@ -41,7 +41,7 @@ export function GerencialDashboard({ sold, wallet, risk, exits, churn, sellers, 
 
   return (
     <div className="flex flex-col gap-5 px-4 pb-8 pt-[22px] md:px-8">
-      <GerencialKpis sold={sold} wallet={wallet} risk={risk} />
+      <GerencialKpis sold={sold} wallet={wallet} risk={risk} churn={churn} />
 
       {noSales ? (
         <div className="rounded-2xl border border-border bg-card px-7 py-7 text-center shadow-card">
@@ -59,10 +59,7 @@ export function GerencialDashboard({ sold, wallet, risk, exits, churn, sellers, 
 
       <div className={ROW_3}>
         <ExpiryCard horizon={risk?.horizon} />
-        <div className="flex flex-col gap-4">
-          <ChurnCard churn={churn} />
-          <ExitsCard items={exits?.items} />
-        </div>
+        <ExitsCard items={exits?.items} />
       </div>
 
       {!noSales && (

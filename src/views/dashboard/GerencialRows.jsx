@@ -148,33 +148,3 @@ export function ExitsCard({ items }) {
     </section>
   );
 }
-
-// Churn do mês: de cada 100 clientes ativos no início, quantos saíram de vez.
-// A porcentagem e a contagem vêm do computeChurn; aqui é só apresentação.
-//
-// Props:
-//   churn  { pct, exits, base, delta } — pct é null sem clientes no início
-export function ChurnCard({ churn }) {
-  const pct = churn?.pct;
-  const base = Number(churn?.base) || 0;
-  const exits = Number(churn?.exits) || 0;
-  return (
-    <section className={CARD}>
-      <div className="flex items-center gap-2">
-        <h3 className={TITLE}>Churn</h3>
-        <DashHelpTip text={HELP.churn} label='O que é "Churn"?' />
-      </div>
-      <div className="mt-3 flex flex-wrap items-center gap-2.5">
-        <span className="num font-display text-[30px] font-bold leading-none tracking-[-0.03em]">
-          {pct == null ? '—' : `${pct.toLocaleString('pt-BR')}%`}
-        </span>
-        <ItemDelta delta={churn?.delta} />
-      </div>
-      <div className="num mt-2.5 text-[12.5px] text-muted-foreground">
-        {base > 0
-          ? `${plural(exits, 'cliente saiu', 'clientes saíram')} de ${fmtNum(base)} ativos no início`
-          : 'sem clientes ativos no início do mês'}
-      </div>
-    </section>
-  );
-}

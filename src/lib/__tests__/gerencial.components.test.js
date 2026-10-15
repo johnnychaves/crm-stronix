@@ -50,7 +50,7 @@ const SOURCES = {
 };
 
 describe('GerencialKpis', () => {
-  const kpis = (over) => render(createElement(GerencialKpis, { sold: SOLD, wallet: WALLET, risk: RISK, ...over }));
+  const kpis = (over) => render(createElement(GerencialKpis, { sold: SOLD, wallet: WALLET, risk: RISK, churn: { pct: 3.2, exits: 18, base: 560, delta: null }, ...over }));
 
   it('o vendido e a contagem saem do mix, e o ticket das vendas não está no card', () => {
     const html = kpis();
@@ -112,6 +112,23 @@ describe('GerencialKpis', () => {
     expect(html).toContain('Vencidos sem renovar');
     expect(html).toContain('>29</span>');
     expect(html).toContain('contratos para recuperar');
+  });
+
+  it('o churn é um dos números do topo, com a taxa e quantos saíram de quantos', () => {
+    const html = kpis();
+    expect(html).toContain('Churn');
+    expect(html).toContain('3,2%');
+    expect(html).toContain('18 de 560 clientes saíram');
+  });
+
+  it('churn sem clientes no início fica sem taxa, e a variação sobe em vermelho', () => {
+    const none = kpis({ churn: { pct: null, exits: 0, base: 0, delta: null } });
+    expect(none).toContain('—');
+    expect(none).toContain('sem clientes ativos no início');
+    const up = kpis({ churn: { pct: 3.2, exits: 18, base: 560, delta: { up: true, tone: 'bad', text: '1 p.p.', baseline: '2,2% em agosto' } } });
+    expect(up).toContain('▲ 1 p.p.');
+    expect(up).toContain('text-rose-700');
+    expect(up).toContain('2,2% em agosto');
   });
 
   it('carteira vazia não quebra a conta', () => {

@@ -243,13 +243,13 @@ describe('churn na tela', () => {
     const html = renderToString(createElement(TooltipProvider, null, createElement(GerencialDashboard, { ...p, onGoToPipeline: () => {} })));
     expect(html).toContain('Churn');
     expect(html).toContain('3,5%');
-    expect(html).toContain('7 clientes saíram de 200 ativos no início');
+    expect(html).toContain('7 de 200 clientes saíram');
   });
 
-  it('sem clientes no início, o card diz que não há base em vez de 0%', () => {
+  it('sem clientes no início, o churn diz que não há base em vez de 0%', () => {
     const p = dashboardProps({ cur: mk({ exits: 0, base: 0, pct: null }), cmp: null, comparing: false });
     const html = renderToString(createElement(TooltipProvider, null, createElement(GerencialDashboard, { ...p, onGoToPipeline: () => {} })));
-    expect(html).toContain('sem clientes ativos no início do mês');
+    expect(html).toContain('sem clientes ativos no início');
     expect(html).not.toContain('0%');
   });
 });
