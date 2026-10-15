@@ -35,3 +35,9 @@ design_handoff_meta_equipe/
 
 # Mockups do companion visual de brainstorm (local, não versionado)
 .superpowers/
+
+# Saída do Graphify (grafo gerado, não versionado)
+graphify-out/
+
+# Configuração local do Claude Code (permissões e MCPs da máquina de cada pessoa)
+.claude/settings.local.json
