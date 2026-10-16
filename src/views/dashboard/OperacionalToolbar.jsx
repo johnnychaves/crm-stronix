@@ -157,7 +157,7 @@ export function OperacionalToolbar(props) {
   const filtered = person !== 'all';
   return (
     <FilterBar title={title} subline={subline}>
-      <div className="hidden items-center gap-2.5 md:flex">
+      <div className="hidden items-center gap-2.5 md:flex md:flex-wrap [&>*]:shrink-0">
         <MonthControl {...props} />
         <CompareControl {...props} />
         <PersonControl {...props} />
