@@ -6,7 +6,8 @@ import { renderToString } from 'react-dom/server';
 import { TooltipProvider } from '../../components/ui/tooltip.jsx';
 import { CrmSection, CrmCard, DashedNote, DeltaPill, ScopeTag } from '../../views/dashboard/CrmParts.jsx';
 import { CrmToolbar } from '../../views/dashboard/CrmToolbar.jsx';
-import { MonthControl, OperacionalToolbar } from '../../views/dashboard/OperacionalToolbar.jsx';
+import { OperacionalToolbar } from '../../views/dashboard/OperacionalToolbar.jsx';
+import { GerencialToolbar } from '../../views/dashboard/GerencialToolbar.jsx';
 import { LOSS_PALETTE } from '../../views/dashboard/dashTokens.js';
 import { crmDelta } from '../crm/metrics.js';
 import { ChannelTable } from '../../views/dashboard/ChannelTable.jsx';
@@ -63,102 +64,86 @@ describe('peças do CRM', () => {
     expect(render(createElement(DeltaPill, { delta: crmDelta(5, 5) }))).toMatch(/bg-muted.*>=</);
   });
 
-  it('cabeçalho com título, linha do regime e os quatro controles', () => {
-    const noop = () => {};
-    const html = render(createElement(CrmToolbar, {
-      monthKey: '2026-09', monthOptions: [{ key: '2026-09', label: 'Setembro 2026 · em andamento' }], onMonth: noop,
-      canPrev: true, canNext: false, onPrev: noop, onNext: noop,
-      compareOn: true, onCompareOn: noop, compareKey: '2026-08', compareOptions: [{ key: '2026-08', label: 'Agosto 2026' }], onCompare: noop,
-      person: 'all', people: [{ id: 'ana', name: 'Ana Ribeiro' }], onPerson: noop,
-      funnel: 'ven', funnels: [{ id: 'ven', name: 'Vendas' }], onFunnel: noop,
-      title: 'CRM', subline: '1 a 14 de setembro comparado com os 14 primeiros dias de agosto.'
-    }));
-    expect(html).toContain('aria-label="Funil"');
-    expect(html).toContain('aria-label="Pessoa"');
+  const noop = () => {};
+  const barBase = {
+    monthKey: '2026-10',
+    monthOptions: [{ key: '2026-10', label: 'Outubro 2026', note: 'em andamento' }, { key: '2026-09', label: 'Setembro 2026' }],
+    onMonth: noop, canPrev: true, canNext: false, onPrev: noop, onNext: noop,
+    compareOn: true, compareKey: '2026-09', compareOptions: [{ key: '2026-09', label: 'Setembro 2026' }], onCompare: noop,
+    person: 'all', people: [{ id: 'ana', name: 'Ana Ribeiro' }], onPerson: noop,
+    funnel: 'all', funnels: [{ id: 'ven', name: 'Vendas' }], onFunnel: noop,
+    title: 'CRM', subline: '1 a 16 de outubro comparado com os 16 primeiros dias de setembro.'
+  };
+
+  it('cabeçalho do CRM: título, linha do regime e os controles do Gerencial (período, comparar, pessoa e funil)', () => {
+    const html = render(createElement(CrmToolbar, barBase));
     expect(html).toContain('>CRM</h2>');
-    expect(html).toContain('1 a 14 de setembro comparado com os 14 primeiros dias de agosto.');
+    expect(html).toContain('1 a 16 de outubro comparado com os 16 primeiros dias de setembro.');
     // O mesmo cartão das faixas da página: borda, raio e sombra iguais.
     expect(html).toContain('rounded-[18px] border border-border bg-card');
-    expect(html).toContain('há filtro ativo');
-    // No celular o mês fica à vista, compacto; na barra larga, o controle padrão.
-    expect(html).toContain('<span class="truncate">Setembro 2026</span>');
-    expect(html).toContain('min-w-[150px]');
+    expect(html).toContain('aria-label="Mês de competência"');
+    expect(html).toContain('aria-label="Mês anterior"');
+    expect(html).toContain('Comparar com');
+    expect(html).toContain('Setembro 2026');
+    expect(html).toContain('Pessoa');
+    expect(html).toContain('Equipe toda');
+    expect(html).toContain('Funil');
+    expect(html).toContain('Todos os funis');
+  });
+
+  it('as três barras usam as mesmas peças: período e "Comparar com" em todas, pessoa no CRM e no Operacional, funil só no CRM', () => {
+    const crm = render(createElement(CrmToolbar, barBase));
+    const op = render(createElement(OperacionalToolbar, { ...barBase, title: 'Operacional' }));
+    const ger = render(createElement(GerencialToolbar, { ...barBase, title: 'Gerencial' }));
+    [crm, op, ger].forEach((html) => {
+      expect(html).toContain('aria-label="Mês de competência"');
+      expect(html).toContain('Comparar com');
+      expect(html).toContain('rounded-full border'); // o chip, e não a caixa antiga
+      expect(html).not.toContain('aria-label="Comparar"'); // a caixa de seleção antiga
+      expect(html).not.toContain('role="combobox"'); // nem o seletor nativo antigo
+    });
+    expect(crm).toContain('Pessoa');
+    expect(op).toContain('Pessoa');
+    expect(ger).not.toContain('Pessoa');
+    expect(crm).toContain('Funil');
+    expect(op).not.toContain('Funil');
+    expect(ger).not.toContain('Funil');
   });
 
   it('cabeçalho: sem espaço, os controles descem de linha em vez de encolher e cortar o rótulo', () => {
-    const noop = () => {};
-    const html = render(createElement(CrmToolbar, {
-      monthKey: '2026-10', monthOptions: [{ key: '2026-10', label: 'Outubro 2026 · em andamento' }], onMonth: noop,
-      canPrev: true, canNext: false, onPrev: noop, onNext: noop,
-      compareOn: true, onCompareOn: noop, compareKey: '2026-09', compareOptions: [{ key: '2026-09', label: 'Setembro 2026' }], onCompare: noop,
-      person: 'all', people: [], onPerson: noop, funnel: 'all', funnels: [], onFunnel: noop,
-      title: 'CRM', subline: 'Uma linha de apoio longa que, sozinha, ocuparia a largura toda do cartão.'
-    }));
-    // O cartão quebra linha, o texto tem largura-base e os controles não encolhem.
+    const html = render(createElement(CrmToolbar, barBase));
     expect(html).toContain('md:flex-wrap');
     expect(html).toContain('md:basis-[360px]');
     expect(html).toContain('md:flex-none');
     expect(html).toContain('[&amp;&gt;*]:shrink-0');
-    // O chip do funil não quebra "Todos os funis" em duas linhas.
-    expect(html).toMatch(/aria-label="Funil"[^>]*class="[^"]*whitespace-nowrap/);
+    // Cada chip tem a largura que tem: o rótulo não quebra em duas linhas.
+    expect(html).toContain('whitespace-nowrap rounded-full border');
   });
 
-  it('controle de mês compacto: rótulo curto no botão, sem o "em andamento"; sem compact, o de antes', () => {
-    const noop = () => {};
-    const props = {
-      monthKey: '2026-09', onMonth: noop, canPrev: true, canNext: false, onPrev: noop, onNext: noop,
-      monthOptions: [{ key: '2026-09', label: 'Setembro 2026 · em andamento' }, { key: '2026-08', label: 'Agosto 2026' }]
-    };
-    const compact = render(createElement(MonthControl, { ...props, compact: true }));
-    expect(compact).toContain('<span class="truncate">Setembro 2026</span>');
-    expect(compact).not.toContain('em andamento');
-    expect(compact).toContain('w-full');
-    expect(compact).not.toContain('min-w-[150px]');
-    const regular = render(createElement(MonthControl, props));
-    expect(regular).toContain('min-w-[150px]');
-    expect(regular).not.toContain('truncate');
-    expect(regular).not.toContain('w-full');
+  it('filtro fora do padrão: o chip acende e o botão do celular ganha o ponto', () => {
+    const idle = render(createElement(CrmToolbar, barBase));
+    expect(idle).toContain('aria-label="Filtros"');
+    expect(idle).not.toContain('há filtro ativo');
+    expect(idle).not.toContain('size-1.5 flex-none rounded-full bg-brand-600');
+    const picked = render(createElement(CrmToolbar, { ...barBase, funnel: 'ven' }));
+    expect(picked).toContain('aria-label="Filtros, há filtro ativo"');
+    expect(picked).toContain('size-1.5 flex-none rounded-full bg-brand-600');
+    expect(picked).toContain('Vendas');
+    const person = render(createElement(OperacionalToolbar, { ...barBase, person: 'ana' }));
+    expect(person).toContain('aria-label="Filtros, há filtro ativo"');
+    expect(person).toContain('Ana Ribeiro');
   });
 
-  it('barra do Operacional no cartão do CRM; as duas com o ícone de filtro do handoff', () => {
-    const noop = () => {};
-    const base = {
-      monthKey: '2026-09', monthOptions: [{ key: '2026-09', label: 'Setembro 2026 · em andamento' }], onMonth: noop,
-      canPrev: true, canNext: false, onPrev: noop, onNext: noop,
-      compareOn: false, onCompareOn: noop, compareKey: '2026-08', compareOptions: [], onCompare: noop,
-      person: 'all', people: [], onPerson: noop, note: ''
-    };
-    const crm = render(createElement(CrmToolbar, { ...base, funnel: 'all', funnels: [], onFunnel: noop }));
-    const op = render(createElement(OperacionalToolbar, { ...base, title: 'Operacional', subline: '1 a 15 de outubro.' }));
-    expect(op).toContain('Operacional');
-    expect(op).toContain('1 a 15 de outubro.');
-    expect(op).toContain('rounded-[18px]');
-    expect(op).toContain('aria-label="Filtros do Operacional"');
-    expect(op).not.toContain('há filtro ativo');
-    expect(crm).toContain('lucide-list-filter');
-    expect(op).toContain('lucide-list-filter');
-    expect(crm).not.toContain('lucide-sliders-horizontal');
-    expect(op).not.toContain('lucide-sliders-horizontal');
-    const picked = render(createElement(OperacionalToolbar, { ...base, person: 'ana', people: [{ id: 'ana', name: 'Ana' }] }));
-    expect(picked).toContain('Filtros do Operacional, há filtro ativo');
+  it('sem comparação ligada, o chip diz "Sem comparação" nas três telas', () => {
+    [CrmToolbar, OperacionalToolbar, GerencialToolbar].forEach((Bar) => {
+      const html = render(createElement(Bar, { ...barBase, compareOn: false }));
+      expect(html).toContain('Sem comparação');
+    });
   });
 
   it('sexta cor das perdas: o azul claro do handoff, mais claro no escuro', () => {
     expect(LOSS_PALETTE).toHaveLength(6);
     expect(LOSS_PALETTE[5]).toBe('bg-brand-300 dark:bg-brand-200');
-  });
-
-  it('barra do CRM sem pessoa nem funil: botão "Filtros do CRM", sem o ponto de filtro ativo', () => {
-    const noop = () => {};
-    const html = render(createElement(CrmToolbar, {
-      monthKey: '2026-08', monthOptions: [{ key: '2026-08', label: 'Agosto 2026' }], onMonth: noop,
-      canPrev: true, canNext: true, onPrev: noop, onNext: noop,
-      compareOn: false, onCompareOn: noop, compareKey: '2026-07', compareOptions: [], onCompare: noop,
-      person: 'all', people: [], onPerson: noop, funnel: 'all', funnels: [], onFunnel: noop, note: 'Mês fechado'
-    }));
-    expect(html).toContain('aria-label="Filtros do CRM"');
-    expect(html).not.toContain('há filtro ativo');
-    expect(html).not.toContain('size-1.5 rounded-full bg-brand-600');
   });
 });
 
