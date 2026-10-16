@@ -129,6 +129,18 @@
   --color-ring: var(--ring);
 }
 
+/* =========================================================================
+   FUNDO DA PÁGINA (bg-page). É a cor da raiz do App (App.jsx) e o fundo, no
+   escuro, de toda barra fixa que cobre o conteúdo ao rolar: a barra é opaca e
+   tem de ter a cor do que fica atrás dela. Mora num lugar só para as duas não
+   se desencontrarem. O bg-background não serve para isso: no escuro ele é o
+   ink-950, azul-marinho, e a raiz do App é neutral-950. O teste
+   src/lib/__tests__/fundoDaPagina.test.js cobra a raiz e as barras.
+   ========================================================================= */
+:root { --page: var(--color-paper-50); }
+.dark { --page: var(--color-neutral-950); }
+@theme inline { --color-page: var(--page); }
+
 @layer base {
   html {
     font-family: 'Geist', 'Inter', ui-sans-serif, system-ui, sans-serif;
@@ -137,6 +149,22 @@
   body {
     @apply bg-paper-50 dark:bg-ink-950 text-gray-900 dark:text-white;
   }
+}
+
+/* =========================
+   ANEL DE FOCO
+   ========================= */
+/* O anel do foco pelo teclado: 2 px sólidos na cor do --ring (brand-600 no
+   claro, brand-500 no escuro). Use sempre com a variante do foco:
+   `focus-visible:anel-foco`, mais `focus-visible:ring-inset` para o anel por
+   dentro e `focus-visible:after:anel-foco` no link esticado. O anel antigo,
+   `ring-brand-500/40`, dava 1,6:1 no branco e 1,8:1 no escuro, abaixo dos
+   3:1 que um indicador de foco precisa; este dá 4,5:1 ou mais nos fundos do
+   app. A cor vem do --ring, e não de um dark: aqui dentro, porque o dark:
+   quebraria o seletor do after:. O anelDeFoco.test.js refaz a conta e barra
+   o anel antigo. */
+@utility anel-foco {
+  @apply ring-2 ring-ring;
 }
 
 /* =========================
@@ -369,6 +397,46 @@
 /* Spinner. */
 @keyframes spin { to { transform: rotate(360deg); } }
 .spin { animation: spin .7s linear infinite; }
+
+/* =========================
+   MOVIMENTO REDUZIDO
+   ========================= */
+/* Quem pede menos movimento no sistema (prefers-reduced-motion: reduce) vê
+   balão, menu, lista e diálogo abrirem e fecharem sem crescer, deslizar nem
+   esmaecer, e as entradas deste arquivo acontecem sem animação.
+   - As entradas e saídas do tw-animate saem pelo nome da classe, com ou sem
+     variante (`data-[state=open]:animate-in`), porque o utilitário escreve a
+     animação direto na regra e não deixa variável para trocar.
+   - Com `animation: none` o Radix desmonta o balão fechado na hora, sem
+     esperar uma saída que não vai acontecer.
+   - Fica fora de camada e com !important para ganhar do .fade-in e do
+     .animate-fade-in, que também estão fora de camada e venciam o
+     motion-reduce: das telas.
+   - O spinner (.spin, animate-spin) continua girando, porque avisa que algo
+     está carregando. O animate-pulse e as transições de cor ficam como estão.
+   Animação nova neste arquivo que mexa nas coisas entra na lista abaixo; o
+   movimentoReduzido.test.js cobra. */
+@media (prefers-reduced-motion: reduce) {
+  [class*="animate-in"],
+  [class*="animate-out"],
+  [class*="animate-accordion-"],
+  [class*="animate-collapsible-"],
+  .animate-wiggle,
+  .fade-in,
+  .animate-fade-in,
+  .pop,
+  .step-reveal,
+  .opt-in,
+  .sum-in,
+  .check-pop,
+  .rise,
+  .floaty,
+  .floaty2,
+  .shake {
+    animation: none !important;
+  }
+}
+
 /* ===== Relatório impresso (Relatórios → Imprimir) =====
    A folha (src/views/relatorios/ReportPrint.jsx) entra num portal em
    document.body só enquanto imprime. Na tela ela não aparece; na impressão, só

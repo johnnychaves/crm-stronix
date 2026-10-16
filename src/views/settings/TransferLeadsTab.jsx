@@ -31,7 +31,7 @@ function ConsultantPicker({ label, value, onChange, options, counts, focused }) 
     <div className="min-w-0">
       <div className="text-[10.5px] font-bold uppercase tracking-[0.07em] text-slate-400 dark:text-slate-500 mb-1.5">{label}</div>
       <div className={cn(
-        'relative flex items-center gap-2.5 h-[52px] px-3.5 rounded-xl border transition',
+        'relative flex items-center gap-2.5 h-[52px] px-3.5 rounded-xl border transition has-[:focus-visible]:anel-foco',
         focused && selected ? 'border-brand-600 shadow-[0_0_0_3px_rgba(43,89,255,.14)] bg-card' : 'border-border bg-muted/60'
       )}>
         <span className="size-[30px] rounded-full grid place-items-center text-[11px] font-bold shrink-0 bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
@@ -49,7 +49,7 @@ function ConsultantPicker({ label, value, onChange, options, counts, focused }) 
           value={value}
           onChange={e => onChange(e.target.value)}
           aria-label={label}
-          className="absolute inset-0 w-full h-full appearance-none bg-transparent opacity-0 cursor-pointer rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+          className="absolute inset-0 w-full h-full appearance-none bg-transparent opacity-0 cursor-pointer rounded-xl focus-visible:outline-none"
         >
           <option value="">Selecione o consultor…</option>
           {options.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
@@ -223,7 +223,7 @@ function TransferSection({ db, usersList, appUser, leads }) {
                   aria-pressed={on}
                   className={cn(
                     'inline-flex items-center gap-2 h-9 px-3.5 rounded-[10px] text-[12.5px] font-semibold transition border',
-                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
+                    'focus-visible:outline-none focus-visible:anel-foco focus-visible:ring-offset-2 focus-visible:ring-offset-background',
                     on
                       ? 'bg-brand-600 text-white border-brand-600'
                       : 'bg-card text-muted-foreground border-border hover:bg-muted'

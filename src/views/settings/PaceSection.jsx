@@ -209,7 +209,7 @@ function PaceSection({ db, usersList, metaWeekdays }) {
                   title={name}
                   className={cn(
                     'w-11 h-10 rounded-[10px] text-[12.5px] font-bold transition border',
-                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
+                    'focus-visible:outline-none focus-visible:anel-foco focus-visible:ring-offset-2 focus-visible:ring-offset-background',
                     on
                       ? 'bg-brand-600 text-white border-brand-600'
                       : 'bg-card text-muted-foreground border-border hover:bg-muted'
@@ -236,7 +236,7 @@ function PaceSection({ db, usersList, metaWeekdays }) {
                 onClick={() => saveSla(slaOverdueDays - 1)}
                 disabled={slaOverdueDays <= 1}
                 aria-label="Diminuir dias de atraso"
-                className="size-9 grid place-items-center rounded-[10px] border border-border bg-card text-muted-foreground transition hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+                className="size-9 grid place-items-center rounded-[10px] border border-border bg-card text-muted-foreground transition hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:anel-foco"
               >
                 <Minus size={14} />
               </button>
@@ -246,7 +246,7 @@ function PaceSection({ db, usersList, metaWeekdays }) {
                 onClick={() => saveSla(slaOverdueDays + 1)}
                 disabled={slaOverdueDays >= 30}
                 aria-label="Aumentar dias de atraso"
-                className="size-9 grid place-items-center rounded-[10px] border border-border bg-card text-muted-foreground transition hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+                className="size-9 grid place-items-center rounded-[10px] border border-border bg-card text-muted-foreground transition hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:anel-foco"
               >
                 <Plus size={14} />
               </button>
@@ -314,7 +314,7 @@ function PaceSection({ db, usersList, metaWeekdays }) {
                   onClick={() => removeCheckpoint(n)}
                   title={`Remover o marco de ${n} dias`}
                   aria-label={`Remover o marco de ${n} dias`}
-                  className="size-5 grid place-items-center rounded-md text-muted-foreground transition hover:text-rose-600 hover:bg-rose-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+                  className="size-5 grid place-items-center rounded-md text-muted-foreground transition hover:text-rose-600 hover:bg-rose-500/10 focus-visible:outline-none focus-visible:anel-foco"
                 >
                   <X size={12} />
                 </button>
@@ -347,7 +347,7 @@ function PaceSection({ db, usersList, metaWeekdays }) {
                 aria-pressed={graceDays === n}
                 className={cn(
                   'num h-9 px-3.5 rounded-[10px] text-[13px] font-semibold transition border',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
+                  'focus-visible:outline-none focus-visible:anel-foco focus-visible:ring-offset-2 focus-visible:ring-offset-background',
                   graceDays === n
                     ? 'bg-brand-600 text-white border-brand-600'
                     : 'bg-card text-muted-foreground border-border hover:bg-muted'

@@ -1391,7 +1391,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                         onClick={() => copyPhone(contact.phone)}
                         title="Copiar número do responsável"
                         aria-label="Copiar número do responsável"
-                        className="shrink-0 size-5 grid place-items-center rounded text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+                        className="shrink-0 size-5 grid place-items-center rounded text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 transition focus-visible:outline-none focus-visible:anel-foco"
                       >
                         <Copy size={12} />
                       </button>
@@ -1408,7 +1408,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                         onClick={() => copyPhone(lead.whatsapp)}
                         title="Copiar número do aluno"
                         aria-label="Copiar número do aluno"
-                        className="shrink-0 size-5 grid place-items-center rounded text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+                        className="shrink-0 size-5 grid place-items-center rounded text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 transition focus-visible:outline-none focus-visible:anel-foco"
                       >
                         <Copy size={12} />
                       </button>
@@ -1424,7 +1424,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                       onClick={() => copyPhone(contact.phone)}
                       title="Copiar número"
                       aria-label="Copiar número"
-                      className="shrink-0 size-5 grid place-items-center rounded text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+                      className="shrink-0 size-5 grid place-items-center rounded text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 transition focus-visible:outline-none focus-visible:anel-foco"
                     >
                       <Copy size={12} />
                     </button>
@@ -1549,7 +1549,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                     onClick={() => setTimelineFilter(f.id)}
                     className={cn(
                       'h-[29px] px-2.5 rounded-lg text-[12px] font-semibold inline-flex items-center gap-1.5 whitespace-nowrap transition',
-                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
+                      'focus-visible:outline-none focus-visible:anel-foco',
                       active
                         ? 'bg-[#0E1A40] text-white dark:bg-white dark:text-[#0E1A40]'
                         : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
@@ -1571,7 +1571,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                   aria-pressed={showSystem}
                   className={cn(
                     'h-[29px] px-2 rounded-lg text-[12px] font-semibold inline-flex items-center gap-2 whitespace-nowrap border transition',
-                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
+                    'focus-visible:outline-none focus-visible:anel-foco',
                     showSystem
                       ? 'border-brand-500/40 text-brand-700 dark:text-brand-300'
                       : 'border-slate-200 dark:border-white/[0.07] text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'

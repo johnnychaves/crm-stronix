@@ -25,7 +25,7 @@ function PersonaMenu({ appUser, isAdmin, profileHref, billingHref, onLogout, onH
       <DropdownMenuTrigger asChild>
         <button
           aria-label="Sua conta"
-          className="rounded-full transition active:scale-95 outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-neutral-900"
+          className="rounded-full transition active:scale-95 outline-none focus-visible:anel-foco focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-neutral-900"
         >
           <Avatar name={appUser?.name} size={36} />
         </button>

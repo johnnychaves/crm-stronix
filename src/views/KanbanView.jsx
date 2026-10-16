@@ -179,7 +179,7 @@ export const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDraggi
       <LeadLink
         leadId={lead.id}
         draggable={false}
-        className="block rounded-t-[10px] px-[11px] pt-2.5 pb-[9px] cursor-grab active:cursor-grabbing outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/40"
+        className="block rounded-t-[10px] px-[11px] pt-2.5 pb-[9px] cursor-grab active:cursor-grabbing outline-none focus-visible:ring-inset focus-visible:anel-foco"
       >
         <div className="flex items-center gap-2">
           <span aria-hidden="true" className="size-1.5 rounded-full shrink-0" style={{ background: accent.border }} />
@@ -295,7 +295,7 @@ export const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDraggi
             onClick={() => onMoveRequest(lead)}
             title="Mover para outra etapa"
             aria-label="Mover lead para outra etapa"
-            className="size-[25px] grid place-items-center rounded-[7px] text-slate-400 hover:bg-[#EAF0FF] hover:text-brand-600 dark:hover:bg-brand-500/15 dark:hover:text-brand-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 transition-colors"
+            className="size-[25px] grid place-items-center rounded-[7px] text-slate-400 hover:bg-[#EAF0FF] hover:text-brand-600 dark:hover:bg-brand-500/15 dark:hover:text-brand-300 focus-visible:outline-none focus-visible:anel-foco transition-colors"
           >
             <ArrowRightLeft className="size-3" />
           </button>
@@ -323,7 +323,7 @@ export const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDraggi
             rel="noopener"
             title="Abrir ficha em outra guia"
             aria-label="Abrir ficha em outra guia"
-            className="size-[25px] pointer-coarse:hidden grid place-items-center rounded-[7px] text-slate-400 hover:bg-[#EAF0FF] hover:text-brand-600 dark:hover:bg-brand-500/15 dark:hover:text-brand-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 transition-colors"
+            className="size-[25px] pointer-coarse:hidden grid place-items-center rounded-[7px] text-slate-400 hover:bg-[#EAF0FF] hover:text-brand-600 dark:hover:bg-brand-500/15 dark:hover:text-brand-300 focus-visible:outline-none focus-visible:anel-foco transition-colors"
           >
             <ArrowUpRight className="size-3" />
           </LeadLink>

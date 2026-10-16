@@ -68,7 +68,6 @@ function NewFeatureBadge({ until, now = new Date(), tone = 'soft', title, descri
           Novo
         </button>
       </DialogTrigger>
-      {/* border-border: o `border` do DialogContent sozinho pega a cor do texto e fica branco no escuro. */}
       <DialogContent className={cn('max-h-[calc(100dvh-2rem)] overflow-y-auto border-border sm:max-w-[480px]', contentClassName)}>
         {renderContent ? renderContent({ close }) : (
           <>

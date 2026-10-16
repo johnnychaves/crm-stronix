@@ -409,7 +409,7 @@ export function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE
               leadId={task.id}
               stretched
               draggable={false}
-              className="font-semibold text-[14px] text-slate-900 dark:text-white truncate outline-none after:rounded-t-xl focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-brand-500/40"
+              className="font-semibold text-[14px] text-slate-900 dark:text-white truncate outline-none after:rounded-t-xl focus-visible:after:ring-inset focus-visible:after:anel-foco"
             >
               {task.name}
             </LeadLink>
@@ -548,7 +548,7 @@ export function DoneCard({ lead, now = null, saving = false, onReschedule, onCor
             leadId={lead.id}
             stretched
             draggable={false}
-            className="font-medium text-[13px] text-slate-800 dark:text-slate-100 line-through decoration-slate-400/60 truncate outline-none after:rounded-xl focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-brand-500/40"
+            className="font-medium text-[13px] text-slate-800 dark:text-slate-100 line-through decoration-slate-400/60 truncate outline-none after:rounded-xl focus-visible:after:ring-inset focus-visible:after:anel-foco"
           >
             {lead.name}
           </LeadLink>
@@ -598,7 +598,7 @@ export function TomorrowApptRow({ lead, when }) {
     <LeadLink
       leadId={lead.id}
       draggable={false}
-      className="w-full flex items-center gap-3 p-3 rounded-xl border border-slate-200/80 dark:border-white/[0.06] bg-white dark:bg-white/[0.03] hover:border-slate-300 dark:hover:border-white/10 transition outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/40"
+      className="w-full flex items-center gap-3 p-3 rounded-xl border border-slate-200/80 dark:border-white/[0.06] bg-white dark:bg-white/[0.03] hover:border-slate-300 dark:hover:border-white/10 transition outline-none focus-visible:ring-inset focus-visible:anel-foco"
     >
       <Avatar name={lead.name} size={38} />
       <div className="min-w-0 flex-1">

@@ -335,7 +335,7 @@ function CatalogsSection({ db, tags, sources, planos, lossReasons, dores, modali
               onClick={() => selectCatalog(key)}
               className={cn(
                 'h-9 px-3.5 rounded-[9px] text-[12.5px] font-semibold transition',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
+                'focus-visible:outline-none focus-visible:anel-foco',
                 on ? 'bg-card text-foreground shadow-card' : 'text-muted-foreground hover:text-foreground'
               )}
             >

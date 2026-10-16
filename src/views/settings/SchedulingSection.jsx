@@ -75,7 +75,7 @@ function TrialPackageCard({ pack, onRemove }) {
           onClick={onRemove}
           title={`Remover o pacote de ${pack.value} ${pack.value === 1 ? 'aula' : 'aulas'}`}
           aria-label={`Remover o pacote de ${pack.value} ${pack.value === 1 ? 'aula' : 'aulas'}`}
-          className="size-[22px] grid place-items-center rounded-md text-slate-400 transition hover:text-rose-600 hover:bg-rose-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+          className="size-[22px] grid place-items-center rounded-md text-slate-400 transition hover:text-rose-600 hover:bg-rose-500/10 focus-visible:outline-none focus-visible:anel-foco"
         >
           <X size={12} />
         </button>
