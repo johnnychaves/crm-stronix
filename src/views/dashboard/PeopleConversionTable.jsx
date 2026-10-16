@@ -130,7 +130,7 @@ export function PeopleConversionTable({ rows, others, person, personName, onPick
                   aria-pressed={person === user.id}
                   className={cn(
                     GRID,
-                    'h-[52px] w-full cursor-pointer rounded-lg border-t text-left outline-none hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/40',
+                    'h-[52px] w-full cursor-pointer rounded-lg border-t text-left outline-none hover:bg-muted/70 focus-visible:ring-inset focus-visible:anel-foco',
                     RULE,
                     person === user.id && 'bg-brand-50 dark:bg-brand-500/10'
                   )}
@@ -162,7 +162,7 @@ export function PeopleConversionTable({ rows, others, person, personName, onPick
                 aria-label={rowLabel(name, v)}
                 aria-pressed={selected}
                 className={cn(
-                  '-mx-2 flex w-full items-center gap-2.5 rounded-lg px-2 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
+                  '-mx-2 flex w-full items-center gap-2.5 rounded-lg px-2 py-1 text-left outline-none focus-visible:anel-foco',
                   selected && 'bg-brand-50 dark:bg-brand-500/10'
                 )}
               >

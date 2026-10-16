@@ -73,7 +73,7 @@ function SettingsRailItem({ icon, label, count, attention, active, onClick }) {
       aria-current={active ? 'page' : undefined}
       className={cn(
         'w-full flex items-center gap-[11px] px-[11px] py-[9px] rounded-xl text-left text-[13.5px] font-semibold transition-[background-color] duration-150',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
+        'focus-visible:outline-none focus-visible:anel-foco focus-visible:ring-offset-2 focus-visible:ring-offset-background',
         active
           ? 'bg-brand-600 text-white shadow-[0_6px_16px_-6px_rgba(43,89,255,.55)]'
           : 'text-foreground hover:bg-slate-100 dark:hover:bg-white/[0.06]'

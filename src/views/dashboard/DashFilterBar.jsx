@@ -12,7 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/pop
 
 // Sem bg-card de propósito: no escuro o card é translúcido, e o balão precisa do fundo opaco do Popover.
 const BALLOON = 'w-auto rounded-[14px] border-border p-1.5 shadow-card-lg';
-const ARROW = 'grid size-[30px] flex-none place-items-center rounded-[9px] text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand-500/40 disabled:pointer-events-none disabled:opacity-35';
+const ARROW = 'grid size-[30px] flex-none place-items-center rounded-[9px] text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:anel-foco disabled:pointer-events-none disabled:opacity-35';
 
 // Cabeçalho fixo da tela: o título e a linha de apoio à esquerda, os controles
 // à direita, tudo num cartão com a mesma borda, raio e sombra das faixas da
@@ -53,7 +53,7 @@ export function OptionList({ options, value, onPick, radio = false, label }) {
               aria-checked={radio ? on : undefined}
               onClick={() => onPick(o.key)}
               className={cn(
-                'flex h-[34px] w-full items-center gap-2.5 rounded-[9px] px-2.5 text-left text-[12.5px] font-semibold outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand-500/40',
+                'flex h-[34px] w-full items-center gap-2.5 rounded-[9px] px-2.5 text-left text-[12.5px] font-semibold outline-none transition-colors hover:bg-muted focus-visible:anel-foco',
                 !radio && on && 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300'
               )}
             >
@@ -93,7 +93,7 @@ export function PeriodControl({ label, options, value, onPick, canPrev, onPrev, 
           <button
             type="button"
             aria-label="Mês de competência"
-            className="flex h-[30px] items-center gap-2 whitespace-nowrap rounded-[9px] px-2.5 text-[13px] font-semibold outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand-500/40"
+            className="flex h-[30px] items-center gap-2 whitespace-nowrap rounded-[9px] px-2.5 text-[13px] font-semibold outline-none hover:bg-muted focus-visible:anel-foco"
           >
             <Calendar size={14} strokeWidth={2} className="flex-none text-brand-600" />
             <span className="num">{label}</span>
@@ -121,7 +121,7 @@ export function FilterChip({ icon: Icon, label, valueText, active, options, valu
         <button
           type="button"
           className={cn(
-            'flex h-9 items-center gap-[7px] whitespace-nowrap rounded-full border px-3 text-[12.5px] outline-none transition-colors hover:border-brand-200 focus-visible:ring-2 focus-visible:ring-brand-500/40',
+            'flex h-9 items-center gap-[7px] whitespace-nowrap rounded-full border px-3 text-[12.5px] outline-none transition-colors hover:border-brand-200 focus-visible:anel-foco',
             active ? 'border-brand-200 bg-brand-50 dark:border-brand-500/40 dark:bg-brand-500/15' : 'border-border bg-card'
           )}
         >
@@ -204,7 +204,7 @@ export function DashToolbar({ title, subline, month, compare, filters = [] }) {
               type="button"
               aria-label={filtered ? 'Filtros, há filtro ativo' : 'Filtros'}
               className={cn(
-                'relative flex h-[38px] min-w-0 flex-1 items-center gap-2 rounded-xl border bg-card px-3 text-[13px] font-semibold shadow-card outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
+                'relative flex h-[38px] min-w-0 flex-1 items-center gap-2 rounded-xl border bg-card px-3 text-[13px] font-semibold shadow-card outline-none focus-visible:anel-foco',
                 comparing || filtered ? 'border-brand-200 dark:border-brand-500/40' : 'border-border'
               )}
             >

@@ -106,7 +106,7 @@ export function ReferralsSection({ items, loading, onAdd = null, canRefer = true
                   leadId={l.id}
                   draggable={false}
                   className={cn(
-                    'w-full flex items-center gap-3 px-5 sm:px-8 py-3 transition outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/40',
+                    'w-full flex items-center gap-3 px-5 sm:px-8 py-3 transition outline-none focus-visible:ring-inset focus-visible:anel-foco',
                     ehLink && 'hover:bg-slate-50 dark:hover:bg-white/[0.03]',
                   )}
                 >

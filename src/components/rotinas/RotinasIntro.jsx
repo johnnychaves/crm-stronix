@@ -218,7 +218,6 @@ export function RotinasNovo({ db, appUser, ...props }) {
 export function RotinasIntroDialog({ open, onOpenChange, db, appUser }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* border-border: o `border` do DialogContent sozinho pega a cor do texto e fica branco no escuro. */}
       <DialogContent className={cn(DIALOG_BASE, INTRO_BOX)}>
         <RotinasIntroCarousel close={() => onOpenChange(false)} db={db} appUser={appUser} />
       </DialogContent>

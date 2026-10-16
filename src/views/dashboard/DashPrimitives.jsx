@@ -43,7 +43,7 @@ export function DashHelpTip({ text, label = 'O que isso significa?' }) {
         <button
           type="button"
           aria-label={label}
-          className="inline-flex items-center justify-center size-4 rounded-full text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 transition cursor-help shrink-0"
+          className="inline-flex items-center justify-center size-4 rounded-full text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/[0.06] focus:outline-none focus-visible:anel-foco transition cursor-help shrink-0"
         >
           <HelpCircle size={12} strokeWidth={2.2} />
         </button>
