@@ -94,10 +94,13 @@ describe('fundo da página num lugar só', () => {
     expect(wrong).toEqual([]);
   });
 
-  it('a varredura enxerga as barras do Operacional, do CRM e do Gerencial (não está cega)', () => {
+  // Desde o desenho "Duas metas", o Operacional, o CRM e o Gerencial usam a
+  // mesma barra, o FilterBar de DashFilterBar.jsx.
+  it('a varredura enxerga a barra do Operacional, do CRM e do Gerencial (não está cega)', () => {
     const found = stickyBars().map((b) => b.file);
+    expect(found).toContain('views/dashboard/DashFilterBar.jsx');
     for (const file of ['views/dashboard/OperacionalToolbar.jsx', 'views/dashboard/CrmToolbar.jsx', 'views/dashboard/GerencialToolbar.jsx']) {
-      expect(found).toContain(file);
+      expect(read(file)).toContain("from './DashFilterBar.jsx'");
     }
   });
 });

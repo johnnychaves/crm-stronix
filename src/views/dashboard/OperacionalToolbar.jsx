@@ -15,14 +15,15 @@
 // Trigger é construído com a peça crua para caber no visual sem borda nem
 // chevron do handoff.
 //
-// Abaixo de 768px os três controles colapsam num botão que abre um Popover
-// com os mesmos três controles empilhados (README §5).
+// A barra em si (OperacionalToolbar) fica no cartão de cabeçalho do
+// Gerencial e do CRM (FilterBar, em DashFilterBar.jsx).
 import { Select as SelectPrimitive } from 'radix-ui';
-import { ChevronLeft, ChevronRight, User, SlidersHorizontal } from 'lucide-react';
+import { ChevronLeft, ChevronRight, User, ListFilter } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { Select, SelectContent, SelectItem, SelectValue } from '../../components/ui/select.jsx';
 import { Checkbox } from '../../components/ui/checkbox.jsx';
 import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/popover.jsx';
+import { FilterBar } from './DashFilterBar.jsx';
 
 // Rótulo do mês escolhido sem o " · em andamento", para o botão estreito.
 const shortMonthLabel = (options, key) =>
@@ -50,7 +51,7 @@ export function MonthControl({ monthKey, monthOptions, onMonth, canPrev, canNext
             className={cn(
               'num flex h-[30px]',
               compact ? 'min-w-0 flex-1' : 'min-w-[150px]',
-              'items-center justify-center rounded-[9px] px-1.5 text-[13px] font-semibold text-foreground outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40'
+              'items-center justify-center whitespace-nowrap rounded-[9px] px-1.5 text-[13px] font-semibold text-foreground outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40'
             )}
           >
             {compact ? <span className="truncate">{shortMonthLabel(monthOptions, monthKey)}</span> : <SelectValue />}
@@ -102,7 +103,7 @@ export function CompareControl({ compareOn, onCompareOn, compareKey, compareOpti
               <button
                 type="button"
                 aria-label="Mês de comparação"
-                className="flex h-[34px] items-center px-[11px] text-[12.5px] font-semibold text-brand-700 outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-brand-300"
+                className="flex h-[34px] items-center whitespace-nowrap px-[11px] text-[12.5px] font-semibold text-brand-700 outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-brand-300"
               >
                 <SelectValue />
               </button>
@@ -128,7 +129,7 @@ export function PersonControl({ person, people, onPerson }) {
           type="button"
           aria-label="Pessoa"
           className={cn(
-            'flex h-9 items-center gap-2 rounded-xl border px-3 text-[12.5px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
+            'flex h-9 items-center gap-2 whitespace-nowrap rounded-xl border px-3 text-[12.5px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
             active ? 'border-brand-600 bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300' : 'border-border bg-card text-foreground'
           )}
         >
@@ -146,43 +147,46 @@ export function PersonControl({ person, people, onPerson }) {
   );
 }
 
+// Cabeçalho fixo do Operacional (mockup D), no mesmo cartão do CRM e do
+// Gerencial (FilterBar): o título e a linha do regime à esquerda e, à
+// direita, mês, comparativo e pessoa. Abaixo de 768px o mês fica à vista e
+// comparar e pessoa entram num painel atrás do botão de filtro, que ganha um
+// ponto quando há pessoa escolhida.
 export function OperacionalToolbar(props) {
-  const { note } = props;
-  // A área que rola no App tem recuo interno (p-4 md:p-8, App.jsx:1666), e o
-  // sticky respeita esse recuo: com top-0 a barra grudava 16/32px abaixo do
-  // topo e o conteúdo aparecia por cima dela. O top negativo do mesmo tamanho
-  // faz a barra encostar no cabeçalho do App. No escuro o bg-card é 2% de
-  // branco, translúcido, e os cards apareciam através da barra ao rolar: ali
-  // ela pinta o fundo da página (dark:bg-page, o mesmo da raiz do App, em
-  // src/index.css), que é opaco. Até 09/10/2026 era um azul-marinho fixo,
-  // feito para um fundo ink-950 que o App não usa, e aparecia como uma faixa.
+  const { title, subline, person } = props;
+  const filtered = person !== 'all';
   return (
-    <div className="sticky -top-4 md:-top-8 z-30 flex items-center gap-2.5 border-t border-b border-t-slate-100 border-b-border bg-card px-4 md:px-8 py-2.5 dark:border-t-white/[0.06] dark:bg-page">
+    <FilterBar title={title} subline={subline}>
       <div className="hidden items-center gap-2.5 md:flex">
         <MonthControl {...props} />
         <CompareControl {...props} />
         <PersonControl {...props} />
       </div>
 
-      <Popover>
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            aria-label="Filtros do Operacional"
-            className="grid size-9 place-items-center rounded-xl border border-border bg-card text-muted-foreground hover:bg-muted/70 hover:text-foreground md:hidden"
-          >
-            <SlidersHorizontal size={16} strokeWidth={2} />
-          </button>
-        </PopoverTrigger>
-        <PopoverContent align="start" className="flex w-auto flex-col gap-2.5">
-          <MonthControl {...props} />
-          <CompareControl {...props} />
-          <PersonControl {...props} />
-        </PopoverContent>
-      </Popover>
-
-      <div className="flex-1" />
-      <span className="num max-w-[420px] truncate text-[11.5px] text-muted-foreground">{note}</span>
-    </div>
+      <div className="flex w-full items-center gap-2 md:hidden">
+        <div className="min-w-0 flex-1">
+          <MonthControl {...props} compact />
+        </div>
+        <Popover>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              aria-label={filtered ? 'Filtros do Operacional, há filtro ativo' : 'Filtros do Operacional'}
+              className={cn(
+                'relative grid h-10 w-11 flex-none place-items-center rounded-xl border',
+                filtered ? 'border-brand-600 bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300' : 'border-border bg-card text-muted-foreground'
+              )}
+            >
+              <ListFilter size={17} strokeWidth={2} />
+              {filtered && <span className="absolute right-2 top-[7px] size-1.5 rounded-full bg-brand-600" />}
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="flex w-auto flex-col gap-2.5">
+            <CompareControl {...props} />
+            <PersonControl {...props} />
+          </PopoverContent>
+        </Popover>
+      </div>
+    </FilterBar>
   );
 }

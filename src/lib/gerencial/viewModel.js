@@ -6,10 +6,7 @@
 // mentira e confere o número que aparece (gerencial.dashboard.test.js).
 import { fmtMoney } from '../format.js';
 import { monthLabel } from '../operacional/month.js';
-import {
-  clawbackNote, overlapNote, blindNote, expiredNote, exitsNote,
-  plansNote, sourcesNote, emptyMonth, emptyRanking
-} from './texts.js';
+import { emptyMonth } from './texts.js';
 
 const textOf = ({ title, body }) => ({ title, text: body });
 
@@ -20,104 +17,113 @@ export function soldDelta(cur, cmp, { comparing }) {
   if (!comparing || !cmp) return null;
   const cmpName = monthLabel(cmp.monthKey, { capitalized: false, withYear: false });
   const baseline = `${fmtMoney(cmp.sold.sold)} em ${cmp.sold.count} contratos ${cur.running ? `nos mesmos dias de ${cmpName}` : `em ${cmpName}`}`;
-  if (!(cmp.sold.sold > 0)) return { none: true, text: 'sem base', baseline };
+  if (!(cmp.sold.sold > 0)) return { none: true, text: 'sem base', baseline, name: cmpName };
   const pct = Math.round(((cur.sold.sold - cmp.sold.sold) / cmp.sold.sold) * 100);
-  return { up: pct >= 0, text: `${Math.abs(pct)}%`, baseline };
+  return { up: pct >= 0, text: `${Math.abs(pct)}%`, baseline, name: cmpName };
 }
 
-// A leitura do rodapé do ranking aponta em texto o que a coluna de ticket
-// mensal mostra em número, para não depender da leitura da coluna.
-export function sellersRead(rows) {
-  if ((rows || []).length < 2) return '';
-  const byMonthly = [...rows].sort((a, b) => b.monthly - a.monthly);
-  const best = byMonthly[0];
-  const worst = byMonthly[byMonthly.length - 1];
-  if (!best?.monthly || best === worst) return '';
-  const firstName = (n) => String(n || '').split(' ')[0];
-  return `O total premia quem atende mais. No ticket mensal, ${firstName(best.name)} fecha a ${fmtMoney(best.monthly)} por mês de contrato e ${firstName(worst.name)} a ${fmtMoney(worst.monthly)}.`;
+// Variação de uma linha contra a mesma linha do mês comparado. `lowerBetter`
+// vira o tom: saída que cresce é ruim. Sem base no mês comparado, "novo" (e
+// nada, se também não vendeu agora). Sem comparação, null.
+export function pctDelta(cur, prev, { lowerBetter = false, baseline } = {}) {
+  if (prev == null) return null;
+  if (!(prev > 0)) return cur > 0 ? { tone: 'quiet', text: 'novo', baseline } : null;
+  const pct = Math.round(((cur - prev) / prev) * 100);
+  if (pct === 0) return { tone: 'quiet', text: 'igual', baseline };
+  const up = pct > 0;
+  return { up, tone: up !== lowerBetter ? 'good' : 'bad', text: `${Math.abs(pct)}%`, baseline };
 }
 
-function walletProps(wallet) {
-  return {
-    items: [
-      {
-        key: 'count',
-        label: 'Contratos vigentes',
-        value: wallet.count,
-        sub: wallet.blind
-          ? `${wallet.blind} deles importados sem valor`
-          : `inclui os ${wallet.lockedCount} trancados`,
-        help: 'Contratos com vigência em curso hoje. A carteira soma contrato, não pessoa: quem tem dois contratos vigentes conta duas vezes.'
-      },
-      {
-        key: 'monthly',
-        label: 'Valor por mês',
-        value: wallet.monthly,
-        money: true,
-        unit: '/mês',
-        sub: 'soma dos tickets mensais vigentes',
-        help: 'Soma do ticket mensal de cada contrato vigente. Não é caixa recebido nem previsão de recebimento: é o que os contratos valem por mês.'
-      },
-      {
-        key: 'ticket',
-        label: 'Ticket mensal médio',
-        value: wallet.ticket,
-        money: true,
-        unit: '/mês',
-        sub: 'valor por mês ÷ contratos com valor'
-      },
-      {
-        key: 'locked',
-        label: 'Trancados',
-        value: wallet.lockedCount,
-        tone: 'yellow',
-        sub: `${fmtMoney(wallet.lockedMonthly)}/mês · contam na carteira`,
-        help: 'Contrato trancado segue vigente e continua na carteira, porque volta a valer quando o cliente destranca. A contagem fica à parte para não parecer receita ativa.'
-      }
-    ],
-    notes: [overlapNote({ count: wallet.overlap }), blindNote({ count: wallet.blind })].filter(Boolean)
-  };
+// Variação em pontos percentuais, para taxa (churn). Mesmo formato do
+// pctDelta; `lowerBetter` diz que subir é ruim.
+export function ppDelta(cur, prev, { lowerBetter = false, baseline } = {}) {
+  if (cur == null || prev == null) return null;
+  const d = Math.round((cur - prev) * 10) / 10;
+  if (d === 0) return { tone: 'quiet', text: 'igual', baseline };
+  const up = d > 0;
+  return { up, tone: up !== lowerBetter ? 'good' : 'bad', text: `${Math.abs(d).toLocaleString('pt-BR')} p.p.`, baseline };
 }
 
-// Planos e origem entram no BreakdownCard pelo VALOR vendido: a grandeza da
-// barra é dinheiro e a contagem de vendas vira a coluna "11x".
-const breakdown = (rows, total, { eyebrow, title, footText }) => ({
-  title,
-  eyebrow,
-  footText,
-  sub: 'por valor vendido no mês',
-  items: (rows || []).map((r) => ({ name: r.name, count: r.value, times: r.count })),
+// Planos e origem entram no gráfico pelo VALOR vendido: a grandeza é dinheiro
+// e a contagem de vendas vira a dica da fatia. `prevOf` devolve o valor do
+// mesmo nome no mês comparado.
+const breakdown = (rows, total, deltaOf) => ({
+  items: (rows || []).map((r) => ({ name: r.name, count: r.value, times: r.count, delta: deltaOf ? deltaOf(r) : null })),
   total
 });
 
-export function dashboardProps({ cur, cmp, comparing, roleOf = () => null }) {
+export function dashboardProps({ cur, cmp, cmpFull = null, comparing, roleOf = () => null }) {
+  const on = Boolean(comparing && cmp);
+  const curve = cur.curve || [];
+  const cutDay = curve.filter((v) => v != null).length;
+  // Mês em andamento compara os mesmos dias do outro mês (pró-rata), e a dica
+  // de cada linha diz a base com essa frase.
+  const cmpName = on ? monthLabel(cmp.monthKey, { capitalized: false, withYear: false }) : '';
+  const vs = cur.running ? `nos mesmos dias de ${cmpName}` : `em ${cmpName}`;
+  const moneyDelta = (value, prev) => (on ? pctDelta(value, prev ?? 0, { baseline: `${fmtMoney(prev ?? 0)} ${vs}` }) : null);
+  const byKey = (rows, key, pick) => new Map((rows || []).map((r) => [r[key], pick(r)]));
+
+  const prevMix = on ? byKey(cmp.sold.mix, 'type', (r) => r.value) : null;
+  const prevSellers = on ? byKey(cmp.sellers, 'id', (r) => r.value) : null;
+  const prevPlans = on ? byKey(cmp.plans, 'name', (r) => r.value) : null;
+  const prevSources = on ? byKey(cmp.sources, 'name', (r) => r.value) : null;
+  const prevExits = on ? byKey(cmp.exits.items, 'kind', (r) => r.count) : null;
+
   return {
+    // O topo: o vendido contado dia a dia contra o mês comparado inteiro. O
+    // mês comparado vem sem corte (cmpFull), para a linha pontilhada seguir
+    // até o fim e o marcador cair no mesmo dia do mês exibido.
+    period: { monthName: monthLabel(cur.monthKey, { capitalized: false, withYear: false }), running: Boolean(cur.running), day: cutDay },
+    curve: {
+      days: curve.length,
+      cur: curve,
+      cutDay,
+      prev: on && cmpFull ? cmpFull.curve : null,
+      prevName: cmpName
+    },
     sold: {
-      mix: cur.sold.mix,
-      ticket: cur.sold.ticket,
-      discount: { pct: cur.sold.discPct, abs: cur.sold.discAbs },
-      clawback: clawbackNote({ count: cur.sold.clawCount, value: cur.sold.clawValue }),
+      mix: cur.sold.mix.map((m) => ({ ...m, delta: moneyDelta(m.value, prevMix?.get(m.type)) })),
+      discount: { pct: cur.sold.discPct, abs: cur.sold.discAbs, prevPct: on ? cmp.sold.discPct : null },
+      clawback: { count: cur.sold.clawCount, value: cur.sold.clawValue },
       delta: soldDelta(cur, cmp, { comparing })
     },
-    wallet: walletProps(cur.wallet),
+    wallet: {
+      count: cur.wallet.count,
+      monthly: cur.wallet.monthly,
+      ticket: cur.wallet.ticket,
+      lockedCount: cur.wallet.lockedCount
+    },
     risk: {
       horizon: cur.risk.horizon,
       walletMonthly: cur.wallet.monthly,
-      lapsedCount: cur.risk.expired.count,
-      lapsedNote: expiredNote({ count: cur.risk.expired.count })
+      lapsedCount: cur.risk.expired.count
     },
-    exits: { items: cur.exits.items, note: exitsNote() },
+    churn: {
+      pct: cur.churn.pct,
+      exits: cur.churn.exits,
+      base: cur.churn.base,
+      delta: on
+        ? ppDelta(cur.churn.pct, cmp.churn.pct, {
+          lowerBetter: true,
+          baseline: cmp.churn.pct == null ? undefined : `${cmp.churn.pct.toLocaleString('pt-BR')}% ${vs}`
+        })
+        : null
+    },
+    exits: {
+      items: cur.exits.items.map((e) => {
+        const prev = prevExits?.get(e.kind) ?? 0;
+        return {
+          ...e,
+          delta: on ? pctDelta(e.count, prev, { lowerBetter: true, baseline: `${prev} ${prev === 1 ? 'contrato' : 'contratos'} ${vs}` }) : null
+        };
+      })
+    },
     sellers: {
-      rows: cur.sellers.map((r) => ({ ...r, role: roleOf(r.id) })),
-      read: sellersRead(cur.sellers)
+      rows: cur.sellers.map((r) => ({ ...r, role: roleOf(r.id), delta: moneyDelta(r.value, prevSellers?.get(r.id)) }))
     },
-    plans: breakdown(cur.plans, cur.sold.sold, {
-      eyebrow: 'Plano que mais trouxe', title: 'Planos mais vendidos', footText: plansNote()
-    }),
-    sources: breakdown(cur.sources, cur.sold.sold, {
-      eyebrow: 'Canal que mais trouxe', title: 'Origem do lead que fechou', footText: sourcesNote()
-    }),
+    plans: breakdown(cur.plans, cur.sold.sold, on ? (r) => moneyDelta(r.value, prevPlans.get(r.name)) : null),
+    sources: breakdown(cur.sources, cur.sold.sold, on ? (r) => moneyDelta(r.value, prevSources.get(r.name)) : null),
     flags: cur.flags,
-    texts: { emptyMonth: textOf(emptyMonth()), emptyRanking: textOf(emptyRanking()) }
+    texts: { emptyMonth: textOf(emptyMonth()) }
   };
 }

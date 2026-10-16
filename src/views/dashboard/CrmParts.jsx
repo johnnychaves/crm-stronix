@@ -34,10 +34,10 @@ export function CrmSection({ title, question, note, tag, children }) {
 // dica de 11,5px; o corpo fica por conta de quem usa.
 export function CrmCard({ title, hint, action, className, children }) {
   return (
-    <section className={cn('flex flex-col rounded-2xl border border-border bg-card shadow-card', className)}>
+    <section className={cn('flex flex-col rounded-[18px] border border-border bg-card shadow-card', className)}>
       <header className={cn('flex items-center justify-between gap-3 border-b px-[18px] py-3.5', RULE)}>
         <div className="min-w-0">
-          <h4 className="m-0 text-[14px] font-semibold">{title}</h4>
+          <h4 className="m-0 font-display text-[17px] font-bold tracking-[-0.01em]">{title}</h4>
           {hint && <p className="num mt-0.5 text-[11.5px] text-muted-foreground">{hint}</p>}
         </div>
         {action}
