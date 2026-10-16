@@ -186,9 +186,9 @@ describe('texto do comparado', () => {
     expect(textoDe({ monthKey: '2026-01' }, new Date(2026, 0, 10, 9, 0))).toBe('vs. os 10 primeiros dias de dezembro de 2025');
   });
 
-  it('usa os mesmos dias que o painel CRM diz na nota do comparativo', () => {
+  it('usa os mesmos dias que o painel CRM diz no subtítulo do comparativo', () => {
     for (const dia of [1, 2, 14, 30]) {
-      const painel = regimeTexts({ running: true, compareOn: true, dayN: dia, shownName: 'setembro', cmpName: 'agosto' }).note;
+      const painel = regimeTexts({ running: true, compareOn: true, dayN: dia, shownName: 'setembro', cmpName: 'agosto' }).subline;
       const texto = textoDe({ monthKey: '2026-09' }, setembroEm(dia));
       const dias = (t) => t.match(/(\d+) primeiros dias/)?.[1] ?? 'primeiro dia';
       expect([dia, dias(texto)], texto).toEqual([dia, dias(painel)]);

@@ -1,0 +1,44 @@
+# Exclusões do Graphify para o STRONILEAD. Nunca indexar segredo, dependência,
+# build, skills copiadas nem a saída do próprio grafo.
+.git/
+node_modules/
+dist/
+dist-ssr/
+coverage/
+graphify-out/
+.agents/
+.claude/
+.vercel/
+.superpowers/
+design_redesign/
+design_handoff_meta_equipe/
+
+# Segredos
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+auth.json
+credentials.json
+*service-account*.json
+serviceAccount*.json
+*-firebase-adminsdk-*.json
+.firebaserc
+.npmrc
+.netrc
+.sentryclirc
+
+# Gerados e travas
+*.log
+*.local
+package-lock.json
+skills-lock.json
+
+# Fixtures e planilhas com dado de academia
+docs/superpowers/fixtures/
+*.xlsx
+*.xls
+*.csv

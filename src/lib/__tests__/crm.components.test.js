@@ -10,8 +10,9 @@ import { MonthControl, OperacionalToolbar } from '../../views/dashboard/Operacio
 import { LOSS_PALETTE } from '../../views/dashboard/dashTokens.js';
 import { crmDelta } from '../crm/metrics.js';
 import { ChannelTable } from '../../views/dashboard/ChannelTable.jsx';
-import { CohortMilestones } from '../../views/dashboard/CohortMilestones.jsx';
-import { StagePassageTable } from '../../views/dashboard/StagePassageTable.jsx';
+import { CrmHero } from '../../views/dashboard/CrmHero.jsx';
+import { CrmTape } from '../../views/dashboard/CrmTape.jsx';
+import { StageStuckBand } from '../../views/dashboard/StageStuckBand.jsx';
 import { LossCard } from '../../views/dashboard/LossCard.jsx';
 import { PeopleConversionTable } from '../../views/dashboard/PeopleConversionTable.jsx';
 import { ProfessorCard } from '../../views/dashboard/ProfessorCard.jsx';
@@ -62,7 +63,7 @@ describe('peças do CRM', () => {
     expect(render(createElement(DeltaPill, { delta: crmDelta(5, 5) }))).toMatch(/bg-muted.*>=</);
   });
 
-  it('barra de filtros com os quatro controles e a nota do regime', () => {
+  it('cabeçalho com título, linha do regime e os quatro controles', () => {
     const noop = () => {};
     const html = render(createElement(CrmToolbar, {
       monthKey: '2026-09', monthOptions: [{ key: '2026-09', label: 'Setembro 2026 · em andamento' }], onMonth: noop,
@@ -70,11 +71,14 @@ describe('peças do CRM', () => {
       compareOn: true, onCompareOn: noop, compareKey: '2026-08', compareOptions: [{ key: '2026-08', label: 'Agosto 2026' }], onCompare: noop,
       person: 'all', people: [{ id: 'ana', name: 'Ana Ribeiro' }], onPerson: noop,
       funnel: 'ven', funnels: [{ id: 'ven', name: 'Vendas' }], onFunnel: noop,
-      note: 'Pró-rata: mesmos 14 primeiros dias de agosto'
+      title: 'CRM', subline: '1 a 14 de setembro comparado com os 14 primeiros dias de agosto.'
     }));
     expect(html).toContain('aria-label="Funil"');
     expect(html).toContain('aria-label="Pessoa"');
-    expect(html).toContain('Pró-rata: mesmos 14 primeiros dias de agosto');
+    expect(html).toContain('>CRM</h2>');
+    expect(html).toContain('1 a 14 de setembro comparado com os 14 primeiros dias de agosto.');
+    // O mesmo cartão das faixas da página: borda, raio e sombra iguais.
+    expect(html).toContain('rounded-[18px] border border-border bg-card');
     expect(html).toContain('há filtro ativo');
     // No celular o mês fica à vista, compacto; na barra larga, o controle padrão.
     expect(html).toContain('<span class="truncate">Setembro 2026</span>');
@@ -98,7 +102,7 @@ describe('peças do CRM', () => {
     expect(regular).not.toContain('w-full');
   });
 
-  it('barras do CRM e do Operacional opacas no escuro; filtro do CRM com o ícone do handoff', () => {
+  it('barra do Operacional no cartão do CRM; as duas com o ícone de filtro do handoff', () => {
     const noop = () => {};
     const base = {
       monthKey: '2026-09', monthOptions: [{ key: '2026-09', label: 'Setembro 2026 · em andamento' }], onMonth: noop,
@@ -107,12 +111,18 @@ describe('peças do CRM', () => {
       person: 'all', people: [], onPerson: noop, note: ''
     };
     const crm = render(createElement(CrmToolbar, { ...base, funnel: 'all', funnels: [], onFunnel: noop }));
-    const op = render(createElement(OperacionalToolbar, base));
-    expect(crm).toContain('dark:bg-[#0D1226]');
-    expect(op).toContain('dark:bg-[#0D1226]');
+    const op = render(createElement(OperacionalToolbar, { ...base, title: 'Operacional', subline: '1 a 15 de outubro.' }));
+    expect(op).toContain('Operacional');
+    expect(op).toContain('1 a 15 de outubro.');
+    expect(op).toContain('rounded-[18px]');
+    expect(op).toContain('aria-label="Filtros do Operacional"');
+    expect(op).not.toContain('há filtro ativo');
     expect(crm).toContain('lucide-list-filter');
+    expect(op).toContain('lucide-list-filter');
     expect(crm).not.toContain('lucide-sliders-horizontal');
-    expect(op).toContain('lucide-sliders-horizontal');
+    expect(op).not.toContain('lucide-sliders-horizontal');
+    const picked = render(createElement(OperacionalToolbar, { ...base, person: 'ana', people: [{ id: 'ana', name: 'Ana' }] }));
+    expect(picked).toContain('Filtros do Operacional, há filtro ativo');
   });
 
   it('sexta cor das perdas: o azul claro do handoff, mais claro no escuro', () => {
@@ -134,7 +144,7 @@ describe('peças do CRM', () => {
   });
 });
 
-describe('canais e safra', () => {
+describe('canais', () => {
   it('canais: volume, matrícula e conversão', () => {
     const html = render(createElement(ChannelTable, {
       rows: [{ name: 'Instagram', leads: 22, enrolled: 3 }, { name: 'Indicação', leads: 9, enrolled: 4 }],
@@ -166,66 +176,9 @@ describe('canais e safra', () => {
   it('canais sem lead: cartão vazio', () => {
     expect(render(createElement(ChannelTable, { rows: [], cohortConv: null }))).toContain('Nenhum lead cadastrado neste mês.');
   });
-
-  it('safra: passagens com a queda e o desfecho', () => {
-    const html = render(createElement(CohortMilestones, {
-      cohort: { leads: 56, sched: 16, came: 12, enrolled: 10, lost: 6, open: 40 },
-      monthName: 'setembro',
-      running: true
-    }));
-    expect(html).toContain('Safra de setembro');
-    expect(html).toContain('os 56 leads cadastrados no mês, acompanhados até hoje');
-    expect(html).toContain('−40 não agendaram');
-    // No mês em andamento, quem agendou pra mais adiante soma em "Agendaram":
-    // a queda até comparecer é de quem ainda não veio, mesmo sendo a menor.
-    expect(html).toContain('−4 ainda não vieram');
-    expect(html).not.toContain('não compareceram');
-    expect(html).toContain('29% da safra');
-    expect(html).toContain('Seguem em jogo');
-    expect(html).toContain('ainda está viva');
-  });
-
-  it('mês fechado: a queda até comparecer é de quem não compareceu', () => {
-    const html = render(createElement(CohortMilestones, {
-      cohort: { leads: 56, sched: 16, came: 12, enrolled: 10, lost: 6, open: 40 },
-      monthName: 'agosto',
-      running: false
-    }));
-    expect(html).toContain('−4 não compareceram');
-    expect(html).not.toContain('ainda não vieram');
-  });
-
-  it('safra sem queda em nenhuma passagem: sem leitura embaixo dos marcos', () => {
-    const html = render(createElement(CohortMilestones, {
-      cohort: { leads: 10, sched: 10, came: 10, enrolled: 6, lost: 0, open: 4 },
-      monthName: 'setembro',
-      running: true
-    }));
-    expect(html).not.toContain('A maior queda da safra');
-  });
-
-  it('mês em andamento com a queda maior em comparecer: "ainda não vieram" e leitura própria', () => {
-    const html = render(createElement(CohortMilestones, {
-      cohort: { leads: 20, sched: 18, came: 5, enrolled: 3, lost: 1, open: 14 },
-      monthName: 'setembro',
-      running: true
-    }));
-    expect(html).toContain('−13 ainda não vieram');
-    expect(html).not.toContain('não compareceram');
-    expect(html).toContain('A maior queda da safra, por enquanto, é entre agendar e comparecer. Parte de quem agendou ainda tem a visita ou a aula pela frente.');
-  });
-
-  it('ninguém da safra segue em jogo: leitura fixa de que a conversão não muda mais', () => {
-    const html = render(createElement(CohortMilestones, {
-      cohort: { leads: 10, sched: 8, came: 5, enrolled: 6, lost: 4, open: 0 },
-      monthName: 'agosto',
-      running: false
-    }));
-    expect(html).toContain('Ninguém da safra de agosto segue em jogo, então a conversão dela não deve mais mudar.');
-  });
 });
 
-describe('passagem entre etapas e perdas', () => {
+describe('onde os leads travam e perdas', () => {
   const passage = {
     rows: [
       { name: 'Novo lead', entered: 47, advanced: 38, lost: 5, medianMin: 240 },
@@ -234,71 +187,58 @@ describe('passagem entre etapas e perdas', () => {
     worst: { name: 'Contato feito', entered: 38, advanced: 16, lost: 9 }
   };
 
-  it('com funil e base: linhas, porcentagens, mediana e maior vazamento', () => {
-    const html = render(createElement(StagePassageTable, {
-      passage, needFunnel: false, hasBase: true, funnelName: 'Vendas', monthName: 'setembro', academyMedian: true
-    }));
-    expect(html).toContain('funil Vendas · movimentos gravados em setembro');
-    expect(html).toContain('Contato feito: 38 entraram, 16 avançaram, 9 se perderam, 13 seguem na etapa. Mediana de 4 dias na etapa.');
-    expect(html).toContain('>42%<');
-    expect(html).toContain('Maior vazamento: Contato feito, 9 perdidos de 38.');
-    expect(html).toContain('mediana da academia');
-    // A legenda de cor só faz sentido onde a barra existe (md e acima).
-    expect(html).toContain('hidden flex-wrap items-center gap-x-3.5 gap-y-1.5 md:flex');
+  const stuck = (over) => render(createElement(StageStuckBand, {
+    passage, nowRows: [{ name: 'Contato feito', count: 26 }, { name: 'Novo lead', count: 11 }],
+    needFunnel: false, hasBase: true, funnelName: 'Vendas', monthName: 'setembro', ...over
+  }));
+
+  it('onde os leads travam: avançaram, perderam e parados por etapa, com o gargalo escrito', () => {
+    const html = stuck();
+    expect(html).toContain('Onde os leads travam');
+    expect(html).toContain('O gargalo é Contato feito.');
+    expect(html).toContain('Só 42% dos leads avançam daqui, 9 foram perdidos e 13 seguem parados.');
+    expect(html).toContain('Os leads ficam em média 4 dias nessa etapa e hoje há 26 deles lá dentro.');
+    expect(html).toContain('>gargalo<');
+    expect(html).toContain('Contato feito: 38 entraram, 16 avançaram, 9 se perderam, 13 seguem parados na etapa.');
+    expect(html).toContain('>81%<'); // Novo lead: 38 de 47
+    expect(html).toContain('>13<');   // parados do Contato feito
+  });
+
+  it('a coluna Agora vem da carteira de agora, por etapa', () => {
+    const html = stuck();
+    expect(html).toContain('>26<');
+    expect(html).toContain('>11<');
+    expect(stuck({ nowRows: null })).toContain('>—<');
   });
 
   it('sem funil e sem base: o cartão explica', () => {
-    expect(render(createElement(StagePassageTable, { passage: null, needFunnel: true, hasBase: true, funnelName: '', monthName: 'setembro' })))
-      .toContain('Escolha um funil para ver a passagem entre etapas');
-    expect(render(createElement(StagePassageTable, { passage: null, needFunnel: false, hasBase: false, funnelName: 'Vendas', monthName: 'julho' })))
-      .toContain('A passagem entre etapas começa em setembro de 2026');
+    expect(stuck({ passage: null, needFunnel: true, funnelName: '' })).toContain('Escolha um funil para ver onde os leads travam');
+    expect(stuck({ passage: null, hasBase: false, monthName: 'julho' })).toContain('Esta análise começa em setembro de 2026');
   });
 
   it('no primeiro mês da gravação, a dica diz desde quando', () => {
-    const html = render(createElement(StagePassageTable, {
-      passage, needFunnel: false, hasBase: true, funnelName: 'Vendas', monthName: 'setembro', since: '14 de setembro'
-    }));
-    expect(html).toContain('funil Vendas · movimentos gravados desde 14 de setembro');
+    expect(stuck({ since: '14 de setembro' })).toContain('desde 14 de setembro');
   });
 
   it('com funil e base mas nenhuma entrada no mês: nota vazia, não a tabela de zeros', () => {
-    const zeroPassage = { rows: [{ name: 'Novo lead', entered: 0, advanced: 0, lost: 0, medianMin: null }], worst: null };
-    const html = render(createElement(StagePassageTable, {
-      passage: zeroPassage, needFunnel: false, hasBase: true, funnelName: 'Vendas', monthName: 'setembro'
-    }));
+    const zero = { rows: [{ name: 'Novo lead', entered: 0, advanced: 0, lost: 0, medianMin: null }], worst: null };
+    const html = stuck({ passage: zero });
     expect(html).toContain('Nenhuma troca de etapa gravada neste mês.');
-    expect(html).not.toContain('Etapa</span>');
+    expect(html).not.toContain('Tempo na etapa');
   });
 
-  it('formas no singular: 1 entrou, 1 avançou, 1 se perdeu, 1 segue', () => {
-    const singular = {
-      rows: [
-        { name: 'Etapa A', entered: 1, advanced: 0, lost: 0, medianMin: 30 },
-        { name: 'Etapa B', entered: 2, advanced: 1, lost: 0, medianMin: 30 },
-        { name: 'Etapa C', entered: 2, advanced: 0, lost: 1, medianMin: 30 }
-      ],
-      worst: null
-    };
-    const html = render(createElement(StagePassageTable, {
-      passage: singular, needFunnel: false, hasBase: true, funnelName: 'Vendas', monthName: 'setembro'
-    }));
-    expect(html).toContain('1 entrou');
-    expect(html).toContain('1 avançou');
-    expect(html).toContain('1 se perdeu');
-    expect(html).toContain('1 segue');
-    expect(html).not.toContain('1 entraram');
-    expect(html).not.toContain('1 avançaram');
-    expect(html).not.toContain('1 se perderam');
-    expect(html).not.toContain('1 seguem');
+  it('amostra pequena ou todos avançando: não aponta gargalo', () => {
+    const small = { rows: [{ name: 'Novo lead', entered: 3, advanced: 1, lost: 1, medianMin: 60 }], worst: null };
+    const html = stuck({ passage: small, nowRows: null });
+    expect(html).toContain('Nenhuma etapa se destaca como gargalo');
+    expect(html).not.toContain('>gargalo<');
   });
 
-  it('sem mediana na etapa: o tooltip e o aria não falam da mediana', () => {
-    const noMedian = { rows: [{ name: 'Sem mediana', entered: 4, advanced: 2, lost: 1, medianMin: null }], worst: null };
-    const html = render(createElement(StagePassageTable, {
-      passage: noMedian, needFunnel: false, hasBase: true, funnelName: 'Vendas', monthName: 'setembro'
-    }));
-    expect(html).toContain('Sem mediana: 4 entraram, 2 avançaram, 1 se perdeu, 1 segue na etapa.');
-    expect(html).not.toContain('Mediana de');
+  it('o tempo na etapa some do tooltip e vira traço quando não há mediana', () => {
+    const noMedian = { rows: [{ name: 'Novo lead', entered: 10, advanced: 5, lost: 1, medianMin: null }], worst: null };
+    const html = stuck({ passage: noMedian, nowRows: null });
+    expect(html).not.toContain('Mediana');
+    expect(html).toContain('>—<');
   });
 
   it('perdas: motivo mais comum, participação e etapa da perda', () => {
@@ -454,5 +394,53 @@ describe('velocidade e carteira agora', () => {
     expect(red).toContain('Sem próximo contato');
     expect(red).toContain('de 87 em jogo');
     expect(red).toContain('até alguém marcar o próximo contato');
+  });
+});
+
+describe('herói e faixa de números', () => {
+  const COHORT = { leads: 56, sched: 16, came: 12, enrolled: 10, lost: 6, open: 40, conv: 18 };
+
+  it('herói: conversão grande, o caminho da safra com a queda escrita e o desfecho', () => {
+    const html = render(createElement(CrmHero, { cohort: COHORT, monthName: 'setembro', delta: { up: true, text: '+2 p.p.' }, cmpName: 'agosto' }));
+    expect(html).toContain('Conversão da safra de setembro');
+    expect(html).toContain('18%');
+    expect(html).toContain('▲ 2 p.p. sobre agosto');
+    expect(html).toContain('10 de 56 leads');
+    ['Cadastraram', 'Agendaram', 'Compareceram', 'Matricularam'].forEach((t) => expect(html).toContain(t));
+    expect(html).toContain('29% dos cadastros agendaram');
+    expect(html).toContain('75% dos agendados compareceram');
+    expect(html).toContain('83% de quem veio matriculou');
+    expect(html).toContain('10 matricularam');
+    expect(html).toContain('40 em jogo');
+    expect(html).toContain('6 perdidos');
+    expect(html).toContain('40 seguem em jogo');
+  });
+
+  it('herói sem comparativo, sem base ou sem lead', () => {
+    expect(render(createElement(CrmHero, { cohort: COHORT, monthName: 'setembro', delta: null, cmpName: 'agosto' }))).not.toContain('sobre agosto');
+    expect(render(createElement(CrmHero, { cohort: COHORT, monthName: 'setembro', delta: { none: true, text: 'sem base' }, cmpName: 'agosto' }))).toContain('sem base');
+    const empty = render(createElement(CrmHero, { cohort: { ...COHORT, leads: 0 }, monthName: 'setembro', delta: null, cmpName: 'agosto' }));
+    expect(empty).toContain('Nenhum lead cadastrado neste mês.');
+    expect(empty).toContain('—');
+  });
+
+  it('faixa de números: valor, variação com tom e a linha de apoio de cada um', () => {
+    const items = [
+      { key: 'leads', label: 'Leads novos', value: '56', sub: 'Instagram lidera com 22', goodUp: true, delta: { up: true, text: '10%' }, help: 'x' },
+      { key: 'appts', label: 'Agendamentos', value: '19', sub: '12 vieram', goodUp: true, delta: { up: false, text: '6%' }, flag: 'incompleto' }
+    ];
+    const html = render(createElement(CrmTape, { items, note: null }));
+    expect(html).toContain('Leads novos');
+    expect(html).toContain('▲ 10%');
+    expect(html).toContain('▼ 6%');
+    expect(html).toContain('text-rose-700');
+    expect(html).toContain('incompleto');
+    expect(html).toContain('Instagram lidera com 22');
+  });
+
+  it('faixa de números: a frase da safra só aparece quando há uma', () => {
+    const items = [{ key: 'leads', label: 'Leads novos', value: '56', sub: '', goodUp: true, delta: null }];
+    expect(render(createElement(CrmTape, { items, note: 'Frase da safra.' }))).toContain('Frase da safra.');
+    expect(render(createElement(CrmTape, { items, note: null }))).not.toContain('Frase da safra.');
   });
 });
