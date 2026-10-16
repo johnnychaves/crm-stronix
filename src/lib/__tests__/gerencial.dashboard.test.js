@@ -270,11 +270,14 @@ describe('curva do topo', () => {
     const cmp = mk('2026-08', [5, 15, 25, null, null], false);
     const p = dashboardProps({ cur, cmp, cmpFull: full, comparing: true });
     expect(p.curve).toMatchObject({ days: 5, cutDay: 3, cur: [10, 20, 30, null, null], prev: [5, 15, 25, 40, 60], prevName: 'agosto' });
+    // O marcador usa a base da pílula (pró-rata), não o acumulado do dia inteiro.
+    expect(p.curve.prevAtCut).toBe(cmp.sold.sold);
     expect(p.period).toEqual({ monthName: 'setembro', running: true, day: 3 });
   });
 
   it('sem comparação não há linha do mês comparado', () => {
     const p = dashboardProps({ cur: mk('2026-09', [10, 20]), cmp: null, cmpFull: null, comparing: false });
     expect(p.curve.prev).toBeNull();
+    expect(p.curve.prevAtCut).toBeNull();
   });
 });
