@@ -10,7 +10,7 @@ import { CircleAlert } from 'lucide-react';
 import { TooltipProvider } from '../../components/ui/tooltip.jsx';
 import { useCrmSources } from '../../hooks/useCrmSources.js';
 import { monthKeyOf, addMonthsToKey, comparisonCut, compareOptions, monthLabel } from '../../lib/operacional/month.js';
-import { metricsOf, buildCrmHighlights, seriesOf, OTHERS_ID } from '../../lib/crm/metrics.js';
+import { metricsOf, seriesOf, OTHERS_ID } from '../../lib/crm/metrics.js';
 import { crmMonthKeys } from '../../lib/crm/queries.js';
 import { leadFunnelsOf, APPTS_COMPLETE_MONTH } from '../../lib/crm/scope.js';
 import { monthName } from '../../lib/crm/format.js';
@@ -106,7 +106,7 @@ export function DashboardCrmView({ usersList, liveLeads, interactions, db, liste
 
   // O cabeçalho e a barra descrevem o que está escolhido, mesmo enquanto carrega.
   const pickedName = monthLabel(monthKey, { capitalized: false, withYear: false });
-  const { subline, note } = regimeTexts({
+  const { subline } = regimeTexts({
     running: monthKey === currentKey, compareOn, dayN: now.getDate(), shownName: pickedName,
     cmpName: monthName(cmpKey, monthKey), apptsPartial: monthKey < APPTS_COMPLETE_MONTH
   });
@@ -115,11 +115,6 @@ export function DashboardCrmView({ usersList, liveLeads, interactions, db, liste
   // mesmos da escolha.
   const shownName = monthLabel(cur.monthKey, { capitalized: false, withYear: false });
   const cmpName = cmp ? monthName(cmp.monthKey, cur.monthKey) : monthName(cmpKey, monthKey);
-  const highlights = useMemo(
-    () => (compareOn ? buildCrmHighlights(cur, cmp, { cmpName }) : []),
-    [compareOn, cur, cmp, cmpName]
-  );
-
   const monthOptions = useMemo(
     () => Array.from({ length: 12 }, (_, i) => addMonthsToKey(currentKey, -i))
       .map((k) => ({ key: k, label: `${monthLabel(k)}${k === currentKey ? ' · em andamento' : ''}` })),
@@ -139,11 +134,8 @@ export function DashboardCrmView({ usersList, liveLeads, interactions, db, liste
   return (
     <TooltipProvider delayDuration={150}>
       <div className="-m-4 md:-m-8 font-sans">
-        <header className="bg-card px-4 md:px-8 pb-4 pt-5">
-          <h2 className="m-0 font-display text-[24px] font-bold tracking-[-0.02em]">CRM</h2>
-          <p className="mt-[5px] max-w-[860px] text-[12.5px] leading-normal text-muted-foreground">{subline}</p>
-        </header>
         <CrmToolbar
+          title="CRM" subline={subline}
           monthKey={monthKey} monthOptions={monthOptions} onMonth={changeMonth}
           canPrev={monthKey > oldestKey} onPrev={() => { if (monthKey > oldestKey) changeMonth(addMonthsToKey(monthKey, -1)); }}
           canNext={monthKey < currentKey} onNext={() => { if (monthKey < currentKey) changeMonth(addMonthsToKey(monthKey, 1)); }}
@@ -151,7 +143,6 @@ export function DashboardCrmView({ usersList, liveLeads, interactions, db, liste
           compareKey={cmpKey} compareOptions={cmpOptions} onCompare={(k) => setParams({ compareKey: k })}
           person={userId || 'all'} people={people} onPerson={(id) => setParams({ person: id })}
           funnel={funnelId || 'all'} funnels={leadFunnels} onFunnel={(id) => setParams({ funnel: id })}
-          note={note}
         />
         {failedNames.length > 0 && (
           <Notice>{`Não foi possível carregar os dados de ${joinPt(failedNames)}. Recarregue a página para tentar de novo.`}</Notice>
@@ -168,9 +159,9 @@ export function DashboardCrmView({ usersList, liveLeads, interactions, db, liste
               cmp={cmp}
               series={series}
               team={team}
-              highlights={highlights}
               compareOn={compareOn}
               shownName={shownName}
+              cmpName={cmpName}
               person={userId}
               personName={personUser?.name || 'Sem nome'}
               funnelId={funnelId}
