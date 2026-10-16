@@ -1633,8 +1633,9 @@ useEffect(() => {
                   </SidebarGroup>
                 )}
                 {/* O balão "Novo" dos Relatórios fica no item até o
-                    RELATORIOS_NOVO_ATE, como o das Rotinas, e abre um aviso curto. */}
-                {nav.relatorios && <SidebarItem icon={<ChartColumn className="w-[18px] h-[18px]" />} label="Relatórios" href={menuHref('relatorios')} onNavigate={closeDrawer} active={activeTab === 'relatorios'} novo={isNewFeatureOn(RELATORIOS_NOVO_ATE) ? <RelatoriosNovo tone="alert" /> : null} />}
+                    RELATORIOS_NOVO_ATE, como o das Rotinas, e abre a apresentação
+                    em passos. O último passo leva à tela, menos para quem já está nela. */}
+                {nav.relatorios && <SidebarItem icon={<ChartColumn className="w-[18px] h-[18px]" />} label="Relatórios" href={menuHref('relatorios')} onNavigate={closeDrawer} active={activeTab === 'relatorios'} novo={isNewFeatureOn(RELATORIOS_NOVO_ATE) ? <RelatoriosNovo tone="alert" href={activeTab === 'relatorios' ? null : menuHref('relatorios')} /> : null} />}
                 {nav.suporte && <SidebarItem icon={<LifeBuoy className="w-[18px] h-[18px]" />} label="Suporte" badge={ticketsUnread > 0 ? ticketsUnread : null} active={false} onClick={() => setTicketModalOpen(true)} />}
               </div>
             </>
