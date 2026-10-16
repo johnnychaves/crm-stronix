@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isContactInteraction, contactTimesByLead, firstContactOf } from '../crm/contact.js';
+import { isContactInteraction, contactTimesByLead, firstContactOf, firstContactMinutesOf } from '../crm/contact.js';
 
 const T = (d, h = 10, min = 0) => new Date(2026, 8, d, h, min);
 
@@ -81,5 +81,16 @@ describe('marco do cadastro pelo Stronizap', () => {
     expect(contactTimes.has('a')).toBe(false);
     expect(firstContactOf([{ id: 'a', createdAt: T(1, 10) }], { contactTimes, limit: T(15).getTime() }))
       .toMatchObject({ total: 1, none: 1, h1: 0 });
+  });
+});
+
+describe('minutos até o primeiro contato de um lead', () => {
+  it('a mesma regra das faixas, lead por lead', () => {
+    const contactTimes = contactTimesByLead([{ id: 'c1', leadId: 'a', type: 'note', text: 'oi', createdAt: T(1, 10, 30) }]);
+    const limit = T(15).getTime();
+    expect(firstContactMinutesOf({ id: 'a', createdAt: T(1, 10) }, { contactTimes, limit })).toBe(30);
+    expect(firstContactMinutesOf({ id: 'b', createdAt: T(1, 10) }, { contactTimes, limit })).toBeNull();
+    expect(firstContactMinutesOf({ id: 'a', createdAt: null }, { contactTimes, limit })).toBeNull();
+    expect(firstContactMinutesOf({ id: 'a', createdAt: T(1, 10) }, { contactTimes, limit: T(1, 10, 15).getTime() })).toBeNull();
   });
 });

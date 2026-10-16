@@ -1,0 +1,640 @@
+<!doctype html>
+<html lang="pt-BR" translate="no" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="google" content="notranslate">
+<title>Apresentação dos Relatórios</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Pop-up do balão "Novo" do item Relatórios (mockup para aprovação, 15/10/2026).
+   Três propostas sobre a mesma ideia: todo número dos Relatórios tem nomes por
+   trás, e o clique mostra quem são. Tokens do Stronilead (src/index.css). Os
+   nomes e os números dos desenhos são inventados. */
+:root {
+  --bg: #F5F7FB; --card: #FFFFFF; --ink: #0E1A40; --muted: #64748B; --faint: #94A3B8;
+  --line: #E2E8F0; --soft: #F1F4F9; --brand: #2B59FF; --brand-ink: #1E44D6;
+  --brand-tint: #EEF2FF; --brand-line: #C9D6FF;
+  --good: #047857; --good-soft: #ECFDF5; --loss: #BE123C; --loss-soft: #FFF1F2;
+  --amber: #B45309; --amber-soft: #FFFBEB;
+  --mini-shadow: 0 12px 30px -14px rgba(14, 26, 64, .35);
+  --pop-shadow: 0 30px 60px -20px rgba(14, 26, 64, .45), 0 2px 8px rgba(14, 26, 64, .08);
+  --scrim: rgba(14, 26, 64, .42);
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --bg: #080D22; --card: #0F152B; --ink: #EAEEF9; --muted: #8A93B0; --faint: #5B6482;
+  --line: rgba(255, 255, 255, .09); --soft: rgba(255, 255, 255, .05); --brand: #5A7FFF; --brand-ink: #9BB0FF;
+  --brand-tint: rgba(90, 127, 255, .13); --brand-line: rgba(90, 127, 255, .4);
+  --good: #34D399; --good-soft: rgba(52, 211, 153, .12); --loss: #FB7185; --loss-soft: rgba(251, 113, 133, .12);
+  --amber: #FBBF24; --amber-soft: rgba(251, 191, 36, .1);
+  --mini-shadow: 0 12px 30px -14px rgba(0, 0, 0, .8);
+  --pop-shadow: 0 30px 60px -16px rgba(0, 0, 0, .75);
+  --scrim: rgba(2, 4, 14, .66);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: var(--bg); }
+body { color: var(--ink); font: 14px/1.45 Geist, ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; cursor: pointer; background: none; border: 0; }
+a { color: inherit; text-decoration: none; }
+ul, ol { list-style: none; }
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 6px; }
+.t { font-family: 'Space Grotesk', Geist, sans-serif; font-variant-numeric: tabular-nums; }
+svg.i { width: 16px; height: 16px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---------- barra do mockup (fora do desenho) ---------- */
+.chrome { position: sticky; top: 0; z-index: 50; background: #0E1A40; color: #fff; }
+.chrome-in { padding: 10px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.chrome-name { font: 600 13.5px/1 'Space Grotesk', sans-serif; display: flex; align-items: center; gap: 8px; }
+.chrome-name small { font: 600 11px/1 Geist, sans-serif; color: #FF8A57; border: 1px solid rgba(255, 138, 87, .45); padding: 4px 7px; border-radius: 6px; }
+.seg { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; display: flex; gap: 3px; background: rgba(255, 255, 255, .08); padding: 3px; border-radius: 10px; }
+.seg button { height: 30px; padding: 0 12px; border-radius: 7px; font-size: 12.5px; font-weight: 500; color: rgba(255, 255, 255, .75); white-space: nowrap; }
+.seg button[aria-pressed="true"] { background: #fff; color: #0E1A40; }
+.chrome .plain { height: 30px; padding: 0 11px; border: 1px solid rgba(255, 255, 255, .18); border-radius: 8px; font-size: 12px; color: rgba(255, 255, 255, .88); }
+.chrome .plain[hidden] { display: none; }
+.chrome .end { margin-left: auto; display: flex; gap: 8px; }
+.note { padding: 0 16px 12px; font-size: 12.5px; line-height: 1.55; color: rgba(255, 255, 255, .8); max-width: 980px; }
+.note b { color: #fff; font-weight: 600; }
+
+.stage { padding: 24px 16px 64px; overflow-x: auto; overscroll-behavior-x: contain; }
+
+/* ---------- o aparelho: o app ao fundo, o véu e o pop-up ---------- */
+.device { position: relative; margin: 0 auto; width: 1180px; height: 760px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--bg); box-shadow: 0 24px 60px -30px rgba(14, 26, 64, .4); }
+.device.phone { width: 375px; height: 780px; border-radius: 30px; }
+
+.app { position: absolute; inset: 0; display: grid; grid-template-columns: 236px 1fr; }
+.device.phone .app { grid-template-columns: 1fr; }
+.side { background: var(--card); border-right: 1px solid var(--line); padding: 18px 12px; display: flex; flex-direction: column; gap: 3px; }
+.device.phone .side { display: none; }
+.logo { font: 700 16px/1 'Space Grotesk', sans-serif; letter-spacing: .01em; padding: 6px 10px 20px; display: flex; align-items: center; gap: 8px; }
+.logo i { width: 22px; height: 22px; border-radius: 7px; background: var(--brand); display: inline-block; }
+.nav { display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 10px; border-radius: 10px; color: var(--muted); font-size: 13.5px; font-weight: 500; }
+.nav .sq { width: 18px; height: 18px; border-radius: 5px; background: var(--soft); border: 1px solid var(--line); }
+.nav.hl { color: var(--ink); background: var(--soft); }
+.badge-novo { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 8px; border-radius: 999px; background: #DC2626; color: #fff; font: 700 10px/1 Geist, sans-serif; letter-spacing: .06em; text-transform: uppercase; box-shadow: 0 0 0 1.5px rgba(255, 255, 255, .9), 0 0 0 4px rgba(220, 38, 38, .25); }
+.badge-novo::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: #fff; }
+.main { display: flex; flex-direction: column; min-width: 0; }
+.topbar { height: 64px; flex: none; border-bottom: 1px solid var(--line); background: var(--card); display: flex; align-items: center; gap: 12px; padding: 0 24px; }
+.ghost { background: var(--soft); border-radius: 8px; height: 14px; }
+.content { padding: 24px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.device.phone .content { grid-template-columns: 1fr; padding: 16px; }
+.ghost-card { height: 132px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); }
+.ghost-card.wide { grid-column: 1 / -1; height: 260px; }
+.scrim { position: absolute; inset: 0; background: var(--scrim); }
+
+/* O pop-up. Largura de 520px, como o das Rotinas; no celular, 16px de cada lado. */
+.dlg { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(520px, calc(100% - 32px)); max-height: calc(100% - 32px); overflow-y: auto; overscroll-behavior: contain; background: var(--card); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--pop-shadow); }
+.dlg[hidden] { display: none; }
+.x { position: absolute; top: 12px; right: 12px; z-index: 3; width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; color: var(--muted); }
+.x:hover { background: var(--soft); color: var(--ink); }
+.title { font: 600 21px/1.2 'Space Grotesk', sans-serif; letter-spacing: -.015em; text-wrap: balance; }
+.desc { margin-top: 8px; font-size: 13.5px; line-height: 1.6; color: var(--muted); text-wrap: pretty; }
+.desc b { color: var(--ink); font-weight: 600; }
+.foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding: 18px 24px 22px; }
+.btn { height: 38px; padding: 0 16px; border-radius: 6px; font-size: 13.5px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid transparent; white-space: nowrap; }
+.btn.primary { background: #2B59FF; color: #fff; }
+.btn.primary:hover { background: #1E44D6; }
+.btn.outline { border-color: var(--line); background: var(--card); }
+.btn.outline:hover { background: var(--soft); }
+.btn[hidden] { display: none; }
+.novo { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 999px; background: #DC2626; color: #fff; font: 700 10px/1 Geist, sans-serif; letter-spacing: .06em; text-transform: uppercase; }
+.ico { width: 34px; height: 34px; border-radius: 10px; flex: none; display: grid; place-items: center; background: var(--brand-tint); color: var(--brand-ink); }
+
+/* Área do desenho, comum a B e C: o desenho fica numa mesa lisa, sem degradê. */
+.ill { background: var(--bg); border-bottom: 1px solid var(--line); padding: 44px 22px 22px; display: grid; place-items: center; overflow: hidden; }
+.mini { width: 100%; background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--mini-shadow); }
+
+/* Selo de situação, como o StatusPill: ponto e texto, nunca só a cor. */
+.pill { display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.pill.good { background: var(--good-soft); color: var(--good); }
+.pill.brand { background: var(--brand-tint); color: var(--brand-ink); }
+.pill.loss { background: var(--loss-soft); color: var(--loss); }
+.pill.mute { background: var(--soft); color: var(--muted); }
+
+/* ================= A: os cinco num olhar ================= */
+.a-head { padding: 24px 24px 18px; }
+.a-head .row { display: flex; align-items: center; gap: 12px; padding-right: 36px; }
+.a-head .ico { width: 40px; height: 40px; border-radius: 12px; }
+.a-head .row .title { display: flex; align-items: center; gap: 10px; }
+.a-list { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 8px 12px; display: flex; flex-direction: column; gap: 2px; }
+.a-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) 76px; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; border: 1px solid transparent; transition: background-color .15s, border-color .15s; }
+.a-row:hover { background: var(--soft); border-color: var(--line); }
+.a-name { display: block; font-size: 14px; font-weight: 600; }
+.a-q { display: block; margin-top: 2px; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+.spark { width: 76px; height: 30px; overflow: visible; }
+.device.phone .a-row { grid-template-columns: 34px minmax(0, 1fr); }
+.device.phone .spark { display: none; }
+.a-tip { margin: 16px 24px 0; padding: 12px 14px; border-radius: 12px; background: var(--brand-tint); display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 1.55; }
+.a-tip svg { margin-top: 2px; color: var(--brand-ink); }
+
+/* ================= B: em quatro passos ================= */
+.b .ill { height: 276px; padding-top: 40px; }
+.device.phone .b .ill { height: auto; min-height: 230px; padding-top: 48px; }
+.b .scene { width: 100%; display: flex; justify-content: center; }
+.b .scene[hidden] { display: none; }
+.b-body { padding: 20px 24px 6px; min-height: 178px; }
+.device.phone .b-body { min-height: 0; }
+.kick { font-size: 12px; font-weight: 600; color: var(--brand-ink); margin-bottom: 6px; }
+.b-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 24px 22px; }
+.dots { display: flex; gap: 6px; align-items: center; }
+.dots button { position: relative; height: 8px; width: 8px; border-radius: 999px; background: var(--line); transition: width .2s, background-color .2s; }
+.dots button::after { content: ""; position: absolute; inset: -8px -3px; }
+.dots button[aria-current="step"] { width: 22px; background: var(--brand); }
+.b-btns { margin-left: auto; display: flex; gap: 8px; }
+@media (prefers-reduced-motion: no-preference) {
+  .b .scene { animation: chega .3s ease both; }
+}
+@keyframes chega { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* Passo 1: a lista ao lado, com o grupo Leads aberto. */
+.rail { max-width: 300px; padding: 8px 10px; }
+.rail-group { display: flex; align-items: center; gap: 10px; padding: 2px 6px 6px; }
+.rail-group .ico { width: 28px; height: 28px; border-radius: 9px; }
+.rail-group b { font-size: 12.5px; display: block; }
+.rail-group small { font-size: 10.5px; color: var(--muted); display: block; }
+.rail-group svg.chev { margin-left: auto; color: var(--muted); width: 14px; height: 14px; }
+.rail-items { margin-left: 18px; padding-left: 8px; border-left: 2px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
+.ri { display: flex; align-items: center; gap: 8px; padding: 3px 7px; border-radius: 10px; border: 1px solid transparent; font-size: 12px; font-weight: 600; color: var(--muted); }
+.ri .sq { width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center; background: var(--soft); color: var(--muted); }
+.ri .sq svg { width: 13px; height: 13px; }
+.ri.on { background: var(--card); border-color: var(--line); box-shadow: 0 1px 2px rgba(15, 23, 42, .08); color: var(--ink); }
+.ri.on .sq { background: #2B59FF; color: #fff; }
+
+/* Passo 2: a barra de cima, com o filtro de consultor aberto. */
+.bar { max-width: 468px; padding: 10px; display: flex; flex-direction: column; gap: 10px; }
+.bar-row { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.period { height: 30px; display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; border: 1px solid var(--line); border-radius: 10px; font-size: 12px; font-weight: 600; }
+.period svg { width: 13px; height: 13px; color: var(--muted); }
+.period span { padding: 0 4px; }
+.fpill { height: 30px; display: inline-flex; align-items: center; gap: 4px; padding: 0 9px; border: 1px solid var(--line); border-radius: 999px; font-size: 12px; font-weight: 500; color: var(--muted); }
+.fpill svg { width: 12px; height: 12px; }
+.fpill.on { background: var(--brand-tint); border-color: var(--brand-line); color: var(--brand-ink); font-weight: 600; }
+.pop { align-self: flex-start; margin-left: 132px; width: 168px; padding: 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); box-shadow: var(--mini-shadow); display: flex; flex-direction: column; gap: 1px; }
+.device.phone .pop { margin-left: 40px; }
+.opt { display: flex; align-items: center; gap: 8px; padding: 6px 7px; border-radius: 8px; font-size: 12px; }
+.opt .cb { width: 15px; height: 15px; border-radius: 4px; border: 1.5px solid var(--faint); display: grid; place-items: center; }
+.opt.on .cb { background: #2B59FF; border-color: #2B59FF; color: #fff; }
+.opt.on .cb svg { width: 10px; height: 10px; stroke-width: 3.2; }
+.opt.on { font-weight: 600; }
+.vs { font-size: 11.5px; color: var(--muted); padding-left: 2px; }
+
+/* Passos 3 e C: o painel da Conversão e a lista embaixo. */
+.flow { width: 100%; max-width: 456px; display: flex; flex-direction: column; gap: 10px; }
+.band { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); overflow: visible; }
+.cell { position: relative; padding: 12px 10px 10px 12px; border-left: 1px solid var(--line); }
+.cell:first-child { border-left: 0; border-radius: 14px 0 0 14px; }
+.cell:last-child { border-radius: 0 14px 14px 0; }
+.cell::before { content: ""; position: absolute; left: 0; right: 0; top: -1px; height: 3px; background: transparent; }
+.cell:not(:last-child)::after { content: ""; position: absolute; right: -7px; top: 50%; width: 13px; height: 13px; margin-top: -6px; border-radius: 50%; background: var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E") center / 9px no-repeat; border: 1px solid var(--line); z-index: 1; }
+.cell .lab { display: block; font-size: 10.5px; font-weight: 600; color: var(--muted); line-height: 1.25; }
+.cell .val { display: block; margin-top: 4px; font: 700 20px/1 'Space Grotesk', sans-serif; font-variant-numeric: tabular-nums; }
+.cell .val.good { color: var(--good); }
+.cell.sel { background: var(--brand-tint); }
+.cell.sel::before { background: var(--brand); }
+.cell.sel .lab { color: var(--brand-ink); }
+.mlist { overflow: hidden; }
+.mlist-head { display: grid; padding: 9px 12px; border-bottom: 1px solid var(--line); font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.mlist-head > * { grid-area: 1 / 1; display: flex; align-items: center; gap: 6px; }
+.chip { justify-self: start; display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 4px 0 9px; border-radius: 999px; background: var(--brand-tint); color: var(--brand-ink); font-size: 11.5px; font-weight: 600; }
+.chip svg { width: 13px; height: 13px; }
+.rows-wrap { display: grid; }
+.rows-wrap > ul { grid-area: 1 / 1; }
+.mrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 7px 12px; border-top: 1px solid var(--line); }
+.mrow:first-child { border-top: 0; }
+.mrow b { display: block; font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mrow small { display: block; font-size: 11px; color: var(--muted); }
+.cursor { position: absolute; right: 6px; bottom: -14px; width: 22px; height: 22px; z-index: 2; pointer-events: none; filter: drop-shadow(0 2px 3px rgba(14, 26, 64, .35)); }
+.cursor path { fill: #fff; stroke: #0E1A40; stroke-width: 1.6; stroke-linejoin: round; }
+
+/* Passo 4: a planilha e a folha impressa, cada uma embaixo do botão que a faz. */
+.out { width: 100%; max-width: 440px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+.out-col { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+.out .btn { height: 30px; padding: 0 11px; font-size: 12px; background: var(--card); border-color: var(--line); }
+.out .btn svg { width: 14px; height: 14px; }
+.sheet-xls { padding: 8px; }
+.xls { display: grid; grid-template-columns: 1.4fr 1fr .8fr; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; font-size: 9.5px; }
+.xls span { padding: 4px 5px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.xls span:nth-child(3n) { border-right: 0; }
+.xls .h { background: var(--soft); font-weight: 700; color: var(--muted); }
+.a4 { aspect-ratio: 210 / 250; padding: 10px 11px; display: flex; flex-direction: column; gap: 5px; }
+.a4 .acad { font-size: 8.5px; color: var(--muted); }
+.a4 .tt { font: 700 12px/1.1 'Space Grotesk', sans-serif; }
+.a4 .ficha { font-size: 8.5px; color: var(--muted); line-height: 1.4; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 4px 0; }
+.a4 .ficha b { color: var(--ink); font-weight: 600; }
+.a4 .ln { height: 6px; border-radius: 3px; background: var(--soft); }
+.a4 .ln.s { width: 70%; }
+
+/* ================= C: o número vira nomes ================= */
+.c .ill { padding: 40px 22px 20px; }
+.c-body { padding: 20px 24px 0; }
+.c-sub { margin-top: 18px; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.c-grid { margin-top: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.c-grid a { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; font-size: 13px; font-weight: 600; transition: border-color .15s, background-color .15s; }
+.c-grid a:hover { border-color: var(--brand-line); background: var(--brand-tint); }
+.c-grid .ico { width: 28px; height: 28px; border-radius: 8px; }
+.c-grid .ico svg { width: 14px; height: 14px; }
+.c-grid li:last-child:nth-child(odd) > a { grid-column: 1 / -1; }
+
+/* A animação do C: um momento só, quando o pop-up abre. Sem movimento no
+   aparelho, o desenho já aparece no fim (lista filtrada, número aceso). */
+.c-ill .rows0 { opacity: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .c-ill.play .cursor { animation: cursor 1.5s cubic-bezier(.3, .7, .3, 1) .45s both; }
+  .c-ill.play .cell.sel { animation: acende .3s ease 1.55s both; }
+  .c-ill.play .cell.sel::before { animation: barra .3s ease 1.55s both; }
+  .c-ill.play .state0 { animation: some .2s ease 1.6s both; }
+  .c-ill.play .state1 { animation: aparece .25s ease 1.65s both; }
+  .c-ill.play .rows0 { animation: sai .22s ease 1.6s both; }
+  .c-ill.play .rows1 .mrow { animation: entra .3s ease both; }
+  .c-ill.play .rows1 .mrow:nth-child(1) { animation-delay: 1.72s; }
+  .c-ill.play .rows1 .mrow:nth-child(2) { animation-delay: 1.8s; }
+  .c-ill.play .rows1 .mrow:nth-child(3) { animation-delay: 1.88s; }
+}
+.c-ill .state0 { opacity: 0; }
+@keyframes cursor {
+  0% { transform: translate(110px, 80px); opacity: 0; }
+  12% { opacity: 1; }
+  64% { transform: translate(0, 0) scale(1); }
+  74% { transform: translate(0, 0) scale(.82); }
+  86%, 100% { transform: translate(0, 0) scale(1); opacity: 1; }
+}
+@keyframes acende { from { background: transparent; } to { background: var(--brand-tint); } }
+@keyframes barra { from { background: transparent; } to { background: var(--brand); } }
+@keyframes some { from { opacity: 1; } to { opacity: 0; } }
+@keyframes aparece { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sai { from { opacity: 1; } to { opacity: 0; } }
+@keyframes entra { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+
+/* No celular os desenhos encolhem a letra para caber em 311px. */
+.device.phone .cell { padding: 10px 6px 8px 8px; }
+.device.phone .cell .lab { font-size: 9.5px; }
+.device.phone .cell .val { font-size: 17px; }
+.device.phone .out { gap: 10px; }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></symbol>
+  <symbol id="i-entrada" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></symbol>
+  <symbol id="i-conversao" viewBox="0 0 24 24"><path d="M22 7 13.5 15.5 8.5 10.5 2 17"/><path d="M16 7h6v6"/></symbol>
+  <symbol id="i-visitas" viewBox="0 0 24 24"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/></symbol>
+  <symbol id="i-perdas" viewBox="0 0 24 24"><path d="M22 17 13.5 8.5 8.5 13.5 2 7"/><path d="M16 17h6v-6"/></symbol>
+  <symbol id="i-parados" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M10 15V9"/><path d="M14 15V9"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+  <symbol id="i-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-print" viewBox="0 0 24 24"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></symbol>
+  <symbol id="i-click" viewBox="0 0 24 24"><path d="M14 4.1 12 6"/><path d="m5.1 8-2.9-.8"/><path d="m6 12-1.9 2"/><path d="M7.2 2.2 8 5.1"/><path d="M9.04 9.69a.5.5 0 0 1 .65-.65l11 4.5a.5.5 0 0 1-.07.95l-4.35 1.04a1 1 0 0 0-.74.74l-1.04 4.35a.5.5 0 0 1-.95.07z"/></symbol>
+</svg>
+
+<header class="chrome">
+  <div class="chrome-in">
+    <div class="chrome-name">Apresentação dos Relatórios <small>Mockup</small></div>
+    <div class="seg" role="group" aria-label="Proposta">
+      <button type="button" data-opt="a" aria-pressed="true">A · Os cinco num olhar</button>
+      <button type="button" data-opt="b" aria-pressed="false">B · Em quatro passos</button>
+      <button type="button" data-opt="c" aria-pressed="false">C · O número vira nomes</button>
+    </div>
+    <div class="end">
+      <button type="button" class="plain" id="replay" hidden>Rever a animação</button>
+      <div class="seg" role="group" aria-label="Tela">
+        <button type="button" data-dev="desk" aria-pressed="true">Computador</button>
+        <button type="button" data-dev="phone" aria-pressed="false">Celular</button>
+      </div>
+      <button type="button" class="plain" id="theme">Tema escuro</button>
+    </div>
+  </div>
+  <p class="note" id="note"></p>
+</header>
+
+<main class="stage">
+  <div class="device" id="device">
+    <div class="app" aria-hidden="true">
+      <aside class="side">
+        <div class="logo"><i></i>STRONILEAD</div>
+        <div class="nav"><span class="sq"></span>Operacional</div>
+        <div class="nav"><span class="sq"></span>Meta diária</div>
+        <div class="nav"><span class="sq"></span>Pipeline</div>
+        <div class="nav"><span class="sq"></span>Leads</div>
+        <div class="nav"><span class="sq"></span>Clientes</div>
+        <div class="nav hl"><span class="sq"></span>Relatórios<span class="badge-novo">Novo</span></div>
+        <div class="nav"><span class="sq"></span>Rotinas</div>
+        <div class="nav"><span class="sq"></span>Configurações</div>
+      </aside>
+      <div class="main">
+        <div class="topbar"><span class="ghost" style="width:140px"></span><span class="ghost" style="width:220px;margin-left:auto"></span></div>
+        <div class="content">
+          <div class="ghost-card"></div><div class="ghost-card"></div><div class="ghost-card"></div>
+          <div class="ghost-card wide"></div>
+        </div>
+      </div>
+    </div>
+    <div class="scrim"></div>
+
+    <!-- ================= A: os cinco num olhar ================= -->
+    <div class="dlg a" data-opt="a" role="dialog" aria-modal="true" aria-labelledby="a-title" aria-describedby="a-desc">
+      <button class="x" type="button" aria-label="Fechar"><svg class="i"><use href="#i-x"/></svg></button>
+      <div class="a-head">
+        <div class="row">
+          <span class="ico" aria-hidden="true"><svg class="i" style="width:19px;height:19px"><use href="#i-chart"/></svg></span>
+          <h2 class="title" id="a-title">Relatórios <span class="novo">Novo</span></h2>
+        </div>
+        <p class="desc" id="a-desc">Os números dos seus leads em cinco relatórios. Escolha o período, o consultor, a origem e o funil no alto da tela.</p>
+      </div>
+      <ul class="a-list">
+        <li><a class="a-row" href="#" onclick="return false">
+          <span class="ico" aria-hidden="true"><svg class="i"><use href="#i-entrada"/></svg></span>
+          <span><span class="a-name">Entrada de leads</span><span class="a-q">Quantos chegaram, de onde e para qual consultor.</span></span>
+          <svg class="spark" viewBox="0 0 76 30" aria-hidden="true">
+            <g fill="var(--brand)">
+              <rect x="0" y="20" width="5" height="10" rx="1.5" opacity=".55"/><rect x="8" y="14" width="5" height="16" rx="1.5" opacity=".55"/>
+              <rect x="16" y="18" width="5" height="12" rx="1.5" opacity=".55"/><rect x="24" y="9" width="5" height="21" rx="1.5" opacity=".55"/>
+              <rect x="32" y="16" width="5" height="14" rx="1.5" opacity=".55"/><rect x="40" y="6" width="5" height="24" rx="1.5" opacity=".55"/>
+              <rect x="48" y="12" width="5" height="18" rx="1.5" opacity=".55"/><rect x="56" y="3" width="5" height="27" rx="1.5"/>
+              <rect x="64" y="10" width="5" height="20" rx="1.5" opacity=".55"/><rect x="72" y="17" width="4" height="13" rx="1.5" opacity=".55"/>
+            </g>
+          </svg>
+        </a></li>
+        <li><a class="a-row" href="#" onclick="return false">
+          <span class="ico" aria-hidden="true"><svg class="i"><use href="#i-conversao"/></svg></span>
+          <span><span class="a-name">Conversão</span><span class="a-q">Dos que chegaram, quantos agendaram, vieram e se matricularam.</span></span>
+          <svg class="spark" viewBox="0 0 76 30" aria-hidden="true">
+            <rect x="0" y="0" width="14" height="30" rx="2" fill="var(--brand)" opacity=".55"/>
+            <rect x="20" y="13" width="14" height="17" rx="2" fill="var(--brand)" opacity=".55"/>
+            <rect x="40" y="22" width="14" height="8" rx="2" fill="var(--brand)" opacity=".55"/>
+            <rect x="60" y="25" width="14" height="5" rx="2" fill="var(--good)"/>
+          </svg>
+        </a></li>
+        <li><a class="a-row" href="#" onclick="return false">
+          <span class="ico" aria-hidden="true"><svg class="i"><use href="#i-visitas"/></svg></span>
+          <span><span class="a-name">Visitas e aulas</span><span class="a-q">Quem veio e quem faltou nas visitas e aulas experimentais.</span></span>
+          <svg class="spark" viewBox="0 0 76 30" aria-hidden="true">
+            <rect x="0" y="11" width="41" height="8" rx="2" fill="var(--good)"/>
+            <rect x="43" y="11" width="18" height="8" rx="2" fill="var(--loss)" opacity=".8"/>
+            <rect x="63" y="11" width="13" height="8" rx="2" fill="var(--amber)" opacity=".7"/>
+          </svg>
+        </a></li>
+        <li><a class="a-row" href="#" onclick="return false">
+          <span class="ico" aria-hidden="true"><svg class="i"><use href="#i-perdas"/></svg></span>
+          <span><span class="a-name">Perdas</span><span class="a-q">Por qual motivo e em que etapa os leads se perderam.</span></span>
+          <svg class="spark" viewBox="0 0 76 30" aria-hidden="true">
+            <g fill="var(--loss)">
+              <rect x="0" y="2" width="70" height="4" rx="2" opacity=".85"/><rect x="0" y="10" width="48" height="4" rx="2" opacity=".65"/>
+              <rect x="0" y="18" width="30" height="4" rx="2" opacity=".5"/><rect x="0" y="26" width="16" height="4" rx="2" opacity=".35"/>
+            </g>
+          </svg>
+        </a></li>
+        <li><a class="a-row" href="#" onclick="return false">
+          <span class="ico" aria-hidden="true"><svg class="i"><use href="#i-parados"/></svg></span>
+          <span><span class="a-name">Leads parados</span><span class="a-q">Quem está sem próximo passo, com contato atrasado ou sem registro.</span></span>
+          <svg class="spark" viewBox="0 0 76 30" aria-hidden="true">
+            <circle cx="5" cy="15" r="4" fill="var(--faint)"/>
+            <path d="M13 15h50" stroke="var(--faint)" stroke-width="1.6" stroke-dasharray="2 4" stroke-linecap="round"/>
+            <circle cx="70" cy="15" r="4.5" fill="none" stroke="var(--amber)" stroke-width="2"/>
+          </svg>
+        </a></li>
+      </ul>
+      <p class="a-tip"><svg class="i" aria-hidden="true"><use href="#i-click"/></svg><span>Dentro de cada relatório, clique num número para ver os nomes. A lista pode ser exportada para o Excel ou impressa.</span></p>
+      <div class="foot"><button class="btn primary" type="button">Entendi</button></div>
+    </div>
+
+    <!-- ================= B: em quatro passos ================= -->
+    <div class="dlg b" data-opt="b" role="dialog" aria-modal="true" aria-labelledby="b-title" aria-describedby="b-text" hidden>
+      <button class="x" type="button" aria-label="Fechar"><svg class="i"><use href="#i-x"/></svg></button>
+      <div class="ill" aria-hidden="true">
+        <!-- Passo 1 -->
+        <div class="scene" data-step="0">
+          <div class="mini rail">
+            <div class="rail-group">
+              <span class="ico"><svg class="i" style="width:14px;height:14px"><use href="#i-users"/></svg></span>
+              <span><b>Leads</b><small>5 relatórios</small></span>
+              <svg class="i chev"><use href="#i-up"/></svg>
+            </div>
+            <div class="rail-items">
+              <div class="ri"><span class="sq"><svg class="i"><use href="#i-entrada"/></svg></span>Entrada de leads</div>
+              <div class="ri on"><span class="sq"><svg class="i"><use href="#i-conversao"/></svg></span>Conversão</div>
+              <div class="ri"><span class="sq"><svg class="i"><use href="#i-visitas"/></svg></span>Visitas e aulas</div>
+              <div class="ri"><span class="sq"><svg class="i"><use href="#i-perdas"/></svg></span>Perdas</div>
+              <div class="ri"><span class="sq"><svg class="i"><use href="#i-parados"/></svg></span>Leads parados</div>
+            </div>
+          </div>
+        </div>
+        <!-- Passo 2 -->
+        <div class="scene" data-step="1" hidden>
+          <div class="mini bar">
+            <div class="bar-row">
+              <span class="period"><svg class="i"><use href="#i-left"/></svg><span>Outubro de 2026</span><svg class="i"><use href="#i-right"/></svg></span>
+              <span class="fpill on">Consultor: Bruno<svg class="i"><use href="#i-down"/></svg></span>
+              <span class="fpill">Origem<svg class="i"><use href="#i-down"/></svg></span>
+              <span class="fpill">Funil<svg class="i"><use href="#i-down"/></svg></span>
+            </div>
+            <div class="pop">
+              <span class="opt"><span class="cb"></span>Ana Paula</span>
+              <span class="opt on"><span class="cb"><svg class="i"><use href="#i-check"/></svg></span>Bruno Lima</span>
+              <span class="opt"><span class="cb"></span>Carla Souza</span>
+            </div>
+            <span class="vs">Comparado com setembro, nos mesmos dias</span>
+          </div>
+        </div>
+        <!-- Passo 3 -->
+        <div class="scene" data-step="2" hidden>
+          <div class="flow">
+            <div class="mini band">
+              <div class="cell"><span class="lab">Leads da safra</span><span class="val">51</span></div>
+              <div class="cell"><span class="lab">Agendaram</span><span class="val">23</span></div>
+              <div class="cell sel"><span class="lab">Vieram</span><span class="val">8</span><svg class="cursor" viewBox="0 0 24 24"><path d="M4.04 4.69a.5.5 0 0 1 .65-.65l16 6.5a.5.5 0 0 1-.06.95l-6.13 1.58a2 2 0 0 0-1.43 1.43l-1.58 6.13a.5.5 0 0 1-.95.06z"/></svg></div>
+              <div class="cell"><span class="lab">Matricularam</span><span class="val good">4</span></div>
+            </div>
+            <div class="mini mlist">
+              <div class="mlist-head"><span class="chip">Vieram: 8 dos 51 <svg class="i"><use href="#i-x"/></svg></span></div>
+              <ul>
+                <li class="mrow"><span><b>Marina Alves</b><small>Instagram</small></span><span class="pill good">Matriculou</span></li>
+                <li class="mrow"><span><b>Rafael Costa</b><small>Indicação</small></span><span class="pill brand">Veio</span></li>
+                <li class="mrow"><span><b>Bia Mendes</b><small>WhatsApp</small></span><span class="pill brand">Veio</span></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <!-- Passo 4 -->
+        <div class="scene" data-step="3" hidden>
+          <div class="out">
+            <div class="out-col">
+              <span class="btn"><svg class="i"><use href="#i-download"/></svg>Exportar lista</span>
+              <div class="mini sheet-xls">
+                <div class="xls">
+                  <span class="h">Nome</span><span class="h">Origem</span><span class="h">Veio</span>
+                  <span>Marina Alves</span><span>Instagram</span><span>Sim</span>
+                  <span>Rafael Costa</span><span>Indicação</span><span>Sim</span>
+                  <span>Bia Mendes</span><span>WhatsApp</span><span>Sim</span>
+                  <span>Lucas Martins</span><span>Google</span><span>Sim</span>
+                </div>
+              </div>
+            </div>
+            <div class="out-col">
+              <span class="btn"><svg class="i"><use href="#i-print"/></svg>Imprimir</span>
+              <div class="mini a4">
+                <span class="acad">Academia Shape One</span>
+                <span class="tt">Conversão</span>
+                <span class="ficha"><b>Outubro de 2026</b><br>Lista filtrada por Vieram, 8 dos 51</span>
+                <span class="ln"></span><span class="ln s"></span><span class="ln"></span><span class="ln s"></span><span class="ln"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="b-body" aria-live="polite" aria-atomic="true">
+        <p class="kick" id="b-kick"></p>
+        <h2 class="title" id="b-title"></h2>
+        <p class="desc" id="b-text"></p>
+      </div>
+      <div class="b-foot">
+        <div class="dots" role="group" aria-label="Passos" id="b-dots"></div>
+        <div class="b-btns">
+          <button class="btn outline" type="button" id="b-back" hidden>Voltar</button>
+          <button class="btn primary" type="button" id="b-next">Próximo</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= C: o número vira nomes ================= -->
+    <div class="dlg c" data-opt="c" role="dialog" aria-modal="true" aria-labelledby="c-title" aria-describedby="c-desc" hidden>
+      <button class="x" type="button" aria-label="Fechar"><svg class="i"><use href="#i-x"/></svg></button>
+      <div class="ill c-ill" id="c-ill" aria-hidden="true">
+        <div class="flow">
+          <div class="mini band">
+            <div class="cell"><span class="lab">Leads da safra</span><span class="val">51</span></div>
+            <div class="cell"><span class="lab">Agendaram</span><span class="val">23</span></div>
+            <div class="cell sel"><span class="lab">Vieram</span><span class="val">8</span><svg class="cursor" viewBox="0 0 24 24"><path d="M4.04 4.69a.5.5 0 0 1 .65-.65l16 6.5a.5.5 0 0 1-.06.95l-6.13 1.58a2 2 0 0 0-1.43 1.43l-1.58 6.13a.5.5 0 0 1-.95.06z"/></svg></div>
+            <div class="cell"><span class="lab">Matricularam</span><span class="val good">4</span></div>
+          </div>
+          <div class="mini mlist">
+            <div class="mlist-head">
+              <span class="state0">Lista com os 51 leads</span>
+              <span class="state1"><span class="chip">Vieram: 8 dos 51 <svg class="i"><use href="#i-x"/></svg></span></span>
+            </div>
+            <div class="rows-wrap">
+              <ul class="rows0">
+                <li class="mrow"><span><b>Carla Souza</b><small>Instagram</small></span><span class="pill mute">Em aberto</span></li>
+                <li class="mrow"><span><b>Rafael Costa</b><small>Indicação</small></span><span class="pill brand">Veio</span></li>
+                <li class="mrow"><span><b>Diego Ramos</b><small>Google</small></span><span class="pill loss">Perdeu</span></li>
+              </ul>
+              <ul class="rows1">
+                <li class="mrow"><span><b>Marina Alves</b><small>Instagram</small></span><span class="pill good">Matriculou</span></li>
+                <li class="mrow"><span><b>Rafael Costa</b><small>Indicação</small></span><span class="pill brand">Veio</span></li>
+                <li class="mrow"><span><b>Bia Mendes</b><small>WhatsApp</small></span><span class="pill brand">Veio</span></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="c-body">
+        <h2 class="title" id="c-title">Cada número dos Relatórios tem nomes</h2>
+        <p class="desc" id="c-desc">Escolha o período e os filtros, clique num número e veja quem está nele. A lista pode ser exportada para o Excel ou impressa.</p>
+        <p class="c-sub">Os cinco relatórios de leads</p>
+        <ul class="c-grid">
+          <li style="display:contents"><a href="#" onclick="return false"><span class="ico" aria-hidden="true"><svg class="i"><use href="#i-entrada"/></svg></span>Entrada de leads</a></li>
+          <li style="display:contents"><a href="#" onclick="return false"><span class="ico" aria-hidden="true"><svg class="i"><use href="#i-conversao"/></svg></span>Conversão</a></li>
+          <li style="display:contents"><a href="#" onclick="return false"><span class="ico" aria-hidden="true"><svg class="i"><use href="#i-visitas"/></svg></span>Visitas e aulas</a></li>
+          <li style="display:contents"><a href="#" onclick="return false"><span class="ico" aria-hidden="true"><svg class="i"><use href="#i-perdas"/></svg></span>Perdas</a></li>
+          <li style="display:contents"><a href="#" onclick="return false"><span class="ico" aria-hidden="true"><svg class="i"><use href="#i-parados"/></svg></span>Leads parados</a></li>
+        </ul>
+      </div>
+      <div class="foot">
+        <button class="btn outline" type="button">Fechar</button>
+        <button class="btn primary" type="button">Abrir Relatórios</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+const NOTES = {
+  a: '<b>A · Os cinco num olhar.</b> Uma tela só, sem passos. Cada linha é um relatório, com a pergunta que ele responde e um desenho do tipo de número que ele mostra (barras por dia, etapas da safra, quem veio e quem faltou, motivos, dias sem registro). A linha é um link e abre o relatório. Embaixo, a dica de clicar no número. Os desenhos não têm número, para ninguém achar que é dado de verdade. É a mais curta: lê em dez segundos.',
+  b: '<b>B · Em quatro passos.</b> No molde da apresentação das Rotinas, com desenhos da própria tela: onde ficam os cinco relatórios, como escolher período e filtros, o número que vira lista de nomes e o que sai no Exportar e no Imprimir. É a que mais ensina, e quem já viu a das Rotinas reconhece o jeito. No último passo o botão é "Abrir Relatórios".',
+  c: '<b>C · O número vira nomes.</b> Uma tela só, com uma animação curta no alto: o cursor clica em "Vieram" e a lista troca para quem veio. É o momento que explica a tela inteira. Embaixo, os cinco relatórios, cada um abrindo o seu. Com movimento reduzido no aparelho, o desenho já aparece no fim. Use "Rever a animação" na barra para ver de novo.',
+};
+
+const STEPS = [
+  { title: 'Cinco relatórios dos seus leads', text: 'Na lista ao lado ficam Entrada de leads, Conversão, Visitas e aulas, Perdas e Leads parados. O clique num deles abre o relatório.' },
+  { title: 'Escolha o período e os filtros', text: 'No alto da tela, escolha o mês ou um intervalo de dias e filtre por consultor, origem e funil. Cada número vem comparado com o período anterior. Em Leads parados, você escolhe há quantos dias o lead está sem registro.' },
+  { title: 'Clique num número para ver os nomes', text: 'Cada número filtra a lista logo abaixo, com o nome, a origem e a situação de cada lead. As linhas dos recortes, como Por origem e Por consultor, filtram do mesmo jeito. O X do filtro volta para a lista inteira.' },
+  { title: 'Exporte ou imprima a lista', text: 'Exportar lista baixa uma planilha que abre no Excel. Imprimir leva só a lista para uma folha A4, com o período e os filtros escritos no topo.' },
+];
+
+const root = document.documentElement;
+const device = document.getElementById('device');
+const note = document.getElementById('note');
+const replay = document.getElementById('replay');
+const cIll = document.getElementById('c-ill');
+
+function playC() {
+  cIll.classList.remove('play');
+  void cIll.offsetWidth;
+  cIll.classList.add('play');
+}
+
+function showOpt(opt) {
+  document.querySelectorAll('[data-opt]').forEach((el) => {
+    if (el.tagName === 'BUTTON') el.setAttribute('aria-pressed', String(el.dataset.opt === opt));
+    else el.hidden = el.dataset.opt !== opt;
+  });
+  note.innerHTML = NOTES[opt];
+  replay.hidden = opt !== 'c';
+  if (opt === 'b') setStep(0, false);
+  if (opt === 'c') playC();
+}
+document.querySelectorAll('button[data-opt]').forEach((b) => b.addEventListener('click', () => showOpt(b.dataset.opt)));
+replay.addEventListener('click', playC);
+
+document.querySelectorAll('button[data-dev]').forEach((b) => b.addEventListener('click', () => {
+  document.querySelectorAll('button[data-dev]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+  device.classList.toggle('phone', b.dataset.dev === 'phone');
+}));
+
+document.getElementById('theme').addEventListener('click', (e) => {
+  const dark = root.dataset.theme !== 'dark';
+  root.dataset.theme = dark ? 'dark' : 'light';
+  e.currentTarget.textContent = dark ? 'Tema claro' : 'Tema escuro';
+});
+
+// Carrossel da B: o botão principal é o mesmo nos quatro passos.
+let step = 0;
+const dots = document.getElementById('b-dots');
+const back = document.getElementById('b-back');
+const next = document.getElementById('b-next');
+STEPS.forEach((s, i) => {
+  const d = document.createElement('button');
+  d.type = 'button';
+  d.setAttribute('aria-label', s.title);
+  d.addEventListener('click', () => setStep(i));
+  dots.appendChild(d);
+});
+function setStep(i, focus = true) {
+  step = i;
+  const s = STEPS[i];
+  document.getElementById('b-kick').textContent = `${i + 1} de ${STEPS.length}`;
+  document.getElementById('b-title').textContent = s.title;
+  document.getElementById('b-text').textContent = s.text;
+  document.querySelectorAll('.b .scene').forEach((el) => { el.hidden = Number(el.dataset.step) !== i; });
+  [...dots.children].forEach((d, j) => (j === i ? d.setAttribute('aria-current', 'step') : d.removeAttribute('aria-current')));
+  back.hidden = i === 0;
+  next.textContent = i === STEPS.length - 1 ? 'Abrir Relatórios' : 'Próximo';
+  if (focus && i === 0) next.focus();
+}
+back.addEventListener('click', () => setStep(Math.max(0, step - 1)));
+next.addEventListener('click', () => { if (step < STEPS.length - 1) setStep(step + 1); });
+
+showOpt('a');
+</script>
+</body>
+</html>

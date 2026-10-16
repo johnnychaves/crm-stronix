@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  appointmentsOf, recordsByLeadOf, cohortMilestones, professorsOf, visitOutcomesByLead, effectiveStatus
+  appointmentsOf, appointmentRowsOf, recordsByLeadOf, cohortMilestones, cohortMilestoneOf, professorsOf, visitOutcomesByLead,
+  effectiveStatus, isSoloTrainingRecord
 } from '../crm/appointments.js';
 
 const D = (m, d, h = 10) => new Date(2026, m - 1, d, h);
@@ -282,5 +283,56 @@ describe('professores', () => {
 
   it('mês sem aula: sem linhas, sem treina sozinho', () => {
     expect(professorsOf([], WIN)).toEqual({ rows: [], solo: null, done: 0 });
+  });
+});
+
+describe('marcos de um lead da safra', () => {
+  const asOf = D(9, 20);
+
+  it('agendou e veio, pela mesma regra da contagem', () => {
+    const recordsByLead = recordsByLeadOf([R('m1', { status: 'attended', scheduledFor: D(9, 5), createdAt: D(9, 2) })]);
+    expect(cohortMilestoneOf(lead('a'), { asOf, cut: false, recordsByLead })).toEqual({ booked: true, attended: true });
+    expect(cohortMilestones([lead('a')], { asOf, cut: false, recordsByLead })).toEqual({ sched: 1, came: 1 });
+  });
+
+  it('só agendou, ou nem agendou', () => {
+    const agendado = recordsByLeadOf([R('m2', { scheduledFor: D(9, 25), createdAt: D(9, 3) })]);
+    expect(cohortMilestoneOf(lead('a'), { asOf, cut: false, recordsByLead: agendado })).toEqual({ booked: true, attended: false });
+    expect(cohortMilestoneOf(lead('b'), { asOf, cut: false, recordsByLead: agendado })).toEqual({ booked: false, attended: false });
+  });
+});
+
+describe('agendamentos do mês, um por um', () => {
+  const recs = [
+    R('1', { status: 'attended' }),
+    R('2', { status: 'no_show', leadId: 'b' }),
+    R('3', { status: 'agendada', type: 'visita' }),
+    R('4', { status: 'cancelled' }),
+    R('5', { status: 'attended', scheduledFor: D(9, 20) }),
+    R('1', { status: 'attended' })
+  ];
+
+  it('os mesmos registros que a contagem, com o lead e o status que vale', () => {
+    const rows = appointmentRowsOf(recs, { ...WIN, leadOf, inScope: all });
+    expect(rows.map((x) => [x.record.id, x.lead.id, x.status])).toEqual([
+      ['1', 'a', 'attended'], ['2', 'b', 'no_show'], ['3', 'a', 'agendada']
+    ]);
+    expect(appointmentsOf(recs, { ...WIN, leadOf, inScope: all }).total).toBe(rows.length);
+  });
+
+  it('a visita leva o desfecho da linha do tempo, como na contagem', () => {
+    const visitOutcomes = visitOutcomesByLead([{
+      id: 'g1', leadId: 'a', type: 'daily_goal_done', dailyGoalCategory: 'visita_hoje', appointmentOutcome: 'attended', createdAt: D(9, 2, 18)
+    }]);
+    const rows = appointmentRowsOf([R('3', { type: 'visita' })], { ...WIN, leadOf, inScope: all, visitOutcomes });
+    expect(rows.map((x) => x.status)).toEqual(['attended']);
+  });
+});
+
+describe('treina sozinho', () => {
+  it('a aula com a marca, ou sem professor', () => {
+    expect(isSoloTrainingRecord({ soloTraining: true, professorId: 'p1' })).toBe(true);
+    expect(isSoloTrainingRecord({ professorId: null })).toBe(true);
+    expect(isSoloTrainingRecord({ professorId: 'p1' })).toBe(false);
   });
 });

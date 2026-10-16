@@ -17,7 +17,8 @@ import { StatusBadge } from '../components/ui/Badges.jsx';
 import { FunnelTabs } from '../components/layout/FunnelTabs.jsx';
 import { LeadLink } from '../components/nav/AppLink.jsx';
 import { ContactPhone } from '../components/profile/ContactPhone.jsx';
-import { contactLabel, contactOf } from '../lib/guardian.js';
+import { downloadCsv } from '../lib/csvExport.js';
+import { leadsToCsv } from '../lib/leadsCsv.js';
 
 // Cor da etapa (para chip de fase e dot). Venda/Perda mapeiam para os mesmos
 // tokens usados no Kanban; as demais vêm da cor configurada da etapa.
@@ -125,44 +126,14 @@ function LeadsView({ interactions, statuses, usersList, funnels, selectedFunnelI
   const hasActiveFilters = filterCount > 0;
   const clearAllFilters = () => setParams({ stage: [], resp: [], overdue: false, hot: false });
 
-  // EXPORTAÇÃO CSV — respeita os filtros aplicados.
+  // EXPORTAÇÃO CSV: respeita os filtros aplicados. A planilha sai pela função
+  // única do app (src/lib/csvExport.js), com a proteção contra fórmula.
   const exportToCSV = () => {
     if (!filteredLeads || filteredLeads.length === 0) {
       toast.warning('Não há leads para exportar com os filtros atuais.');
       return;
     }
-    // Sanitiza cada célula: escapa aspas e neutraliza fórmulas (CSV injection) —
-    // um valor começando com = + - @ tab/CR seria executado pelo Excel/Sheets.
-    const csvCell = (value) => {
-      let s = String(value ?? '');
-      if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
-      return `"${s.replace(/"/g, '""')}"`;
-    };
-    // Separador ';' — o Excel pt-BR usa ponto-e-vírgula como separador de lista.
-    const SEP = ';';
-    const headers = ['Nome', 'WhatsApp', 'Responsável do aluno', 'Telefone do responsável', 'Origem', 'Indicado por', 'Fase do Funil', 'Consultor', 'Data Cadastro', 'Observação', 'Motivo Perda'];
-    const csvRows = filteredLeads.map(l => {
-      const contato = contactOf(l);
-      return [
-        l.name, l.whatsapp,
-        contato.viaGuardian ? contactLabel(contato) : '',
-        contato.viaGuardian ? contato.phone : '',
-        l.source, l.referredByName, l.status, l.consultantName,
-        l.createdAt ? l.createdAt.toLocaleDateString('pt-BR') : '',
-        l.observation, l.lossReason
-      ].map(csvCell).join(SEP);
-    });
-
-    const csvContent = [headers.map(csvCell).join(SEP), ...csvRows].join('\r\n');
-    const blob = new Blob(['﻿' + csvContent], { type: 'text/csv;charset=utf-8;' }); // BOM força o Excel a ler UTF-8
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `leads_stronix_${new Date().toISOString().slice(0, 10)}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    downloadCsv(`leads_stronix_${new Date().toISOString().slice(0, 10)}.csv`, leadsToCsv(filteredLeads));
   };
 
   // Chips de filtros ativos (removem individualmente).
