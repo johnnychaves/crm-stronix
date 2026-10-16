@@ -34,15 +34,10 @@ export function regimeTexts({ running, compareOn, dayN, shownName, cmpName, appt
     subline = `${range}. Mês fechado.`;
   }
   if (apptsPartial) subline += ` Os agendamentos de ${shownName} estão incompletos no histórico.`;
-  let note;
-  if (!compareOn) note = `Sem comparativo · ${range}`;
-  else if (running) note = `Pró-rata: ${dayN === 1 ? 'mesmo primeiro dia' : `mesmos ${dayN} primeiros dias`} de ${cmpName}`;
-  else note = 'Mês fechado contra mês fechado';
-  return { range, subline, note };
+  return { range, subline };
 }
 
 // Nota do recorte, à direita do título de cada seção.
-export const scopeNote = (personName, funnelName) => `${personName || 'Equipe toda'} · ${funnelName || 'Todos os funis'}`;
 
 // Nomes em lista corrida, para o aviso de mês que não carregou: "abril",
 // "abril e maio", "abril, maio e junho".
@@ -135,4 +130,13 @@ export function summaryItems({ cur, cmp, series, compareOn, shownName }) {
       delta: d(c?.conv, cmp?.cohort?.conv, 'pp'), emptySeries: empty, ...sparkOf(series.conv, pctFmt)
     }
   ];
+}
+
+// A dúvida mais comum da tela: por que 29 matrículas no mês convivem com 18% de
+// conversão. A conversão olha só a safra do mês; parte das matrículas vem de
+// leads de meses anteriores. Só aparece quando há essa diferença a explicar.
+export function safraNote({ enroll, fromCohort, conv, monthName }) {
+  if (enroll == null || fromCohort == null || conv == null || !(enroll > fromCohort)) return null;
+  const older = enroll - fromCohort;
+  return `${fmtNum(enroll)} matrículas no mês e ${conv}% de conversão não se contradizem. A conversão olha só a safra de ${monthName}, e ${fmtNum(older)} das ${fmtNum(enroll)} matrículas vieram de leads de meses anteriores.`;
 }
