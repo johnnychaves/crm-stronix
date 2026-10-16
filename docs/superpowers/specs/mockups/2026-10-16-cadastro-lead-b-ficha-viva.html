@@ -1,0 +1,105 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cadastro de lead B · Ficha viva</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="2026-10-16-cadastro-lead-base.css">
+<style>
+.modal{width:940px;max-width:100%;height:min(700px,calc(100vh - 140px));display:grid;grid-template-columns:324px minmax(0,1fr);background:#fff;border-radius:22px;box-shadow:0 40px 100px -24px rgba(8,13,34,.6);overflow:hidden}
+.side{background:radial-gradient(420px 260px at 90% -6%,#22357a 0,transparent 62%),var(--ink);color:#fff;padding:26px 22px 22px;display:flex;flex-direction:column;gap:22px;overflow:auto}
+.side h3{font:600 12.5px Geist;color:rgba(255,255,255,.62);margin-bottom:10px}
+.kc{background:#fff;color:var(--ink);border-radius:16px;padding:14px 14px 12px;box-shadow:0 14px 30px -14px rgba(0,0,0,.55);border-top:4px solid var(--blue)}
+.kc .top{display:flex;gap:11px;align-items:center}
+.kc .ph{width:40px;height:40px;border-radius:50%;border:2px dashed #cbd5e1;display:grid;place-items:center;color:#cbd5e1;flex:none;font-weight:700}
+.kc .av{width:40px;height:40px}
+.kc .nm{font:700 15.5px 'Space Grotesk';letter-spacing:-.01em;line-height:1.2}.kc .nm.e{color:#c4ccda}
+.kc .tel{font-size:12.5px;color:var(--muted)}
+.kc .bot{display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding-top:10px;border-top:1px solid var(--rule);font-size:12px;color:var(--muted)}
+.dest{display:grid;gap:8px}
+.fsel{display:flex;align-items:center;justify-content:space-between;height:40px;padding:0 12px;border-radius:11px;border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.06);font-weight:600;font-size:13.5px;color:#fff}
+.fsel.lock{border-style:dashed;color:rgba(255,255,255,.8)}
+.stg{display:grid;gap:2px}
+.stg button{display:flex;align-items:center;gap:10px;height:34px;padding:0 10px;border:0;border-radius:9px;background:transparent;color:rgba(255,255,255,.72);font-size:13.5px;text-align:left}
+.stg button:hover{background:rgba(255,255,255,.07)}
+.stg button[aria-checked=true]{background:rgba(255,255,255,.14);color:#fff;font-weight:600}
+.stg .dot{width:9px;height:9px;border-radius:50%}
+.stg svg{margin-left:auto}
+.todo{margin-top:auto;display:grid;gap:2px}
+.todo .it{display:flex;align-items:center;gap:10px;height:30px;font-size:13.5px;color:#fff}
+.todo .it i{width:18px;height:18px;border-radius:50%;border:1.5px solid rgba(255,255,255,.4);display:grid;place-items:center;flex:none}
+.todo .it.done{color:rgba(255,255,255,.55)}
+.todo .it.done i{background:var(--green);border-color:var(--green);color:#fff}
+.all{margin-top:auto;display:flex;gap:9px;align-items:center;padding:9px 11px;border-radius:11px;background:rgba(21,185,129,.18);color:#6EE7B7;font-weight:600;font-size:13px}
+.main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.mh{display:flex;align-items:center;justify-content:space-between;padding:22px 22px 0 28px}
+.mh h2{font:700 22px 'Space Grotesk';letter-spacing:-.02em}
+.mh p{font-size:13px;color:var(--muted);margin-top:2px}
+.x{width:34px;height:34px;border-radius:10px;border:0;background:transparent;color:var(--faint);display:grid;place-items:center}
+.mb{padding:20px 28px 8px;display:grid;gap:20px;overflow:auto;flex:1;align-content:start}
+.mb.dim>.f:not(.keep),.mb.dim>.chips{opacity:.4;pointer-events:none}
+.g{font:600 15px 'Space Grotesk';letter-spacing:-.01em;display:flex;align-items:center;gap:12px}
+.g::after{content:"";flex:1;height:1px;background:var(--rule)}
+.mf{display:flex;justify-content:flex-end;gap:8px;padding:14px 28px;border-top:1px solid var(--rule)}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.res{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
+.res .r{display:flex;gap:11px;align-items:center;padding:9px 12px}.res .r.hov{background:var(--blue50)}
+.res b{display:block;font-weight:600;font-size:13.5px}.res span.s{font-size:12.5px;color:var(--muted)}
+.more{display:flex;align-items:center;gap:10px;border:0;background:none;padding:0;text-align:left}
+.more b{font-weight:600;font-size:13.5px;color:var(--blue700)}.more span{font-size:12.5px;color:var(--muted)}
+.lk{display:inline-flex;align-items:center;gap:6px}
+</style></head><body>
+<div class="states" id="states" role="group" aria-label="Estados do cadastro"></div>
+<main class="stage"><section class="modal" id="m" role="dialog" aria-labelledby="t"></section></main>
+<div class="note" id="note"></div><div class="tag">Mockup B · Ficha viva</div>
+<script>
+const P={check:'<polyline points="20 6 9 17 4 12"/>',x:'<path d="M18 6 6 18M6 6l12 12"/>',chev:'<path d="m9 6 6 6-6 6"/>',down:'<path d="m6 9 6 6 6-6"/>',lock:'<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',out:'<path d="M7 17 17 7M8 7h9v9"/>'};
+const I=(n,s=16)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n]}</svg>`;
+const ORIGINS=['Instagram','Indicação','Orgânico digital','Orgânico presencial','Tráfego pago','Cliente ativo'];
+const DORES=['Ganho de massa muscular','Auto estima','Reabilitação','Emagrecimento'];
+const STAGES=[['Novo','lime'],['Aguardando contato','orange'],['Em conversa','pink'],['Agendado','yellow'],['Negociação','purple']];
+const base={name:'',phone:'',ph:'empty',origin:'',dor:'',stage:'Novo',funnel:'Digital',refQ:''};
+const PRESETS={
+ vazio:{label:'Vazio',note:'A coluna escura mostra como o lead vai aparecer no funil e para onde ele entra. A lista embaixo diz o que falta e é por onde se corrige.',s:{...base}},
+ pronto:{label:'Pronto',note:'O cartão se completa enquanto a pessoa digita. Com os quatro itens marcados, a lista vira um aviso verde e o botão acende.',s:{...base,name:'Rafael Moura',phone:'(51) 9 9821-4470',ph:'ok',origin:'Instagram',dor:'Emagrecimento',stage:'Aguardando contato'}},
+ dup:{label:'Número já cadastrado',note:'Mesma conferência do mockup A: quem já tem o número, onde está e um atalho para a ficha.',s:{...base,name:'Mariana',phone:'(51) 9 9999-0000',ph:'dup',origin:'Instagram',dor:'Emagrecimento'}},
+ ind:{label:'Indicação',note:'Escolher a origem Indicação troca o destino para o funil Indicações, travado, e abre “Quem indicou?”.',s:{...base,name:'Rafael Moura',phone:'(51) 9 9821-4470',ph:'ok',origin:'Indicação',funnel:'Indicações',stage:'Aguardando ação',refQ:'Carla'}}
+};
+let S=structuredClone(PRESETS.pronto.s),KEY='pronto';
+const chips=(list,sel,k)=>`<div class="chips" role="radiogroup">${list.map(v=>{const on=sel===v;return `<button type="button" class="ch" role="radio" aria-checked="${on}" data-k="${k}" data-v="${v}">${on?I('check',14):''}${v}</button>`}).join('')}</div>`;
+const ini=n=>n.split(' ').filter(Boolean).slice(0,2).map(x=>x[0]).join('').toUpperCase();
+function render(){
+ const s=S,isRef=s.origin==='Indicação',dup=s.ph==='dup';
+ const items=[['Nome',!!s.name],['WhatsApp',s.ph==='ok'],['Como chegou',!!s.origin],['Dor',!!s.dor]];
+ if(isRef)items.splice(3,0,['Quem indicou',false]);
+ const ready=items.every(i=>i[1])&&!dup;
+ const stage=STAGES.find(x=>x[0]===s.stage)||['Aguardando ação','teal'];
+ const card=`<div class="kc"><div class="top">${s.name?`<span class="av">${ini(s.name)}</span>`:`<span class="ph">–</span>`}<div><div class="nm ${s.name?'':'e'}">${s.name||'Nome do lead'}</div><div class="tel num">${s.phone||'(00) 0 0000-0000'}</div></div></div><div class="bot"><span class="pill t-${stage[1]}"><i></i>${stage[0]}</span><span>${s.origin||'Origem'}</span></div></div>`;
+ const destBlock=isRef?`<div class="fsel lock"><span class="lk">${I('lock',15)}&nbsp;Indicações</span></div><div class="stg"><button role="radio" aria-checked="true"><span class="dot d-emerald"></span>Aguardando ação${I('check',15)}</button></div>`
+  :`<div class="fsel"><span>${s.funnel}</span>${I('down',16)}</div><div class="stg" role="radiogroup">${STAGES.map(([n,c])=>`<button role="radio" aria-checked="${s.stage===n}" data-k="stage" data-v="${n}"><span class="dot d-${c}"></span>${n}${s.stage===n?I('check',15):''}</button>`).join('')}</div>`;
+ const todo=ready?`<div class="all">${I('check',16)} Tudo certo para cadastrar</div>`:`<div class="todo">${items.map(([l,ok])=>`<div class="it${ok?' done':''}"><i>${ok?I('check',11):''}</i>${l}</div>`).join('')}</div>`;
+ const phone=`<div class="f keep"><div class="lb">WhatsApp <small>com DDD</small></div><div class="inwrap"><input class="in ${dup?'bad':s.ph==='ok'?'ok':''}" value="${s.phone}" placeholder="(51) 9 0000-0000" readonly>${s.ph==='ok'?`<span class="adorn ok">${I('check',15)} Número novo</span>`:dup?`<span class="adorn bad">Já cadastrado</span>`:''}</div></div>`;
+ const dupCard=dup?`<div class="dupe keep"><span class="av">MC</span><div class="who"><b>Mariana Costa</b><span>Em conversa · Digital · Ana Paula Ribeiro</span></div><button class="btn ol lk" type="button">Abrir ficha ${I('out',14)}</button></div>`:'';
+ const ref=isRef?`<div class="f"><div class="lb">Quem indicou?</div><div class="inwrap"><input class="in on" value="${s.refQ}" readonly style="padding-right:14px"></div><div class="res"><div class="r hov"><span class="av">CM</span><div><b>Carla Menezes</b><span class="s">Cliente ativo · Musculação</span></div></div></div></div>`:'';
+ document.getElementById('m').innerHTML=`
+ <aside class="side"><div><h3>Assim ele aparece no funil</h3>${card}</div><div class="dest"><h3 style="margin-bottom:2px">Entra em</h3>${destBlock}</div>${todo}</aside>
+ <div class="main"><div class="mh"><div><h2 id="t">Novo lead</h2><p>Responsável: você, Ana Paula</p></div><button class="x" aria-label="Fechar">${I('x',18)}</button></div>
+ <div class="mb${dup?' dim':''}">
+  <div class="g keep">Contato</div>
+  <div class="g2 keep"><div class="f keep"><div class="lb"><span>Nome</span><button class="sw" role="switch" aria-checked="false"><s></s>Menor de idade</button></div><input class="in ${!s.name&&KEY==='vazio'?'on':''}" value="${s.name}" placeholder="Nome completo" readonly></div>${phone}</div>
+  ${dupCard}
+  <div class="g">Origem e interesse</div>
+  <div class="f"><div class="lb">Como chegou</div>${chips(ORIGINS,s.origin,'origin')}</div>${ref}
+  <div class="f"><div class="lb">Dor <small>o que a pessoa quer resolver</small></div>${chips(DORES,s.dor,'dor')}</div>
+  <button class="more">${I('chev',15)}<b>Mais detalhes</b><span>modalidade, etiquetas, nascimento, CPF, e-mail e observação</span></button>
+ </div>
+ <div class="mf"><button class="btn gh">Cancelar</button><button class="btn pri" aria-disabled="${!ready}">Cadastrar lead <kbd>⌘↵</kbd></button></div></div>`;
+ document.getElementById('note').textContent=PRESETS[KEY]?.note||'';
+ document.getElementById('states').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.p===KEY));
+}
+document.getElementById('states').innerHTML=Object.entries(PRESETS).map(([k,v])=>`<button data-p="${k}" aria-pressed="false">${v.label}</button>`).join('');
+document.addEventListener('click',e=>{
+ const p=e.target.closest('[data-p]');if(p){KEY=p.dataset.p;S=structuredClone(PRESETS[KEY].s);render();return}
+ const c=e.target.closest('[data-k]');
+ if(c){const k=c.dataset.k,v=c.dataset.v;S[k]=v;if(k==='origin'&&v==='Indicação'){S.funnel='Indicações';S.stage='Aguardando ação'}if(k==='origin'&&v!=='Indicação'&&S.funnel==='Indicações'){S.funnel='Digital';S.stage='Novo'}render()}
+});
+{const h=location.hash.slice(1);if(PRESETS[h]){KEY=h;S=structuredClone(PRESETS[h].s)}}
+render();
+</script></body></html>

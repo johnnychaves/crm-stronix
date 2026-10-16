@@ -116,10 +116,12 @@ export const WIKI_ARTICLES = [
       { t: 'h', text: 'Passo a passo' },
       { t: 'demo', name: 'novo-lead', caption: 'A verificação de número roda enquanto você digita.' },
       { t: 'steps', items: [
-        'Nome e WhatsApp com DDD. Os dois são obrigatórios.',
-        'Como chegou: escolha a origem. Se foi um aluno que indicou, ligue o interruptor É uma indicação? e busque o aluno.',
-        'Onde entra: funil e etapa inicial. O padrão já vem escolhido, e na maioria dos casos é o certo.',
-        'O que busca: a dor, ou seja, o que a pessoa quer resolver. É obrigatória porque é o gancho do primeiro contato.',
+        'WhatsApp com DDD. Se o número já existe, aparece quem é, e o botão Abrir ficha leva até a pessoa.',
+        'Nome. Para menor de idade, ligue a chave Menor de idade no passo do WhatsApp: o número passa a ser o do responsável, e entra um passo para o nome dele.',
+        'Como chegou: escolha a origem. Se foi um aluno que indicou, escolha Indicação e busque o aluno.',
+        'Dor: o que a pessoa quer resolver. É obrigatória porque é o gancho do primeiro contato.',
+        'Modalidade de interesse: escolha o treino, ou pule se a pessoa ainda não sabe.',
+        'Onde entra: funil e etapa inicial. O padrão já vem marcado, e na maioria dos casos é o certo. Basta confirmar a etapa.',
         'Detalhes opcionais: etiquetas, nascimento, CPF, e-mail e uma observação livre.',
       ] },
 
@@ -363,12 +365,12 @@ export const WIKI_ARTICLES = [
       { t: 'p', text: 'Indicação é o canal mais barato que uma academia tem. O Stronilead liga cada indicado ao aluno que o trouxe, para você saber quem são seus melhores divulgadores e o que aconteceu com cada convite.' },
 
       { t: 'h', text: '1. Registrando a indicação' },
-      { t: 'demo', name: 'indicacao-switch', caption: 'O interruptor troca o cadastro para o modo indicação.' },
+      { t: 'demo', name: 'indicacao-origem', caption: 'Escolher a origem Indicação abre a busca do aluno que indicou.' },
       { t: 'steps', items: [
-        'Abra Cadastrar lead e preencha nome e WhatsApp.',
-        'Na seção Como chegou, ligue o interruptor É uma indicação?.',
+        'Abra Cadastrar lead e preencha o WhatsApp e o nome.',
+        'No passo Como chegou, escolha a origem Indicação.',
         'Busque o aluno que indicou. Só quem já é aluno matriculado aparece na busca.',
-        'Salve. Não precisa escolher funil nem etapa: o sistema já sabe para onde vai.',
+        'Escolha a dor e salve. Não precisa escolher funil nem etapa: o sistema já sabe para onde vai.',
       ] },
       { t: 'p', text: 'Quando o aluno passa vários nomes de uma vez, é mais rápido pela ficha dele:' },
       { t: 'steps', items: [

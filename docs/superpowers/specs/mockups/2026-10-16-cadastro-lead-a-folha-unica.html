@@ -1,0 +1,112 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cadastro de lead A · Folha única</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="2026-10-16-cadastro-lead-base.css">
+<style>
+.modal{width:620px;max-width:100%;max-height:calc(100vh - 140px);display:flex;flex-direction:column;background:#fff;border-radius:22px;box-shadow:0 40px 100px -24px rgba(8,13,34,.6);overflow:hidden}
+.mh{display:flex;align-items:flex-start;justify-content:space-between;padding:22px 22px 0 26px}
+.mh h2{font:700 22px 'Space Grotesk';letter-spacing:-.02em;line-height:34px}
+.x{width:34px;height:34px;border-radius:10px;border:0;background:transparent;color:var(--faint);display:grid;place-items:center}
+.x:hover{background:var(--paper);color:var(--ink)}
+.dest{margin:10px 26px 0;border-radius:12px;background:var(--paper)}
+.dest .row{display:flex;align-items:center;gap:8px;padding:9px 12px;font-size:13px;color:var(--ink2);flex-wrap:wrap}
+.dest .row .sp{flex:1}
+.dest .row svg{color:var(--faint)}
+.dest .panel{padding:14px 12px 14px;display:grid;gap:14px;border-top:1px solid var(--line)}
+.dest .panel .chips{gap:6px}.dest .panel .ch{height:34px;font-size:13px;padding:0 12px}
+.mb{padding:20px 26px 8px;display:grid;gap:20px;overflow:auto;transition:opacity .2s}
+.mb.dim>.f:not(.keep),.mb.dim>.more{opacity:.4;pointer-events:none}
+.mf{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 26px;border-top:1px solid var(--rule);background:#fff}
+.hint{font-size:12.5px;color:var(--muted)}
+.hint.bad{color:var(--rose700)}
+.guard{padding:14px;border-radius:14px;background:var(--blue50);border:1px solid var(--blue100);display:grid;gap:14px}
+.guard .g2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.guard .ch{height:32px;font-size:13px;padding:0 12px}
+.guard h3{font-size:13px;font-weight:600;color:var(--blue700)}
+.guard p{font-size:12.5px;color:var(--ink2)}
+.ref{display:grid;gap:8px}
+.res{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
+.res .r{display:flex;gap:11px;align-items:center;padding:9px 12px}
+.res .r+.r{border-top:1px solid var(--rule)}
+.res .r.hov{background:var(--blue50)}
+.res b{display:block;font-weight:600;font-size:13.5px}.res span.s{font-size:12.5px;color:var(--muted)}
+.more{display:flex;align-items:center;gap:10px;width:100%;border:0;background:none;padding:2px 0;text-align:left}
+.more b{font-weight:600;font-size:13.5px;color:var(--blue700)}
+.more span{font-size:12.5px;color:var(--muted);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.more svg{transition:transform .15s;color:var(--blue700)}.more[aria-expanded=true] svg{transform:rotate(90deg)}
+.det{display:grid;gap:16px;padding:16px;border-radius:14px;border:1px solid var(--rule);background:#fbfcfe}
+.det .g2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.in.sm{height:42px;font-size:14px}
+.lk{display:inline-flex;align-items:center;gap:6px}
+@media (max-width:680px){.modal{border-radius:18px}.mb,.mh,.mf{padding-left:18px;padding-right:18px}.dest{margin-left:18px;margin-right:18px}}
+</style></head><body>
+<div class="states" id="states" role="group" aria-label="Estados do cadastro"></div>
+<main class="stage"><section class="modal" id="m" role="dialog" aria-labelledby="t"></section></main>
+<div class="note" id="note"></div><div class="tag">Mockup A · Folha única</div>
+<script>
+const P={check:'<polyline points="20 6 9 17 4 12"/>',x:'<path d="M18 6 6 18M6 6l12 12"/>',chev:'<path d="m9 6 6 6-6 6"/>',lock:'<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',out:'<path d="M7 17 17 7M8 7h9v9"/>',search:'<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>'};
+const I=(n,s=16)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n]}</svg>`;
+const ORIGINS=['Instagram','Indicação','Orgânico digital','Orgânico presencial','Tráfego pago','Cliente ativo'];
+const DORES=['Ganho de massa muscular','Auto estima','Reabilitação','Emagrecimento'];
+const FUNNELS=['Digital','Visitas presenciais','Inativos','Migrações e renovações'];
+const STAGES=[['Novo','lime'],['Aguardando contato','orange'],['Em conversa','pink'],['Agendado','yellow'],['Negociação','purple']];
+const RELS=['Mãe','Pai','Avó','Avô','Tia','Tio','Outro'];
+const MODS=['Musculação','Treinamento funcional','Pilates'];
+const TAGS=['Funcional','Pilates','Musculação'];
+const base={name:'',phone:'',ph:'empty',minor:false,g:{name:'',phone:'',rel:''},origin:'',dor:'',funnel:'Digital',stage:'Novo',destOpen:false,det:false,mod:'',tags:[],ref:null,refQ:''};
+const PRESETS={
+ vazio:{label:'Vazio',note:'Tudo que é obrigatório cabe na tela, sem rolar. O rodapé diz o que falta, no lugar de um botão apagado sem explicação.',s:{...base}},
+ pronto:{label:'Pronto',note:'Quando nada falta, o rodapé fica verde e o botão acende. ⌘ + Enter cadastra sem tirar a mão do teclado.',s:{...base,name:'Rafael Moura',phone:'(51) 9 9821-4470',ph:'ok',origin:'Instagram',dor:'Emagrecimento'}},
+ dup:{label:'Número já cadastrado',note:'A conferência de duplicidade mostra quem já tem o número e leva direto à ficha. Hoje só aparece uma linha vermelha.',s:{...base,name:'Mariana',phone:'(51) 9 9999-0000',ph:'dup',origin:'Instagram',dor:'Emagrecimento'}},
+ ind:{label:'Indicação',note:'Indicação é uma origem como as outras: ao escolhê-la, aparece “Quem indicou?” e o destino vira o funil Indicações. Some o interruptor que repetia a mesma ideia.',s:{...base,name:'Rafael Moura',phone:'(51) 9 9821-4470',ph:'ok',origin:'Indicação',funnel:'Indicações',stage:'Aguardando ação',refQ:'Carla'}},
+ menor:{label:'Menor de idade',note:'O responsável aparece num bloco só dele, logo abaixo do nome. O WhatsApp do aluno vira opcional.',s:{...base,name:'Pedro Alves',minor:true,g:{name:'Luciana Alves',phone:'(51) 9 9712-3380',rel:'Mãe'},origin:'Orgânico presencial',dor:'Auto estima'}},
+ destino:{label:'Mudar destino',note:'Funil e etapa quase nunca mudam, então ficam resumidos numa linha. “Mudar” abre as opções aqui mesmo, sem ocupar a tela toda.',s:{...base,name:'Rafael Moura',phone:'(51) 9 9821-4470',ph:'ok',origin:'Instagram',dor:'Emagrecimento',destOpen:true,funnel:'Visitas presenciais',stage:'Novo'}},
+ detalhes:{label:'Mais detalhes',note:'O que é opcional fica recolhido. Aberto, o corpo rola e o rodapé continua à vista.',s:{...base,name:'Rafael Moura',phone:'(51) 9 9821-4470',ph:'ok',origin:'Instagram',dor:'Emagrecimento',det:true,mod:'Musculação',tags:['Funcional']}}
+};
+let S=structuredClone(PRESETS.pronto.s),KEY='pronto';
+const chips=(list,sel,k,o={})=>`<div class="chips" role="radiogroup">${list.map(v=>{const on=Array.isArray(sel)?sel.includes(v):sel===v;return `<button type="button" class="ch${o.sq?' sq':''}" role="radio" aria-checked="${on}" data-k="${k}" data-v="${v}">${on?I('check',14):''}${v}</button>`}).join('')}</div>`;
+const join=a=>a.length<2?a.join(''):a.slice(0,-1).join(', ')+' e '+a[a.length-1];
+function render(){
+ const s=S,isRef=s.origin==='Indicação',miss=[];
+ if(!s.name)miss.push('nome');
+ if(s.minor){if(!s.g.name||!s.g.phone)miss.push('responsável')}else if(s.ph==='empty')miss.push('WhatsApp');
+ if(!s.origin)miss.push('origem'); if(isRef&&!s.ref)miss.push('quem indicou'); if(!s.dor)miss.push('dor');
+ const dup=s.ph==='dup',ready=!miss.length&&!dup;
+ const st=dup?`<div class="status bad"><i></i><span><b>Esse número já tem cadastro.</b> Abra a ficha em vez de cadastrar de novo.</span></div>`
+  :ready?`<div class="status ok"><i></i><span><b>Tudo certo</b> para cadastrar.</span></div>`
+  :`<div class="status"><i></i><span>Falta <b>${join(miss)}</b>.</span></div>`;
+ const stage=STAGES.find(x=>x[0]===s.stage)||['Aguardando ação','teal'];
+ const destRow=isRef?`<div class="row">${I('lock',15)}<span>Entra em <b>Indicações</b></span>${I('chev',14)}<span class="pill t-teal"><i></i>Aguardando ação</span><span class="sp"></span><span class="hint">As indicações ficam juntas para o time</span></div>`
+  :`<div class="row"><span>Entra em <b>${s.funnel}</b></span>${I('chev',14)}<span class="pill t-${stage[1]}"><i></i>${stage[0]}</span><span class="hint">· responsável <b style="color:var(--ink2)">você</b></span><span class="sp"></span><button class="lnk" data-t="destOpen" aria-expanded="${s.destOpen}">${s.destOpen?'Fechar':'Mudar'}</button></div>`;
+ const destPanel=!isRef&&s.destOpen?`<div class="panel"><div class="f"><div class="lb">Funil</div>${chips(FUNNELS,s.funnel,'funnel')}</div><div class="f"><div class="lb">Etapa em que entra</div><div class="chips" role="radiogroup">${STAGES.map(([n,c])=>`<button type="button" class="ch" role="radio" aria-checked="${s.stage===n}" data-k="stage" data-v="${n}"><span class="dot d-${c}"></span>${n}</button>`).join('')}</div></div></div>`:'';
+ const phone=s.minor?`<div class="f"><div class="lb">WhatsApp do aluno <small>opcional</small></div><div class="inwrap"><input class="in" placeholder="(51) 9 0000-0000" readonly></div></div>`
+  :`<div class="f keep"><div class="lb">WhatsApp <small>com DDD</small></div><div class="inwrap"><input class="in ${s.ph==='dup'?'bad':s.ph==='ok'?'ok':''}" value="${s.phone}" placeholder="(51) 9 0000-0000" readonly>${s.ph==='ok'?`<span class="adorn ok">${I('check',15)} Número novo</span>`:s.ph==='dup'?`<span class="adorn bad">Já cadastrado</span>`:''}</div>
+  ${dup?`<div class="dupe"><span class="av">MC</span><div class="who"><b>Mariana Costa</b><span>Em conversa · Digital · responsável Ana Paula Ribeiro</span></div><button class="btn ol lk" type="button">Abrir ficha ${I('out',14)}</button></div>`:''}</div>`;
+ const guard=s.minor?`<div class="guard"><div><h3>Responsável</h3><p>Quem responde pelo aluno. É com ele que o time vai falar.</p></div><div class="g2"><div class="f"><div class="lb">Nome</div><input class="in sm" value="${s.g.name}" placeholder="Nome do responsável" readonly></div><div class="f"><div class="lb">WhatsApp</div><input class="in sm" value="${s.g.phone}" placeholder="(51) 9 0000-0000" readonly></div></div><div class="f"><div class="lb">Parentesco <small>opcional</small></div>${chips(RELS,s.g.rel,'g.rel')}</div></div>`:'';
+ const refBlock=isRef?`<div class="ref"><div class="lb">Quem indicou?</div><div class="inwrap"><input class="in on" value="${s.refQ}" readonly style="padding-right:14px"></div>${s.ref?'':`<div class="res"><div class="r hov"><span class="av">CM</span><div><b>Carla Menezes</b><span class="s">Cliente ativo · Musculação</span></div></div><div class="r"><span class="av">CR</span><div><b>Carlos Ribeiro</b><span class="s">Cliente ativo · Pilates</span></div></div></div>`}</div>`:'';
+ const det=s.det?`<div class="det"><div class="f"><div class="lb">Modalidade de interesse</div>${chips(MODS,s.mod,'mod')}</div><div class="f"><div class="lb">Etiquetas</div>${chips(TAGS,s.tags,'tags')}</div><div class="g2"><div class="f"><div class="lb">Nascimento</div><input class="in sm" placeholder="dd/mm/aaaa" readonly></div><div class="f"><div class="lb">CPF</div><input class="in sm" placeholder="000.000.000-00" readonly></div><div class="f"><div class="lb">Sexo</div>${chips(['Feminino','Masculino','Outro'],'', 'sexo')}</div><div class="f"><div class="lb">E-mail</div><input class="in sm" placeholder="nome@email.com" readonly></div></div><div class="f"><div class="lb">Observação para o primeiro atendimento</div><textarea class="in ta" rows="2" placeholder="Algum detalhe que ajude quem vai atender?" readonly></textarea></div></div>`:'';
+ document.getElementById('m').innerHTML=`
+ <div class="mh"><h2 id="t">Novo lead</h2><button class="x" aria-label="Fechar">${I('x',18)}</button></div>
+ <div class="dest">${destRow}${destPanel}</div>
+ <div class="mb${dup?' dim':''}">
+  <div class="f keep"><div class="lb"><span>Nome</span><button class="sw" role="switch" aria-checked="${s.minor}" data-t="minor"><s></s>Menor de idade</button></div><input class="in ${!s.name&&KEY==='vazio'?'on':''}" value="${s.name}" placeholder="Nome completo" readonly></div>
+  ${guard}${phone}
+  <div class="f"><div class="lb">Como chegou</div>${chips(ORIGINS,s.origin,'origin')}</div>
+  ${refBlock}
+  <div class="f"><div class="lb">Dor <small>o que a pessoa quer resolver</small></div>${chips(DORES,s.dor,'dor')}</div>
+  <div><button class="more" data-t="det" aria-expanded="${s.det}">${I('chev',15)}<b>Mais detalhes</b><span>modalidade, etiquetas, nascimento, CPF, e-mail e observação</span></button>${det?`<div style="margin-top:12px">${det}</div>`:''}</div>
+ </div>
+ <div class="mf">${st}<div style="display:flex;gap:8px"><button class="btn gh">Cancelar</button><button class="btn pri" aria-disabled="${!ready}">Cadastrar lead <kbd>⌘↵</kbd></button></div></div>`;
+ document.getElementById('note').textContent=PRESETS[KEY]?.note||'';
+ document.getElementById('states').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.p===KEY));
+}
+document.getElementById('states').innerHTML=Object.entries(PRESETS).map(([k,v])=>`<button data-p="${k}" aria-pressed="false">${v.label}</button>`).join('');
+document.addEventListener('click',e=>{
+ const p=e.target.closest('[data-p]');if(p){KEY=p.dataset.p;S=structuredClone(PRESETS[KEY].s);render();return}
+ const c=e.target.closest('[data-k]');
+ if(c){const k=c.dataset.k,v=c.dataset.v;if(k==='tags'){S.tags=S.tags.includes(v)?S.tags.filter(x=>x!==v):[...S.tags,v]}else if(k==='g.rel'){S.g.rel=v}else{S[k]=v;if(k==='origin'&&v!=='Indicação'&&S.funnel==='Indicações'){S.funnel='Digital';S.stage='Novo'}if(k==='origin'&&v==='Indicação'){S.funnel='Indicações';S.stage='Aguardando ação'}}render();return}
+ const t=e.target.closest('[data-t]');if(t){S[t.dataset.t]=!S[t.dataset.t];render()}
+});
+{const h=location.hash.slice(1);if(PRESETS[h]){KEY=h;S=structuredClone(PRESETS[h].s)}}
+render();
+</script></body></html>

@@ -19,6 +19,18 @@ export const REFERRAL_ENTRY_NAME = 'Aguardando ação';
 // nome quando nenhuma do catálogo casa com /indica/.
 export const REFERRAL_SOURCE_NAME = 'Indicação';
 
+// A origem do catálogo que liga o modo indicação no cadastro (Novo lead): a de
+// nome "Indicação" (sem acento nem caixa), se existir, ou a primeira que casa
+// com /indica/, a mesma regra do setup do funil acima. Só uma: uma origem como
+// "Indicação de empresa", ao lado dela, é uma origem comum.
+export const referralSourceOf = (sources) => {
+  const names = (sources || []).map((s) => s?.name).filter(Boolean);
+  const key = (n) => normalize(n).trim();
+  return names.find((n) => key(n) === key(REFERRAL_SOURCE_NAME))
+    || names.find((n) => key(n).includes('indica'))
+    || null;
+};
+
 export const isReferralFunnel = (f) => f?.systemKind === REFERRAL_FUNNEL_KIND;
 
 // createdAt em ms aceitando Timestamp ({toMillis}/{seconds}), Date ou número.

@@ -1,11 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import {
-  UserPlus, MessageCircle, Megaphone, Globe, DoorOpen, Camera, Calendar, IdCard, Mail,
-  ChevronDown, Check, Plus, Zap, AlertTriangle, CheckCircle2, Users, X, Kanban, HeartPulse, Dumbbell,
-  Handshake, LockKeyhole, Baby, Phone,
+  Check, ChevronDown, ChevronRight, Plus, AlertTriangle, X, Baby, ExternalLink, Calendar, IdCard, Mail,
+  LockKeyhole,
 } from 'lucide-react';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { appId, LEADS_PATH, INTERACTIONS_PATH } from '../lib/firebase.js';
+import { appId, LEADS_PATH } from '../lib/firebase.js';
 import { useDuplicateLead, findDuplicateLeadRemote } from '../hooks/useDuplicateLead.js';
 import { logInteraction } from '../lib/interactions.js';
 import { sameContactPhone } from '../lib/leadDerived.js';
@@ -16,28 +15,31 @@ import { phoneNoticeLines } from '../lib/phoneNotice.js';
 import { useGuardianMatches } from '../hooks/useGuardianMatches.js';
 import { fromDateInputValue } from '../lib/dates.js';
 import { getDefaultFunnel } from '../lib/funnels.js';
-import { getReferralFunnel, getReferralEntryStage, REFERRAL_FUNNEL_NAME } from '../lib/referrals.js';
+import { getReferralFunnel, getReferralEntryStage, referralSourceOf, REFERRAL_FUNNEL_NAME } from '../lib/referrals.js';
 import { isRenewalFunnel } from '../lib/renewalFunnel.js';
 import { isExpiredFunnel } from '../lib/expiredFunnel.js';
 import { isUpgradeFunnel } from '../lib/upgradeFunnel.js';
 import { commitReferralLink } from '../lib/referralsWrites.js';
+import { signupFlow, firstOpenStep, missingText } from '../lib/leadSignupSteps.js';
 import { ReferrerPicker } from '../components/profile/ReferrerPicker.jsx';
+import { LeadLink } from '../components/nav/AppLink.jsx';
 import { Switch } from '../components/ui/switch.jsx';
 import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../components/ui/dialog.jsx';
-import { SurgeMark } from '../components/brand/SurgeMark.jsx';
+import { Sheet, SheetContent, SheetTitle, SheetDescription } from '../components/ui/sheet.jsx';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { RingAvatar } from '../components/profile/RingAvatar.jsx';
 import { settingsColorTone } from '../components/ui/ColorPicker.jsx';
-import { getTone, phaseToneName } from '../lib/leadState.js';
 
 // ==========================================================================
-// MODAL DE CADASTRO DE LEAD ("Novo lead") — redesign premium em duas colunas
-// (handoff handoff_cadastro_lead) construído sobre a base da PR #123:
-// reusa Dialog/RingAvatar/badges soft e mantém o modelo de dados do #123
-// (dor obrigatória, sexo, e-mail, nascimento via fromDateInputValue).
+// "NOVO LEAD" em gaveta, passo a passo (desenho C escolhido pelo Johnny em
+// 16/10/2026, mockups em docs/superpowers/specs/mockups/2026-10-16-cadastro-lead-*).
+// Os passos se liberam um depois do outro, como o assistente de agendar da ficha
+// (ScheduleWizard): o passo aberto mostra as opções, o feito vira um resumo com
+// "Editar" e o que vem depois espera. A ordem parte do número, porque a conferência
+// de duplicidade vem antes de qualquer outro campo. O que é opcional fica em
+// "Mais detalhes". As regras de gravação não mudaram: o lead sai de buildNewLeadDoc.
 // ==========================================================================
 
 // ---------- helpers de apresentação ----------
@@ -51,23 +53,8 @@ const fmtCPF = (raw) => {
   return d;
 };
 
-// Origens só guardam `name`. Derivamos ícone (lucide) + tom + hint por
-// palavra-chave, com fallback genérico para origens customizadas.
-const sourceTileMeta = (name) => {
-  const n = String(name || '').toLowerCase();
-  if (n.includes('indica')) return { Icon: UserPlus, tone: 'emerald', hint: 'Aluno indicou' };
-  if (n.includes('whats')) return { Icon: MessageCircle, tone: 'teal', hint: 'Link da bio' };
-  if (n.includes('insta')) return { Icon: Camera, tone: 'pink', hint: 'DM / perfil' };
-  if (n.includes('face') || n.includes('tiktok') || n.includes('rede') || n.includes('social'))
-    return { Icon: Camera, tone: 'violet', hint: 'Rede social' };
-  if (n.includes('tráfego') || n.includes('trafego') || n.includes('ads') || n.includes('pago') || n.includes('campanha') || n.includes('anúnci') || n.includes('anunci'))
-    return { Icon: Megaphone, tone: 'violet', hint: 'Ads / campanha' };
-  if (n.includes('site') || n.includes('web') || n.includes('formul') || n.includes('google'))
-    return { Icon: Globe, tone: 'brand', hint: 'Formulário web' };
-  if (n.includes('porta') || n.includes('walk') || n.includes('balc') || n.includes('passou'))
-    return { Icon: DoorOpen, tone: 'amber', hint: 'Walk-in' };
-  return { Icon: Zap, tone: 'slate', hint: '' };
-};
+const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/i.test(navigator.userAgent);
+const SUBMIT_KEYS = isMac ? '⌘↵' : 'Ctrl+Enter';
 
 const inputCls =
   'w-full h-11 px-3.5 rounded-xl text-[14px] font-medium bg-white dark:bg-white/[0.04] ' +
@@ -75,14 +62,44 @@ const inputCls =
   'placeholder:text-slate-400 placeholder:font-normal outline-none transition ' +
   'focus:border-brand-500 focus:ring-4 focus:ring-brand-500/12';
 
+const chipCls = (on) => cn(
+  'inline-flex items-center gap-1.5 h-10 px-3.5 rounded-full border text-[13.5px] font-medium transition active:scale-[.98] focus-visible:anel-foco',
+  on
+    ? 'border-brand-600 bg-brand-50 text-brand-700 font-semibold dark:border-brand-400 dark:bg-brand-500/15 dark:text-brand-200'
+    : 'border-slate-200 bg-white text-slate-700 hover:border-brand-200 dark:border-white/[0.1] dark:bg-white/[0.03] dark:text-slate-200 dark:hover:border-white/20'
+);
+
+const BTN_PRIMARY =
+  'h-11 px-5 rounded-xl text-[13.5px] font-semibold inline-flex items-center justify-center gap-2 transition active:scale-[.98] ' +
+  'bg-brand-600 text-white hover:bg-brand-700 shadow-[0_10px_24px_-8px_rgba(43,89,255,.7)] ' +
+  'focus-visible:anel-foco focus-visible:ring-offset-2 focus-visible:ring-offset-background ' +
+  'disabled:opacity-40 disabled:shadow-none disabled:cursor-not-allowed';
+
+const STEP_TITLE = {
+  contato: (minor) => (minor ? 'WhatsApp do responsável' : 'WhatsApp'),
+  nome: (minor) => (minor ? 'Nome do aluno' : 'Nome'),
+  responsavel: () => 'Responsável',
+  origem: () => 'Como chegou',
+  dor: () => 'Dor',
+  modalidade: () => 'Modalidade de interesse',
+  funil: () => 'Onde entra',
+};
+const STEP_HINT = {
+  contato: 'Comece pelo número. Se a pessoa já existe, você descobre antes de digitar o resto.',
+  nome: 'Como a pessoa se apresentou.',
+  responsavel: 'Quem responde pelo aluno. É com essa pessoa que o time vai falar.',
+  origem: 'De onde veio esse contato?',
+  dor: 'O que a pessoa quer resolver?',
+  modalidade: 'Qual treino a pessoa quer fazer? Dá para pular.',
+  funil: 'Em qual funil e etapa o lead aparece no Pipeline.',
+};
+
 // ---------- átomos ----------
-function Label({ children, hint, required }) {
+function Label({ children, hint }) {
   return (
-    <div className="flex items-center justify-between mb-1.5">
-      <span className="text-[12px] font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-1">
-        {children}{required && <span className="text-accent-500">*</span>}
-      </span>
-      {hint && <span className="text-[11px] text-slate-400 dark:text-slate-500">{hint}</span>}
+    <div className="flex items-baseline justify-between mb-1.5 gap-2">
+      <span className="text-[13px] font-semibold text-slate-700 dark:text-slate-200">{children}</span>
+      {hint && <span className="text-[12px] text-slate-400 dark:text-slate-500">{hint}</span>}
     </div>
   );
 }
@@ -102,14 +119,25 @@ const Select = ({ icon, children, className = '', ...p }) => (
   </div>
 );
 
-function SectionTitle({ n, title, desc }) {
+// Escolha única em chips. options: [{ value, label?, dot? }]. O primeiro chip
+// recebe o foco quando o passo abre (ou o marcado, com autoFocusSelected), para o
+// teclado seguir sem mouse.
+function Chips({ label, options, value, onPick, autoFocusFirst = false, autoFocusSelected = false }) {
   return (
-    <div className="flex items-center gap-2.5 mb-3">
-      <span className="w-6 h-6 rounded-lg grid place-items-center text-[11px] font-bold num bg-brand-50 text-brand-700 dark:bg-brand-500/12 dark:text-brand-300 shrink-0">{n}</span>
-      <div>
-        <div className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-white leading-none">{title}</div>
-        {desc && <div className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">{desc}</div>}
-      </div>
+    <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-2">
+      {options.map((o, i) => {
+        const on = value === o.value;
+        return (
+          <button
+            type="button" key={o.value} role="radio" aria-checked={on}
+            autoFocus={autoFocusFirst ? i === 0 : autoFocusSelected && on}
+            onClick={() => onPick(o.value)} className={chipCls(on)}
+          >
+            {on ? <Check size={14} /> : o.dot && <span className={cn('size-2 rounded-full', o.dot)} />}
+            {o.label ?? o.value}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -130,101 +158,59 @@ function LeadAvatar({ name, size = 44 }) {
   );
 }
 
-// ---------- tiles de origem ----------
-function SourceTiles({ sources, value, onChange }) {
-  return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-      {(sources || []).map((s) => {
-        const { Icon, tone, hint } = sourceTileMeta(s.name);
-        const t = settingsColorTone(tone);
-        const active = value === s.name;
-        return (
-          <button
-            type="button"
-            key={s.id}
-            onClick={() => onChange(s.name)}
-            className={cn(
-              'group relative text-left rounded-xl border p-2.5 transition active:scale-[.98]',
-              active
-                ? `${t.soft} ${t.darkSoft} border-transparent ring-2 ${t.ring}`
-                : 'bg-white border-slate-200 hover:border-slate-300 dark:bg-white/[0.03] dark:border-white/[0.08] dark:hover:border-white/15'
-            )}
-          >
-            <div className="flex items-center gap-2.5">
-              <span className={cn('w-9 h-9 rounded-lg grid place-items-center shrink-0 transition',
-                active ? `${t.strong} text-white` : `${t.soft} ${t.text} ${t.darkSoft} ${t.darkText}`)}><Icon size={17} /></span>
-              <div className="min-w-0">
-                <div className={cn('text-[12.5px] font-semibold leading-tight truncate', active ? `${t.text} ${t.darkText}` : 'text-slate-800 dark:text-slate-100')}>{s.name}</div>
-                {hint && <div className="text-[10.5px] text-slate-400 dark:text-slate-500 truncate">{hint}</div>}
-              </div>
-            </div>
-            {active && <span className={cn('absolute top-2 right-2 w-4 h-4 rounded-full grid place-items-center text-white', t.strong)}><Check size={10} /></span>}
-          </button>
-        );
-      })}
-      {(sources || []).length === 0 && (
-        <div className="col-span-full text-[12.5px] text-slate-400 dark:text-slate-500 py-2">
-          Nenhuma origem cadastrada. Crie em Configurações → Origens.
-        </div>
-      )}
-    </div>
-  );
+// ---------- passo ----------
+function StepDot({ state, n }) {
+  if (state === 'done') {
+    return <span className="size-7 rounded-full grid place-items-center shrink-0 bg-brand-600 text-white check-pop"><Check size={14} /></span>;
+  }
+  if (state === 'active') {
+    return <span className="size-7 rounded-full grid place-items-center shrink-0 bg-white dark:bg-ink-900 ring-2 ring-brand-300 dark:ring-brand-500/40 text-brand-700 dark:text-brand-300 text-[12px] font-bold num">{n}</span>;
+  }
+  return <span className="size-7 rounded-full grid place-items-center shrink-0 bg-slate-100 dark:bg-white/[0.05] text-slate-400 dark:text-slate-500 text-[12px] font-bold num">{n}</span>;
 }
 
-// ---------- funil (dropdown) + etapa inicial (stepper, padrão do perfil) ----------
-function PhasePicker({ funnels, funnelId, onFunnel, statuses, status, onStatus }) {
-  // Estágios do funil selecionado, ordenados (mesma regra do PhaseChanger do perfil).
-  const phases = (statuses || [])
-    .filter((s) => s.funnelId === funnelId)
-    .sort((a, b) => (a.order || 0) - (b.order || 0));
-  const selIdx = phases.findIndex((s) => s.name === status);
+// Trancado mostra só o título, feito vira resumo com Editar, aberto mostra as opções.
+// `fixed` troca o "Editar" por um cadeado com esse texto: passo feito que não muda.
+// `render` monta o corpo do passo, e só é chamado com o passo aberto.
+function StepRow({ n, title, hint, state, summary, onEdit, fixed = null, isLast, render }) {
   return (
-    <div className="space-y-4">
-      <div>
-        <Label>Funil</Label>
-        <Select icon={<Kanban size={16} />} value={funnelId || ''} onChange={(e) => onFunnel(e.target.value)}>
-          {(funnels || []).length === 0 && <option value="">Nenhum funil disponível</option>}
-          {(funnels || []).map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
-        </Select>
+    // O passo aberto leva z-10: a animação de entrada (step-reveal, com transform)
+    // dá ao passo uma camada própria, e sem isso o resumo de um passo feito logo
+    // abaixo pintava por cima da lista de resultados do "Quem indicou?".
+    <div className={cn('relative flex gap-3', state === 'active' && 'z-10')}>
+      <div className="flex flex-col items-center">
+        <StepDot state={state} n={n} />
+        {!isLast && <div className={cn('conn w-px flex-1 my-1', state === 'done' ? 'bg-brand-600' : 'bg-slate-200 dark:bg-white/[0.08]')} />}
       </div>
-
-      <div>
-        <Label>Em qual etapa do funil</Label>
-        {phases.length === 0 ? (
-          <span className="text-[12.5px] text-slate-400 dark:text-slate-500">Este funil ainda não tem fases.</span>
+      <div className={cn('flex-1 min-w-0', isLast ? 'pb-0' : 'pb-5')}>
+        {state === 'locked' ? (
+          <div className="pt-1 opacity-50 select-none text-[14px] font-semibold text-slate-400 dark:text-slate-500">{title}</div>
+        ) : state === 'done' && fixed ? (
+          <div className="sum-in w-full rounded-xl border border-slate-200 dark:border-white/[0.06] bg-slate-50/70 dark:bg-white/[0.02] px-3.5 py-2.5 flex items-center justify-between gap-3">
+            <span className="min-w-0">
+              <span className="block text-[12px] font-medium text-slate-400 dark:text-slate-500">{title}</span>
+              <span className="block text-[14px] font-semibold truncate mt-0.5 text-slate-700 dark:text-slate-200">{summary}</span>
+            </span>
+            <span className="inline-flex items-center gap-1 text-[12px] font-medium text-slate-400 shrink-0"><LockKeyhole size={12} /> {fixed}</span>
+          </div>
+        ) : state === 'done' ? (
+          <button
+            type="button" onClick={onEdit}
+            className="sum-in w-full text-left group rounded-xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] px-3.5 py-2.5 hover:border-slate-300 dark:hover:border-white/10 transition flex items-center justify-between gap-3 focus-visible:anel-foco"
+          >
+            <span className="min-w-0">
+              <span className="block text-[12px] font-medium text-slate-400 dark:text-slate-500">{title}</span>
+              <span className="block text-[14px] font-semibold truncate mt-0.5 text-brand-700 dark:text-brand-300">{summary}</span>
+            </span>
+            <span className="text-[12px] font-medium text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-200 shrink-0">Editar</span>
+          </button>
         ) : (
-          // Stepper do pipeline — mesmo padrão da mudança de fase no perfil do aluno
-          // (components/profile/PhaseChanger · PhaseNode): nós numerados conectados,
-          // a etapa escolhida destacada com o tom da fase e as anteriores "passadas".
-          <div className="rounded-xl border border-slate-200 dark:border-white/[0.06] bg-slate-50/60 dark:bg-white/[0.02] p-4 overflow-x-auto overscroll-x-contain thin-scroll">
-            <div className="flex min-w-[440px]">
-              {phases.map((s, i) => {
-                const t = getTone(phaseToneName(s.name, statuses));
-                const isTarget = i === selIdx;
-                const done = i < selIdx;
-                const leftPassed = i <= selIdx;
-                const rightPassed = i + 1 <= selIdx;
-                return (
-                  <button type="button" key={s.id || s.name} onClick={() => onStatus(s.name)} className="flex-1 min-w-[78px] group">
-                    <div className="flex items-center">
-                      <div className={cn('h-[3px] flex-1 transition-colors', i === 0 ? 'invisible' : leftPassed ? 'bg-brand-600' : 'bg-slate-200 dark:bg-white/[0.08]')}></div>
-                      <span className={cn('relative w-7 h-7 rounded-full grid place-items-center shrink-0 transition',
-                        isTarget
-                          ? cn(t.strong, 'text-white ring-4', `${t.ring}/30`)
-                          : done
-                            ? 'bg-brand-600 text-white'
-                            : 'bg-slate-100 dark:bg-white/[0.05] text-slate-400 dark:text-slate-500 group-hover:bg-slate-200 dark:group-hover:bg-white/[0.1]')}>
-                        {done || isTarget ? <Check size={13} /> : <span className="text-[11px] font-bold num">{i + 1}</span>}
-                      </span>
-                      <div className={cn('h-[3px] flex-1 transition-colors', i === phases.length - 1 ? 'invisible' : rightPassed ? 'bg-brand-600' : 'bg-slate-200 dark:bg-white/[0.08]')}></div>
-                    </div>
-                    <div className={cn('text-center mt-2 text-[11px] font-semibold leading-tight px-0.5', isTarget ? cn(t.text, t.darkText) : 'text-slate-500 dark:text-slate-400')}>
-                      {s.name}
-                    </div>
-                  </button>
-                );
-              })}
+          <div className="step-reveal pt-0.5">
+            <div className="mb-3">
+              <div className="text-[15px] font-semibold text-slate-900 dark:text-white">{title}</div>
+              {hint && <div className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">{hint}</div>}
             </div>
+            {render()}
           </div>
         )}
       </div>
@@ -244,7 +230,7 @@ function TagToggles({ tags, selected, onToggle }) {
             type="button"
             key={tag.id}
             onClick={() => onToggle(tag.name)}
-            className={cn('h-8 px-3 rounded-lg text-[12.5px] font-medium inline-flex items-center gap-1.5 transition active:scale-[.97]',
+            className={cn('h-8 px-3 rounded-lg text-[12.5px] font-medium inline-flex items-center gap-1.5 transition active:scale-[.97] focus-visible:anel-foco',
               on
                 ? `${t.soft} ${t.darkSoft} ${t.text} ${t.darkText} ring-1 ${t.ring}`
                 : 'bg-white text-slate-500 border border-slate-200 hover:border-slate-300 dark:bg-white/[0.03] dark:text-slate-400 dark:border-white/[0.08]')}
@@ -260,11 +246,9 @@ function TagToggles({ tags, selected, onToggle }) {
   );
 }
 
-// ---------- card de preview ao vivo ----------
-function PreviewCard({ form, statusObj, sources, tags }) {
+// ---------- card do lead cadastrado (tela de sucesso) ----------
+function PreviewCard({ form, statusObj, tags }) {
   const t = statusObj ? settingsColorTone(statusObj.color) : settingsColorTone('slate');
-  const srcObj = (sources || []).find((s) => s.name === form.source);
-  const SrcIcon = srcObj ? sourceTileMeta(srcObj.name).Icon : null;
   return (
     <div className="bg-white dark:bg-white/[0.04] rounded-2xl border border-slate-200 dark:border-white/[0.08] shadow-card-lg overflow-hidden">
       <div className="h-1.5 w-full bg-brand-500"></div>
@@ -272,13 +256,11 @@ function PreviewCard({ form, statusObj, sources, tags }) {
         <div className="flex items-center gap-3">
           <LeadAvatar name={form.name} size={44} />
           <div className="min-w-0 flex-1">
-            <div className="font-display font-bold text-[15px] tracking-tight text-slate-900 dark:text-white truncate">
-              {form.name || <span className="text-slate-300 dark:text-slate-600">Nome do lead</span>}
-            </div>
+            <div className="font-display font-bold text-[15px] tracking-tight text-slate-900 dark:text-white truncate">{form.name}</div>
             <div className="text-[12px] text-slate-500 dark:text-slate-400 num">
               {form.isMinor && form.guardianPhone
                 ? `${formatPhone(form.guardianPhone)} · resp.`
-                : (form.whatsapp ? formatPhone(form.whatsapp) : '(00) 0 0000-0000')}
+                : (form.whatsapp ? formatPhone(form.whatsapp) : '')}
             </div>
           </div>
         </div>
@@ -296,28 +278,27 @@ function PreviewCard({ form, statusObj, sources, tags }) {
 
         <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100 dark:border-white/[0.06]">
           <span className={cn('inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-1 rounded-md', t.soft, t.text, t.darkSoft, t.darkText)}>
-            <span className={cn('w-1.5 h-1.5 rounded-full', t.strong)}></span>{form.status || '—'}
+            <span className={cn('size-1.5 rounded-full', t.strong)}></span>{form.status || '—'}
           </span>
-          {form.source && (
-            <span className="inline-flex items-center gap-1 text-[11px] text-slate-400 dark:text-slate-500">
-              {SrcIcon && <SrcIcon size={12} />}{form.source}
-            </span>
-          )}
+          {form.source && <span className="text-[11px] text-slate-400 dark:text-slate-500">{form.source}</span>}
         </div>
       </div>
     </div>
   );
 }
 
+const byOrder = (a, b) => (a.order || 0) - (b.order || 0);
+
 // ==========================================================================
 function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, selectedFunnelId, onCreated, dores = [] }) {
   const toast = useToast();
   const { modalities = [] } = useGeneralConfig();
   const [loading, setLoading] = useState(false);
-  const [done, setDone] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [createdId, setCreatedId] = useState(null);
   const [more, setMore] = useState(false);
-  const nameRef = useRef(null);
+  const phoneRef = useRef(null);
+  const submitRef = useRef(null);
   const submittingRef = useRef(false);
 
   const safeFunnels = Array.isArray(funnels) ? funnels : [];
@@ -328,29 +309,30 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
   // o "Todos os funis" do dashboard, que é um sentinel e não um funil. Nos
   // casos acima o cadastro cai no funil padrão em vez de abrir travado num
   // funil sem fase.
-  // Funis que projetam CLIENTES (Renovações, Vencidos, Upgrade) não recebem lead novo: ele sumiria de todo board.
   const entryFunnelId = safeFunnels.some((f) => f.id === selectedFunnelId && !isRenewalFunnel(f) && !isExpiredFunnel(f) && !isUpgradeFunnel(f))
     ? selectedFunnelId
     : null;
   const initialFunnelId = entryFunnelId || getDefaultFunnel(safeFunnels)?.id || null;
-  const initialStatuses = (statuses || []).filter((s) => s.funnelId === initialFunnelId).sort((a, b) => (a.order || 0) - (b.order || 0));
+  const initialStatuses = (statuses || []).filter((s) => s.funnelId === initialFunnelId).sort(byOrder);
 
   // Indicação: funil de sistema + etapa de entrada fixa. Sem eles (o admin
-  // ainda não logou para a migração rodar), o switch some e o cadastro segue
-  // idêntico ao normal.
+  // ainda não logou para a migração rodar), a origem Indicação é uma origem
+  // comum e o cadastro segue idêntico ao normal.
   const referralFunnel = getReferralFunnel(safeFunnels);
   const referralEntry = getReferralEntryStage(statuses, referralFunnel?.id);
   const canReferral = Boolean(referralFunnel && referralEntry);
-  // O funil de indicações não aparece no select do modo normal — só via switch.
-  // Renovações fica de fora de vez: é funil de sistema SEM nenhuma etapa (as
-  // colunas do board são os marcos de renovação, derivados na hora). Um lead
-  // criado ali nasceria com a etapa vazia — vivo nas listas, sem casar com
-  // coluna de board nenhum, sumido do pipeline sem aviso.
-  // Funis que projetam CLIENTES (Renovações, Vencidos, Upgrade) não recebem lead novo: ele sumiria de todo board.
+  // A origem que liga o modo indicação (funil Indicações e "Quem indicou?"): só
+  // uma do catálogo (referralSourceOf), as outras com "indica" no nome são comuns.
+  const referralSource = referralSourceOf(sources);
+  // O funil de indicações não aparece nas opções de funil: só entra pela origem
+  // Indicação. Renovações, Vencidos e Upgrade projetam CLIENTES e não recebem
+  // lead novo (ele sumiria de todo board).
   const pickerFunnels = leadEntryFunnels(safeFunnels);
-  // Modal aberto já na aba do funil de indicações → switch nasce ligado.
+  // Modal aberto já na aba do funil de indicações → modo indicação nasce ligado.
   const initialIsReferral = canReferral && initialFunnelId === referralFunnel.id;
 
+  // A origem nasce vazia: ela alimenta os painéis por origem, então uma origem
+  // pré-escolhida em silêncio vira dado errado quando ninguém repara.
   const blankForm = () => ({
     name: '',
     whatsapp: '',
@@ -358,7 +340,7 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
     guardianName: '',
     guardianPhone: '',
     guardianRelation: '',
-    source: initialIsReferral ? 'Indicação' : (sources?.[0]?.name || ''),
+    source: initialIsReferral ? 'Indicação' : '',
     funnelId: initialFunnelId,
     status: initialIsReferral ? referralEntry.name : (initialStatuses?.[0]?.name || ''),
     tags: [],
@@ -373,43 +355,87 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
   const [form, setForm] = useState(blankForm);
   const [isReferral, setIsReferral] = useState(initialIsReferral);
   const [referrer, setReferrer] = useState(null);
-
-  useEffect(() => { nameRef.current?.focus(); }, []);
+  // Passos de texto (número, nome, responsável) só contam como feitos depois do
+  // Continuar. Os de escolha (origem, dor) se completam no próprio clique.
+  const [confirmed, setConfirmed] = useState({});
+  const [editing, setEditing] = useState(null);
+  // Fechar com algo preenchido pede confirmação (clique fora, Esc e o X).
+  const [askDiscard, setAskDiscard] = useState(false);
+  const lastFocus = useRef(null);
 
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
-  const statusObj = (statuses || []).find((s) => s.name === form.status);
+  const statusObj = (statuses || []).find((s) => s.name === form.status && s.funnelId === form.funnelId)
+    || (statuses || []).find((s) => s.name === form.status);
+  const funnel = safeFunnels.find((f) => f.id === form.funnelId);
+  const stageList = (statuses || []).filter((s) => s.funnelId === form.funnelId).sort(byOrder);
 
   const handleFunnel = (id) => {
-    const next = (statuses || []).filter((s) => s.funnelId === id).sort((a, b) => (a.order || 0) - (b.order || 0));
+    const next = (statuses || []).filter((s) => s.funnelId === id).sort(byOrder);
     setForm((f) => ({ ...f, funnelId: id, status: next[0]?.name || '' }));
   };
   const toggleTag = (name) =>
     setForm((f) => ({ ...f, tags: f.tags.includes(name) ? f.tags.filter((x) => x !== name) : [...f.tags, name] }));
 
-  // Liga/desliga o modo indicação. Ligado trava funil (Indicações), etapa
-  // (entrada fixa) e origem ('Indicação' — mantém as métricas por origem
-  // funcionando de graça). Desligado volta pro funil da tela (ou default).
-  const setReferralMode = (on) => {
+  // Liga/desliga o modo indicação. Ligado trava funil (Indicações) e etapa
+  // (entrada fixa) e guarda a origem escolhida. Desligado volta pro funil da
+  // tela (ou o padrão), com a origem em branco.
+  const setReferralMode = (on, sourceName) => {
     setIsReferral(on);
+    setConfirmed((c) => ({ ...c, funil: false }));
     if (on) {
-      setForm((f) => ({ ...f, funnelId: referralFunnel.id, status: referralEntry.name, source: 'Indicação' }));
+      setForm((f) => ({ ...f, funnelId: referralFunnel.id, status: referralEntry.name, source: sourceName || 'Indicação' }));
       return;
     }
     setReferrer(null);
     const backId =
       (entryFunnelId && entryFunnelId !== referralFunnel?.id ? entryFunnelId : null) ||
       getDefaultFunnel(pickerFunnels)?.id || null;
-    const next = (statuses || []).filter((s) => s.funnelId === backId).sort((a, b) => (a.order || 0) - (b.order || 0));
-    setForm((f) => ({ ...f, funnelId: backId, status: next[0]?.name || '', source: sources?.[0]?.name || '' }));
+    const next = (statuses || []).filter((s) => s.funnelId === backId).sort(byOrder);
+    setForm((f) => ({ ...f, funnelId: backId, status: next[0]?.name || '', source: '' }));
+  };
+  // Indicação é uma origem como as outras: escolher ela liga o modo indicação, e
+  // escolher outra desliga.
+  // Origem comum completa o passo no clique, então encerra o "Editar" (a
+  // indicação só completa depois do "Quem indicou?", em pickReferrer).
+  const pickSource = (name) => {
+    if (canReferral && name === referralSource) {
+      if (isReferral) {
+        set({ source: name });
+        // Voltou pelo Editar com o indicador já escolhido: não há mais o que
+        // responder, então o passo fecha (sem indicador, ele espera a busca).
+        if (referrer) setEditing(null);
+      } else {
+        setReferralMode(true, name);
+      }
+      return;
+    }
+    if (isReferral) setReferralMode(false);
+    set({ source: name });
+    setEditing(null);
+  };
+  const pickReferrer = (r) => {
+    setReferrer(r);
+    if (r) setEditing(null);
+  };
+
+  // O número do passo 1 é o do lead; com "menor de idade", é o do responsável.
+  // Trocar a chave troca os dois campos de lugar: o número que está no passo 1
+  // continua nele, e o outro (o WhatsApp do aluno, ou o do responsável guardado
+  // enquanto a chave está desligada) fica à espera. Ligar e desligar de novo
+  // devolve cada número ao seu lugar, sem perder nenhum. Com a chave desligada o
+  // responsável não é gravado (buildGuardianPatch), então o número guardado é inofensivo.
+  const setMinor = (on) => {
+    setForm((f) => ({ ...f, isMinor: on, whatsapp: f.guardianPhone, guardianPhone: f.whatsapp }));
+    // Data já mostra 18+: abre "Mais detalhes" para o nascimento aparecer.
+    if (on && turnedAdult({ isMinor: true, birthDate: fromDateInputValue(form.birthDate) })) setMore(true);
   };
 
   const phoneDigits = onlyDigits(form.whatsapp);
   const phoneTooShort = phoneDigits.length > 0 && phoneDigits.length < 10;
-  // Dup-check remoto (G1-flip / PR F): query em whatsappDigits, cobre todos os
-  // buckets (cliente/perda também) em vez de varrer o prop global 'ativo'.
+  // Dup-check remoto (G1-flip / PR F): query pela chave do telefone, cobre todos
+  // os buckets (cliente/perda também) em vez de varrer o prop global 'ativo'.
   const { duplicate, loading: dupLoading } = useDuplicateLead({ db, phoneDigits });
   const guardianDigits = onlyDigits(form.guardianPhone);
-  const guardianTooShort = guardianDigits.length > 0 && guardianDigits.length < 10;
   // O aluno não pode ter o mesmo número do responsável: recria o problema que
   // a feature resolve (whatsappDigits/zapMatchKey do menor viram os da mãe).
   const sameAsGuardian = form.isMinor && sameContactPhone(form.whatsapp, form.guardianPhone);
@@ -433,42 +459,118 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
   // Com a chave ligada o WhatsApp do aluno é opcional, mas, preenchido, precisa
   // estar completo.
   const ownPhoneOk = form.isMinor ? (phoneDigits.length === 0 || phoneDigits.length >= 10) : phoneDigits.length >= 10;
-  const contactOk = form.isMinor ? guardianDigits.length >= 10 : phoneDigits.length >= 10;
+  const contactDigits = form.isMinor ? guardianDigits : phoneDigits;
+  const contactTooShort = contactDigits.length > 0 && contactDigits.length < 10;
+  const contactChecking = form.isMinor ? guardianMatches.pending : (dupLoading || ownMatches.pending);
+  const contactValid = contactDigits.length >= 10 && (form.isMinor || !duplicate);
   const nameOk = form.name.trim().length > 1;
+  const guardianNameOk = form.guardianName.trim().length > 1;
   const dorOk = form.dor.trim().length > 0;
-  const canSubmit = nameOk && ownPhoneOk && !guardianError && !duplicate && !sameAsGuardian && !!form.funnelId && dorOk && (!isReferral || !!referrer);
+  const sourceOk = !!form.source && (!isReferral || !!referrer);
 
-  // barra de progresso: 6 sinais
-  const filled = [nameOk, contactOk, !!form.source, !!form.status, dorOk].filter(Boolean).length
-    + ((form.tags.length || form.observation.trim()) ? 1 : 0);
-  const pct = Math.round((filled / 6) * 100);
+  const flow = signupFlow({ isMinor: form.isMinor, withModality: modalities.length > 0 });
+  const stepDone = {
+    contato: Boolean(confirmed.contato) && contactValid,
+    nome: Boolean(confirmed.nome) && nameOk,
+    responsavel: Boolean(confirmed.responsavel) && guardianNameOk,
+    // Academia sem origem no catálogo cadastra sem origem, depois do "Continuar
+    // sem origem": quem cadastra pode não ter acesso a Configurações para criá-la.
+    origem: (sources || []).length === 0 ? Boolean(confirmed.origem) : sourceOk,
+    dor: dorOk,
+    // Escolher a modalidade ou pular conta como feito: o valor pode ficar vazio.
+    modalidade: Boolean(confirmed.modalidade),
+    // Na indicação o destino é fixo e já está feito. Nos outros casos a pessoa
+    // confirma a etapa, mesmo com o funil padrão já marcado.
+    funil: isReferral || (Boolean(confirmed.funil) && !!form.funnelId && !!form.status),
+  };
+  const pending = firstOpenStep(flow, stepDone);
+  const active = editing && flow.includes(editing) ? editing : pending;
+  const canSubmit = pending === null && ownPhoneOk && !duplicate && !sameAsGuardian && !guardianError && !!form.funnelId;
+
+  const stepState = (id) => (id === active ? 'active' : stepDone[id] ? 'done' : 'locked');
+  const confirmStep = (id, valid) => {
+    if (!valid) return;
+    setConfirmed((c) => ({ ...c, [id]: true }));
+    setEditing(null);
+  };
+  // Modalidade é opcional: um chip escolhe, "Pular" deixa vazio, e os dois fecham o passo.
+  const pickModalidade = (v) => {
+    set({ modalidade: v });
+    setConfirmed((c) => ({ ...c, modalidade: true }));
+    setEditing(null);
+  };
+  // Enter num campo de texto continua o passo. Ctrl/⌘+Enter é do envio.
+  const onEnter = (id, valid) => (e) => {
+    if (e.key !== 'Enter' || e.metaKey || e.ctrlKey) return;
+    e.preventDefault();
+    confirmStep(id, valid);
+  };
+
+  // Terminou o último passo, ou voltou num passo pelo Editar e o fechou: o foco
+  // vai para o botão de cadastrar.
+  const idle = pending === null && !editing;
+  const wasIdle = useRef(false);
+  useEffect(() => {
+    if (idle && !wasIdle.current) submitRef.current?.focus();
+    wasIdle.current = idle;
+  }, [idle]);
+
+  // O que impede o envio, na ordem em que a pessoa resolve.
+  const statusLine = (() => {
+    if (duplicate) return { tone: 'bad', text: 'Esse número já tem cadastro.' };
+    if (pending) {
+      const falta = missingText(flow, stepDone);
+      return { tone: 'wait', text: `Falta ${isReferral && !referrer ? falta.replace('origem', 'quem indicou') : falta}.` };
+    }
+    if (sameAsGuardian) return { tone: 'bad', text: 'O WhatsApp do aluno é o do responsável.' };
+    if (!ownPhoneOk) return { tone: 'wait', text: 'O WhatsApp do aluno está incompleto.' };
+    if (guardianError) return { tone: 'bad', text: guardianError };
+    if (!form.funnelId) return { tone: 'bad', text: 'Escolha um funil.' };
+    return { tone: 'ok', text: 'Tudo certo para cadastrar.' };
+  })();
+
+  // Problema que mora em "Mais detalhes" abre a seção sozinho.
+  const moreOpen = more || (form.isMinor && (adultByDate || sameAsGuardian || Boolean(duplicate) || (phoneTooShort && !pending)));
+
+  // Qualquer coisa já digitada ou escolhida conta. O cadastro salvo não pede nada.
+  const dirty = !saved && Boolean(
+    phoneDigits || guardianDigits || form.name.trim() || form.guardianName.trim() || form.source || form.dor
+    || form.modalidade || form.tags.length || form.cpf || form.email || form.birthDate || form.observation.trim()
+  );
+  const dismissDiscard = () => {
+    setAskDiscard(false);
+    // O foco volta para onde estava, senão ele se perde com o aviso que some.
+    setTimeout(() => lastFocus.current?.focus?.(), 0);
+  };
+  const requestClose = () => {
+    if (loading) return;
+    if (askDiscard) { dismissDiscard(); return; }
+    if (!dirty) { onClose(); return; }
+    lastFocus.current = document.activeElement;
+    setAskDiscard(true);
+  };
 
   const reset = () => {
     setForm(blankForm());
     setMore(false);
     setIsReferral(initialIsReferral);
     setReferrer(null);
-    setDone(false);
+    setConfirmed({});
+    setEditing(null);
+    setSaved(false);
     setCreatedId(null);
-    setTimeout(() => nameRef.current?.focus(), 0);
+    setTimeout(() => phoneRef.current?.focus(), 0);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    // canSubmit já exige funil, etapa e dor: os passos só fecham com eles.
     if (!canSubmit) return;
-    if (!form.funnelId) {
-      toast.warning('Selecione um funil para o lead. Crie um em Configurações → Funil Pipeline se não houver opções.');
-      return;
-    }
     const dup = await findDuplicateLeadRemote({ db, phoneDigits });
     if (dup) {
       const ownerLabel = dup.consultantName ? ` (consultor: ${dup.consultantName})` : '';
       const statusLabel = dup.status ? ` · etapa "${dup.status}"` : '';
       toast.warning(`Já existe um lead com este WhatsApp: ${dup.name}${ownerLabel}${statusLabel}.`);
-      return;
-    }
-    if (!dorOk) {
-      toast.warning('Descreva a dor/necessidade do lead.');
       return;
     }
 
@@ -518,7 +620,7 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
       }
 
       setCreatedId(leadRef.id);
-      setDone(true);
+      setSaved(true);
     } catch (error) {
       console.error(error);
       toast.error?.('Erro ao cadastrar lead.');
@@ -528,161 +630,303 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
     }
   };
 
-  const consultantName = appUser?.name || 'Você';
+  // Ctrl/⌘+Enter cadastra de qualquer campo.
+  const onFormKeyDown = (e) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      if (canSubmit && !loading) handleSubmit(e);
+    }
+  };
+
+  // ---------- corpo de cada passo ----------
+  const continueBtn = (id, valid, label = 'Continuar') => (
+    <div className="mt-4 flex justify-end">
+      <button type="button" disabled={!valid} onClick={() => confirmStep(id, valid)} className={cn(BTN_PRIMARY, 'h-10 px-4')}>
+        {label}
+      </button>
+    </div>
+  );
+
+  const numberResult = () => {
+    if (contactDigits.length === 0) {
+      return <p className="text-[13px] text-slate-500 dark:text-slate-400">Digite com o DDD. Eu confiro se a pessoa já está no sistema.</p>;
+    }
+    if (contactTooShort) {
+      return <p className="text-[13px] text-amber-600 dark:text-amber-400">Número incompleto. Inclua DDD + 9 dígitos.</p>;
+    }
+    if (!form.isMinor && duplicate) {
+      const where = [duplicate.status, duplicate.consultantName && `responsável ${duplicate.consultantName}`].filter(Boolean).join(' · ');
+      return (
+        <div className="flex items-center gap-3 rounded-2xl border border-rose-300/70 bg-rose-50 p-3 dark:border-rose-500/30 dark:bg-rose-500/10">
+          <Avatar name={duplicate.name} size={38} />
+          <div className="min-w-0 flex-1">
+            <div className="text-[13.5px] font-semibold text-slate-900 dark:text-white truncate">{duplicate.name}</div>
+            {where && <div className="text-[12px] text-slate-500 dark:text-slate-400 truncate">{where}</div>}
+          </div>
+          <LeadLink
+            leadId={duplicate.id} onNavigate={onClose}
+            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-slate-200 bg-white text-[12.5px] font-semibold text-slate-800 hover:bg-slate-50 shrink-0 focus-visible:anel-foco dark:border-white/[0.12] dark:bg-white/[0.06] dark:text-white"
+          >
+            Abrir ficha <ExternalLink size={13} />
+          </LeadLink>
+        </div>
+      );
+    }
+    if (contactChecking) {
+      return (
+        <p className="inline-flex items-center gap-2 text-[13px] text-slate-500 dark:text-slate-400">
+          <span className="size-3.5 rounded-full border-2 border-slate-300 border-t-brand-600 animate-spin" /> Conferindo se já existe…
+        </p>
+      );
+    }
+    const notice = form.isMinor ? guardianNotice : ownNotice;
+    if (notice.length > 0) {
+      return <div className="flex flex-col gap-0.5 text-[12.5px] text-slate-500 dark:text-slate-400">{notice.map((linha) => <span key={linha}>{linha}</span>)}</div>;
+    }
+    return (
+      <p className="flex items-center gap-1.5 text-[13px] font-semibold text-emerald-600 dark:text-emerald-400">
+        <Check size={14} /> {form.isMinor ? 'Número do responsável anotado.' : 'Número novo. Ninguém tem esse WhatsApp ainda.'}
+      </p>
+    );
+  };
+
+  const stepBody = {
+    contato: () => (
+      <>
+        <div className="relative">
+          <input
+            ref={phoneRef} type="tel" inputMode="numeric" autoComplete="off" autoFocus
+            aria-label={STEP_TITLE.contato(form.isMinor)}
+            value={formatPhone(form.isMinor ? form.guardianPhone : form.whatsapp)}
+            onChange={(e) => set(form.isMinor ? { guardianPhone: formatPhone(e.target.value) } : { whatsapp: formatPhone(e.target.value) })}
+            onKeyDown={onEnter('contato', contactValid && !contactChecking)}
+            placeholder="(51) 9 0000-0000"
+            className={cn(inputCls, 'h-14 text-[20px] font-display font-semibold tracking-tight num',
+              !form.isMinor && duplicate ? 'pr-36 !border-rose-400 focus:!ring-rose-400/15' : 'pr-4',
+              contactTooShort && '!border-amber-400')}
+          />
+          {!form.isMinor && duplicate && (
+            <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[12.5px] font-semibold text-rose-600 dark:text-rose-400 pointer-events-none">Já cadastrado</span>
+          )}
+        </div>
+        <div className="min-h-14 mt-3">{numberResult()}</div>
+        <label className="mt-1 flex items-center justify-between gap-3 cursor-pointer">
+          <span className="flex items-center gap-2.5 min-w-0">
+            <span className={cn('size-8 rounded-lg grid place-items-center shrink-0', form.isMinor ? 'bg-brand-600 text-white' : 'bg-brand-50 text-brand-600 dark:bg-brand-500/12 dark:text-brand-300')}><Baby size={16} /></span>
+            <span className="min-w-0">
+              <span className="block text-[13px] font-semibold text-slate-800 dark:text-slate-100 leading-tight">Menor de idade</span>
+              <span className="block text-[12px] text-slate-500 dark:text-slate-400">Este número é do responsável</span>
+            </span>
+          </span>
+          <Switch checked={form.isMinor} onCheckedChange={setMinor} aria-label="Menor de idade" />
+        </label>
+        {continueBtn('contato', contactValid && !contactChecking)}
+      </>
+    ),
+    nome: () => (
+      <>
+        <input
+          type="text" autoComplete="off" autoFocus aria-label={STEP_TITLE.nome(form.isMinor)}
+          value={form.name} onChange={(e) => set({ name: e.target.value })}
+          onKeyDown={onEnter('nome', nameOk)}
+          placeholder="Nome completo" className={cn(inputCls, 'h-12 text-[15px]')}
+        />
+        {continueBtn('nome', nameOk)}
+      </>
+    ),
+    responsavel: () => (
+      <>
+        <input
+          type="text" autoComplete="off" autoFocus aria-label="Nome do responsável"
+          value={form.guardianName} onChange={(e) => set({ guardianName: e.target.value })}
+          onKeyDown={onEnter('responsavel', guardianNameOk)}
+          placeholder="Nome de quem responde pelo aluno" className={cn(inputCls, 'h-12 text-[15px]')}
+        />
+        <div className="mt-4">
+          <Label hint="opcional">Parentesco</Label>
+          <div role="radiogroup" aria-label="Parentesco" className="flex flex-wrap gap-2">
+            {GUARDIAN_RELATIONSHIPS.map((r) => (
+              <button
+                type="button" key={r} role="radio" aria-checked={form.guardianRelation === r}
+                onClick={() => set({ guardianRelation: form.guardianRelation === r ? '' : r })}
+                className={cn(chipCls(form.guardianRelation === r), 'h-9')}
+              >
+                {form.guardianRelation === r && <Check size={14} />}{r}
+              </button>
+            ))}
+          </div>
+        </div>
+        {continueBtn('responsavel', guardianNameOk)}
+      </>
+    ),
+    origem: () => (
+      <>
+        {(sources || []).length === 0 ? (
+          <>
+            <p className="text-[13px] text-slate-500 dark:text-slate-400">Nenhuma origem cadastrada. O gestor cria em Configurações → Origens. Dá para cadastrar sem origem.</p>
+            {continueBtn('origem', true, 'Continuar sem origem')}
+          </>
+        ) : (
+          <Chips
+            label="Como chegou" autoFocusFirst
+            options={(sources || []).map((s) => ({ value: s.name }))}
+            value={form.source} onPick={pickSource}
+          />
+        )}
+        {isReferral && (
+          <div className="mt-4">
+            <Label>Quem indicou?</Label>
+            <ReferrerPicker db={db} value={referrer} onSelect={pickReferrer} autoFocus />
+          </div>
+        )}
+      </>
+    ),
+    dor: () => (
+      dores.length > 0 ? (
+        <Chips
+          label="Dor" autoFocusFirst
+          options={dores.map((d) => ({ value: d.name }))}
+          value={form.dor} onPick={(v) => { set({ dor: v }); setEditing(null); }}
+        />
+      ) : (
+        <p className="text-[13px] text-slate-500 dark:text-slate-400">Nenhuma dor cadastrada. Adicione em Configurações → Catálogos → Dores.</p>
+      )
+    ),
+    modalidade: () => (
+      <>
+        <Chips
+          label="Modalidade de interesse" autoFocusFirst
+          options={modalities.map((m) => ({ value: m.name }))}
+          value={form.modalidade} onPick={pickModalidade}
+        />
+        <button
+          type="button" onClick={() => pickModalidade('')}
+          className="mt-3 rounded text-[13px] font-semibold text-slate-500 hover:text-slate-800 hover:underline dark:text-slate-400 dark:hover:text-slate-200 focus-visible:anel-foco"
+        >Pular, ainda não sabe</button>
+      </>
+    ),
+    // Funil e etapa à vista. Trocar de funil leva a etapa para a primeira dele, e
+    // o passo só fecha no clique numa etapa (o funil padrão já vem marcado).
+    funil: () => (
+      <>
+        <Label>Funil</Label>
+        {pickerFunnels.length === 0 ? (
+          <p className="text-[13px] text-slate-500 dark:text-slate-400">Nenhum funil disponível. Crie um em Configurações → Funil Pipeline.</p>
+        ) : (
+          <Chips
+            label="Funil"
+            options={pickerFunnels.map((f) => ({ value: f.id, label: f.name }))}
+            value={form.funnelId} onPick={handleFunnel}
+          />
+        )}
+        <div className="mt-4">
+          <Label>Etapa em que entra</Label>
+          {stageList.length === 0 ? (
+            <p className="text-[13px] text-amber-600 dark:text-amber-400">Este funil ainda não tem etapas. Escolha outro funil.</p>
+          ) : (
+            <Chips
+              label="Etapa" autoFocusSelected
+              options={stageList.map((s) => ({ value: s.name, dot: settingsColorTone(s.color).strong }))}
+              value={form.status}
+              onPick={(v) => { set({ status: v }); setConfirmed((c) => ({ ...c, funil: true })); setEditing(null); }}
+            />
+          )}
+        </div>
+      </>
+    ),
+  };
+
+  const summaryOf = {
+    contato: () => formatPhone(form.isMinor ? form.guardianPhone : form.whatsapp),
+    nome: () => form.name.trim(),
+    responsavel: () => `${form.guardianName.trim()}${form.guardianRelation ? ` (${form.guardianRelation})` : ''}`,
+    origem: () => (!form.source ? 'Sem origem' : referrer ? `${form.source} · ${referrer.name}` : form.source),
+    dor: () => form.dor,
+    modalidade: () => form.modalidade || 'Sem preferência',
+    funil: () => (isReferral
+      ? `${referralFunnel?.name || REFERRAL_FUNNEL_NAME} › ${referralEntry?.name}`
+      : `${funnel?.name || ''} › ${form.status}`),
+  };
+
+  const stepNumber = Math.max(1, flow.indexOf(active) + 1);
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent
+    <Sheet open onOpenChange={(o) => { if (!o) requestClose(); }}>
+      <SheetContent
+        side="right"
         showCloseButton={false}
-        onOpenAutoFocus={(e) => { e.preventDefault(); nameRef.current?.focus(); }}
-        overlayClassName="z-[130] bg-ink-950/60 backdrop-blur-[3px]"
-        className="z-[130] p-0 gap-0 overflow-hidden flex flex-col w-full max-w-[calc(100%-1.5rem)] sm:max-w-[960px] max-h-[92vh] bg-white dark:bg-ink-900 border border-slate-200 dark:border-white/[0.08] shadow-[0_40px_100px_-24px_rgba(8,13,34,.6)] rounded-3xl"
+        onOpenAutoFocus={(e) => { e.preventDefault(); phoneRef.current?.focus(); }}
+        overlayClassName="z-[130] bg-ink-950/35"
+        className="z-[130] w-full gap-0 p-0 sm:max-w-[468px] bg-white dark:bg-ink-900 border-slate-200 dark:border-white/[0.08] shadow-[0_0_60px_-20px_rgba(8,13,34,.55)] data-[state=open]:duration-300"
       >
-        {done ? (
+        {saved ? (
           <>
-            <DialogTitle className="sr-only">Lead cadastrado</DialogTitle>
+            <SheetTitle className="sr-only">Lead cadastrado</SheetTitle>
+            <SheetDescription className="sr-only">O lead foi cadastrado no funil.</SheetDescription>
             <SuccessView
-              form={form} statusObj={statusObj} sources={sources} tags={tags}
+              form={form} statusObj={statusObj} tags={tags} funnelName={funnel?.name}
               onView={() => { if (createdId && onCreated) onCreated(createdId); onClose(); }}
               onAgain={reset}
             />
           </>
         ) : (
-          <form onSubmit={handleSubmit} autoComplete="off" className="flex-1 min-h-0 flex flex-col">
-            <div className="flex-1 min-h-0 grid min-[880px]:grid-cols-[340px_minmax(0,1fr)]">
+          <form onSubmit={handleSubmit} onKeyDown={onFormKeyDown} autoComplete="off" inert={askDiscard} className="flex-1 min-h-0 flex flex-col">
+            {/* cabeçalho */}
+            <div className="flex items-start justify-between gap-3 px-7 pt-6">
+              <div className="min-w-0">
+                <SheetTitle className="font-display text-[24px] font-bold tracking-tight leading-tight">Novo lead</SheetTitle>
+                <SheetDescription className="mt-1 text-[13.5px] text-slate-500 dark:text-slate-400 leading-snug">Cada passo libera o próximo.</SheetDescription>
+              </div>
+              <button
+                type="button" onClick={requestClose} aria-label="Fechar"
+                className="size-9 -mr-2 grid place-items-center rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100 dark:hover:text-white dark:hover:bg-white/[0.06] transition focus-visible:anel-foco"
+              ><X size={18} /></button>
+            </div>
 
-              {/* ── Showcase stage ── */}
-              <aside className="hidden min-[880px]:flex flex-col p-6 relative overflow-hidden border-r border-slate-200/70 dark:border-white/[0.06]
-                                bg-gradient-to-b from-brand-50/80 via-paper-50 to-paper-50 dark:from-brand-500/[0.07] dark:via-ink-900 dark:to-ink-900">
-                <div className="absolute -right-8 -top-6 opacity-[0.06] dark:opacity-[0.09] pointer-events-none rotate-6">
-                  <SurgeMark size={190} />
-                </div>
+            {/* progresso: um segmento por passo */}
+            <div className="flex gap-1.5 px-7 pt-4" aria-hidden="true">
+              {flow.map((id) => (
+                <span key={id} className={cn('h-1 flex-1 rounded-full transition-colors duration-300',
+                  stepDone[id] ? 'bg-brand-600' : id === active ? 'bg-brand-300 dark:bg-brand-500/50' : 'bg-slate-200 dark:bg-white/[0.08]')} />
+              ))}
+            </div>
+            <p className="sr-only" aria-live="polite">
+              {active ? `Passo ${stepNumber} de ${flow.length}: ${STEP_TITLE[active](form.isMinor)}.` : 'Todos os passos feitos.'}
+            </p>
 
-                <div className="flex items-center gap-2.5 relative">
-                  <div className="w-9 h-9 rounded-xl grid place-items-center bg-white dark:bg-white/[0.06] ring-1 ring-brand-100 dark:ring-white/[0.08] shadow-sm"><SurgeMark size={20} /></div>
-                  <span className="font-display font-extrabold tracking-tight text-[15px]"><span className="text-slate-900 dark:text-white">STRONI</span><span className="text-brand-600 dark:text-brand-300">LEAD</span></span>
-                </div>
+            {/* passos */}
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain thin-scroll px-7 pt-6 pb-4">
+              {flow.map((id, i) => (
+                <StepRow
+                  key={id} n={i + 1} state={stepState(id)} isLast={i === flow.length - 1}
+                  title={STEP_TITLE[id](form.isMinor)} hint={STEP_HINT[id]}
+                  summary={stepDone[id] ? summaryOf[id]() : ''}
+                  fixed={id === 'funil' && isReferral ? 'Fixo na indicação' : null}
+                  onEdit={() => setEditing(id)} render={stepBody[id]}
+                />
+              ))}
 
-                <div className="relative mt-7">
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2.5">Pré-visualização no funil</div>
-                  <PreviewCard form={form} statusObj={statusObj} sources={sources} tags={tags} />
-                </div>
-
-                <div className="relative mt-4 rounded-2xl bg-white/80 dark:bg-white/[0.04] border border-slate-200/80 dark:border-white/[0.07] p-3.5 backdrop-blur-sm">
-                  <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500"><Users size={13} /> Consultor</div>
-                  <div className="flex items-center gap-2.5 mt-2.5">
-                    <Avatar name={consultantName} size={34} />
-                    <div className="min-w-0">
-                      <div className="text-[13px] font-semibold truncate">{consultantName}</div>
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">Quem faz o cadastro</div>
-                    </div>
-                  </div>
-                  <p className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-2.5 leading-relaxed">Será atribuído a você e somará na sua <strong className="text-slate-700 dark:text-slate-200 font-semibold">Meta diária</strong>.</p>
-                </div>
-
-                <div className="relative mt-auto pt-4 flex items-center gap-1.5 text-[11.5px] text-emerald-600 dark:text-emerald-400">
-                  <CheckCircle2 size={14} /> <span className="font-medium">Verificação de duplicidade ativa</span>
-                </div>
-              </aside>
-
-              {/* ── Formulário ── */}
-              <div className="flex flex-col min-h-0 min-w-0">
-                {/* header */}
-                <div className="flex items-center justify-between gap-3 px-5 sm:px-7 py-4 border-b border-slate-200/80 dark:border-white/[0.07]">
-                  <div className="flex items-center gap-3">
-                    <div className="min-[880px]:hidden w-9 h-9 rounded-xl grid place-items-center bg-brand-50 dark:bg-white/[0.06]"><SurgeMark size={20} /></div>
-                    <div>
-                      <DialogTitle className="font-display text-[19px] font-bold tracking-tight leading-none">Novo lead</DialogTitle>
-                      <DialogDescription className="text-[12px] text-slate-500 dark:text-slate-400 mt-1">Cadastre um contato no pipeline em segundos</DialogDescription>
-                    </div>
-                  </div>
-                  <button type="button" onClick={onClose} title="Fechar"
-                    className="w-9 h-9 grid place-items-center rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100 dark:hover:text-white dark:hover:bg-white/[0.06] transition"><X size={18} /></button>
-                </div>
-
-                {/* progress */}
-                <div className="px-5 sm:px-7 pt-3">
-                  <div className="h-1 rounded-full bg-slate-100 dark:bg-white/[0.06] overflow-hidden">
-                    <div className="h-full rounded-full bg-brand-500 transition-all duration-300" style={{ width: `${Math.max(8, pct)}%` }}></div>
-                  </div>
-                </div>
-
-                {/* body */}
-                <div className="flex-1 min-h-0 overflow-y-auto thin-scroll px-5 sm:px-7 py-5 space-y-6">
-                  {/* 1 — quem é */}
-                  <section>
-                    <SectionTitle n="1" title="Quem é" desc={form.isMinor ? 'Nome do aluno e contato do responsável' : 'Nome e WhatsApp são obrigatórios'} />
-                    <div className="grid sm:grid-cols-2 gap-3.5">
-                      <div className="sm:col-span-2">
-                        <Label required>Nome do lead</Label>
-                        <IconInput inputRef={nameRef} icon={<UserPlus size={16} />} value={form.name} onChange={(e) => set({ name: e.target.value })} placeholder="Nome completo" />
-                      </div>
-                      <label className={cn(
-                        'sm:col-span-2 flex items-center justify-between gap-3 rounded-xl border p-3 cursor-pointer transition',
-                        form.isMinor
-                          ? 'border-brand-300 bg-brand-50/70 dark:border-brand-500/30 dark:bg-brand-500/[0.07]'
-                          : 'border-border bg-card hover:border-slate-300 dark:hover:border-white/15'
-                      )}>
-                        <span className="flex items-center gap-2.5 min-w-0">
-                          <span className={cn(
-                            'size-9 rounded-lg grid place-items-center shrink-0 transition',
-                            form.isMinor ? 'bg-brand-600 text-white' : 'bg-brand-50 text-brand-600 dark:bg-brand-500/12 dark:text-brand-300'
-                          )}>
-                            <Baby size={17} />
-                          </span>
-                          <span className="min-w-0">
-                            <span className="block text-[13px] font-semibold text-foreground leading-tight">Menor de idade</span>
-                            <span className="block text-[11.5px] text-muted-foreground">O contato passa a ser o responsável</span>
-                          </span>
-                        </span>
-                        <Switch checked={form.isMinor} onCheckedChange={(on) => {
-                          set({ isMinor: on });
-                          // Data já mostra 18+: abre "Detalhes" para o nascimento
-                          // aparecer, sem depender de effect nem de forçar o render.
-                          if (on && turnedAdult({ isMinor: true, birthDate: fromDateInputValue(form.birthDate) })) setMore(true);
-                        }} />
-                      </label>
-                      {form.isMinor && (
-                        <>
-                          <div className="sm:col-span-2">
-                            <Label required>Nome do responsável</Label>
-                            <IconInput icon={<Users size={16} />} value={form.guardianName} onChange={(e) => set({ guardianName: e.target.value })} placeholder="Nome de quem responde pelo aluno" />
-                          </div>
-                          <div>
-                            <Label required hint="com DDD + 9 dígitos">Telefone do responsável</Label>
-                            <IconInput type="tel" inputMode="numeric" icon={<Phone size={16} />} value={formatPhone(form.guardianPhone)} onChange={(e) => set({ guardianPhone: formatPhone(e.target.value) })}
-                              placeholder="(51) 9 0000-0000"
-                              className={guardianTooShort ? '!border-amber-400' : ''} />
-                            {guardianTooShort && (
-                              <div className="mt-1.5 text-[11.5px] text-amber-600 dark:text-amber-400">Número incompleto. Inclua DDD + 9 dígitos.</div>
-                            )}
-                          </div>
-                          <div>
-                            <Label hint="opcional">Parentesco</Label>
-                            <Select value={form.guardianRelation} onChange={(e) => set({ guardianRelation: e.target.value })} aria-label="Parentesco">
-                              <option value="">Selecione…</option>
-                              {GUARDIAN_RELATIONSHIPS.map((r) => <option key={r} value={r}>{r}</option>)}
-                            </Select>
-                          </div>
-                          {guardianNotice.length > 0 && (
-                            <div className="sm:col-span-2 flex flex-col gap-0.5 text-[11.5px] text-muted-foreground">
-                              {guardianNotice.map((linha) => <span key={linha}>{linha}</span>)}
-                            </div>
-                          )}
-                          {adultByDate && (
-                            <div className="sm:col-span-2 flex items-start gap-1.5 text-[11.5px] text-amber-600 dark:text-amber-400">
-                              <AlertTriangle size={13} className="mt-0.5 shrink-0" /><span>Pela data, já tem 18 anos. Confira a data ou desligue a chave.</span>
-                            </div>
-                          )}
-                        </>
-                      )}
-                      <div className="sm:col-span-2">
-                        <Label required={!form.isMinor} hint={duplicate ? '' : (form.isMinor ? 'opcional' : 'com DDD + 9 dígitos')}>
-                          {form.isMinor ? 'WhatsApp do aluno' : 'WhatsApp'}
-                        </Label>
-                        <IconInput type="tel" inputMode="numeric" icon={<MessageCircle size={16} />} value={formatPhone(form.whatsapp)} onChange={(e) => set({ whatsapp: formatPhone(e.target.value) })}
+              {/* opcionais */}
+              <div className="mt-7 pt-5 border-t border-slate-100 dark:border-white/[0.06]">
+                <button
+                  type="button" onClick={() => setMore((m) => !m)} aria-expanded={moreOpen}
+                  className="flex w-full items-center gap-2 text-left rounded-lg focus-visible:anel-foco"
+                >
+                  <ChevronRight size={15} className={cn('text-brand-600 dark:text-brand-300 transition shrink-0', moreOpen && 'rotate-90')} />
+                  <span className="text-[13.5px] font-semibold text-brand-700 dark:text-brand-300">Mais detalhes</span>
+                  <span className="min-w-0 flex-1 truncate text-[12.5px] text-slate-500 dark:text-slate-400">etiquetas, nascimento, CPF, e-mail e observação</span>
+                </button>
+                {moreOpen && (
+                  <div className="mt-4 flex flex-col gap-4 fade-in">
+                    {form.isMinor && (
+                      <div>
+                        <Label hint="opcional">WhatsApp do aluno</Label>
+                        <IconInput
+                          type="tel" inputMode="numeric" icon={<Baby size={15} />}
+                          value={formatPhone(form.whatsapp)} onChange={(e) => set({ whatsapp: formatPhone(e.target.value) })}
                           placeholder="(51) 9 0000-0000"
-                          className={duplicate ? '!border-rose-400 focus:!ring-rose-400/15' : ((phoneTooShort || sameAsGuardian) ? '!border-amber-400' : '')} />
+                          className={duplicate ? '!border-rose-400 focus:!ring-rose-400/15' : ((phoneTooShort || sameAsGuardian) ? '!border-amber-400' : '')}
+                        />
                         {duplicate ? (
                           <div className="mt-1.5 flex items-start gap-1.5 text-[11.5px] text-rose-600 dark:text-rose-400">
                             <AlertTriangle size={13} className="mt-0.5 shrink-0" /><span>Já existe: <strong>{duplicate.name}</strong>{duplicate.consultantName ? ` · ${duplicate.consultantName}` : ''}{duplicate.status ? ` (${duplicate.status})` : ''}</span>
@@ -695,182 +939,118 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
                           <div className="mt-1.5 text-[11.5px] text-amber-600 dark:text-amber-400">Número incompleto. Inclua DDD + 9 dígitos.</div>
                         ) : ownNotice.length > 0 ? (
                           <div className="mt-1.5 text-[11.5px] text-muted-foreground">{ownNotice[0]}</div>
-                        ) : phoneDigits.length >= 10 && !ownMatches.pending && !dupLoading ? (
-                          <div className="mt-1.5 flex items-center gap-1.5 text-[11.5px] text-emerald-600 dark:text-emerald-400"><Check size={13} /> Número válido e disponível.</div>
                         ) : null}
                       </div>
+                    )}
+
+                    <div>
+                      <Label hint={`${form.tags.length} selecionada${form.tags.length === 1 ? '' : 's'}`}>Etiquetas</Label>
+                      <TagToggles tags={tags} selected={form.tags} onToggle={toggleTag} />
                     </div>
-                  </section>
 
-                  {/* 2 — origem (ou indicação) */}
-                  <section>
-                    <SectionTitle n="2" title="Como chegou" desc={isReferral ? 'Indicação de um cliente da academia' : 'De onde veio esse contato?'} />
-                    {canReferral && (
-                      <label className={cn(
-                        'flex items-center justify-between gap-3 rounded-xl border p-3 mb-3 cursor-pointer transition',
-                        isReferral
-                          ? 'border-emerald-300 bg-emerald-50/70 dark:border-emerald-500/30 dark:bg-emerald-500/[0.07]'
-                          : 'border-slate-200 bg-white hover:border-slate-300 dark:border-white/[0.08] dark:bg-white/[0.03] dark:hover:border-white/15'
-                      )}>
-                        <span className="flex items-center gap-2.5 min-w-0">
-                          <span className={cn(
-                            'size-9 rounded-lg grid place-items-center shrink-0 transition',
-                            isReferral ? 'bg-emerald-500 text-white' : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/12 dark:text-emerald-400'
-                          )}>
-                            <Handshake size={17} />
-                          </span>
-                          <span className="min-w-0">
-                            <span className="block text-[13px] font-semibold text-slate-900 dark:text-white leading-tight">É uma indicação?</span>
-                            <span className="block text-[11.5px] text-slate-400 dark:text-slate-500 truncate">Um cliente indicou este lead</span>
-                          </span>
-                        </span>
-                        <Switch checked={isReferral} onCheckedChange={setReferralMode} />
-                      </label>
-                    )}
-                    {isReferral ? (
+                    <div className="grid grid-cols-2 gap-3.5">
                       <div>
-                        <Label required>Quem indicou?</Label>
-                        <ReferrerPicker db={db} value={referrer} onSelect={setReferrer} autoFocus />
-                      </div>
-                    ) : (
-                      <SourceTiles sources={sources} value={form.source} onChange={(v) => set({ source: v })} />
-                    )}
-                  </section>
-
-                  {/* 3 — funil + fase */}
-                  <section>
-                    <SectionTitle n="3" title="Onde entra" desc="Funil e fase inicial no pipeline" />
-                    {isReferral ? (
-                      <div className="flex items-start gap-3 rounded-xl border border-slate-200 dark:border-white/[0.06] bg-slate-50/60 dark:bg-white/[0.02] p-4">
-                        <span className="size-9 rounded-lg grid place-items-center shrink-0 bg-slate-100 text-slate-500 dark:bg-white/[0.06] dark:text-slate-300">
-                          <LockKeyhole size={16} />
-                        </span>
-                        <div className="text-[12.5px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                          Entra no funil <strong className="text-slate-700 dark:text-slate-200 font-semibold">{REFERRAL_FUNNEL_NAME}</strong>, na etapa{' '}
-                          <strong className="text-slate-700 dark:text-slate-200 font-semibold">{referralEntry?.name}</strong>. As indicações ficam juntas para o time trabalhar.
-                        </div>
-                      </div>
-                    ) : (
-                      <PhasePicker funnels={pickerFunnels} funnelId={form.funnelId} onFunnel={handleFunnel} statuses={statuses} status={form.status} onStatus={(v) => set({ status: v })} />
-                    )}
-                  </section>
-
-                  {/* 4 — o que busca: dor (obrigatória) + modalidade de interesse */}
-                  <section>
-                    <SectionTitle n="4" title="O que busca" desc="Necessidade e modalidade de interesse" />
-                    <div className="space-y-3.5">
-                      <div>
-                        <Label required>Dor / necessidade</Label>
-                        {dores.length > 0 ? (
-                          <Select icon={<HeartPulse size={16} />} value={form.dor} onChange={(e) => set({ dor: e.target.value })}>
-                            <option value="">Selecione…</option>
-                            {dores.map((d) => <option key={d.id} value={d.name}>{d.name}</option>)}
-                          </Select>
-                        ) : (
-                          <p className="text-[11.5px] text-slate-400 dark:text-slate-500">Nenhuma dor cadastrada — adicione em Configurações → Catálogos → Dores.</p>
-                        )}
+                        <Label hint="opcional">Nascimento</Label>
+                        <IconInput type="date" icon={<Calendar size={15} />} value={form.birthDate} onChange={(e) => set({ birthDate: e.target.value })} />
                       </div>
                       <div>
-                        <Label hint="opcional">Modalidade de interesse</Label>
-                        {modalities.length > 0 ? (
-                          <Select icon={<Dumbbell size={16} />} value={form.modalidade} onChange={(e) => set({ modalidade: e.target.value })}>
-                            <option value="">Selecione…</option>
-                            {modalities.map((m) => <option key={m.id} value={m.name}>{m.name}</option>)}
-                          </Select>
-                        ) : (
-                          <p className="text-[11.5px] text-slate-400 dark:text-slate-500">Nenhuma modalidade cadastrada — adicione em Configurações → Configurações Gerais.</p>
-                        )}
+                        <Label hint="opcional">CPF</Label>
+                        <IconInput icon={<IdCard size={15} />} value={form.cpf} onChange={(e) => set({ cpf: fmtCPF(e.target.value) })} inputMode="numeric" placeholder="000.000.000-00" />
+                      </div>
+                      <div>
+                        <Label hint="opcional">Sexo</Label>
+                        <Select value={form.sexo} onChange={(e) => set({ sexo: e.target.value })} aria-label="Sexo">
+                          <option value="">Selecione…</option>
+                          <option value="Feminino">Feminino</option>
+                          <option value="Masculino">Masculino</option>
+                          <option value="Outro">Outro</option>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label hint="opcional">E-mail</Label>
+                        <IconInput type="email" icon={<Mail size={15} />} value={form.email} onChange={(e) => set({ email: e.target.value })} placeholder="email@exemplo.com" />
                       </div>
                     </div>
-                  </section>
-
-                  {/* 5 — detalhes */}
-                  <section>
-                    <SectionTitle n="5" title="Detalhes" desc="Etiquetas e dados adicionais (opcional)" />
-                    <div className="space-y-4">
-                      <div>
-                        <Label hint={`${form.tags.length} selecionada${form.tags.length === 1 ? '' : 's'}`}>Etiquetas</Label>
-                        <TagToggles tags={tags} selected={form.tags} onToggle={toggleTag} />
+                    {adultByDate && (
+                      <div className="flex items-start gap-1.5 text-[11.5px] text-amber-600 dark:text-amber-400">
+                        <AlertTriangle size={13} className="mt-0.5 shrink-0" /><span>Pela data, já tem 18 anos. Confira a data ou desligue a chave Menor de idade.</span>
                       </div>
+                    )}
 
-                      <button type="button" onClick={() => setMore((m) => !m)} aria-expanded={more} className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-brand-600 dark:text-brand-300 hover:underline">
-                        <ChevronDown size={14} className={cn('transition', more && 'rotate-180')} /> {more ? 'Ocultar dados adicionais' : 'Adicionar nascimento, CPF, sexo e e-mail'}
-                      </button>
-                      {more && (
-                        <div className="grid sm:grid-cols-2 gap-3.5 fade-in">
-                          <div>
-                            <Label hint="opcional">Nascimento</Label>
-                            <IconInput type="date" icon={<Calendar size={15} />} value={form.birthDate} onChange={(e) => set({ birthDate: e.target.value })} />
-                          </div>
-                          <div>
-                            <Label hint="opcional">CPF</Label>
-                            <IconInput icon={<IdCard size={15} />} value={form.cpf} onChange={(e) => set({ cpf: fmtCPF(e.target.value) })} inputMode="numeric" placeholder="000.000.000-00" />
-                          </div>
-                          <div>
-                            <Label hint="opcional">Sexo</Label>
-                            <Select value={form.sexo} onChange={(e) => set({ sexo: e.target.value })}>
-                              <option value="">Selecione…</option>
-                              <option value="Feminino">Feminino</option>
-                              <option value="Masculino">Masculino</option>
-                              <option value="Outro">Outro</option>
-                            </Select>
-                          </div>
-                          <div>
-                            <Label hint="opcional">E-mail</Label>
-                            <IconInput type="email" icon={<Mail size={15} />} value={form.email} onChange={(e) => set({ email: e.target.value })} placeholder="email@exemplo.com" />
-                          </div>
-                        </div>
-                      )}
-
-                      <div>
-                        <Label hint="opcional">Observação</Label>
-                        <textarea value={form.observation} onChange={(e) => set({ observation: e.target.value })}
-                          placeholder="Algum detalhe importante para o primeiro atendimento?" autoComplete="off"
-                          className={cn(inputCls, '!h-auto py-3 resize-none leading-relaxed')} rows={2} />
-                      </div>
+                    <div>
+                      <Label hint="opcional">Observação</Label>
+                      <textarea
+                        value={form.observation} onChange={(e) => set({ observation: e.target.value })}
+                        placeholder="Algum detalhe importante para o primeiro atendimento?" autoComplete="off"
+                        className={cn(inputCls, '!h-auto py-3 resize-none leading-relaxed')} rows={2}
+                      />
                     </div>
-                  </section>
-                </div>
-
-                {/* footer */}
-                <div className="flex items-center justify-between gap-3 px-5 sm:px-7 py-4 border-t border-slate-200/80 dark:border-white/[0.07] bg-white dark:bg-ink-900">
-                  <button type="button" onClick={reset} className="text-[12px] font-medium text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition hidden sm:block">Limpar</button>
-                  <div className="flex items-center gap-2 ml-auto">
-                    <button type="button" onClick={onClose} className="h-11 px-4 rounded-xl text-[13.5px] font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/[0.06] transition">Cancelar</button>
-                    <button type="submit" disabled={!canSubmit || loading}
-                      className="h-11 px-5 rounded-xl text-[13.5px] font-semibold inline-flex items-center gap-2 transition active:scale-[.98]
-                        bg-brand-600 text-white hover:bg-brand-700 shadow-[0_10px_24px_-8px_rgba(43,89,255,.7)]
-                        disabled:opacity-40 disabled:shadow-none disabled:cursor-not-allowed">
-                      {loading ? <><span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin"></span> Salvando…</> : <><Zap size={15} /> Cadastrar lead</>}
-                    </button>
                   </div>
-                </div>
+                )}
+              </div>
+            </div>
+
+            {/* rodapé: o que falta e o envio */}
+            <div className="border-t border-slate-200/80 dark:border-white/[0.07] px-7 pt-3.5 pb-5">
+              <div className="flex items-center justify-between gap-3">
+                <p role="status" className={cn('flex items-center gap-2 min-w-0 text-[13px]',
+                  statusLine.tone === 'bad' ? 'text-rose-600 dark:text-rose-400' : 'text-slate-600 dark:text-slate-300')}>
+                  <span className={cn('size-2 rounded-full shrink-0', statusLine.tone === 'ok' ? 'bg-emerald-500' : statusLine.tone === 'bad' ? 'bg-rose-500' : 'bg-amber-500')} />
+                  <span className="min-w-0">{statusLine.text}</span>
+                </p>
+                <button ref={submitRef} type="submit" disabled={!canSubmit || loading} className={cn(BTN_PRIMARY, 'shrink-0')}>
+                  {loading
+                    ? <><span className="size-4 rounded-full border-2 border-white/40 border-t-white animate-spin"></span> Salvando…</>
+                    : <>Cadastrar lead <kbd className="hidden sm:inline font-sans text-[11px] font-semibold px-1.5 py-0.5 rounded-md bg-white/20">{SUBMIT_KEYS}</kbd></>}
+                </button>
               </div>
             </div>
           </form>
         )}
-      </DialogContent>
-    </Dialog>
+
+        {askDiscard && (
+          <div
+            role="alertdialog" aria-labelledby="descartar-titulo" aria-describedby="descartar-texto"
+            className="absolute inset-0 z-30 grid place-items-center bg-white/85 px-7 backdrop-blur-[2px] dark:bg-ink-900/85"
+          >
+            <div className="w-full rounded-2xl border border-slate-200 bg-white p-5 shadow-card-lg dark:border-white/[0.08] dark:bg-ink-800">
+              <h3 id="descartar-titulo" className="font-display text-[18px] font-bold tracking-tight">Descartar este cadastro?</h3>
+              <p id="descartar-texto" className="mt-1 text-[13.5px] text-slate-500 dark:text-slate-400">O que você já preencheu vai ser perdido.</p>
+              <div className="mt-5 flex flex-wrap justify-end gap-2">
+                <button type="button" autoFocus onClick={dismissDiscard} className={cn(BTN_PRIMARY, 'h-10 px-4')}>Continuar cadastrando</button>
+                <button
+                  type="button" onClick={onClose}
+                  className="h-10 rounded-xl px-4 text-[13.5px] font-semibold text-rose-600 transition hover:bg-rose-50 focus-visible:anel-foco dark:text-rose-400 dark:hover:bg-rose-500/10"
+                >Descartar</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </SheetContent>
+    </Sheet>
   );
 }
 
-// ── View de sucesso ──
-function SuccessView({ form, statusObj, sources, tags, onView, onAgain }) {
+// ── Tela de sucesso ──
+function SuccessView({ form, statusObj, tags, funnelName, onView, onAgain }) {
   return (
-    <div className="flex-1 grid place-items-center px-6 py-14 relative overflow-hidden">
+    <div className="flex-1 grid place-items-center px-7 py-14 relative overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-b from-emerald-50/60 to-transparent dark:from-emerald-500/[0.06] pointer-events-none"></div>
       <div className="text-center fade-in relative max-w-sm">
-        <div className="w-16 h-16 rounded-2xl bg-emerald-100 dark:bg-emerald-500/15 grid place-items-center mx-auto mb-5 check-pop">
+        <div className="size-16 rounded-2xl bg-emerald-100 dark:bg-emerald-500/15 grid place-items-center mx-auto mb-5 check-pop">
           <Check size={32} className="text-emerald-600 dark:text-emerald-400" />
         </div>
-        <h3 className="font-display text-[22px] font-bold tracking-tight">Lead cadastrado!</h3>
+        <h3 className="font-display text-[22px] font-bold tracking-tight">{form.name.trim()} entrou no funil</h3>
         <p className="text-[13.5px] text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
-          <strong className="text-slate-700 dark:text-slate-200">{form.name}</strong> entrou no funil em <strong className="text-slate-700 dark:text-slate-200">{form.status}</strong>.
+          Na etapa <strong className="text-slate-700 dark:text-slate-200">{form.status}</strong>{funnelName ? <> de <strong className="text-slate-700 dark:text-slate-200">{funnelName}</strong></> : null}, com você como responsável.
         </p>
-        <div className="mt-5 max-w-[260px] mx-auto text-left"><PreviewCard form={form} statusObj={statusObj} sources={sources} tags={tags} /></div>
+        <div className="mt-5 max-w-[260px] mx-auto text-left"><PreviewCard form={form} statusObj={statusObj} tags={tags} /></div>
         <div className="flex items-center justify-center gap-2 mt-6">
-          <button onClick={onView} className="h-10 px-4 rounded-xl text-[13px] font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-white/[0.06] dark:text-slate-200">Ver ficha</button>
-          <button onClick={onAgain} className="h-10 px-4 rounded-xl text-[13px] font-semibold bg-brand-600 text-white hover:bg-brand-700 inline-flex items-center gap-1.5"><Zap size={14} /> Cadastrar outro</button>
+          <button type="button" onClick={onView} className="h-10 px-4 rounded-xl text-[13px] font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-white/[0.06] dark:text-slate-200 focus-visible:anel-foco">Ver ficha</button>
+          <button
+            type="button" onClick={onAgain} autoFocus
+            className="h-10 px-4 rounded-xl text-[13px] font-semibold bg-brand-600 text-white hover:bg-brand-700 inline-flex items-center gap-1.5 focus-visible:anel-foco focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >Cadastrar outro</button>
         </div>
       </div>
     </div>

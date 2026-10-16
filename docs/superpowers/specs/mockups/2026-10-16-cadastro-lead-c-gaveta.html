@@ -1,0 +1,99 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cadastro de lead C · Gaveta</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="2026-10-16-cadastro-lead-base.css">
+<style>
+body{overflow:hidden}
+.states{left:24px;transform:none}
+.note{top:auto;bottom:46px;left:24px;transform:none;text-align:left;width:380px;color:var(--ink2);text-shadow:none;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 13px}
+.app{position:fixed;inset:0;background:var(--paper);display:flex;flex-direction:column}
+.bar{height:64px;flex:none;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:0 24px}
+.bar h1{font:700 20px 'Space Grotesk';letter-spacing:-.02em}
+.bar .m{color:var(--muted);font-size:13px}
+.board{display:flex;gap:16px;padding:20px 24px;overflow:hidden;flex:1}
+.col{width:252px;flex:none;display:grid;gap:10px;align-content:start}
+.col h3{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--ink2);padding:0 4px}
+.col h3 .c{margin-left:auto;color:var(--faint);font-weight:500}
+.kc{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 13px;box-shadow:0 1px 2px rgba(15,23,42,.05)}
+.kc b{display:block;font-weight:600;font-size:14px}
+.kc span{font-size:12.5px;color:var(--muted)}
+.kc.new{border-color:var(--blue);box-shadow:0 0 0 4px rgba(43,89,255,.16),0 12px 26px -12px rgba(43,89,255,.5);animation:land .5s cubic-bezier(.2,.9,.3,1.2) both}
+.kc.new em{display:inline-flex;margin-top:8px;height:22px;align-items:center;padding:0 8px;border-radius:7px;background:var(--blue50);color:var(--blue700);font:600 11.5px Geist;font-style:normal}
+@keyframes land{from{transform:translateY(-14px);opacity:0}to{transform:none;opacity:1}}
+.scrim{position:absolute;inset:0;background:rgba(8,13,34,.34);transition:background .3s}
+.scrim.light{background:rgba(8,13,34,.1)}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:468px;max-width:100%;background:#fff;box-shadow:-24px 0 60px -20px rgba(8,13,34,.45);display:flex;flex-direction:column;z-index:20}
+.drawer.enter{animation:slide .28s cubic-bezier(.2,.8,.2,1) both}
+@keyframes slide{from{transform:translateX(28px);opacity:0}to{transform:none;opacity:1}}
+.dh{display:flex;align-items:flex-start;justify-content:space-between;padding:24px 20px 0 28px}
+.dh h2{font:700 24px 'Space Grotesk';letter-spacing:-.02em;line-height:1.15}
+.dh p{font-size:13.5px;color:var(--muted);margin-top:4px;max-width:330px}
+.x{width:34px;height:34px;border-radius:10px;border:0;background:transparent;color:var(--faint);display:grid;place-items:center}
+.db{padding:22px 28px 8px;display:grid;gap:22px;overflow:auto;flex:1;align-content:start}
+.big{height:60px;font:600 22px 'Space Grotesk';letter-spacing:-.01em;padding:0 16px;padding-right:150px}
+.slot{min-height:56px;display:flex;align-items:center}
+.slot .ok{display:flex;align-items:center;gap:8px;color:var(--green700);font-weight:600;font-size:13.5px}
+.slot .hintx{color:var(--muted);font-size:13px}
+.slot .dupe{width:100%}
+.df{padding:14px 28px 20px;border-top:1px solid var(--rule);display:grid;gap:12px}
+.df .dest{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink2);flex-wrap:wrap}
+.df .dest svg{color:var(--faint)}
+.df .row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.dim>.f:not(.keep){opacity:.4;pointer-events:none}
+.lk{display:inline-flex;align-items:center;gap:6px}
+.done{display:grid;gap:14px;padding:70px 28px;text-align:center;justify-items:center;align-content:center;flex:1}
+.done .ic{width:60px;height:60px;border-radius:18px;background:var(--green50);color:var(--green700);display:grid;place-items:center}
+.done h2{font:700 24px 'Space Grotesk';letter-spacing:-.02em}
+.done p{color:var(--muted);max-width:310px}
+</style></head><body>
+<div class="states" id="states" role="group" aria-label="Estados do cadastro"></div>
+<div class="note" id="note"></div><div class="tag">Mockup C · Gaveta</div>
+<div class="app" id="app"></div>
+<script>
+const P={check:'<polyline points="20 6 9 17 4 12"/>',x:'<path d="M18 6 6 18M6 6l12 12"/>',chev:'<path d="m9 6 6 6-6 6"/>',out:'<path d="M7 17 17 7M8 7h9v9"/>'};
+const I=(n,s=16)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n]}</svg>`;
+const ORIGINS=['Instagram','Indicação','Orgânico digital','Orgânico presencial','Tráfego pago','Cliente ativo'];
+const DORES=['Ganho de massa muscular','Auto estima','Reabilitação','Emagrecimento'];
+const base={phone:'',ph:'empty',name:'',origin:'',dor:'',saved:false};
+const PRESETS={
+ vazio:{label:'Número primeiro',note:'A conversa começa pelo número, que é o que o consultor tem na mão. A conferência de duplicidade vem antes de qualquer outro campo.',s:{...base}},
+ novo:{label:'Número novo',note:'Número livre: uma linha verde confirma e o resto do formulário segue. O espaço do resultado tem altura fixa, então nada pula.',s:{...base,phone:'(51) 9 9821-4470',ph:'ok'}},
+ pronto:{label:'Pronto',note:'Mesmo rodapé do mockup A: diz o que falta e acende quando está tudo certo.',s:{...base,phone:'(51) 9 9821-4470',ph:'ok',name:'Rafael Moura',origin:'Instagram',dor:'Emagrecimento'}},
+ dup:{label:'Já cadastrado',note:'Quem já tem o número aparece no lugar do resultado, com o atalho para a ficha. O resto do formulário esmaece, porque cadastrar de novo não faz sentido.',s:{...base,phone:'(51) 9 9999-0000',ph:'dup'}},
+ salvo:{label:'Salvo',note:'O quadro fica visível por trás da gaveta, então o cartão novo aparece na coluna certa. É a confirmação de que o lead entrou onde devia.',s:{...base,phone:'(51) 9 9821-4470',ph:'ok',name:'Rafael Moura',origin:'Instagram',dor:'Emagrecimento',saved:true}}
+};
+let S=structuredClone(PRESETS.vazio.s),KEY='vazio',first=true;
+const COLS=[['Novo','lime',[['Beatriz Almeida','Instagram · há 2 h'],['Lucas Fernandes','Tráfego pago · ontem']]],['Aguardando contato','orange',[['Juliana Prates','Indicação · há 3 d'],['Thiago Nunes','Orgânico digital · há 3 d'],['Camila Duarte','Instagram · há 4 d']]],['Em conversa','pink',[['Gabriel Rocha','Orgânico presencial · há 5 d']]],['Agendado','yellow',[['Larissa Teixeira','Instagram · amanhã 18h']]]];
+const chips=(list,sel,k)=>`<div class="chips" role="radiogroup">${list.map(v=>{const on=sel===v;return `<button type="button" class="ch" role="radio" aria-checked="${on}" data-k="${k}" data-v="${v}">${on?I('check',14):''}${v}</button>`}).join('')}</div>`;
+const join=a=>a.length<2?a.join(''):a.slice(0,-1).join(', ')+' e '+a[a.length-1];
+function board(s){
+ return `<header class="bar"><h1>Digital</h1><span class="m">Pipeline · 7 leads em aberto</span></header><div class="board">${COLS.map(([n,c,cards],i)=>`<section class="col"><h3><span class="pill t-${c}" style="height:22px"><i></i>${n}</span><span class="c num">${cards.length+(s.saved&&i===0?1:0)}</span></h3>${s.saved&&i===0?`<article class="kc new"><b>${s.name}</b><span>${s.origin} · agora</span><br><em>Acabou de chegar</em></article>`:''}${cards.map(([a,b])=>`<article class="kc"><b>${a}</b><span>${b}</span></article>`).join('')}</section>`).join('')}</div><div class="scrim${s.saved?' light':''}"></div>`;
+}
+function render(){
+ const s=S,dup=s.ph==='dup',miss=[];
+ if(s.ph==='empty')miss.push('WhatsApp'); if(!s.name)miss.push('nome'); if(!s.origin)miss.push('origem'); if(!s.dor)miss.push('dor');
+ const ready=!miss.length&&!dup;
+ const st=dup?`<div class="status bad"><i></i><span><b>Esse número já tem cadastro.</b></span></div>`:ready?`<div class="status ok"><i></i><span><b>Tudo certo</b> para cadastrar.</span></div>`:`<div class="status"><i></i><span>Falta <b>${join(miss)}</b>.</span></div>`;
+ const slot=s.ph==='ok'?`<div class="ok">${I('check',16)} Número novo. Ninguém tem esse WhatsApp ainda.</div>`:dup?`<div class="dupe"><span class="av">MC</span><div class="who"><b>Mariana Costa</b><span>Em conversa · Digital · responsável Ana Paula Ribeiro</span></div><button class="btn ol lk" type="button">Abrir ficha ${I('out',14)}</button></div>`:`<div class="hintx">Digite com o DDD. Eu confiro se a pessoa já está no sistema.</div>`;
+ const body=s.saved?`<div class="done"><div class="ic">${I('check',28)}</div><h2>${s.name} entrou no funil</h2><p>Na etapa <b>Novo</b> de <b>Digital</b>, com você como responsável.</p><div style="display:flex;gap:8px;margin-top:6px"><button class="btn pri">Abrir ficha</button><button class="btn gh">Cadastrar outro</button></div></div>`
+ :`<div class="dh"><div><h2>Novo lead</h2><p>Comece pelo WhatsApp: se a pessoa já existe, você descobre antes de digitar o resto.</p></div><button class="x" aria-label="Fechar">${I('x',18)}</button></div>
+ <div class="db${dup?' dim':''}">
+  <div class="f keep" style="gap:8px"><div class="lb">WhatsApp <small>com DDD</small></div><div class="inwrap"><input class="in big ${dup?'bad':s.ph==='ok'?'ok':s.ph==='empty'?'on':''}" value="${s.phone}" placeholder="(51) 9 0000-0000" readonly>${s.ph==='ok'?`<span class="adorn ok">${I('check',15)} Número novo</span>`:dup?`<span class="adorn bad">Já cadastrado</span>`:''}</div><div class="slot">${slot}</div></div>
+  <div class="f"><div class="lb"><span>Nome</span><button class="sw" role="switch" aria-checked="false"><s></s>Menor de idade</button></div><input class="in" value="${s.name}" placeholder="Nome completo" readonly></div>
+  <div class="f"><div class="lb">Como chegou</div>${chips(ORIGINS,s.origin,'origin')}</div>
+  <div class="f"><div class="lb">Dor <small>o que a pessoa quer resolver</small></div>${chips(DORES,s.dor,'dor')}</div>
+  <div class="f"><div class="lb" style="color:var(--blue700);gap:6px;justify-content:flex-start">${I('chev',15)}Mais detalhes<small>modalidade, etiquetas, CPF, e-mail e observação</small></div></div>
+ </div>
+ <div class="df"><div class="dest"><span>Entra em <b>Digital</b></span>${I('chev',14)}<span class="pill t-lime"><i></i>Novo</span><span class="mut">· responsável <b style="color:var(--ink2)">você</b></span><span style="flex:1"></span><button class="lnk">Mudar</button></div><div class="row">${st}<div style="display:flex;gap:8px"><button class="btn pri" aria-disabled="${!ready}">Cadastrar lead <kbd>⌘↵</kbd></button></div></div></div>`;
+ document.getElementById('app').innerHTML=board(s)+`<aside class="drawer${first?' enter':''}" role="dialog" aria-label="Novo lead">${body}</aside>`;first=false;
+ document.getElementById('note').textContent=PRESETS[KEY]?.note||'';
+ document.getElementById('states').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.p===KEY));
+}
+document.getElementById('states').innerHTML=Object.entries(PRESETS).map(([k,v])=>`<button data-p="${k}" aria-pressed="false">${v.label}</button>`).join('');
+document.addEventListener('click',e=>{
+ const p=e.target.closest('[data-p]');if(p){KEY=p.dataset.p;S=structuredClone(PRESETS[KEY].s);render();return}
+ const c=e.target.closest('[data-k]');if(c){S[c.dataset.k]=c.dataset.v;render()}
+});
+{const h=location.hash.slice(1);if(PRESETS[h]){KEY=h;S=structuredClone(PRESETS[h].s)}}
+render();
+</script></body></html>
