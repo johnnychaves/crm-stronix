@@ -6,7 +6,7 @@
 // Todo balão fecha ao escolher e ao clicar fora, que é o que o Popover do
 // shadcn já faz. A lista de opções é a mesma no balão e no painel do celular.
 import { useState } from 'react';
-import { Calendar, Check, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Calendar, Check, ChevronDown, ChevronLeft, ChevronRight, LineChart, SlidersHorizontal } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/popover.jsx';
 
@@ -134,5 +134,101 @@ export function FilterChip({ icon: Icon, label, valueText, active, options, valu
         <OptionList radio options={options} value={value} label={label} onPick={(k) => { setOpen(false); onPick(k); }} />
       </PopoverContent>
     </Popover>
+  );
+}
+
+export const NO_COMPARE_LABEL = 'Sem comparação';
+const NONE = '__sem-comparacao';
+
+// As opções do chip de comparação: os meses comparáveis e, no fim, "Sem
+// comparação". Sem mês nenhum, a lista só oferece essa última.
+function compareChoices(options) {
+  const months = (options || []).map((o) => ({ key: o.key, label: o.label }));
+  return [...months, { key: NONE, label: NO_COMPARE_LABEL, ruleBefore: months.length > 0 }];
+}
+
+// A barra única dos três dashboards (Gerencial, CRM e Operacional): período com
+// setas, chip "Comparar com" e, depois, os filtros de cada tela (pessoa, funil).
+// Cada tela só diz quais filtros tem; o desenho, o balão e o painel do celular
+// são os mesmos, então os três filtros nunca mais ficam diferentes entre si.
+//
+// month    { key, options: [{ key, label, note }], onChange, canPrev, canNext, onPrev, onNext }
+// compare  { on, key, options: [{ key, label }], onChange(chave | null) }
+// filters  [{ id, icon, label, value, defaultValue, options: [{ key, label }], onChange(chave) }]
+//
+// Abaixo de 768px a barra vira um botão só, que abre um painel com o mês, a
+// comparação e cada filtro. O botão ganha um ponto quando há filtro fora do
+// padrão.
+export function DashToolbar({ title, subline, month, compare, filters = [] }) {
+  const [panel, setPanel] = useState(false);
+  const current = (month.options || []).find((o) => o.key === month.key);
+  const choices = compareChoices(compare.options);
+  const comparing = Boolean(compare.on && compare.key && choices.some((c) => c.key === compare.key));
+  const picked = comparing ? compare.key : NONE;
+  const pickedLabel = choices.find((c) => c.key === picked)?.label || NO_COMPARE_LABEL;
+  const pickCompare = (k) => compare.onChange(k === NONE ? null : k);
+  const chip = (f) => ({
+    ...f,
+    valueText: (f.options || []).find((o) => o.key === f.value)?.label || '',
+    active: f.value !== f.defaultValue
+  });
+  const chips = filters.map(chip);
+  const filtered = chips.some((f) => f.active);
+  const sectionTitle = 'px-1 pb-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-muted-foreground';
+
+  return (
+    <FilterBar title={title} subline={subline}>
+      <div className="hidden items-center gap-2 md:flex md:flex-wrap [&>*]:shrink-0">
+        <PeriodControl
+          label={current?.label || month.key}
+          options={month.options}
+          value={month.key}
+          onPick={month.onChange}
+          canPrev={month.canPrev}
+          onPrev={month.onPrev}
+          canNext={month.canNext}
+          onNext={month.onNext}
+        />
+        <span className="mx-1 h-[22px] w-px flex-none bg-border" />
+        <FilterChip icon={LineChart} label="Comparar com" valueText={pickedLabel} active={comparing} options={choices} value={picked} onPick={pickCompare} />
+        {chips.map((f) => (
+          <FilterChip key={f.id} icon={f.icon} label={f.label} valueText={f.valueText} active={f.active} options={f.options} value={f.value} onPick={f.onChange} />
+        ))}
+      </div>
+
+      <div className="flex w-full items-center gap-2 md:hidden">
+        <Popover open={panel} onOpenChange={setPanel}>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              aria-label={filtered ? 'Filtros, há filtro ativo' : 'Filtros'}
+              className={cn(
+                'relative flex h-[38px] min-w-0 flex-1 items-center gap-2 rounded-xl border bg-card px-3 text-[13px] font-semibold shadow-card outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
+                comparing || filtered ? 'border-brand-200 dark:border-brand-500/40' : 'border-border'
+              )}
+            >
+              <SlidersHorizontal size={15} strokeWidth={2} className="flex-none text-brand-600" />
+              <span className="num min-w-0 flex-1 truncate text-left">{current?.label || month.key}</span>
+              {comparing && <span className="flex-none text-[11.5px] font-medium text-muted-foreground">{`vs. ${pickedLabel}`}</span>}
+              {filtered && <span className="size-1.5 flex-none rounded-full bg-brand-600" />}
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="start" sideOffset={8} className="max-h-[70vh] w-[min(320px,calc(100vw-32px))] overflow-y-auto overscroll-y-contain rounded-[14px] border-border p-2 shadow-card-lg">
+            <div className={sectionTitle}>Mês</div>
+            <OptionList options={month.options} value={month.key} onPick={(k) => { setPanel(false); month.onChange(k); }} />
+            <div className="mx-1.5 my-2 h-px bg-border" />
+            <div className={sectionTitle}>Comparar com</div>
+            <OptionList radio options={choices} value={picked} onPick={(k) => { setPanel(false); pickCompare(k); }} />
+            {chips.map((f) => (
+              <div key={f.id}>
+                <div className="mx-1.5 my-2 h-px bg-border" />
+                <div className={sectionTitle}>{f.label}</div>
+                <OptionList radio options={f.options} value={f.value} onPick={(k) => { setPanel(false); f.onChange(k); }} />
+              </div>
+            ))}
+          </PopoverContent>
+        </Popover>
+      </div>
+    </FilterBar>
   );
 }

@@ -167,7 +167,7 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
 
   const monthOptions = useMemo(
     () => Array.from({ length: 12 }, (_, i) => addMonthsToKey(currentKey, -i))
-      .map((k) => ({ key: k, label: `${monthLabel(k)}${k === currentKey ? ' · em andamento' : ''}` })),
+      .map((k) => ({ key: k, label: monthLabel(k), note: k === currentKey ? 'em andamento' : undefined })),
     [currentKey]
   );
   const cmpOptions = compareOptions(monthKey).map((k) => ({ key: k, label: monthLabel(k) }));
@@ -189,8 +189,8 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
           monthKey={monthKey} monthOptions={monthOptions} onMonth={changeMonth}
           canPrev={monthKey > oldestKey} onPrev={() => { if (monthKey > oldestKey) changeMonth(addMonthsToKey(monthKey, -1)); }}
           canNext={monthKey < currentKey} onNext={() => { if (monthKey < currentKey) changeMonth(addMonthsToKey(monthKey, 1)); }}
-          compareOn={compareOn} onCompareOn={(v) => setParams({ compareOn: v })}
-          compareKey={cmpKey} compareOptions={cmpOptions} onCompare={(k) => setParams({ compareKey: k })}
+          compareOn={compareOn}
+          compareKey={cmpKey} compareOptions={cmpOptions} onCompare={(k) => setParams(k ? { compareOn: true, compareKey: k } : { compareOn: false })}
           person={person} people={people} onPerson={(id) => setParams({ person: id })}
         />
         {failedNames.length > 0 && (

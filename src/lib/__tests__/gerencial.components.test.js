@@ -14,7 +14,8 @@ import { GerencialEmpty } from '../../views/dashboard/GerencialParts.jsx';
 import { BreakdownCard } from '../../views/dashboard/DashPrimitives.jsx';
 import { fmtMoneyShort } from '../../views/dashboard/dashTokens.js';
 import { GerencialDashboard } from '../../views/dashboard/GerencialDashboard.jsx';
-import { GerencialToolbar, NO_COMPARE_LABEL } from '../../views/dashboard/GerencialToolbar.jsx';
+import { GerencialToolbar } from '../../views/dashboard/GerencialToolbar.jsx';
+import { NO_COMPARE_LABEL } from '../../views/dashboard/DashFilterBar.jsx';
 
 const render = (el) => renderToString(createElement(TooltipProvider, null, el));
 

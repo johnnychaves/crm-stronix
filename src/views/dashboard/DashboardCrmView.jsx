@@ -117,7 +117,7 @@ export function DashboardCrmView({ usersList, liveLeads, interactions, db, liste
   const cmpName = cmp ? monthName(cmp.monthKey, cur.monthKey) : monthName(cmpKey, monthKey);
   const monthOptions = useMemo(
     () => Array.from({ length: 12 }, (_, i) => addMonthsToKey(currentKey, -i))
-      .map((k) => ({ key: k, label: `${monthLabel(k)}${k === currentKey ? ' · em andamento' : ''}` })),
+      .map((k) => ({ key: k, label: monthLabel(k), note: k === currentKey ? 'em andamento' : undefined })),
     [currentKey]
   );
   const cmpOptions = compareOptions(monthKey).map((k) => ({ key: k, label: monthLabel(k) }));
@@ -139,8 +139,8 @@ export function DashboardCrmView({ usersList, liveLeads, interactions, db, liste
           monthKey={monthKey} monthOptions={monthOptions} onMonth={changeMonth}
           canPrev={monthKey > oldestKey} onPrev={() => { if (monthKey > oldestKey) changeMonth(addMonthsToKey(monthKey, -1)); }}
           canNext={monthKey < currentKey} onNext={() => { if (monthKey < currentKey) changeMonth(addMonthsToKey(monthKey, 1)); }}
-          compareOn={compareOn} onCompareOn={(v) => setParams({ compareOn: v })}
-          compareKey={cmpKey} compareOptions={cmpOptions} onCompare={(k) => setParams({ compareKey: k })}
+          compareOn={compareOn}
+          compareKey={cmpKey} compareOptions={cmpOptions} onCompare={(k) => setParams(k ? { compareOn: true, compareKey: k } : { compareOn: false })}
           person={userId || 'all'} people={people} onPerson={(id) => setParams({ person: id })}
           funnel={funnelId || 'all'} funnels={leadFunnels} onFunnel={(id) => setParams({ funnel: id })}
         />
