@@ -85,7 +85,7 @@ describe('peças do CRM', () => {
     expect(regular).not.toContain('w-full');
   });
 
-  it('barra do Operacional opaca no escuro; filtro do CRM com o ícone do handoff', () => {
+  it('barra do Operacional no cartão do CRM; as duas com o ícone de filtro do handoff', () => {
     const noop = () => {};
     const base = {
       monthKey: '2026-09', monthOptions: [{ key: '2026-09', label: 'Setembro 2026 · em andamento' }], onMonth: noop,
@@ -94,11 +94,18 @@ describe('peças do CRM', () => {
       person: 'all', people: [], onPerson: noop, note: ''
     };
     const crm = render(createElement(CrmToolbar, { ...base, funnel: 'all', funnels: [], onFunnel: noop }));
-    const op = render(createElement(OperacionalToolbar, base));
-    expect(op).toContain('dark:bg-[#0D1226]');
+    const op = render(createElement(OperacionalToolbar, { ...base, title: 'Operacional', subline: '1 a 15 de outubro.' }));
+    expect(op).toContain('Operacional');
+    expect(op).toContain('1 a 15 de outubro.');
+    expect(op).toContain('rounded-[18px]');
+    expect(op).toContain('aria-label="Filtros do Operacional"');
+    expect(op).not.toContain('há filtro ativo');
     expect(crm).toContain('lucide-list-filter');
+    expect(op).toContain('lucide-list-filter');
     expect(crm).not.toContain('lucide-sliders-horizontal');
-    expect(op).toContain('lucide-sliders-horizontal');
+    expect(op).not.toContain('lucide-sliders-horizontal');
+    const picked = render(createElement(OperacionalToolbar, { ...base, person: 'ana', people: [{ id: 'ana', name: 'Ana' }] }));
+    expect(picked).toContain('Filtros do Operacional, há filtro ativo');
   });
 
   it('sexta cor das perdas: o azul claro do handoff, mais claro no escuro', () => {

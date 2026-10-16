@@ -6,6 +6,9 @@
 // Embaixo, a frase que desfaz a dúvida mais comum da tela (safraNote, em
 // lib/crm/texts.js): por que 29 matrículas convivem com 18% de conversão.
 //
+// O Operacional usa a mesma faixa, com os itens dele; `tone: 'bad'` pinta o
+// número de vermelho (os atrasados de agora).
+//
 // Props:
 //   items  os itens de summaryItems (src/lib/crm/texts.js), sem o da conversão
 //   note   { enroll, fromCohort, conv, monthName } ou null
@@ -35,7 +38,7 @@ export function CrmTape({ items, note }) {
                 {k.help && <DashHelpTip text={k.help} label={`O que é "${k.label}"?`} />}
                 {k.flag && <span className="rounded-[5px] bg-amber-500/[0.12] px-[5px] py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">{k.flag}</span>}
               </div>
-              <div className="num mt-1.5 whitespace-nowrap font-display text-[28px] font-bold leading-[1.1] tracking-[-0.03em] sm:text-[34px]">{k.value}</div>
+              <div className={cn('num mt-1.5 whitespace-nowrap font-display text-[28px] font-bold leading-[1.1] tracking-[-0.03em] sm:text-[34px]', k.tone === 'bad' && 'text-rose-700 dark:text-rose-300')}>{k.value}</div>
               <div className={cn('mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted-foreground')}>
                 <ItemDelta delta={d} />
                 <span className="num">{k.sub}</span>
