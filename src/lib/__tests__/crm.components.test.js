@@ -8,6 +8,7 @@ import { CrmSection, CrmCard, DashedNote, DeltaPill, ScopeTag } from '../../view
 import { CrmToolbar } from '../../views/dashboard/CrmToolbar.jsx';
 import { MonthControl, OperacionalToolbar } from '../../views/dashboard/OperacionalToolbar.jsx';
 import { LOSS_PALETTE } from '../../views/dashboard/dashTokens.js';
+import { crmDelta } from '../crm/metrics.js';
 import { ChannelTable } from '../../views/dashboard/ChannelTable.jsx';
 import { CrmHero } from '../../views/dashboard/CrmHero.jsx';
 import { CrmTape } from '../../views/dashboard/CrmTape.jsx';
@@ -39,11 +40,27 @@ describe('peças do CRM', () => {
     expect(html).toContain('Nenhum lead perdido neste mês.');
   });
 
+  it('o título do card é h4 no painel e muda de nível quando a tela pede', () => {
+    const card = (extra) => render(createElement(CrmCard, { title: 'Por origem', ...extra }, 'corpo'));
+    // O painel não passa nível e continua em h4.
+    expect(card({})).toContain('>Por origem</h4>');
+    // Os Relatórios põem os cartões abaixo do título do relatório, que é h2.
+    expect(card({ headingLevel: 3 })).toContain('>Por origem</h3>');
+    expect(card({ headingLevel: 3 })).not.toContain('<h4');
+    // Nível que não é de título volta ao h4, em vez de sair uma tag que não existe.
+    for (const headingLevel of [1, 7, 'h3', null, undefined]) expect(card({ headingLevel }), String(headingLevel)).toContain('>Por origem</h4>');
+  });
+
   it('pílula de diferença onde menor é melhor', () => {
     expect(render(createElement(DeltaPill, { delta: { up: false, text: '40 min' }, lowerBetter: true }))).toContain('text-emerald-700');
     expect(render(createElement(DeltaPill, { delta: { up: true, text: '40 min' }, lowerBetter: true }))).toContain('text-rose-700');
     expect(render(createElement(DeltaPill, { delta: { none: true, text: 'sem base' }, lowerBetter: true }))).toContain('sem base');
     expect(render(createElement(DeltaPill, { delta: null }))).toBe('');
+    // Em número, com o comparado pequeno: a seta e a cor seguem o lowerBetter.
+    expect(render(createElement(DeltaPill, { delta: crmDelta(9, 2), lowerBetter: true }))).toMatch(/text-rose-700.*▲ \+7/);
+    expect(render(createElement(DeltaPill, { delta: crmDelta(6, 9), lowerBetter: true }))).toMatch(/text-emerald-700.*▼ −3/);
+    expect(render(createElement(DeltaPill, { delta: crmDelta(9, 2) }))).toContain('text-emerald-700');
+    expect(render(createElement(DeltaPill, { delta: crmDelta(5, 5) }))).toMatch(/bg-muted.*>=</);
   });
 
   it('cabeçalho com título, linha do regime e os quatro controles', () => {
@@ -66,6 +83,24 @@ describe('peças do CRM', () => {
     // No celular o mês fica à vista, compacto; na barra larga, o controle padrão.
     expect(html).toContain('<span class="truncate">Setembro 2026</span>');
     expect(html).toContain('min-w-[150px]');
+  });
+
+  it('cabeçalho: sem espaço, os controles descem de linha em vez de encolher e cortar o rótulo', () => {
+    const noop = () => {};
+    const html = render(createElement(CrmToolbar, {
+      monthKey: '2026-10', monthOptions: [{ key: '2026-10', label: 'Outubro 2026 · em andamento' }], onMonth: noop,
+      canPrev: true, canNext: false, onPrev: noop, onNext: noop,
+      compareOn: true, onCompareOn: noop, compareKey: '2026-09', compareOptions: [{ key: '2026-09', label: 'Setembro 2026' }], onCompare: noop,
+      person: 'all', people: [], onPerson: noop, funnel: 'all', funnels: [], onFunnel: noop,
+      title: 'CRM', subline: 'Uma linha de apoio longa que, sozinha, ocuparia a largura toda do cartão.'
+    }));
+    // O cartão quebra linha, o texto tem largura-base e os controles não encolhem.
+    expect(html).toContain('md:flex-wrap');
+    expect(html).toContain('md:basis-[360px]');
+    expect(html).toContain('md:flex-none');
+    expect(html).toContain('[&amp;&gt;*]:shrink-0');
+    // O chip do funil não quebra "Todos os funis" em duas linhas.
+    expect(html).toMatch(/aria-label="Funil"[^>]*class="[^"]*whitespace-nowrap/);
   });
 
   it('controle de mês compacto: rótulo curto no botão, sem o "em andamento"; sem compact, o de antes', () => {

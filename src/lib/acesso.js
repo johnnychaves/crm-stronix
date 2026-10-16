@@ -65,6 +65,8 @@ export const ACTIONS = Object.freeze({
   LEADS_VER: 'leads.ver',
   SINO_EQUIPE: 'sino.equipe',
   SUPORTE_ABRIR: 'suporte.abrir',
+  // Exportar a lista dos Relatórios (decisão 2 de 28/09/2026: todos exportam).
+  RELATORIOS_EXPORTAR: 'relatorios.exportar',
 });
 
 const TODAS = Object.freeze(Object.values(ACTIONS));

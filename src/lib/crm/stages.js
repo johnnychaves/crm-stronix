@@ -146,13 +146,20 @@ export function stagePassageOf({
 export function lossStagesOf({ lostLeads, moves, start, end }) {
   const map = new Map();
   (lostLeads || []).forEach((l) => {
-    const last = (moves.get(l.id) || [])
-      .filter((m) => m.toStatus === 'Perda' && m.createdAt >= start && m.createdAt < end)
-      .pop();
-    const name = String(last?.fromStatus || '').trim() || 'Sem etapa';
+    const name = lossStageOf(l, { moves, start, end });
     map.set(name, (map.get(name) || 0) + 1);
   });
   return rankCounts(map);
+}
+
+// A etapa da perda de um lead, na regra do lossStagesOf (comentário acima). Os
+// Relatórios mostram a etapa lead por lead, e a contagem do painel soma o que
+// esta função devolve.
+export function lossStageOf(lead, { moves, start, end }) {
+  const last = (moves.get(lead.id) || [])
+    .filter((m) => m.toStatus === 'Perda' && m.createdAt >= start && m.createdAt < end)
+    .pop();
+  return String(last?.fromStatus || '').trim() || 'Sem etapa';
 }
 
 // Carteira agora (spec §4, "Agora"): leads em jogo (balde ativo) neste
@@ -164,15 +171,7 @@ export function lossStagesOf({ lostLeads, moves, start, end }) {
 // Meta ainda o cobre como "Novo lead 24h" (dailyGoal.js). O lead sem data de
 // cadastro fica dentro: a Meta não o cobre.
 export function pipelineNowOf(liveLeads, { funnelId, funnels, defaultFunnelId, stages, ownerOk, funnelOk, now = null }) {
-  const coveredByMeta = (l) => now instanceof Date && !l.createdAtMissing && l.createdAt instanceof Date
-    && now.getTime() - l.createdAt.getTime() < DAY_MS;
-  const open = [];
-  const seen = new Set();
-  (liveLeads || []).forEach((l) => {
-    if (!l?.id || seen.has(l.id)) return;
-    seen.add(l.id);
-    if (deriveLeadBucket(l) === 'ativo' && ownerOk(l) && funnelOk(l)) open.push(l);
-  });
+  const open = openLeadsOf(liveLeads, { ownerOk, funnelOk });
   let rows;
   if (funnelId) {
     const names = [...(stages || [])];
@@ -191,6 +190,31 @@ export function pipelineNowOf(liveLeads, { funnelId, funnels, defaultFunnelId, s
   return {
     total: open.length,
     rows,
-    noNext: open.filter((l) => !getSafeDateOrNull(l.nextFollowUp) && !coveredByMeta(l)).length
+    noNext: open.filter((l) => noNextStepOf(l, now)).length
   };
+}
+
+// Os leads em jogo da carteira de agora (comentário acima): o balde ativo, sem
+// repetir id, no recorte de pessoa e de funil. Os Leads parados dos Relatórios
+// partem desta mesma lista.
+export function openLeadsOf(liveLeads, { ownerOk, funnelOk }) {
+  const open = [];
+  const seen = new Set();
+  (liveLeads || []).forEach((l) => {
+    if (!l?.id || seen.has(l.id)) return;
+    seen.add(l.id);
+    if (deriveLeadBucket(l) === 'ativo' && ownerOk(l) && funnelOk(l)) open.push(l);
+  });
+  return open;
+}
+
+// Lead em jogo sem próximo passo, na regra da carteira de agora (comentário
+// acima): sem nextFollowUp e fora das 24 horas do cadastro, que a Meta ainda
+// cobre como "Novo lead 24h". O lead sem data de cadastro conta: a Meta não o
+// cobre.
+export function noNextStepOf(lead, now = null) {
+  if (getSafeDateOrNull(lead?.nextFollowUp)) return false;
+  const coveredByMeta = now instanceof Date && !lead?.createdAtMissing && lead?.createdAt instanceof Date
+    && now.getTime() - lead.createdAt.getTime() < DAY_MS;
+  return !coveredByMeta;
 }

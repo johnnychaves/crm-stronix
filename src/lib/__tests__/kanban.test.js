@@ -5,7 +5,7 @@
 // `now` é injetado onde a função aceita, e fake timers onde ela lê o relógio.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { filterKanbanLeads, partitionLeadsByStatus, getKanbanInitials, fmtKanbanRelDate, kanbanSilence, monthWindow, defaultRespFilterFor, isDefaultRespFilter, KANBAN_COLUMN_ACCENT } from '../kanban.js';
+import { filterKanbanLeads, partitionLeadsByStatus, getKanbanInitials, fmtKanbanRelDate, kanbanSilence, silenceDaysOf, monthWindow, defaultRespFilterFor, isDefaultRespFilter, KANBAN_COLUMN_ACCENT } from '../kanban.js';
 import { SETTINGS_COLOR_OPTIONS } from '../../components/ui/ColorPicker.jsx';
 
 // 15 de julho de 2026, 10:00 local — "agora" de referência dos testes.
@@ -244,6 +244,46 @@ describe('kanbanSilence', () => {
 
   it('data futura não vira contagem negativa', () => {
     expect(kanbanSilence(new Date(2026, 6, 20), NOW)).toEqual({ text: 'contato hoje', tone: 'muted' });
+  });
+});
+
+// --- Dias de silêncio: a conta que o card e o relatório de Leads parados dividem ---
+describe('silenceDaysOf', () => {
+  const NOW = new Date(2026, 6, 15, 10, 0, 0); // 15/07/2026 10:00 local
+
+  it('conta dias do calendário, e não períodos de 24 horas', () => {
+    // 07/07 às 18h até 15/07 às 10h são 8 dias no calendário e 7 de 24 horas.
+    expect(silenceDaysOf(new Date(2026, 6, 7, 18), NOW)).toBe(8);
+    // A meia-noite no meio: 23h50 de ontem visto às 0h10 já é 1 dia.
+    expect(silenceDaysOf(new Date(2026, 6, 14, 23, 50), new Date(2026, 6, 15, 0, 10))).toBe(1);
+    // Do mesmo dia, por mais horas que tenham passado, são 0.
+    expect(silenceDaysOf(new Date(2026, 6, 15, 0, 1), new Date(2026, 6, 15, 23, 59))).toBe(0);
+  });
+
+  it('data ausente ou inválida é null, e data futura não vira conta negativa', () => {
+    expect(silenceDaysOf(null, NOW)).toBeNull();
+    expect(silenceDaysOf(undefined, NOW)).toBeNull();
+    expect(silenceDaysOf(new Date(NaN), NOW)).toBeNull();
+    expect(silenceDaysOf(new Date(2026, 6, 20), NOW)).toBe(0);
+    expect(silenceDaysOf(new Date(2026, 6, 14), new Date(NaN))).toBeNull();
+    // Só Date vale, como o rodapé do card sempre valeu: um texto de data não vira número.
+    expect(silenceDaysOf('2026-07-10', NOW)).toBeNull();
+    expect(kanbanSilence('2026-07-10', NOW)).toEqual({ text: 'sem contato', tone: 'muted' });
+  });
+
+  it('é o número que o rodapé do card escreve', () => {
+    const casos = [
+      [new Date(2026, 6, 15, 9), NOW],
+      [new Date(2026, 6, 14, 23, 50), new Date(2026, 6, 15, 0, 10)],
+      [new Date(2026, 6, 12, 22), NOW],
+      [new Date(2026, 6, 8, 11), NOW],
+      [new Date(2026, 6, 7, 18), NOW],
+      [new Date(2026, 5, 15, 10), NOW],
+    ];
+    casos.forEach(([last, now]) => {
+      const days = silenceDaysOf(last, now);
+      expect(kanbanSilence(last, now).text).toBe(days === 0 ? 'contato hoje' : `${days}d sem contato`);
+    });
   });
 });
 

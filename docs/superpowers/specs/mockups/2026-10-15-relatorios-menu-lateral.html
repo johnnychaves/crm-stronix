@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Menu dos Relatórios</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Três caminhos para a lista ao lado dos Relatórios (mockup para o Johnny
+   escolher). Mesmos dados nas três: outubro de 2026, Conversão aberta. */
+:root{
+  --pagina:#F5F7FB; --cartao:#FFFFFF; --texto:#0E1A40; --texto2:#334155; --apagado:#64748B; --fraco:#94A3B8;
+  --borda:#E2E8F0; --fio:#EEF2F7; --hover:#F1F5F9;
+  --azul:#2B59FF; --azul-50:#EAF0FF; --azul-100:#D6E1FF; --azul-700:#1C3FC4;
+  --verde-700:#047857; --verde-50:#E7F7F0; --rosa-700:#BE123C; --rosa-50:#FDECEF; --ambar-700:#B45309; --ambar-50:#FEF3E2;
+  --sombra:0 1px 0 rgba(15,23,42,.04),0 1px 2px rgba(15,23,42,.06);
+  --sombra-forte:0 1px 0 rgba(15,23,42,.04),0 10px 24px -12px rgba(15,23,42,.22);
+}
+:root[data-tema="escuro"]{
+  --pagina:#080D22; --cartao:#122142; --texto:#EAEEF9; --texto2:#CBD5E1; --apagado:#8A93B0; --fraco:#6B7593;
+  --borda:rgba(255,255,255,.08); --fio:rgba(255,255,255,.06); --hover:rgba(255,255,255,.06);
+  --azul-50:rgba(43,89,255,.18); --azul-100:rgba(43,89,255,.28); --azul-700:#9FBCFF;
+  --verde-700:#34D399; --verde-50:rgba(14,159,110,.18); --rosa-700:#FB7185; --rosa-50:rgba(225,29,72,.16); --ambar-700:#FBBF24; --ambar-50:rgba(217,119,6,.16);
+  --sombra:0 1px 2px rgba(0,0,0,.45); --sombra-forte:0 14px 30px -14px rgba(0,0,0,.7);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--pagina);color:var(--texto);font-family:'Geist',ui-sans-serif,system-ui,sans-serif;font-size:14px;-webkit-font-smoothing:antialiased}
+button{font-family:inherit;color:inherit}
+.num{font-family:'Space Grotesk','Geist',sans-serif;font-variant-numeric:tabular-nums}
+:focus-visible{outline:2px solid var(--azul);outline-offset:2px}
+
+.topo{max-width:1180px;margin:0 auto;padding:36px 28px 8px;display:flex;justify-content:space-between;align-items:flex-end;gap:24px}
+.topo h1{font:700 26px/1.15 'Space Grotesk',sans-serif;margin:0 0 6px;letter-spacing:-.015em}
+.topo p{margin:0;color:var(--apagado);max-width:62ch;line-height:1.5}
+.tema{height:36px;padding:0 14px;border-radius:999px;border:1px solid var(--borda);background:var(--cartao);font-weight:600;font-size:13px;cursor:pointer}
+
+.opcao{max-width:1180px;margin:28px auto 0;padding:0 28px}
+.opcao-cab{display:flex;align-items:baseline;gap:12px;margin-bottom:12px}
+.opcao-cab h2{font:700 18px/1.2 'Space Grotesk',sans-serif;margin:0;white-space:nowrap}
+.opcao-cab p{margin:0;color:var(--apagado);font-size:13px}
+.recomendada{font-size:12px;font-weight:600;color:var(--azul-700);background:var(--azul-50);border-radius:999px;padding:3px 10px;white-space:nowrap}
+
+/* Moldura: um pedaço do app, com a lista ao lado e o começo do relatório */
+.moldura{display:grid;grid-template-columns:248px 1fr;gap:28px;background:var(--pagina);border:1px solid var(--borda);border-radius:18px;padding:24px 24px 28px;overflow:hidden}
+.conteudo{min-width:0;opacity:.55;pointer-events:none}
+.barra{display:flex;gap:8px;padding-bottom:14px;border-bottom:1px solid var(--borda);margin-bottom:22px}
+.caixa{height:38px;border-radius:12px;background:var(--cartao);border:1px solid var(--borda);box-shadow:var(--sombra)}
+.pilula{height:36px;border-radius:999px;background:var(--cartao);border:1px solid var(--borda)}
+.rel-titulo{font:700 22px/1.2 'Space Grotesk',sans-serif;margin:0 0 6px}
+.rel-sub{color:var(--apagado);font-size:13px;margin:0 0 16px}
+.painel{height:132px;border-radius:16px;background:var(--cartao);border:1px solid var(--borda);box-shadow:var(--sombra);display:grid;grid-template-columns:236px 1fr}
+.painel div:first-child{border-right:1px solid var(--borda);padding:18px 22px}
+.painel b{display:block;font:700 42px/1 'Space Grotesk',sans-serif;color:var(--verde-700);margin-top:10px;letter-spacing:-.035em}
+.painel small{color:var(--apagado);font-size:12px;font-weight:600}
+
+/* ---------- Opção A: índice ---------- */
+.a-grupo{display:flex;flex-direction:column}
+.a-cab{display:flex;align-items:baseline;justify-content:space-between;padding:2px 12px 10px}
+.a-cab strong{font:700 15px/1.2 'Space Grotesk',sans-serif}
+.a-cab span{font-size:11.5px;color:var(--apagado)}
+.a-lista{display:flex;flex-direction:column;border-top:1px solid var(--borda)}
+.a-item{position:relative;display:grid;grid-template-columns:1fr auto;align-items:center;gap:10px;padding:11px 12px 11px 14px;border:0;border-bottom:1px solid var(--fio);background:none;text-align:left;cursor:pointer;transition:background-color .15s}
+.a-item:hover{background:var(--hover)}
+.a-item::before{content:'';position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:3px;background:var(--azul);transform:scaleY(0);transition:transform .2s ease}
+.a-item[aria-current="page"]{background:var(--azul-50)}
+.a-item[aria-current="page"]::before{transform:scaleY(1)}
+.a-nome{display:block;font-size:13.5px;font-weight:500;color:var(--texto2);line-height:1.25}
+.a-item[aria-current="page"] .a-nome{color:var(--texto);font-weight:600}
+.a-quanto{display:block;font-size:11.5px;color:var(--apagado);margin-top:2px}
+.a-num{font:700 17px/1 'Space Grotesk',sans-serif;letter-spacing:-.01em}
+.tom-azul{color:var(--texto)} .tom-verde{color:var(--verde-700)} .tom-rosa{color:var(--rosa-700)} .tom-ambar{color:var(--ambar-700)}
+
+/* ---------- Opção B: placar ---------- */
+.b-cab{padding:0 2px 10px;display:flex;justify-content:space-between;align-items:baseline}
+.b-cab strong{font:700 15px/1.2 'Space Grotesk',sans-serif}
+.b-cab span{font-size:11.5px;color:var(--apagado)}
+.b-lista{display:flex;flex-direction:column;gap:8px}
+.b-item{display:block;width:100%;text-align:left;padding:12px 14px 12px;border-radius:14px;border:1px solid var(--borda);background:var(--cartao);box-shadow:var(--sombra);cursor:pointer;transition:border-color .15s, box-shadow .15s}
+.b-item:hover{box-shadow:var(--sombra-forte)}
+.b-item[aria-current="page"]{border-color:var(--azul);box-shadow:0 0 0 3px var(--azul-50),var(--sombra)}
+.b-nome{display:block;font-size:12px;font-weight:600;color:var(--apagado)}
+.b-linha{display:flex;align-items:baseline;gap:8px;margin-top:6px}
+.b-num{font:700 24px/1 'Space Grotesk',sans-serif;letter-spacing:-.02em}
+.b-sobre{font-size:12px;color:var(--texto2);line-height:1.3}
+
+/* ---------- Opção C: refinado ---------- */
+.c-cab{width:100%;display:flex;align-items:center;gap:11px;padding:10px 11px;border:0;border-radius:14px;background:none;cursor:pointer;text-align:left}
+.c-cab:hover{background:var(--hover)}
+.c-icone-grupo{flex:none;display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:var(--azul);color:#fff;box-shadow:0 6px 14px -6px rgba(43,89,255,.7)}
+.c-icone-grupo svg,.c-icone svg{width:17px;height:17px}
+.c-cab strong{display:block;font:700 14px/1.2 'Space Grotesk',sans-serif}
+.c-cab .resumo{display:block;font-size:11.5px;color:var(--apagado);margin-top:2px}
+.c-cab .chev{margin-left:auto;flex:none;width:15px;height:15px;color:var(--apagado);transition:transform .28s ease}
+.c-cab[aria-expanded="false"] .chev{transform:rotate(-90deg)}
+.c-corpo{display:grid;grid-template-rows:1fr;transition:grid-template-rows .28s ease, opacity .22s ease}
+.c-corpo.fechado{grid-template-rows:0fr;opacity:0}
+.c-corpo > div{min-height:0;overflow:hidden}
+.c-lista{position:relative;display:flex;flex-direction:column;gap:3px;margin:6px 0 2px 27px;padding:2px 2px 2px 12px}
+.c-lista::before{content:'';position:absolute;left:0;top:6px;bottom:6px;width:2px;border-radius:2px;background:var(--borda)}
+.c-item{position:relative;display:flex;align-items:center;gap:10px;padding:7px 10px 7px 7px;border:1px solid transparent;border-radius:12px;background:none;cursor:pointer;text-align:left;transition:background-color .15s,border-color .15s,box-shadow .15s}
+.c-item:hover{background:var(--hover)}
+.c-item[aria-current="page"]{background:var(--cartao);border-color:var(--borda);box-shadow:var(--sombra-forte)}
+.c-item[aria-current="page"]::before{content:'';position:absolute;left:-13px;top:9px;bottom:9px;width:2px;border-radius:2px;background:var(--azul)}
+.c-icone{flex:none;display:grid;place-items:center;width:30px;height:30px;border-radius:9px}
+.c-icone.azul{background:var(--azul-50);color:var(--azul-700)}
+.c-icone.verde{background:var(--verde-50);color:var(--verde-700)}
+.c-icone.rosa{background:var(--rosa-50);color:var(--rosa-700)}
+.c-icone.ambar{background:var(--ambar-50);color:var(--ambar-700)}
+.c-nome{font-size:13px;font-weight:500;color:var(--texto2)}
+.c-item[aria-current="page"] .c-nome{color:var(--texto);font-weight:600}
+.c-num{margin-left:auto;font:700 13.5px/1 'Space Grotesk',sans-serif}
+
+@media (prefers-reduced-motion: reduce){ *{transition:none !important} }
+</style>
+</head>
+<body>
+
+<div class="topo">
+  <div>
+    <h1>Lista ao lado dos Relatórios</h1>
+    <p>Três caminhos com os mesmos dados (outubro de 2026, Conversão aberta). Clique nos itens para trocar o relatório aceso. O relatório à direita está apagado de propósito, só para ver como a lista conversa com ele.</p>
+  </div>
+  <button class="tema" type="button" id="tema">Tema escuro</button>
+</div>
+
+<!-- ===================== A ===================== -->
+<section class="opcao">
+  <div class="opcao-cab"><h2>A. Índice</h2><span class="recomendada">Recomendada</span><p>Sem ícones: o nome, o que o número quer dizer e o número. Calma, e deixa o painel ser o destaque.</p></div>
+  <div class="moldura">
+    <nav class="a-grupo" aria-label="Relatórios">
+      <div class="a-cab"><strong>Leads</strong><span>outubro de 2026</span></div>
+      <div class="a-lista" data-lista>
+        <button class="a-item" type="button"><span><span class="a-nome">Entrada de leads</span><span class="a-quanto">leads novos</span></span><span class="a-num num tom-azul">51</span></button>
+        <button class="a-item" type="button" aria-current="page"><span><span class="a-nome">Conversão</span><span class="a-quanto">da safra matriculou</span></span><span class="a-num num tom-verde">8%</span></button>
+        <button class="a-item" type="button"><span><span class="a-nome">Visitas e aulas</span><span class="a-quanto">compareceram</span></span><span class="a-num num tom-verde">62%</span></button>
+        <button class="a-item" type="button"><span><span class="a-nome">Perdas</span><span class="a-quanto">leads perdidos</span></span><span class="a-num num tom-rosa">53</span></button>
+        <button class="a-item" type="button"><span><span class="a-nome">Leads parados</span><span class="a-quanto">parados agora</span></span><span class="a-num num tom-ambar">35</span></button>
+      </div>
+    </nav>
+    <div class="conteudo" aria-hidden="true">
+      <div class="barra"><div class="caixa" style="width:240px"></div><div class="pilula" style="width:150px"></div><div class="pilula" style="width:120px"></div><div class="pilula" style="width:110px"></div></div>
+      <h3 class="rel-titulo">Conversão</h3>
+      <p class="rel-sub">Dos leads que chegaram no período, quantos agendaram, vieram e se matricularam até hoje.</p>
+      <div class="painel"><div><small>Conversão da safra</small><b>8%</b></div><div></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== B ===================== -->
+<section class="opcao">
+  <div class="opcao-cab"><h2>B. Placar</h2><p>Cada relatório vira um cartão com o número grande. A lista vira um resumo do mês, mas disputa a atenção com o painel.</p></div>
+  <div class="moldura">
+    <nav aria-label="Relatórios">
+      <div class="b-cab"><strong>Leads</strong><span>outubro de 2026</span></div>
+      <div class="b-lista" data-lista>
+        <button class="b-item" type="button"><span class="b-nome">Entrada de leads</span><span class="b-linha"><span class="b-num num tom-azul">51</span><span class="b-sobre">leads novos</span></span></button>
+        <button class="b-item" type="button" aria-current="page"><span class="b-nome">Conversão</span><span class="b-linha"><span class="b-num num tom-verde">8%</span><span class="b-sobre">da safra matriculou</span></span></button>
+        <button class="b-item" type="button"><span class="b-nome">Visitas e aulas</span><span class="b-linha"><span class="b-num num tom-verde">62%</span><span class="b-sobre">compareceram</span></span></button>
+        <button class="b-item" type="button"><span class="b-nome">Perdas</span><span class="b-linha"><span class="b-num num tom-rosa">53</span><span class="b-sobre">leads perdidos</span></span></button>
+        <button class="b-item" type="button"><span class="b-nome">Leads parados</span><span class="b-linha"><span class="b-num num tom-ambar">35</span><span class="b-sobre">parados agora</span></span></button>
+      </div>
+    </nav>
+    <div class="conteudo" aria-hidden="true">
+      <div class="barra"><div class="caixa" style="width:240px"></div><div class="pilula" style="width:150px"></div><div class="pilula" style="width:120px"></div><div class="pilula" style="width:110px"></div></div>
+      <h3 class="rel-titulo">Conversão</h3>
+      <p class="rel-sub">Dos leads que chegaram no período, quantos agendaram, vieram e se matricularam até hoje.</p>
+      <div class="painel"><div><small>Conversão da safra</small><b>8%</b></div><div></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== C ===================== -->
+<section class="opcao" style="margin-bottom:64px">
+  <div class="opcao-cab"><h2>C. O de hoje, mais acabado</h2><p>Mantém o grupo que abre e fecha, agora aberto ao entrar, com o ícone de cada relatório na cor do que ele mede e uma linha que liga os itens ao grupo.</p></div>
+  <div class="moldura">
+    <nav aria-label="Relatórios">
+      <button class="c-cab" type="button" aria-expanded="true" id="c-cab">
+        <span class="c-icone-grupo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+        <span><strong>Leads</strong><span class="resumo" id="c-resumo">5 relatórios, outubro de 2026</span></span>
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <div class="c-corpo" id="c-corpo"><div>
+        <div class="c-lista" data-lista>
+          <button class="c-item" type="button"><span class="c-icone azul"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" x2="19" y1="8" y2="14"/><line x1="22" x2="16" y1="11" y2="11"/></svg></span><span class="c-nome">Entrada de leads</span><span class="c-num num tom-azul">51</span></button>
+          <button class="c-item" type="button" aria-current="page"><span class="c-icone verde"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg></span><span class="c-nome">Conversão</span><span class="c-num num tom-verde">8%</span></button>
+          <button class="c-item" type="button"><span class="c-icone verde"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="m9 16 2 2 4-4"/></svg></span><span class="c-nome">Visitas e aulas</span><span class="c-num num tom-verde">62%</span></button>
+          <button class="c-item" type="button"><span class="c-icone rosa"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/><polyline points="16 17 22 17 22 11"/></svg></span><span class="c-nome">Perdas</span><span class="c-num num tom-rosa">53</span></button>
+          <button class="c-item" type="button"><span class="c-icone ambar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="10" x2="10" y1="15" y2="9"/><line x1="14" x2="14" y1="15" y2="9"/></svg></span><span class="c-nome">Leads parados</span><span class="c-num num tom-ambar">35</span></button>
+        </div>
+      </div></div>
+    </nav>
+    <div class="conteudo" aria-hidden="true">
+      <div class="barra"><div class="caixa" style="width:240px"></div><div class="pilula" style="width:150px"></div><div class="pilula" style="width:120px"></div><div class="pilula" style="width:110px"></div></div>
+      <h3 class="rel-titulo">Conversão</h3>
+      <p class="rel-sub">Dos leads que chegaram no período, quantos agendaram, vieram e se matricularam até hoje.</p>
+      <div class="painel"><div><small>Conversão da safra</small><b>8%</b></div><div></div></div>
+    </div>
+  </div>
+</section>
+
+<script>
+// Trocar o relatório aceso em cada opção, e abrir e fechar o grupo da C.
+document.querySelectorAll('[data-lista]').forEach((lista) => {
+  lista.addEventListener('click', (e) => {
+    const item = e.target.closest('button');
+    if (!item) return;
+    lista.querySelectorAll('button').forEach((b) => b.removeAttribute('aria-current'));
+    item.setAttribute('aria-current', 'page');
+  });
+});
+const cab = document.getElementById('c-cab');
+const corpo = document.getElementById('c-corpo');
+cab.addEventListener('click', () => {
+  const aberto = cab.getAttribute('aria-expanded') === 'true';
+  cab.setAttribute('aria-expanded', String(!aberto));
+  corpo.classList.toggle('fechado', aberto);
+  corpo.inert = aberto;
+  document.getElementById('c-resumo').textContent = aberto ? 'Aberto: Conversão' : '5 relatórios, outubro de 2026';
+});
+const tema = document.getElementById('tema');
+tema.addEventListener('click', () => {
+  const escuro = document.documentElement.dataset.tema === 'escuro';
+  document.documentElement.dataset.tema = escuro ? '' : 'escuro';
+  tema.textContent = escuro ? 'Tema escuro' : 'Tema claro';
+});
+</script>
+</body>
+</html>

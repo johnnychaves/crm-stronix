@@ -77,15 +77,19 @@ export const newLeadsOf = (leads, { start, end, inScope }) => unique(leads).filt
 export const enrollmentsOf = (leads, { start, end, inScope }) => unique(leads).filter((l) =>
   inWindow(firstEnrolledAtOf(l), start, end) && !isImportCreatedLead(l) && !isImportedEnrollment(l) && inScope(l));
 
+// O motivo da perda de um lead, como o card de perdas agrupa: o texto gravado,
+// sem os espaços das pontas, ou "Sem motivo".
+export const lossReasonOf = (l) => String(l?.lossReason || '').trim() || 'Sem motivo';
+
 // Perdas: quem está em Perda hoje e não é cliente, com lostAt em [start, end),
-// por motivo. Perda sem motivo entra em "Sem motivo". A lista vai junto, para a
-// etapa da perda sair dos mesmos leads (lossStagesOf).
+// por motivo (lossReasonOf). A lista vai junto, para a etapa da perda sair dos
+// mesmos leads (lossStagesOf).
 export function lossesOf(leads, { start, end, inScope }) {
   const list = unique(leads).filter((l) =>
     deriveLeadBucket(l) === 'perda' && inWindow(lostAtOf(l), start, end) && inScope(l));
   return {
     total: list.length,
-    reasons: rankCounts(countBy(list, (l) => String(l.lossReason || '').trim() || 'Sem motivo')),
+    reasons: rankCounts(countBy(list, lossReasonOf)),
     leads: list
   };
 }

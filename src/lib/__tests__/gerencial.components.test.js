@@ -121,6 +121,12 @@ describe('SalesCurve', () => {
     expect(html).toContain('agosto: R$ 72.760 no mesmo dia.'); // 17/30 de 128.400
   });
 
+  it('o marcador do mês comparado usa a base pró-rata, a mesma da pílula, e não o dia inteiro', () => {
+    const html = curve({ prevAtCut: 70000 });
+    expect(html).toContain('agosto: R$ 70.000 no mesmo dia.'); // o dia inteiro daria R$ 72.760
+    expect(html).not.toContain('R$ 72.760');
+  });
+
   it('sem mês comparado, não há linha pontilhada nem marcador dele', () => {
     const html = curve({ prev: null });
     expect(html).not.toContain('stroke-dasharray="5 5"');

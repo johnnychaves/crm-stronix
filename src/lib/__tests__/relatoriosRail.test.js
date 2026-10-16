@@ -1,0 +1,36 @@
+// Lista ao lado dos Relatórios: o contrato com a tabela de endereços, como o
+// settingsRail.test.js faz com as Configurações.
+import { describe, it, expect } from 'vitest';
+import {
+  RELATORIOS_RAIL_GROUPS, RELATORIOS_RAIL_IDS, RELATORIOS_DEFAULT_SECTION, relatoriosSection,
+} from '../relatoriosRail.js';
+import { RELATORIOS_SUBS } from '../routes.js';
+
+describe('lista ao lado dos Relatórios', () => {
+  it('cada item é um submenu do endereço, e todo submenu do endereço está na lista', () => {
+    expect([...RELATORIOS_RAIL_IDS].sort()).toEqual(Object.keys(RELATORIOS_SUBS).sort());
+  });
+
+  it('o grupo Leads, com os cinco submenus na ordem da spec e os nomes do handoff, e depois Clientes, em breve', () => {
+    expect(RELATORIOS_RAIL_GROUPS.map((g) => g.label)).toEqual(['Leads', 'Clientes']);
+    // Clientes ainda não tem relatório: fica na lista como "Em breve", sem submenu.
+    expect(RELATORIOS_RAIL_GROUPS[1]).toEqual({ label: 'Clientes', soon: true, items: [] });
+    expect(RELATORIOS_RAIL_GROUPS[0].soon).toBeUndefined();
+    expect(RELATORIOS_RAIL_GROUPS[0].items.map((i) => i.label)).toEqual([
+      'Entrada de leads', 'Conversão', 'Visitas e aulas', 'Perdas', 'Leads parados',
+    ]);
+  });
+
+  it('o padrão é a Entrada, e submenu desconhecido cai nele', () => {
+    expect(RELATORIOS_DEFAULT_SECTION).toBe('entrada');
+    expect(relatoriosSection('conversao')).toBe('conversao');
+    expect(relatoriosSection(null)).toBe('entrada');
+    expect(relatoriosSection('perdas')).toBe('perdas');
+    expect(relatoriosSection('clientes')).toBe('entrada');
+  });
+
+  it('nada muda em tempo de execução', () => {
+    expect(Object.isFrozen(RELATORIOS_RAIL_GROUPS)).toBe(true);
+    expect(Object.isFrozen(RELATORIOS_RAIL_GROUPS[0].items)).toBe(true);
+  });
+});

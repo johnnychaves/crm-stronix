@@ -23,6 +23,7 @@ export function sidebarNav(appUser) {
     dailyGoal: tela('dailyGoal'),
     rotinas: tela('rotinas'),
     leads: tela('leads') && tela('aulas') && tela('visitas'),
+    relatorios: tela('relatorios'),
     suporte: can(appUser, ACTIONS.SUPORTE_ABRIR),
   });
 }

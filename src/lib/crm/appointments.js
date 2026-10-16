@@ -116,10 +116,25 @@ export function effectiveStatus(r, visitOutcomes, lead = null) {
 // quando a pessoa ainda era lead (upsertScheduledAppointment acha o registro
 // em aberto e só troca a data). O que foi marcado depois da matrícula também
 // tem data depois dela, então a data basta.
-export function appointmentsOf(records, { start, end, leadOf, inScope, visitOutcomes = null }) {
+export function appointmentsOf(records, opts) {
   let came = 0;
   let missed = 0;
   let pending = 0;
+  appointmentRowsOf(records, opts).forEach(({ status }) => {
+    if (status === AULA_STATUS.ATTENDED) came += 1;
+    else if (status === AULA_STATUS.NO_SHOW) missed += 1;
+    else pending += 1;
+  });
+  const decided = came + missed;
+  return { total: came + missed + pending, came, missed, pending, decided, rate: pct(came, decided) };
+}
+
+// Os agendamentos que o appointmentsOf conta, um por um, na regra dele
+// (comentário acima): o registro, o lead do registro e o status que vale. Os
+// Relatórios mostram a lista, e a contagem do painel soma o que esta função
+// devolve.
+export function appointmentRowsOf(records, { start, end, leadOf, inScope, visitOutcomes = null }) {
+  const out = [];
   const seen = new Set();
   (records || []).forEach((r) => {
     if (!r?.id || seen.has(r.id)) return;
@@ -131,12 +146,9 @@ export function appointmentsOf(records, { start, end, leadOf, inScope, visitOutc
     if (!inScope(lead)) return;
     const enrolledAt = firstEnrolledAtOf(lead);
     if (enrolledAt && r.scheduledFor >= enrolledAt) return;
-    if (status === AULA_STATUS.ATTENDED) came += 1;
-    else if (status === AULA_STATUS.NO_SHOW) missed += 1;
-    else pending += 1;
+    out.push({ record: r, lead, status });
   });
-  const decided = came + missed;
-  return { total: came + missed + pending, came, missed, pending, decided, rate: pct(came, decided) };
+  return out;
 }
 
 // Registros por lead, sem repetir id, com a primeira cópia de cada um: quem
@@ -175,24 +187,36 @@ const hasOpenAppointment = (lead) =>
 // matrícula (upsertScheduledAppointment só troca a data) guarda o createdAt de
 // quando a pessoa era lead e segue valendo no agendou, mas a data dele já é a
 // da visita nova: por isso o compareceu também pede a data antes da matrícula.
-export function cohortMilestones(cohort, { asOf, cut, recordsByLead, visitOutcomes = null }) {
+export function cohortMilestones(cohort, opts) {
   let sched = 0;
   let came = 0;
   (cohort || []).forEach((l) => {
-    const enrolledAt = firstEnrolledAtOf(l);
-    const recs = (recordsByLead.get(l.id) || [])
-      .filter((r) => !(enrolledAt && bookedAt(r) && bookedAt(r) >= enrolledAt))
-      .map((r) => ({ r, status: effectiveStatus(r, visitOutcomes, l) }));
-    const attended = recs.some(({ r, status }) => status === AULA_STATUS.ATTENDED && r.scheduledFor
-      && r.scheduledFor <= asOf && !(enrolledAt && r.scheduledFor >= enrolledAt));
-    const booked = attended
-      || recs.some(({ r, status }) => status !== AULA_STATUS.CANCELLED && bookedAt(r) && bookedAt(r) <= asOf)
-      || (!cut && hasOpenAppointment(l));
-    if (booked) sched += 1;
-    if (attended) came += 1;
+    const m = cohortMilestoneOf(l, opts);
+    if (m.booked) sched += 1;
+    if (m.attended) came += 1;
   });
   return { sched, came };
 }
+
+// Marcos de um lead da safra no instante asOf, na regra do cohortMilestones
+// (comentário acima): agendou e compareceu. Os Relatórios mostram os dois lead
+// por lead, e a contagem do painel soma o que esta função devolve.
+export function cohortMilestoneOf(l, { asOf, cut, recordsByLead, visitOutcomes = null }) {
+  const enrolledAt = firstEnrolledAtOf(l);
+  const recs = (recordsByLead.get(l.id) || [])
+    .filter((r) => !(enrolledAt && bookedAt(r) && bookedAt(r) >= enrolledAt))
+    .map((r) => ({ r, status: effectiveStatus(r, visitOutcomes, l) }));
+  const attended = recs.some(({ r, status }) => status === AULA_STATUS.ATTENDED && r.scheduledFor
+    && r.scheduledFor <= asOf && !(enrolledAt && r.scheduledFor >= enrolledAt));
+  const booked = attended
+    || recs.some(({ r, status }) => status !== AULA_STATUS.CANCELLED && bookedAt(r) && bookedAt(r) <= asOf)
+    || (!cut && hasOpenAppointment(l));
+  return { booked, attended };
+}
+
+// Aula de quem treina sozinho: com a marca, ou sem professor. É o "Treina
+// sozinho" do cartão de professores (professorsOf) e da lista dos Relatórios.
+export const isSoloTrainingRecord = (r) => Boolean(r?.soloTraining || !r?.professorId);
 
 // Aulas experimentais por professor, da academia inteira (spec §4): registros
 // de aula, sem visitas, marcados em [start, end). Realizadas = attended,
@@ -209,7 +233,7 @@ export function professorsOf(records, { start, end }) {
     if (!r?.id || seen.has(r.id) || !isAulaRecord(r) || !inWindow(r.scheduledFor, start, end)) return;
     seen.add(r.id);
     let b;
-    if (r.soloTraining || !r.professorId) {
+    if (isSoloTrainingRecord(r)) {
       if (!solo) solo = bucket(null, 'Treina sozinho', true);
       b = solo;
     } else {

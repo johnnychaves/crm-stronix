@@ -79,6 +79,10 @@ export function dashboardProps({ cur, cmp, cmpFull = null, comparing, roleOf = (
       cur: curve,
       cutDay,
       prev: on && cmpFull ? cmpFull.curve : null,
+      // O que o mês comparado tinha vendido no mesmo momento: a base da pílula.
+      // Com o mês em andamento ela é menor que o acumulado do dia inteiro, e o
+      // marcador da curva precisa dizer o mesmo número que a pílula.
+      prevAtCut: on ? cmp.sold.sold : null,
       prevName: cmpName
     },
     sold: {

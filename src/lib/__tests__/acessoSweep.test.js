@@ -70,6 +70,8 @@ const LISTAS_DE_QUEM_VENDE = [
   'views/settings/PaceSection.jsx',
   // Rotinas: quem pode seguir modelo (routineParticipants).
   'lib/rotinas.js',
+  // Relatórios: o filtro de consultores e os nomes dos recortes.
+  'views/relatorios/RelatoriosView.jsx',
 ];
 
 describe('o papel se decide em src/lib/acesso.js', () => {
