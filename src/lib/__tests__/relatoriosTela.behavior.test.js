@@ -179,7 +179,7 @@ const linhaDe = (id) => linhas().find((tr) => tr.querySelector(`a[href$="/ficha/
 const celula = (tr, coluna) => tr.children[[...container.querySelectorAll('thead th')].findIndex((th) => th.textContent === coluna)];
 const numeroDaLista = () => container.querySelector('p[aria-live="polite"]');
 const limpar = () => container.querySelector('[aria-label="Limpar filtro da lista"]');
-// O número grande do relatório, fora da lista ao lado (que também mostra números em Space Grotesk).
+// O número grande do relatório, fora da lista ao lado.
 const numeroGrande = () => [...container.querySelectorAll('.num.font-display')].find((el) => !el.closest('nav'));
 const heroi = () => numeroGrande()?.textContent;
 const regiaoDeEstado = () => container.querySelector('[role="status"]');
@@ -367,8 +367,6 @@ describe('filtros da barra chegam aos números', () => {
     await montar('/acad/relatorios?resp=diego');
     expect(fichas()).toEqual(['s2', 's4']);
     expect(heroi()).toBe('2');
-    // O número da lista ao lado sai da mesma base filtrada.
-    expect(submenu('Entrada de leads').querySelector('.font-display').textContent).toBe('2');
   });
 
   it('a origem do endereço recorta a lista', async () => {

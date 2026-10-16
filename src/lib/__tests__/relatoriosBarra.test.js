@@ -70,11 +70,10 @@ describe('barra dos Relatórios', () => {
 
 describe('lista ao lado', () => {
   const hrefOf = (id) => `/acad/relatorios/${id}?mes=2026-09`;
-  const numbers = { entrada: { text: '42' }, conversao: { none: true }, parados: { text: '3' } };
   const render = (section, periodLabel) => renderToString(createElement(MemoryRouter, null,
-    createElement(RelatoriosRail, { section, onSection: noop, hrefOf, numbers, periodLabel })));
+    createElement(RelatoriosRail, { section, onSection: noop, hrefOf, periodLabel })));
 
-  it('o grupo Leads entra aberto, diz o período dos números, e os itens são links com o número', () => {
+  it('o grupo Leads entra aberto, diz o período, e os itens são links só com o nome', () => {
     const out = render('conversao', 'setembro de 2026');
     expect(out).toContain('>Leads</span>');
     expect(out).toContain('5 relatórios, setembro de 2026');
@@ -87,10 +86,9 @@ describe('lista ao lado', () => {
     expect(nav).toContain('href="/acad/relatorios/entrada?mes=2026-09"');
     expect(out.match(/aria-current="page"/g)).toHaveLength(1);
     expect(out.indexOf('aria-current="page"')).toBeGreaterThan(out.indexOf('Entrada de leads'));
-    // O número de cada item, e a taxa sem base dita por extenso para o leitor de tela.
-    expect(nav).toContain('>42</span>');
-    expect(nav).toContain('sem base');
-    expect(nav).toContain('>3</span>');
+    // Sem número nos itens (decisão do Johnny, 15/10/2026).
+    expect(nav).not.toMatch(/class="num/);
+    expect(nav).not.toContain('sem base');
     expect(out).toContain('aria-label="Relatório"');
   });
 });

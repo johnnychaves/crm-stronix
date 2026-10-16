@@ -1,8 +1,8 @@
 // Lista ao lado dos Relatórios: o contrato com a tabela de endereços, como o
-// settingsRail.test.js faz com as Configurações, e o número de cada item.
+// settingsRail.test.js faz com as Configurações.
 import { describe, it, expect } from 'vitest';
 import {
-  RELATORIOS_RAIL_GROUPS, RELATORIOS_RAIL_IDS, RELATORIOS_DEFAULT_SECTION, relatoriosSection, railNumberOf,
+  RELATORIOS_RAIL_GROUPS, RELATORIOS_RAIL_IDS, RELATORIOS_DEFAULT_SECTION, relatoriosSection,
 } from '../relatoriosRail.js';
 import { RELATORIOS_SUBS } from '../routes.js';
 
@@ -29,22 +29,5 @@ describe('lista ao lado dos Relatórios', () => {
   it('nada muda em tempo de execução', () => {
     expect(Object.isFrozen(RELATORIOS_RAIL_GROUPS)).toBe(true);
     expect(Object.isFrozen(RELATORIOS_RAIL_GROUPS[0].items)).toBe(true);
-  });
-});
-
-describe('número de cada item', () => {
-  it('lê o total ou a taxa do resultado da conta do submenu', () => {
-    expect(railNumberOf('entrada', { total: 1234 })).toEqual({ text: '1.234' });
-    expect(railNumberOf('perdas', { total: 0 })).toEqual({ text: '0' });
-    expect(railNumberOf('parados', { total: 7 })).toEqual({ text: '7' });
-    expect(railNumberOf('conversao', { conversion: { value: 23 } })).toEqual({ text: '23%' });
-    expect(railNumberOf('visitas-e-aulas', { attendance: { value: 0 } })).toEqual({ text: '0%' });
-  });
-
-  it('taxa sem base é sem base, e sem resultado não há número', () => {
-    expect(railNumberOf('conversao', { conversion: { value: null } })).toEqual({ none: true });
-    expect(railNumberOf('visitas-e-aulas', { attendance: { value: null } })).toEqual({ none: true });
-    expect(railNumberOf('entrada', null)).toBeNull();
-    expect(railNumberOf('clientes', { total: 3 })).toBeNull();
   });
 });

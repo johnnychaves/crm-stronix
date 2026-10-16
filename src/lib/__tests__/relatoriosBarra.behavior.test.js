@@ -113,12 +113,12 @@ describe('menu de consultores', () => {
 
 describe('lista ao lado', () => {
   const hrefOf = (id) => `/acad/relatorios/${id}?mes=2026-09`;
-  const lista = (section, onSection, numbers = null, periodLabel = null) => h(MemoryRouter, null, h(RelatoriosRail, { section, onSection, hrefOf, numbers, periodLabel }));
+  const lista = (section, onSection, periodLabel = null) => h(MemoryRouter, null, h(RelatoriosRail, { section, onSection, hrefOf, periodLabel }));
   const cabecalho = () => container.querySelector('nav button[aria-expanded]');
   const item = (texto) => [...container.querySelectorAll('nav a')].find((a) => a.textContent.includes(texto));
 
   it('o grupo entra aberto, e o cabeçalho fecha e abre dizendo o que há dentro', async () => {
-    await montar(lista('conversao', noop, null, 'setembro de 2026'));
+    await montar(lista('conversao', noop, 'setembro de 2026'));
     const painel = document.getElementById(cabecalho().getAttribute('aria-controls'));
     // No SVG o className não é texto: a classe sai do atributo.
     const seta = () => cabecalho().lastElementChild.getAttribute('class');
@@ -167,28 +167,18 @@ describe('lista ao lado', () => {
     expect(onSection).not.toHaveBeenCalled();
   });
 
-  it('cada item mostra o número do relatório na cor do que ele mede, e o aceso tem o traço na linha', async () => {
-    await montar(lista('entrada', noop, { entrada: { text: '42' }, conversao: { none: true }, perdas: { text: '7' }, parados: { text: '3' } }));
-    const numero = (texto) => item(texto).lastElementChild;
+  it('cada item mostra o ícone na cor do que o relatório mede e só o nome, sem número; o aceso tem o traço na linha', async () => {
+    await montar(lista('entrada', noop));
     const icone = (texto) => item(texto).firstElementChild;
-    expect(numero('Entrada de leads').textContent).toBe('42');
-    expect(classes(numero('Entrada de leads'))).toContain('font-display');
-    expect(classes(numero('Entrada de leads'))).toContain('text-foreground');
+    for (const nome of ['Entrada de leads', 'Conversão', 'Visitas e aulas', 'Perdas', 'Leads parados']) expect(item(nome).textContent, nome).toBe(nome);
     expect(classes(icone('Entrada de leads'))).toEqual(expect.arrayContaining(['bg-brand-50', 'text-brand-700']));
-    expect(numero('Conversão').textContent).toBe('—sem base');
-    expect(numero('Conversão').querySelector('[aria-hidden="true"]').textContent).toBe('—');
-    expect(classes(numero('Conversão'))).toEqual(expect.arrayContaining(['text-emerald-700', 'dark:text-emerald-300']));
+    expect(classes(icone('Conversão'))).toEqual(expect.arrayContaining(['bg-emerald-50', 'dark:text-emerald-300']));
     expect(classes(icone('Visitas e aulas'))).toContain('bg-emerald-50');
-    expect(classes(numero('Perdas'))).toContain('text-rose-700');
     expect(classes(icone('Perdas'))).toContain('bg-rose-50');
-    expect(classes(numero('Leads parados'))).toContain('text-amber-700');
     expect(classes(icone('Leads parados'))).toContain('bg-amber-50');
     // Só o aceso tem o traço azul em cima da linha que liga os itens ao grupo.
     expect(classes(item('Entrada de leads'))).toContain('before:bg-brand-600');
     expect(classes(item('Conversão'))).not.toContain('before:bg-brand-600');
-    await remontar(lista('entrada', noop, { entrada: { text: '42' } }));
-    // Sem número (os meses ainda não chegaram), o item fica só com o nome.
-    expect(item('Perdas').textContent).toBe('Perdas');
   });
 
   it('no celular, o seletor chama onSection com o id, a lista tem borda própria e o botão tem 40px', async () => {

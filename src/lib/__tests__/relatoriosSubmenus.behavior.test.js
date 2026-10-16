@@ -376,21 +376,19 @@ describe('Perdas', () => {
   });
 });
 
-describe('números da lista ao lado', () => {
-  const numeroDe = (texto) => submenu(texto).querySelector('.font-display')?.textContent ?? null;
+describe('lista ao lado sem números', () => {
+  // Decisão do Johnny, 15/10/2026: cada item mostra só o nome.
+  const nomes = ['Entrada de leads', 'Conversão', 'Visitas e aulas', 'Perdas', 'Leads parados'];
 
-  it('cada item mostra o número principal do relatório dele, pela mesma conta da tela', async () => {
+  it('com os meses carregados, nenhum item mostra número', async () => {
     await montar('/acad/relatorios/visitas-e-aulas', { section: 'visitas-e-aulas' });
-    expect(numeroDe('Visitas e aulas')).toBe(heroi());
-    for (const nome of ['Entrada de leads', 'Conversão', 'Perdas']) expect(numeroDe(nome), nome).not.toBeNull();
-    // Leads parados sai das listas ao vivo, então tem número em qualquer submenu.
-    expect(numeroDe('Leads parados')).toBe('4');
+    expect(heroi()).not.toBeUndefined();
+    for (const nome of nomes) expect(submenu(nome).textContent, nome).toBe(nome);
   });
 
-  it('em Leads parados, que não carrega mês, os relatórios de período ficam sem número', async () => {
+  it('em Leads parados, nenhum item mostra número', async () => {
     await montar('/acad/relatorios/parados', { section: 'parados' });
-    expect(numeroDe('Leads parados')).toBe(heroi());
-    for (const nome of ['Entrada de leads', 'Conversão', 'Visitas e aulas', 'Perdas']) expect(numeroDe(nome), nome).toBeNull();
+    for (const nome of nomes) expect(submenu(nome).textContent, nome).toBe(nome);
     // Sem período, o resumo do grupo fica só na conta.
     expect(container.querySelector('nav[aria-label="Relatórios"] button[aria-expanded] span span:last-child').textContent).toBe('5 relatórios');
   });

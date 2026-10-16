@@ -96,7 +96,7 @@ describe('o anel chega aos controles do teclado', () => {
 
   it('a lista ao lado: o cabeçalho do grupo e os links dos submenus', () => {
     const html = renderToString(createElement(MemoryRouter, null, createElement(RelatoriosRail, {
-      section: 'entrada', onSection: noop, hrefOf: (id) => `/acad/relatorios/${id}`, numbers: null,
+      section: 'entrada', onSection: noop, hrefOf: (id) => `/acad/relatorios/${id}`,
     })));
     const nav = /<nav\b[\s\S]*?<\/nav>/.exec(html)[0];
     expect(tagsOf(nav, 'button')).toHaveLength(1);

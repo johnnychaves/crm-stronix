@@ -10,11 +10,8 @@
 // frontend-design, no molde do handoff em
 // docs/superpowers/specs/handoff-relatorios/.
 //
-// A lista ao lado mostra o número principal de cada relatório, com os filtros
-// da barra, pelas mesmas contas da tela de cada submenu (railNumberOf): nenhum
-// total é guardado. Os quatro relatórios de período só têm número com os meses
-// carregados, e em Leads parados não há mês carregado (ele não pede nenhum, e
-// pedir só para a lista seria leitura nova): ali eles ficam sem número.
+// A lista ao lado mostra só o nome de cada relatório, sem número (decisão do
+// Johnny, 15/10/2026).
 //
 // O Imprimir monta a folha impressa (ReportPrint) só durante a impressão: o
 // clique preenche a ficha, a folha entra no body na hora (flushSync) e o
@@ -30,7 +27,7 @@ import { screenParamsQuery } from '../../lib/screenParams.js';
 import { periodFromParams, previousPeriod } from '../../lib/period.js';
 import { addMonthsToKey, dayKeyOf, monthKeyOf, monthText } from '../../lib/operacional/month.js';
 import { leadFunnelsOf } from '../../lib/crm/scope.js';
-import { RELATORIOS_RAIL_IDS, railNumberOf, relatoriosSection } from '../../lib/relatoriosRail.js';
+import { relatoriosSection } from '../../lib/relatoriosRail.js';
 import { hrefFor, parseAppPath } from '../../lib/routes.js';
 import { loadState, reportMonthKeys } from '../../lib/relatorios/leads/janela.js';
 import { exportFileName, snapshotFileName, compareTextOf, apptsPartialOf } from '../../lib/relatorios/leads/base.js';
@@ -68,8 +65,6 @@ const SECTIONS = Object.freeze({
 });
 // O retrato de agora: sem período na barra, sem mês para carregar e com o dia de hoje no nome do arquivo.
 const SNAPSHOT = 'parados';
-// Os relatórios de período, que dependem dos meses carregados.
-const PERIOD_IDS = RELATORIOS_RAIL_IDS.filter((id) => id !== SNAPSHOT);
 
 export function RelatoriosView({
   db, appUser, usersList, funnels, sources, liveLeads, interactions, listenersActive = true, section, onSection, tenantName = '',
@@ -139,16 +134,14 @@ export function RelatoriosView({
   // só acontece quando o endereço, a carga ou o relógio de um minuto mudam: a
   // useCrmSources entrega os mesmos months e leadsById enquanto nada mudou, e
   // sem isso este ajuste não pararia de rodar.
-  // Os mesmos relatórios de período sem o recorte da lista: dão o número da
-  // lista ao lado e as linhas do gráfico por dia, que é o total distribuído e
-  // não muda quando um número ou uma linha de recorte filtra a lista.
-  const uncutReports = useMemo(
-    () => (ready && !snapshot
-      ? Object.fromEntries(PERIOD_IDS.map((id) => [id, REPORTS[id](ctx, { period, cmp, userIds: resp, funnelId, origem })]))
-      : null),
-    [ready, snapshot, ctx, period, cmp, resp, funnelId, origem]
+  // O mesmo relatório de período sem o recorte da lista: dá as linhas do
+  // gráfico por dia, que é o total distribuído e não muda quando um número ou
+  // uma linha de recorte filtra a lista.
+  const uncutReport = useMemo(
+    () => (ready && !snapshot ? REPORTS[secao](ctx, { period, cmp, userIds: resp, funnelId, origem }) : null),
+    [ready, snapshot, secao, ctx, period, cmp, resp, funnelId, origem]
   );
-  const current = report ? { secao, report, period, cmp, allRows: (uncutReports?.[secao] ?? report).rows } : null;
+  const current = report ? { secao, report, period, cmp, allRows: (uncutReport ?? report).rows } : null;
   const [lastGood, setLastGood] = useState(null);
   if (current && lastGood?.report !== report) setLastGood(current);
   const shown = current || (!failed && lastGood?.secao === secao ? lastGood : null);
@@ -180,21 +173,7 @@ export function RelatoriosView({
     onSection(id, sectionQuery);
   };
 
-  // Os números da lista ao lado: os mesmos relatórios, sem o recorte da lista
-  // (que é de cada submenu e não muda o número principal). Leads parados sai das
-  // listas ao vivo e tem número sempre; os outros, só com os meses carregados.
-  const periodRail = useMemo(
-    () => (uncutReports
-      ? Object.fromEntries(PERIOD_IDS.map((id) => [id, railNumberOf(id, uncutReports[id])]))
-      : null),
-    [uncutReports]
-  );
-  const paradosRail = useMemo(
-    () => railNumberOf(SNAPSHOT, paradosReport(ctx, { userIds: resp, funnelId, origem, dias })),
-    [ctx, resp, funnelId, origem, dias]
-  );
-  const railNumbers = useMemo(() => ({ ...periodRail, [SNAPSHOT]: paradosRail }), [periodRail, paradosRail]);
-  // O período dos números, no meio da frase da lista ("5 relatórios, outubro de
+  // O período da barra, no meio da frase da lista ("5 relatórios, outubro de
   // 2026"): o mês sem o "em andamento", que a barra já diz. Leads parados não tem período.
   const railPeriodLabel = snapshot ? null
     : period.kind === 'mes' ? monthText(period.monthKey, { capitalized: false }) : period.label.toLowerCase();
@@ -262,7 +241,7 @@ export function RelatoriosView({
     <div className="animate-fade-in flex flex-col gap-6 font-sans lg:grid lg:grid-cols-[248px_minmax(0,1fr)] lg:items-start lg:gap-7">
       {/* A lista de relatórios sem título: o título da tela é o do cabeçalho do App. */}
       <aside className="lg:sticky lg:top-6">
-        <RelatoriosRail section={secao} onSection={goSection} hrefOf={hrefOf} numbers={railNumbers} periodLabel={railPeriodLabel} />
+        <RelatoriosRail section={secao} onSection={goSection} hrefOf={hrefOf} periodLabel={railPeriodLabel} />
       </aside>
       <div className="min-w-0 flex-1">
         <RelatoriosToolbar
