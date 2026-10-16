@@ -1693,7 +1693,10 @@ useEffect(() => {
             viewing={impersonation?.viewing || { id: appUser.impersonatedTenant, name: appUser.impersonatedTenant }}
             onExit={stopImpersonation} busy={exitingImpersonation} />
         )}
-        <header className="h-16 border-b border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/80 backdrop-blur-md flex items-center justify-between px-4 md:px-8 z-10 shrink-0">
+        {/* z-[35]: na frente das barras fixas do conteúdo (z-30), senão a
+            busca, o sino e o menu da conta abrem atrás delas; atrás do fundo
+            do menu do celular (z-40). O camadaDoCabecalho.test.js cobra. */}
+        <header className="h-16 border-b border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/80 backdrop-blur-md flex items-center justify-between px-4 md:px-8 z-[35] shrink-0">
           <div className="flex items-center min-w-0">
             <button className="md:hidden mr-4 text-gray-500 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-white dark:text-white p-1" onClick={() => setDrawerKey(location.key)}><Menu className="w-6 h-6" /></button>
             {/* O cabeçalho fica fora do AppErrorBoundary: cada peça dele tem
