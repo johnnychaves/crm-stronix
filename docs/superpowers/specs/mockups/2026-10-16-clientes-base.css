@@ -1,0 +1,50 @@
+/* Base dos três mockups da tela Clientes (16/10/2026). Tokens iguais aos do app. */
+:root{--ink:#0E1A40;--ink2:#334155;--muted:#64748b;--faint:#94a3b8;--paper:#F5F7FB;--line:#e2e8f0;--rule:#eef2f7;
+--blue:#2B59FF;--blue50:#EAF0FF;--blue200:#B8CCFF;--blue700:#1C3FC4;--orange:#FF6A2B;
+--amber700:#B45309;--rose700:#BE123C}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.45 Geist,ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+h1,h2,h3,p{margin:0}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit}
+.d{font-family:'Space Grotesk',sans-serif}
+.num{font-variant-numeric:tabular-nums}
+.mut{color:var(--muted)}
+:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.wrap{max-width:1240px;margin:0 auto;padding:24px 32px 64px}
+.tag{position:fixed;left:12px;bottom:12px;z-index:99;background:var(--ink);color:#fff;border-radius:999px;padding:6px 12px;font-size:11.5px;font-weight:600;opacity:.92}
+
+/* situação do contrato: cor, texto, fundo do selo e anel do avatar (iguais ao app) */
+.s-ativo{--c:#10B981;--t:#047857;--bg:rgba(16,185,129,.12);--r:#10B981}
+.s-a_vencer{--c:#F59E0B;--t:#B45309;--bg:rgba(245,158,11,.15);--r:conic-gradient(#F59E0B 0 180deg,#10B981 180deg 360deg)}
+.s-trancado{--c:#EAB308;--t:#854D0E;--bg:rgba(234,179,8,.17);--r:#EAB308}
+.s-agendado{--c:#8B5CF6;--t:#6D28D9;--bg:rgba(139,92,246,.12);--r:#8B5CF6}
+.s-vencido{--c:#94a3b8;--t:#475569;--bg:#eef0f5;--r:#64748b}
+.s-cancelado{--c:#F43F5E;--t:#BE123C;--bg:rgba(244,63,94,.10);--r:#64748b}
+.s-sem{--c:#cbd5e1;--t:#64748b;--bg:#f1f5f9;--r:#94a3b8}
+
+.st{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:999px;background:var(--bg);color:var(--t);font-size:12px;font-weight:600;white-space:nowrap}
+.st::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--c)}
+.s-sem.st::before,.s-vencido.st::before{background:var(--t);opacity:.55}
+
+.ring{--s:36px;display:inline-grid;flex:none;padding:2.5px;border-radius:50%;background:var(--r)}
+.ring .av{display:grid;place-items:center;width:var(--s);height:var(--s);border-radius:50%;border:2px solid #fff;font:700 calc(var(--s)*.34)/1 'Space Grotesk',sans-serif}
+
+/* cabeçalho em cartão, como o dos painéis (título + pílulas) */
+.head{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;background:#fff;border-radius:18px;padding:18px 24px}
+.head h1{font-size:24px;font-weight:700;letter-spacing:-.02em}
+.head .sub{margin-top:2px;color:var(--muted)}
+.ctl{display:flex;gap:8px;flex-wrap:wrap}
+.fp{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:#fff;font-size:13px;font-weight:500;cursor:pointer}
+.fp:hover{border-color:var(--blue200)}
+.fp.on{background:var(--blue50);border-color:var(--blue200);color:var(--blue700)}
+.fp svg{width:14px;height:14px;opacity:.6}
+.fp b{font-weight:700}
+
+.card{background:#fff;border-radius:18px}
+.bar{height:6px;border-radius:999px;background:#e9edf5;overflow:hidden}
+.bar i{display:block;height:100%;border-radius:999px;background:var(--c)}
+.more{display:flex;justify-content:center;padding:18px}
+.more button{height:38px;padding:0 18px;border-radius:11px;border:1px solid var(--line);background:#fff;font-weight:600;cursor:pointer}
+.more button:hover{border-color:var(--blue200);color:var(--blue700)}
+@media (prefers-reduced-motion:reduce){*{transition:none !important;animation:none !important}}

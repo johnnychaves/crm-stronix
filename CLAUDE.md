@@ -415,6 +415,16 @@ Desenho de 16/10/2026: o Pipeline de antes com os erros de ajuste corrigidos (mo
 - **O funil é o título** (mockup `docs/superpowers/specs/mockups/2026-10-16-pipeline-seletor-de-funil.html`, opção 1, escolhida pelo Johnny). O cabeçalho é o `FilterBar` dos painéis: o título é o `FunnelSwitcher` (`src/components/layout/FunnelSwitcher.jsx`), e a linha de apoio é o `funnelSummary` (`src/lib/kanban.js`) com a `StageBar` das colunas que estão no quadro, então ela acompanha a carteira, a situação e o mês escolhidos. O menu do título junta os funis em "Funis de leads" e "Funis de clientes" (`systemKind`). Os de leads levam o total e a barrinha das etapas (`partsByFunnel`, sobre a mesma base do total: todos os leads em aberto do funil, com a safra). Os de clientes levam o total e o que reúnem, porque as etapas deles só se contam com o quadro aberto.
 - **Abas de funil** (`FunnelTabs`) agora só em Todos os leads: funil sem lead não mostra o "0", e os funis de clientes ficam depois de um traço, que mora junto da primeira aba deles para entrar na medida do "+N".
 
+## Clientes
+
+Desenho de 16/10/2026 (mockup A, escolhido pelo Johnny; mockups em `docs/superpowers/specs/mockups/2026-10-16-clientes-*.html`). A tela tem o cabeçalho no cartão dos painéis (`FilterBar`), a faixa da carteira e a lista.
+
+- **Os filtros são as pílulas da barra, iguais às do Pipeline e dos Relatórios** (regra do Johnny, 16/10/2026). Consultor é o `ConsultoresControl` e Plano é o `MultiControl`, que mora em `views/relatorios/RelatoriosToolbar.jsx` e dá o desenho do Consultor a qualquer lista de `{ id, name }`. Abaixo de `md` entram no balão. Filtro novo da tela entra como pílula, nunca como controle próprio.
+- **A situação não tem pílula** (pedido do Johnny, 16/10/2026): o filtro dela é a faixa da carteira (`CarteiraCard`), logo abaixo do cabeçalho. Cada situação da legenda é um botão que liga o mesmo parâmetro do endereço (`sit`, em `screenParams.js`), então `?sit=a_vencer` continua valendo. A faixa colorida também clica, mas é só desenho (`aria-hidden`); teclado e leitor de tela usam a legenda. Os números contam o que passa por Consultor e Plano e ainda não pela situação, para escolher uma situação não zerar as outras.
+- **A coluna Vigência** (`vigenciaOf`, em `src/lib/clientsList.js`) diz quanto falta ou passou do contrato e desenha a régua do que já correu. A data completa só aparece de 1280px em diante (`xl`); antes disso vai no `title` do texto.
+- A ordem da lista não mudou: vencimento mais próximo primeiro, então os contratos vencidos há mais tempo abrem a lista. O Johnny ainda não decidiu se quem vence nos próximos dias deve vir antes (mockup C, "Por vencimento").
+- O filtro de plano continua em `useState`, fora do endereço, como antes.
+
 ## Dashboard CRM (Visão geral → CRM)
 
 O CRM mede o funil de leads por mês de competência, do cadastro até a matrícula: de onde vêm os leads, onde se perdem, quem converte e com que velocidade. O Operacional mede o trabalho e a base de clientes. Spec em `docs/superpowers/specs/2026-09-14-dashboard-crm-design.md`, handoff visual em `docs/superpowers/specs/handoff-crm/` e plano em `docs/superpowers/plans/2026-09-15-dashboard-crm-tela.md`.

@@ -1,0 +1,64 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Clientes B · Carteirinhas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="2026-10-16-clientes-base.css">
+<style>
+.chips{display:flex;gap:8px;margin:16px 0 18px;overflow-x:auto;overscroll-behavior-x:contain;padding-bottom:2px}
+.ch{display:inline-flex;align-items:center;gap:8px;height:38px;padding:0 14px;border-radius:12px;border:1px solid var(--line);background:#fff;font-weight:500;white-space:nowrap;cursor:pointer;flex:none}
+.ch:hover{border-color:var(--blue200)}
+.ch i{width:9px;height:9px;border-radius:3px;background:var(--c,var(--ink))}
+.ch b{font-family:'Space Grotesk',sans-serif;font-weight:700;font-variant-numeric:tabular-nums}
+.ch[aria-pressed=true]{background:var(--bg,var(--ink));border-color:transparent;color:var(--t,#fff)}
+.ch[aria-pressed=true] b{color:inherit}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(272px,1fr));gap:14px}
+.cc{position:relative;display:flex;flex-direction:column;background:#fff;border-radius:18px;padding:18px 18px 0;overflow:hidden;border:1px solid transparent;transition:border-color .15s,box-shadow .15s}
+.cc:hover{border-color:var(--blue200);box-shadow:0 10px 28px -14px rgba(14,26,64,.28)}
+.cc-top{display:flex;gap:14px;align-items:center}
+.cc-who{min-width:0}
+.cc-who b{display:block;font-size:17px;font-weight:600;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cc-who span{color:var(--muted);font-size:12.5px}
+.cc-plan{margin-top:16px;color:var(--ink2);font-weight:500}
+.cc-when{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:10px}
+.vt{font-size:12.5px;color:var(--muted)}.vt.warn{color:var(--t);font-weight:600}
+.cc-bot{display:flex;justify-content:space-between;align-items:baseline;margin-top:14px}
+.cc-bot .val{font-size:20px;font-weight:700;letter-spacing:-.02em}
+.cc-bot .co{color:var(--blue700);font-weight:500;font-size:12.5px}
+.cc .bar{height:5px;border-radius:0;margin:16px -18px 0;background:#eef1f7}
+.cc .bar i{border-radius:0}
+.foot{display:flex;justify-content:center;padding:26px 0 0}
+.foot button{height:38px;padding:0 18px;border-radius:11px;border:1px solid var(--line);background:#fff;font-weight:600;cursor:pointer}
+.foot button:hover{border-color:var(--blue200);color:var(--blue700)}
+</style></head><body><div class="wrap">
+<header class="head"><div><h1 class="d">Clientes</h1><p class="sub">580 clientes na carteira, do vencimento mais próximo ao mais distante</p></div>
+<div class="ctl"><button class="fp" type="button">Responsável <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg></button><button class="fp" type="button">Plano <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg></button></div></header>
+<div class="chips" id="chips" role="group" aria-label="Situação do contrato"></div>
+<div class="grid" id="grid"></div>
+<div class="foot"><button type="button" id="more"></button></div></div>
+<div class="tag">Mockup B · Carteirinhas · dados de exemplo</div>
+<script src="2026-10-16-clientes-dados.js"></script>
+<script>
+const {clients,BASE,TOTAL,ORDER,STATUS,avatar,pill,brl,when}=CL;
+const $=id=>document.getElementById(id);
+const on=new Set();
+$('chips').innerHTML=`<button type="button" class="ch" data-all aria-pressed="true">Todos <b>${TOTAL}</b></button>`+ORDER.map(s=>`<button type="button" class="ch s-${s}" data-s="${s}" aria-pressed="false"><i></i>${STATUS[s]} <b>${BASE[s]}</b></button>`).join('');
+const card=c=>`<a class="cc s-${c.st}" href="#">
+  <div class="cc-top">${avatar(c,60)}<div class="cc-who"><b class="d">${c.name}</b><span class="num">${c.phone}</span></div></div>
+  <div class="cc-plan">${c.plan||'<span class="mut">Sem plano</span>'}</div>
+  <div class="cc-when">${pill(c.st)}<span class="vt${c.st==='a_vencer'?' warn':''}">${when(c)}</span></div>
+  <div class="cc-bot"><span class="val d num">${c.value==null?'<span class="mut">—</span>':brl(c.value)}</span><span class="co">@${c.co}</span></div>
+  ${c.pct==null?'<div style="height:16px"></div>':`<div class="bar"><i style="width:${Math.round(c.pct*100)}%"></i></div>`}</a>`;
+function render(){
+  document.querySelectorAll('.ch').forEach(b=>{const p=b.hasAttribute('data-all')?on.size===0:on.has(b.dataset.s);b.setAttribute('aria-pressed',p)});
+  const list=clients.filter(c=>!on.size||on.has(c.st));
+  const base=on.size?[...on].reduce((a,s)=>a+BASE[s],0):TOTAL;
+  $('grid').innerHTML=list.map(card).join('');
+  $('more').textContent=`Carregar mais (${list.length} de ${base})`;
+}
+document.addEventListener('click',e=>{
+  const b=e.target.closest('.ch');if(!b)return;
+  if(b.hasAttribute('data-all'))on.clear();else{const s=b.dataset.s;on.has(s)?on.delete(s):on.add(s)}
+  render();
+});
+render();
+</script></body></html>

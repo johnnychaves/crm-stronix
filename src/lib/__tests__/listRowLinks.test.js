@@ -82,7 +82,7 @@ describe('linhas das listas', () => {
     expect(html).toContain('Ana Lima');
     const tag = tagDoLink(html);
     expect(tag).toContain('grid grid-cols-1');
-    expect(tag).toContain('md:grid-cols-[1.8fr_1.2fr_0.9fr_0.9fr]');
+    expect(tag).toContain('md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_112px_minmax(0,1.5fr)_100px]');
     expect(tag).toContain('hover:bg-slate-50');
     expect(tag).toContain('focus-visible:ring-inset');
   });
