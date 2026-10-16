@@ -20,8 +20,31 @@ import {
   planReferralFunnelMerge,
   quickReferralForm,
   quickReferralIssue,
+  referralSourceOf,
   REFERRAL_SOURCE_NAME
 } from '../referrals.js';
+
+// A origem que liga o modo indicação no Novo lead é uma só do catálogo.
+describe('referralSourceOf', () => {
+  const nomes = (...n) => n.map((name, i) => ({ id: `s${i}`, name }));
+
+  it('prefere a origem de nome Indicação, sem acento nem caixa, mesmo depois de outras com "indica"', () => {
+    expect(referralSourceOf(nomes('Instagram', 'Indicação de empresa', 'Indicação'))).toBe('Indicação');
+    expect(referralSourceOf(nomes('Indicacao ', 'Indicação de empresa'))).toBe('Indicacao ');
+    expect(referralSourceOf(nomes('INDICAÇÃO'))).toBe('INDICAÇÃO');
+  });
+
+  it('sem a de nome exato, vale a primeira que casa com "indica", como o setup do funil', () => {
+    expect(referralSourceOf(nomes('Instagram', 'Indicação de aluno', 'Indicação de empresa'))).toBe('Indicação de aluno');
+  });
+
+  it('sem nenhuma que case, ou sem catálogo, não há origem de indicação', () => {
+    expect(referralSourceOf(nomes('Instagram', 'Passante'))).toBeNull();
+    expect(referralSourceOf([])).toBeNull();
+    expect(referralSourceOf(undefined)).toBeNull();
+    expect(referralSourceOf([{ id: 'x' }, null])).toBeNull();
+  });
+});
 
 describe('isReferralFunnel', () => {
   it('true só com systemKind referral — nome NÃO basta', () => {

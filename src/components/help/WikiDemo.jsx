@@ -123,14 +123,14 @@ function Body({ name }) {
         </Screen>
       );
 
-    case 'indicacao-switch':
+    case 'indicacao-origem':
       return (
         <Screen>
-          <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-neutral-800 px-2 py-1.5 mb-2">
-            <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-200">É uma indicação?</span>
-            <span className="w-7 h-4 rounded-full p-0.5 flex items-center" style={A('wdTrack')}>
-              <span className="size-3 rounded-full bg-white shadow" style={A('wdKnob')} />
-            </span>
+          <div className="text-[8px] font-bold uppercase tracking-wider text-slate-400 mb-1">Como chegou</div>
+          <div className="flex items-center gap-1 mb-2">
+            <span className="rounded-full border border-slate-200 dark:border-white/10 bg-white dark:bg-neutral-800 px-2 py-1 text-[9px] font-medium text-slate-600 dark:text-slate-300">Instagram</span>
+            <span className="rounded-full border border-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 dark:border-emerald-500/40 px-2 py-1 text-[9px] font-semibold text-emerald-800 dark:text-emerald-300">✓ Indicação</span>
+            <span className="rounded-full border border-slate-200 dark:border-white/10 bg-white dark:bg-neutral-800 px-2 py-1 text-[9px] font-medium text-slate-600 dark:text-slate-300">Passante</span>
           </div>
           <div style={A('wdPop')}>
             <div className="text-[8px] font-bold uppercase tracking-wider text-slate-400 mb-1">Quem indicou?</div>
