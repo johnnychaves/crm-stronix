@@ -60,9 +60,8 @@ api/                      Funções serverless (Vercel) com Firebase Admin SDK
   tenant-status.js        [super-admin] POST suspende/reativa + revoga tokens
   invite-create.js        [admin] cria convite (/tenants/{id}/invites)
   invite-accept.js        [público] aceita convite → cria conta + claim
-  admin-create-user.js    [admin] cadastra consultor com senha
-  admin-set-password.js   [admin] redefine senha de um usuário
-  admin-delete-user.js    [admin] remove usuário do tenant
+  admin-users.js          [admin] cria, exclui, troca senha, e-mail e papel da equipe
+  ...                     lista completa e fronteiras em docs/architecture.md
 scripts/                  Utilitários Admin (rodar fora do app)
   set-super-admin.js      Define claim superAdmin num usuário
   register-tenant.js      Registra um tenant legado na coleção `tenants`
@@ -152,4 +151,10 @@ sentinela de conversão/perda — não renomeie.
 - `npm run dev` — servidor de desenvolvimento (Vite)
 - `npm run build` — build de produção
 - `npm run lint` — ESLint
+- `npm test` — testes (Vitest)
+- `npm run verificar:sentry` — confere que chave e telefone não vão ao Sentry
 - `npm run preview` — preview do build
+
+Mais documentação: `PRODUCT.md` (produto), `AGENTS.md` (comandos e acordos de
+trabalho), `docs/architecture.md`, `docs/design.md`, `docs/onboarding.md`,
+`docs/quality.md` e `docs/setup.md`.

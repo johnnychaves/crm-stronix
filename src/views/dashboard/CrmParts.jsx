@@ -41,10 +41,10 @@ const HEADING_TAGS = Object.freeze({ 2: 'h2', 3: 'h3', 4: 'h4', 5: 'h5', 6: 'h6'
 export function CrmCard({ title, hint, action, className, headingLevel = 4, children }) {
   const Heading = HEADING_TAGS[headingLevel] || 'h4';
   return (
-    <section className={cn('flex flex-col rounded-2xl border border-border bg-card shadow-card', className)}>
+    <section className={cn('flex flex-col rounded-[18px] border border-border bg-card shadow-card', className)}>
       <header className={cn('flex items-center justify-between gap-3 border-b px-[18px] py-3.5', RULE)}>
         <div className="min-w-0">
-          <Heading className="m-0 text-[14px] font-semibold">{title}</Heading>
+          <Heading className="m-0 font-display text-[17px] font-bold tracking-[-0.01em]">{title}</Heading>
           {hint && <p className="num mt-0.5 text-[11.5px] text-muted-foreground">{hint}</p>}
         </div>
         {action}

@@ -115,7 +115,7 @@ export function fmtScreenDate(d, currentYear) {
 
 // O texto do comparado ao lado do número grande ("vs. Agosto 2026"). Com o mês
 // em andamento, o comparado é o mesmo começo do mês anterior, e o texto diz
-// quantos dias, como o painel CRM ("Pró-rata: mesmos 14 primeiros dias de
+// quantos dias, como o painel CRM ("comparado com os 14 primeiros dias de
 // agosto"): "vs. os 14 primeiros dias de Agosto 2026", ou "vs. o primeiro dia
 // de Agosto 2026" no dia 1. Os dias são os que já passaram do mês exibido,
 // contando o de hoje (a regra do painel: o dia da data de agora). Quando eles

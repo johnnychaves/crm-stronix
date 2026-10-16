@@ -1,7 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  metricsOf, crmDelta, bestChannelOf, buildCrmHighlights, seriesOf, loadedRunStart, newestRecordsOf, OTHERS_ID
-} from '../crm/metrics.js';
+import { metricsOf, crmDelta, bestChannelOf, seriesOf, loadedRunStart, newestRecordsOf, OTHERS_ID } from '../crm/metrics.js';
 import { comparisonCut } from '../operacional/month.js';
 import { NOW, D, USERS, FUNNELS, STATUSES, L, MV, A, a3, s5, makeCtx } from './fixtures/crmCtx.js';
 
@@ -246,40 +244,11 @@ describe('crmDelta', () => {
 describe('destaques', () => {
   const ctx = makeCtx();
   const cur = metricsOf(ctx, { monthKey: '2026-09' });
-  const cmp = metricsOf(ctx, { monthKey: '2026-08', cutEnd: comparisonCut('2026-09', '2026-08', NOW) });
 
   it('melhor canal só entre os que trouxeram ao menos 5 leads', () => {
     expect(bestChannelOf(cur)).toBeNull();
     expect(bestChannelOf({ channels: [{ name: 'Site', leads: 5, enrolled: 2 }, { name: 'Instagram', leads: 9, enrolled: 1 }] }))
       .toMatchObject({ name: 'Site', conv: 40 });
-  });
-
-  it('o canal só é comparado quando o mesmo canal também trouxe ao menos 5 leads no comparado', () => {
-    const month = (channels) => ({ hasSource: true, firstContact: null, channels });
-    const site = { name: 'Site', leads: 5, enrolled: 2 };
-    expect(buildCrmHighlights(month([site]), month([site]), { cmpName: 'agosto' })).toEqual([{
-      text: 'Site converteu 40%, a melhor taxa entre os canais',
-      delta: '= 0 p.p.',
-      tone: 'flat',
-      verdict: 'igual a agosto',
-      rank: 1
-    }]);
-    expect(buildCrmHighlights(month([site]), month([{ name: 'Site', leads: 1, enrolled: 1 }]), { cmpName: 'agosto' })).toEqual([]);
-  });
-
-  it('leads acima de 24 horas sem contato, com veredito e o pior primeiro no celular', () => {
-    expect(buildCrmHighlights(cur, cmp, { cmpName: 'agosto' })).toEqual([{
-      text: '3 dos 5 leads passaram de 24 horas sem primeiro contato',
-      delta: '▲ 50%',
-      tone: 'bad',
-      verdict: 'pior que agosto',
-      rank: 0
-    }]);
-  });
-
-  it('sem o comparado não há destaque', () => {
-    expect(buildCrmHighlights(cur, null, { cmpName: 'agosto' })).toEqual([]);
-    expect(buildCrmHighlights(cur, metricsOf(ctx, { monthKey: '2026-07' }), { cmpName: 'julho' })).toEqual([]);
   });
 });
 

@@ -1,117 +1,73 @@
-// Corpo da tela Gerencial, só apresentação (handoff do Gerencial, linhas 131 a
-// 502): as quatro seções, na ordem das quatro perguntas — vendi, tenho, posso
-// perder, quem trouxe. Recebe as métricas prontas de DashboardGerencialView e
-// não calcula nada; cada card deriva do próprio detalhe o que precisa mostrar.
-//
-// As seções usam CrmSection e DashedNote de CrmParts.jsx de propósito: o
-// handoff pede a MESMA gramática de seção das telas irmãs, título de 16px com a
-// pergunta ao lado sobre régua de 2px, e o cartão tracejado dos vazios.
+// Corpo da tela Gerencial, só apresentação (mockup A, "Placar"): o herói com a
+// venda do mês e a curva dele, a faixa dos quatro números, e abaixo as faixas
+// de venda (tipo, consultores, planos e origem) e a do que vence e do que sai.
+// Recebe as métricas prontas de DashboardGerencialView e não calcula nada.
 //
 // Props:
-//   sold     { mix, delta, ticket, discount, clawback }
-//   wallet   { items, notes }
+//   period   { monthName, running, day }
+//   curve    { days, cur, cutDay, prev, prevName }
+//   sold     { mix, delta, discount, clawback: { count, value } }
+//   wallet   { count, monthly, ticket, lockedCount }
 //   risk     { horizon, walletMonthly, lapsedCount }
 //   exits    { items }
-//   sellers  { rows, read }
-//   plans    { items, total, eyebrow, sub, footText } — count é dinheiro e
-//   sources  times é o número de vendas, que vira "11x" na legenda
+//   churn    { pct, exits, base, delta }
+//   sellers  { rows }
+//   plans    { items, total } — count é dinheiro e times é o número de vendas
+//   sources  { items, total }
 //   flags    { gymEmpty, monthNoSales }
-//   texts    { emptyMonth, emptyRanking }, cada um { title, text }
-import { Route, Tag } from 'lucide-react';
-import { cn } from '../../lib/utils.js';
-import { fmtNum } from '../../lib/format.js';
-import { BreakdownCard } from './DashPrimitives.jsx';
-import { CrmSection, DashedNote } from './CrmParts.jsx';
-import { SoldHeroCard } from './SoldHeroCard.jsx';
-import { WalletBand } from './WalletBand.jsx';
-import { ExpiryRunway } from './ExpiryRunway.jsx';
-import { ExitsCard } from './ExitsCard.jsx';
-import { SellerRankTable } from './SellerRankTable.jsx';
-import { GerencialEmpty, LapsedCard } from './GerencialParts.jsx';
-import { fmtMoneyShort } from './dashTokens.js';
+//   texts    { emptyMonth: { title, text } }
+import { GerencialTape, SoldHero } from './GerencialKpis.jsx';
+import { SalesTypeCard, RankCard } from './GerencialPies.jsx';
+import { SellersCard, ExpiryExitsCard } from './GerencialRows.jsx';
+import { GerencialEmpty } from './GerencialParts.jsx';
+import { HELP } from '../../lib/gerencial/texts.js';
 
-const WIDE_NARROW = 'grid grid-cols-1 gap-3.5 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]';
+const TWO = 'grid grid-cols-1 items-start gap-5 xl:grid-cols-2';
 
-// Planos e origem são o mesmo card de quebra do CRM, agora servindo dinheiro. A
-// linha do líder sai dos próprios itens: "11 vendas · 34% do vendido", com a
-// mesma conta de participação que o card já faz por dentro.
-function MoneyBreakdown({ icon, title, data }) {
-  const items = data?.items || [];
-  const total = data?.total || 0;
-  const leader = items[0];
-  const leaderSub = leader
-    ? `${fmtNum(leader.times)} ${leader.times === 1 ? 'venda' : 'vendas'} · ${total > 0 ? Math.round((leader.count / total) * 100) : 0}% do vendido`
-    : null;
-  return (
-    <BreakdownCard
-      icon={icon}
-      title={title}
-      sub={data?.sub}
-      eyebrow={data?.eyebrow}
-      items={items}
-      total={total}
-      footText={data?.footText}
-      format={fmtMoneyShort}
-      leaderSub={leaderSub}
-      emptyText="Nenhuma venda no mês."
-    />
-  );
-}
-
-export function GerencialDashboard({ sold, wallet, risk, exits, sellers, plans, sources, flags, texts, onGoToPipeline }) {
-  // Os dois vazios são diferentes (README §5). A academia sem contrato nenhum
-  // troca o CORPO INTEIRO por um painel só: nem cabeçalho de seção, nem card de
-  // zeros, nem tabela com zero linhas.
+export function GerencialDashboard({ period, curve, sold, wallet, risk, exits, churn, sellers, plans, sources, flags, texts, onGoToPipeline }) {
+  // A academia sem contrato nenhum troca o CORPO INTEIRO por um painel só: nem
+  // número zerado, nem tabela com zero linhas.
   if (flags?.gymEmpty) {
     return (
-      <div className="px-4 pb-8 pt-5 md:px-8">
+      <div className="px-4 pb-8 pt-2 md:px-8">
         <GerencialEmpty onGoToPipeline={onGoToPipeline} />
       </div>
     );
   }
 
-  // Mês sem venda esvazia só o que descreve a venda do mês. Carteira e risco
-  // seguem inteiros, porque olham contratos vigentes, não vendas do mês.
+  // Mês sem venda esvazia só o que descreve a venda do mês. A faixa de
+  // números e o que vence e sai seguem inteiros, porque olham contratos
+  // vigentes, não as vendas do mês.
   const noSales = Boolean(flags?.monthNoSales);
 
   return (
-    <div className="flex flex-col gap-[22px] px-4 pb-8 pt-5 md:px-8">
-      <CrmSection title="Quanto vendi" question="contratos fechados no mês">
-        {noSales ? (
-          <DashedNote className="rounded-2xl" title={texts?.emptyMonth?.title} text={texts?.emptyMonth?.text} />
-        ) : (
-          <SoldHeroCard {...sold} />
-        )}
-      </CrmSection>
-
-      <CrmSection title="A carteira hoje" question="o que os contratos vigentes geram por mês">
-        <WalletBand items={wallet?.items} notes={wallet?.notes} />
-      </CrmSection>
-
-      <CrmSection title="Quanto posso perder" question="o que sai da carteira se ninguém renovar">
-        {/* align-items start: cada card com a altura que tem, como no CRM. */}
-        <div className={cn(WIDE_NARROW, 'items-start')}>
-          <ExpiryRunway horizon={risk?.horizon} walletMonthly={risk?.walletMonthly} />
-          <div className="flex flex-col gap-3.5">
-            <LapsedCard count={risk?.lapsedCount} />
-            <ExitsCard items={exits?.items} />
-          </div>
+    <div className="flex flex-col gap-6 px-4 pb-8 pt-2 md:px-8">
+      {noSales ? (
+        <div className="rounded-[22px] border border-border bg-card px-7 py-10 text-center shadow-card">
+          <div className="font-display text-[19px] font-bold tracking-[-0.02em]">{texts?.emptyMonth?.title}</div>
+          {texts?.emptyMonth?.text && (
+            <p className="mx-auto mt-2 max-w-[560px] text-pretty text-[13.5px] leading-relaxed text-muted-foreground">{texts.emptyMonth.text}</p>
+          )}
         </div>
-      </CrmSection>
+      ) : (
+        <SoldHero sold={sold} period={period} curve={curve} />
+      )}
 
-      <CrmSection title="Quem traz receita" question="as vendas do mês por consultor, plano e origem">
-        {noSales ? (
-          <DashedNote className="rounded-2xl" title={texts?.emptyRanking?.title} text={texts?.emptyRanking?.text} />
-        ) : (
-          <div className="flex flex-col gap-3.5">
-            <SellerRankTable rows={sellers?.rows} read={sellers?.read} />
-            <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2">
-              <MoneyBreakdown icon={Tag} title="Planos mais vendidos" data={plans} />
-              <MoneyBreakdown icon={Route} title="Origem do lead que fechou" data={sources} />
-            </div>
-          </div>
-        )}
-      </CrmSection>
+      <GerencialTape wallet={wallet} risk={risk} churn={churn} />
+
+      {!noSales && <SalesTypeCard mix={sold?.mix} discount={sold?.discount} clawback={sold?.clawback} />}
+
+      <div className={TWO}>
+        {!noSales && <SellersCard rows={sellers?.rows} />}
+        <ExpiryExitsCard horizon={risk?.horizon} exits={exits?.items} />
+      </div>
+
+      {!noSales && (
+        <div className={TWO}>
+          <RankCard title="Planos" question="Valor vendido no mês, por plano." help={HELP.plans} items={plans?.items} total={plans?.total} />
+          <RankCard title="Origem das vendas" question="De onde veio o lead que fechou." help={HELP.sources} items={sources?.items} total={sources?.total} />
+        </div>
+      )}
     </div>
   );
 }
