@@ -19,6 +19,10 @@ export const RELATORIOS_RAIL_GROUPS = Object.freeze([
       Object.freeze({ id: 'parados', label: 'Leads parados' }),
     ]),
   }),
+  // Grupo que ainda não tem relatório: aparece na lista com "Em breve", sem
+  // link e sem submenu (decisão do Johnny, 16/10/2026). Quando os relatórios
+  // de clientes chegarem, o grupo ganha os itens e perde o `soon`.
+  Object.freeze({ label: 'Clientes', soon: true, items: Object.freeze([]) }),
 ]);
 
 export const RELATORIOS_RAIL_IDS = Object.freeze(

@@ -1,7 +1,7 @@
-import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, Printer, Users, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Download, Printer, Users, X } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { RELATORIOS_RAIL_GROUPS } from '../../lib/relatoriosRail.js';
-import { RELATORIOS_ICONS } from './relatoriosIcons.js';
+import { RELATORIOS_ICONS, RELATORIOS_TONES } from './relatoriosIcons.js';
 
 // Os desenhos da apresentação dos Relatórios, um por passo (mockup
 // 2026-10-15-relatorios-apresentacao.html, opção B, escolhida pelo Johnny em
@@ -12,22 +12,23 @@ import { RELATORIOS_ICONS } from './relatoriosIcons.js';
 
 const MINI = 'w-full rounded-[14px] border border-border bg-card text-left shadow-[0_12px_30px_-14px_rgba(14,26,64,.35)]';
 
-// Passo 1: a lista ao lado, com o grupo Leads aberto e a Conversão acesa.
+// Passo 1: a lista ao lado no desenho C, com o grupo Leads aberto, o ícone de
+// cada relatório na cor do que ele mede e a Conversão acesa.
 export function IntroRail() {
   const group = RELATORIOS_RAIL_GROUPS[0];
   return (
     <div className={cn(MINI, 'max-w-[280px] px-2.5 py-2')}>
-      <div className="flex items-center gap-2.5 px-1.5 pb-1.5 pt-0.5">
-        <span className="grid size-7 shrink-0 place-items-center rounded-[9px] bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
+      <div className="flex items-center gap-2.5 px-1.5 pb-1 pt-0.5">
+        <span className="grid size-7 shrink-0 place-items-center rounded-[9px] bg-brand-600 text-white">
           <Users className="size-3.5" />
         </span>
         <span className="min-w-0">
-          <span className="block text-[12.5px] font-bold">{group.label}</span>
+          <span className="block font-display text-[12.5px] font-bold">{group.label}</span>
           <span className="block text-[10.5px] text-muted-foreground">{group.items.length} relatórios</span>
         </span>
-        <ChevronUp className="ml-auto size-3.5 text-muted-foreground" />
+        <ChevronDown className="ml-auto size-3.5 text-muted-foreground" />
       </div>
-      <ul className="ml-[18px] flex flex-col gap-0.5 border-l-2 border-border pl-2">
+      <ul className="relative ml-5 flex flex-col gap-0.5 pl-2.5 before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full before:bg-border">
         {group.items.map((it) => {
           const Icon = RELATORIOS_ICONS[it.id];
           const on = it.id === 'conversao';
@@ -35,11 +36,14 @@ export function IntroRail() {
             <li
               key={it.id}
               className={cn(
-                'flex items-center gap-2 rounded-[10px] border px-[7px] py-[3px] text-[12px] font-semibold',
-                on ? 'border-border bg-card text-foreground shadow-card' : 'border-transparent text-muted-foreground',
+                'relative flex items-center gap-2 rounded-[10px] border py-[3px] pl-[3px] pr-2 text-[12px]',
+                // O traço azul em cima da linha: 11px é o pl-2.5 da lista mais a borda do item.
+                on
+                  ? 'border-border bg-card font-semibold text-foreground shadow-card before:absolute before:inset-y-1.5 before:-left-[11px] before:w-0.5 before:rounded-full before:bg-brand-600'
+                  : 'border-transparent font-medium text-muted-foreground',
               )}
             >
-              <span className={cn('grid size-[22px] shrink-0 place-items-center rounded-[7px]', on ? 'bg-brand-600 text-white' : 'bg-muted text-muted-foreground')}>
+              <span className={cn('grid size-[22px] shrink-0 place-items-center rounded-[7px]', RELATORIOS_TONES[it.id])}>
                 <Icon className="size-[13px]" />
               </span>
               {it.label}

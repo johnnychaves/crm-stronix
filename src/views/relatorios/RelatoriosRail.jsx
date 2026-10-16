@@ -12,7 +12,7 @@
 //
 // Abrir e fechar o grupo é estado da lista, não filtro: não vai ao endereço.
 import { useId, useState } from 'react';
-import { ChevronDown, Users } from 'lucide-react';
+import { ChevronDown, GraduationCap, Users } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select.jsx';
 import { AppLink } from '../../components/nav/AppLink.jsx';
@@ -114,12 +114,28 @@ export function RailGroup({ group, section, hrefOf, onSection, periodLabel = nul
   );
 }
 
+// Grupo que ainda não tem relatório (soon, em relatoriosRail.js): o nome e o
+// selo "Em breve", sem botão e sem link, para ninguém clicar e cair numa tela
+// vazia. O ícone de Clientes é o mesmo do item Clientes do menu.
+function SoonGroup({ group }) {
+  return (
+    <div className="flex items-center gap-[11px] rounded-[14px] px-[11px] py-2.5">
+      <span aria-hidden="true" className="grid size-[34px] shrink-0 place-items-center rounded-[10px] bg-muted text-muted-foreground">
+        <GraduationCap size={17} strokeWidth={2} />
+      </span>
+      <span className="min-w-0 flex-1 truncate font-display text-sm font-bold leading-tight text-muted-foreground">{group.label}</span>
+      <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[10.5px] font-semibold text-muted-foreground">Em breve</span>
+    </div>
+  );
+}
+
 export function RelatoriosRail({ section, onSection, hrefOf, periodLabel = null }) {
   return (
     <>
       <nav aria-label="Relatórios" className="hidden flex-col gap-1 lg:flex">
-        {RELATORIOS_RAIL_GROUPS.map((g) => (
-          <RailGroup key={g.label} group={g} section={section} hrefOf={hrefOf} onSection={onSection} periodLabel={periodLabel} />
+        {RELATORIOS_RAIL_GROUPS.map((g) => (g.soon
+          ? <SoonGroup key={g.label} group={g} />
+          : <RailGroup key={g.label} group={g} section={section} hrefOf={hrefOf} onSection={onSection} periodLabel={periodLabel} />
         ))}
       </nav>
       <div className="lg:hidden">
@@ -129,9 +145,11 @@ export function RelatoriosRail({ section, onSection, hrefOf, periodLabel = null 
             <SelectValue />
           </SelectTrigger>
           <SelectContent position="popper" className="border-border">
-            {RELATORIOS_RAIL_GROUPS.flatMap((g) => g.items.map((it) => (
-              <SelectItem key={it.id} value={it.id}>{`${g.label} · ${it.label}`}</SelectItem>
-            )))}
+            {RELATORIOS_RAIL_GROUPS.flatMap((g) => (g.soon
+              ? [<SelectItem key={g.label} value={`em-breve-${g.label}`} disabled>{`${g.label} · Em breve`}</SelectItem>]
+              : g.items.map((it) => (
+                <SelectItem key={it.id} value={it.id}>{`${g.label} · ${it.label}`}</SelectItem>
+              ))))}
           </SelectContent>
         </Select>
       </div>

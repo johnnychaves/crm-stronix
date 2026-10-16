@@ -87,7 +87,10 @@ describe('lista ao lado', () => {
     expect(out.match(/aria-current="page"/g)).toHaveLength(1);
     expect(out.indexOf('aria-current="page"')).toBeGreaterThan(out.indexOf('Entrada de leads'));
     // Sem número nos itens (decisão do Johnny, 15/10/2026).
-    expect(nav).not.toMatch(/class="num/);
+    expect(nav).not.toMatch(/class="num\s/);
+    // Clientes vem depois, em breve: com o selo, sem link e sem botão de abrir.
+    expect(nav).toMatch(/>Clientes<\/span><span[^>]*>Em breve<\/span>/);
+    expect(nav.match(/aria-expanded=/g)).toHaveLength(1);
     expect(nav).not.toContain('sem base');
     expect(out).toContain('aria-label="Relatório"');
   });
