@@ -9,7 +9,7 @@
 // quem serve a função.
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SRC = fileURLToPath(new URL('../..', import.meta.url));
@@ -33,7 +33,8 @@ const PASTAS = ['views', 'components', 'modals', 'hooks', 'contexts'];
 function usamOpenProfile(pasta) {
   return sourceFiles(join(SRC, pasta))
     .filter((file) => readFileSync(file, 'utf8').includes('openProfile'))
-    .map((file) => relative(SRC, file))
+    // Barra normal, para a lista bater também no Windows.
+    .map((file) => relative(SRC, file).split(sep).join('/'))
     .sort();
 }
 
