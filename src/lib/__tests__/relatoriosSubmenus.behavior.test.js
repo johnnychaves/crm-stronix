@@ -109,12 +109,8 @@ const tecla = async (el, key) => {
 const botao = (texto) => [...container.querySelectorAll('button')].find((b) => b.textContent.includes(texto));
 const recorte = (nome) => container.querySelector(`button [title^="${nome}"]`)?.closest('button');
 const gatilho = (nome) => container.querySelector(`button[aria-label="${nome}"]`);
-// Os submenus são links dentro do grupo Leads, que abre fechado: quem clica abre o grupo antes, como na tela.
+// Os submenus são links dentro do grupo Leads, que já entra aberto.
 const submenu = (texto) => [...container.querySelectorAll('nav[aria-label="Relatórios"] a')].find((a) => a.textContent.includes(texto));
-const abrirGrupo = async () => {
-  const fechado = container.querySelector('nav[aria-label="Relatórios"] button[aria-expanded="false"]');
-  if (fechado) await act(async () => { fechado.click(); });
-};
 const radio = (nome) => container.querySelector(`[role="radio"][aria-label="${nome}"]`);
 const sonda = () => container.querySelector('output[data-sonda]').textContent;
 const linhas = () => [...container.querySelectorAll('tbody tr')];
@@ -395,6 +391,8 @@ describe('números da lista ao lado', () => {
     await montar('/acad/relatorios/parados', { section: 'parados' });
     expect(numeroDe('Leads parados')).toBe(heroi());
     for (const nome of ['Entrada de leads', 'Conversão', 'Visitas e aulas', 'Perdas']) expect(numeroDe(nome), nome).toBeNull();
+    // Sem período, o resumo do grupo fica só na conta.
+    expect(container.querySelector('nav[aria-label="Relatórios"] button[aria-expanded] span span:last-child').textContent).toBe('5 relatórios');
   });
 });
 
@@ -441,7 +439,6 @@ describe('Leads parados', () => {
     expect(sonda()).toBe('?dias=15');
     expect(document.activeElement).toBe(radio('15 dias'));
     await clicar(radio('30 dias'));
-    await abrirGrupo();
     await clicar(submenu('Entrada de leads'));
     expect(onSection).toHaveBeenCalledWith('entrada', '?dias=30');
   });

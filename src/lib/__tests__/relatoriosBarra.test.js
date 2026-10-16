@@ -71,16 +71,17 @@ describe('barra dos Relatórios', () => {
 describe('lista ao lado', () => {
   const hrefOf = (id) => `/acad/relatorios/${id}?mes=2026-09`;
   const numbers = { entrada: { text: '42' }, conversao: { none: true }, parados: { text: '3' } };
-  const render = (section) => renderToString(createElement(MemoryRouter, null,
-    createElement(RelatoriosRail, { section, onSection: noop, hrefOf, numbers })));
+  const render = (section, periodLabel) => renderToString(createElement(MemoryRouter, null,
+    createElement(RelatoriosRail, { section, onSection: noop, hrefOf, numbers, periodLabel })));
 
-  it('o grupo Leads abre fechado, diz o relatório aberto, e os itens são links com o número', () => {
-    const out = render('conversao');
+  it('o grupo Leads entra aberto, diz o período dos números, e os itens são links com o número', () => {
+    const out = render('conversao', 'setembro de 2026');
     expect(out).toContain('>Leads</span>');
-    expect(out).toContain('Aberto: Conversão');
-    expect(out).toContain('aria-expanded="false"');
-    // Fechado, o grupo sai da ordem do Tab e da leitura.
-    expect(out).toMatch(/<div inert=""/);
+    expect(out).toContain('5 relatórios, setembro de 2026');
+    expect(out).toContain('aria-expanded="true"');
+    expect(out).not.toMatch(/\binert=""/);
+    // Leads parados não tem período: o resumo fica só na conta.
+    expect(render('parados', null)).toContain('>5 relatórios</span>');
     const nav = /<nav\b[\s\S]*?<\/nav>/.exec(out)[0];
     expect(nav.match(/<a\b/g)).toHaveLength(5);
     expect(nav).toContain('href="/acad/relatorios/entrada?mes=2026-09"');

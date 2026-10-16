@@ -113,31 +113,35 @@ describe('menu de consultores', () => {
 
 describe('lista ao lado', () => {
   const hrefOf = (id) => `/acad/relatorios/${id}?mes=2026-09`;
-  const lista = (section, onSection, numbers = null) => h(MemoryRouter, null, h(RelatoriosRail, { section, onSection, hrefOf, numbers }));
+  const lista = (section, onSection, numbers = null, periodLabel = null) => h(MemoryRouter, null, h(RelatoriosRail, { section, onSection, hrefOf, numbers, periodLabel }));
   const cabecalho = () => container.querySelector('nav button[aria-expanded]');
   const item = (texto) => [...container.querySelectorAll('nav a')].find((a) => a.textContent.includes(texto));
 
-  it('o grupo abre fechado, fora do Tab, e o cabeçalho abre e fecha dizendo o que há dentro', async () => {
-    await montar(lista('conversao', noop));
+  it('o grupo entra aberto, e o cabeçalho fecha e abre dizendo o que há dentro', async () => {
+    await montar(lista('conversao', noop, null, 'setembro de 2026'));
     const painel = document.getElementById(cabecalho().getAttribute('aria-controls'));
+    // No SVG o className não é texto: a classe sai do atributo.
+    const seta = () => cabecalho().lastElementChild.getAttribute('class');
+    expect(cabecalho().getAttribute('aria-expanded')).toBe('true');
+    expect(cabecalho().textContent).toContain('5 relatórios, setembro de 2026');
+    expect(painel.querySelector('[inert]')).toBeNull();
+    expect(classes(painel)).toContain('grid-rows-[1fr]');
+    expect(classes(painel)).toContain('motion-reduce:transition-none');
+    expect(seta()).not.toContain('-rotate-90');
+    // Fechado, o grupo sai da ordem do Tab e da leitura, e a seta vira para o lado.
+    await clicar(cabecalho());
     expect(cabecalho().getAttribute('aria-expanded')).toBe('false');
     expect(cabecalho().textContent).toContain('Aberto: Conversão');
     expect(painel.querySelector('[inert]')).not.toBeNull();
     expect(classes(painel)).toContain('grid-rows-[0fr]');
-    expect(classes(painel)).toContain('motion-reduce:transition-none');
+    expect(seta()).toContain('-rotate-90');
     await clicar(cabecalho());
     expect(cabecalho().getAttribute('aria-expanded')).toBe('true');
-    expect(cabecalho().textContent).toContain('5 relatórios');
-    expect(painel.querySelector('[inert]')).toBeNull();
-    expect(classes(painel)).toContain('grid-rows-[1fr]');
-    await clicar(cabecalho());
-    expect(cabecalho().getAttribute('aria-expanded')).toBe('false');
   });
 
   it('um submenu chama onSection com o id dele, sem navegar pelo link, e o aceso é o que a tela devolve', async () => {
     const onSection = vi.fn();
     await montar(lista('conversao', onSection));
-    await clicar(cabecalho());
     expect(item('Conversão').getAttribute('aria-current')).toBe('page');
     expect(item('Entrada de leads').getAttribute('href')).toBe('/acad/relatorios/entrada?mes=2026-09');
     await clicar(item('Entrada de leads'));
@@ -153,7 +157,6 @@ describe('lista ao lado', () => {
   it('Ctrl+clique fica com o navegador, para abrir o relatório em outra aba', async () => {
     const onSection = vi.fn();
     await montar(lista('conversao', onSection));
-    await clicar(cabecalho());
     // Depois do React, o teste segura a navegação que o jsdom não sabe fazer e anota se alguém já a tinha segurado.
     let seguradoPeloApp = null;
     const segurar = (e) => { seguradoPeloApp = e.defaultPrevented; e.preventDefault(); };
@@ -164,15 +167,26 @@ describe('lista ao lado', () => {
     expect(onSection).not.toHaveBeenCalled();
   });
 
-  it('cada item mostra o número do relatório, aceso no submenu aberto', async () => {
-    await montar(lista('entrada', noop, { entrada: { text: '42' }, conversao: { none: true } }));
+  it('cada item mostra o número do relatório na cor do que ele mede, e o aceso tem o traço na linha', async () => {
+    await montar(lista('entrada', noop, { entrada: { text: '42' }, conversao: { none: true }, perdas: { text: '7' }, parados: { text: '3' } }));
     const numero = (texto) => item(texto).lastElementChild;
+    const icone = (texto) => item(texto).firstElementChild;
     expect(numero('Entrada de leads').textContent).toBe('42');
     expect(classes(numero('Entrada de leads'))).toContain('font-display');
-    expect(numero('Entrada de leads').className).toContain('text-brand-700');
+    expect(classes(numero('Entrada de leads'))).toContain('text-foreground');
+    expect(classes(icone('Entrada de leads'))).toEqual(expect.arrayContaining(['bg-brand-50', 'text-brand-700']));
     expect(numero('Conversão').textContent).toBe('—sem base');
     expect(numero('Conversão').querySelector('[aria-hidden="true"]').textContent).toBe('—');
-    expect(numero('Conversão').className).toContain('text-muted-foreground');
+    expect(classes(numero('Conversão'))).toEqual(expect.arrayContaining(['text-emerald-700', 'dark:text-emerald-300']));
+    expect(classes(icone('Visitas e aulas'))).toContain('bg-emerald-50');
+    expect(classes(numero('Perdas'))).toContain('text-rose-700');
+    expect(classes(icone('Perdas'))).toContain('bg-rose-50');
+    expect(classes(numero('Leads parados'))).toContain('text-amber-700');
+    expect(classes(icone('Leads parados'))).toContain('bg-amber-50');
+    // Só o aceso tem o traço azul em cima da linha que liga os itens ao grupo.
+    expect(classes(item('Entrada de leads'))).toContain('before:bg-brand-600');
+    expect(classes(item('Conversão'))).not.toContain('before:bg-brand-600');
+    await remontar(lista('entrada', noop, { entrada: { text: '42' } }));
     // Sem número (os meses ainda não chegaram), o item fica só com o nome.
     expect(item('Perdas').textContent).toBe('Perdas');
   });

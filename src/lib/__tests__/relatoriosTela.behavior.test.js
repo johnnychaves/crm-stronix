@@ -163,12 +163,8 @@ const clicarComFoco = async (el) => { el.focus(); await clicar(el); };
 const botao = (texto) => [...container.querySelectorAll('button')].find((b) => b.textContent.includes(texto));
 // A linha de recorte tem o nome no title, e o canal da origem entra no texto do botão.
 const recorte = (nome) => container.querySelector(`button [title^="${nome}"]`)?.closest('button');
-// Os submenus são links dentro do grupo Leads, que abre fechado: quem clica abre o grupo antes, como na tela.
+// Os submenus são links dentro do grupo Leads, que já entra aberto.
 const submenu = (texto) => [...container.querySelectorAll('nav[aria-label="Relatórios"] a')].find((a) => a.textContent.includes(texto));
-const abrirGrupo = async () => {
-  const fechado = container.querySelector('nav[aria-label="Relatórios"] button[aria-expanded="false"]');
-  if (fechado) await act(async () => { fechado.click(); });
-};
 const gatilho = (nome) => container.querySelector(`button[aria-label="${nome}"]`);
 const balao = () => document.querySelector('[data-slot="popover-content"]');
 const opcaoDoPeriodo = (texto) => [...balao().querySelectorAll('button')].find((b) => b.textContent.trim() === texto);
@@ -296,7 +292,8 @@ describe('lista ao lado', () => {
   it('"Conversão" chama onSection com o período e os filtros e sem o recorte da lista', async () => {
     const onSection = vi.fn();
     await montar('/acad/relatorios?periodo=semana-passada&resp=diego&origem=Instagram&funil=ven&recorte=origem%3AInstagram', { onSection });
-    await abrirGrupo();
+    // Fora do modo mês, o resumo do grupo leva o texto do período em minúsculas.
+    expect(container.querySelector('nav[aria-label="Relatórios"] button[aria-expanded]').textContent).toContain('5 relatórios, semana passada · 7 a 13 set');
     // O link leva o mesmo endereço, para o Ctrl+clique abrir o submenu em outra aba.
     expect(submenu('Conversão').getAttribute('href')).toBe('/acad/relatorios/conversao?periodo=semana-passada&resp=diego&origem=Instagram&funil=ven');
     await clicar(submenu('Conversão'));
@@ -314,7 +311,6 @@ describe('lista ao lado', () => {
     expect(fichas()).toEqual(['s4']);
     expect(limpar()).not.toBeNull();
 
-    await abrirGrupo();
     await clicar(submenu('Entrada de leads'));
     expect(onSection).not.toHaveBeenCalled();
     expect(sonda()).toBe('?resp=diego&recorte=origem%3AInstagram');
@@ -337,6 +333,9 @@ describe('lista ao lado', () => {
     expect(aside.textContent).not.toContain('Os números do período');
     expect(container.querySelector('h1')).toBeNull();
     expect(container.querySelector('h2').textContent).toBe('Entrada de leads');
+    // O resumo do grupo diz o período dos números, no meio da frase e sem o "em andamento", que a barra já diz.
+    expect(aside.querySelector('button[aria-expanded="true"]').textContent).toContain('5 relatórios, setembro de 2026');
+    expect(aside.textContent).not.toContain('em andamento');
     // Fixa a 24px do alto da área que rola, como no handoff; o top-20 a deixava 80px abaixo da barra.
     expect(aside.className).toContain('lg:sticky');
     expect(aside.className).toContain('lg:top-6');

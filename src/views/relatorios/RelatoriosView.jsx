@@ -194,6 +194,10 @@ export function RelatoriosView({
     [ctx, resp, funnelId, origem, dias]
   );
   const railNumbers = useMemo(() => ({ ...periodRail, [SNAPSHOT]: paradosRail }), [periodRail, paradosRail]);
+  // O período dos números, no meio da frase da lista ("5 relatórios, outubro de
+  // 2026"): o mês sem o "em andamento", que a barra já diz. Leads parados não tem período.
+  const railPeriodLabel = snapshot ? null
+    : period.kind === 'mes' ? monthText(period.monthKey, { capitalized: false }) : period.label.toLowerCase();
   const onCut = (code) => setParams({ recorte: code });
   const onPeriod = (kind) => setParams(kind === 'mes'
     ? { periodo: null, de: null, ate: null, monthKey: currentKey }
@@ -258,7 +262,7 @@ export function RelatoriosView({
     <div className="animate-fade-in flex flex-col gap-6 font-sans lg:grid lg:grid-cols-[248px_minmax(0,1fr)] lg:items-start lg:gap-7">
       {/* A lista de relatórios sem título: o título da tela é o do cabeçalho do App. */}
       <aside className="lg:sticky lg:top-6">
-        <RelatoriosRail section={secao} onSection={goSection} hrefOf={hrefOf} numbers={railNumbers} />
+        <RelatoriosRail section={secao} onSection={goSection} hrefOf={hrefOf} numbers={railNumbers} periodLabel={railPeriodLabel} />
       </aside>
       <div className="min-w-0 flex-1">
         <RelatoriosToolbar

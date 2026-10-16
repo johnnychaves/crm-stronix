@@ -1,8 +1,10 @@
-// Lista ao lado dos Relatórios (spec 2026-10-09, "A lista ao lado", e o
-// handoff em docs/superpowers/specs/handoff-relatorios/, §3). No computador,
-// cada grupo é recolhível (RailGroup) e abre fechado, com o relatório aberto
-// escrito embaixo do título; cada item mostra o nome e o número principal do
-// relatório, com os filtros da barra. Abaixo de lg vira um seletor no topo.
+// Lista ao lado dos Relatórios (spec 2026-10-09, "A lista ao lado", e o desenho
+// C do mockup docs/superpowers/specs/mockups/2026-10-15-relatorios-menu-lateral.html,
+// escolhido pelo Johnny em 15/10/2026). No computador, cada grupo é recolhível
+// (RailGroup) e já entra aberto; fechado, diz embaixo do título o relatório
+// aberto. Cada item mostra o ícone na cor do que o relatório mede, o nome e o
+// número principal do relatório, com os filtros da barra. Abaixo de lg vira um
+// seletor no topo.
 //
 // Cada item é um link de verdade (AppLink), então Ctrl+clique e o botão do meio
 // abrem o relatório em outra aba. O clique simples não navega pelo link: ele
@@ -26,12 +28,24 @@ const ICONS = Object.freeze({
   parados: CirclePause,
 });
 
+// A cor do que cada relatório mede: o fundo do ícone e, no texto, o par 700 no
+// claro e 300 no escuro, como o GREEN_TEXT. A Entrada só conta gente, e o
+// número dela fica na cor do texto.
+const GREEN = { chip: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300', num: 'text-emerald-700 dark:text-emerald-300' };
+const TONES = Object.freeze({
+  entrada: { chip: 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300', num: 'text-foreground' },
+  conversao: GREEN,
+  'visitas-e-aulas': GREEN,
+  perdas: { chip: 'bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300', num: 'text-rose-700 dark:text-rose-300' },
+  parados: { chip: 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300', num: 'text-amber-700 dark:text-amber-300' },
+});
+
 // O número do item. Taxa sem base aparece como travessão, e o leitor de tela
 // ouve "sem base".
-function RailNumber({ value, active }) {
+function RailNumber({ value, tone }) {
   if (!value) return null;
   return (
-    <span className={cn('num shrink-0 font-display text-[13px] font-bold', active ? 'text-brand-700 dark:text-brand-300' : 'text-muted-foreground')}>
+    <span className={cn('num shrink-0 font-display text-[13.5px] font-bold leading-none', tone)}>
       {value.none ? <><span aria-hidden="true">—</span><span className="sr-only">sem base</span></> : value.text}
     </span>
   );
@@ -39,6 +53,7 @@ function RailNumber({ value, active }) {
 
 function RailItem({ item, active, href, number, onSection }) {
   const Icon = ICONS[item.id];
+  const tone = TONES[item.id];
   return (
     <AppLink
       to={href}
@@ -46,41 +61,39 @@ function RailItem({ item, active, href, number, onSection }) {
       // O clique simples troca de submenu pela tela (replace); o resto fica com o navegador.
       onNavigate={(e) => { e.preventDefault(); onSection(item.id); }}
       className={cn(
-        'flex w-full items-center gap-[11px] rounded-[14px] border px-[11px] py-2.5 text-left',
+        'relative flex w-full items-center gap-2.5 rounded-xl border py-[7px] pl-[7px] pr-2.5 text-left',
         'transition-[border-color,background-color,box-shadow] duration-150 motion-reduce:transition-none',
         FOCUS_RING,
         active
-          ? 'border-border bg-card shadow-card hover:border-brand-200 dark:hover:border-brand-500/40'
-          : 'border-transparent hover:border-brand-200 hover:bg-card/60 dark:hover:border-brand-500/40'
+          // O before é o traço azul em cima da linha que liga os itens ao grupo: 13px é o pl-3 da lista mais a borda do item.
+          ? 'border-border bg-card shadow-[0_1px_0_rgba(15,23,42,.04),0_10px_24px_-12px_rgba(15,23,42,.22)] before:absolute before:inset-y-[9px] before:-left-[13px] before:w-0.5 before:rounded-full before:bg-brand-600 dark:shadow-[0_14px_30px_-14px_rgba(0,0,0,.7)]'
+          : 'border-transparent hover:bg-muted'
       )}
     >
-      <span
-        aria-hidden="true"
-        className={cn(
-          'grid size-[34px] shrink-0 place-items-center rounded-[10px] transition-colors duration-150 motion-reduce:transition-none',
-          active ? 'bg-brand-600 text-white' : 'bg-muted text-muted-foreground'
-        )}
-      >
-        <Icon size={16} strokeWidth={2} />
+      <span aria-hidden="true" className={cn('grid size-[30px] shrink-0 place-items-center rounded-[9px]', tone.chip)}>
+        <Icon size={17} strokeWidth={2} />
       </span>
-      <span className={cn('min-w-0 flex-1 truncate text-[13.5px] font-semibold', active ? 'text-foreground' : 'text-slate-700 dark:text-slate-300')}>
+      <span className={cn('min-w-0 flex-1 truncate text-[13px]', active ? 'font-semibold text-foreground' : 'font-medium text-slate-700 dark:text-slate-300')}>
         {item.label}
       </span>
-      <RailNumber value={number} active={active} />
+      <RailNumber value={number} tone={tone.num} />
     </AppLink>
   );
 }
 
-// O grupo recolhível. Fechado, o conteúdo encolhe para 0fr e some (opacity), e
-// recebe inert, para sair da ordem do Tab e da leitura. As durações caem para
-// zero com prefers-reduced-motion.
-export function RailGroup({ group, section, hrefOf, numbers, onSection }) {
-  const [open, setOpen] = useState(false);
+// O grupo recolhível, aberto ao entrar. Fechado, o conteúdo encolhe para 0fr e
+// some (opacity), e recebe inert, para sair da ordem do Tab e da leitura. As
+// durações caem para zero com prefers-reduced-motion. Aberto, o resumo diz o
+// período dos números (periodLabel, já em minúsculas); Leads parados não tem
+// período, e a tela passa null.
+export function RailGroup({ group, section, hrefOf, numbers, onSection, periodLabel = null }) {
+  const [open, setOpen] = useState(true);
   const panelId = useId();
   const current = group.items.find((it) => it.id === section);
-  const summary = open || !current ? `${group.items.length} relatórios` : `Aberto: ${current.label}`;
+  const count = `${group.items.length} relatórios`;
+  const summary = open || !current ? (periodLabel ? `${count}, ${periodLabel}` : count) : `Aberto: ${current.label}`;
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col">
       <button
         type="button"
         aria-expanded={open}
@@ -91,18 +104,18 @@ export function RailGroup({ group, section, hrefOf, numbers, onSection }) {
           FOCUS_RING
         )}
       >
-        <span aria-hidden="true" className="grid size-[34px] shrink-0 place-items-center rounded-[10px] bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
-          <Users size={16} strokeWidth={2} />
+        <span aria-hidden="true" className="grid size-[34px] shrink-0 place-items-center rounded-[10px] bg-brand-600 text-white shadow-[0_6px_14px_-6px_rgba(43,89,255,.7)]">
+          <Users size={17} strokeWidth={2} />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-[13.5px] font-bold text-foreground">{group.label}</span>
-          <span className="mt-px block truncate text-[11.5px] text-muted-foreground">{summary}</span>
+          <span className="block font-display text-sm font-bold leading-tight text-foreground">{group.label}</span>
+          <span className="mt-0.5 block text-[11.5px] text-muted-foreground">{summary}</span>
         </span>
         <ChevronDown
           size={15}
           strokeWidth={2.2}
           aria-hidden="true"
-          className={cn('shrink-0 text-muted-foreground transition-transform duration-150 motion-reduce:transition-none', open && 'rotate-180')}
+          className={cn('shrink-0 text-muted-foreground transition-transform duration-[280ms] motion-reduce:transition-none', !open && '-rotate-90')}
         />
       </button>
       <div
@@ -113,8 +126,11 @@ export function RailGroup({ group, section, hrefOf, numbers, onSection }) {
         )}
       >
         <div className="min-h-0 overflow-hidden">
-          {/* O pr e o pb deixam à vista o anel do foco e a sombra do item aceso, que o overflow cortaria. */}
-          <div inert={!open} className="mb-0.5 ml-4 mt-1 flex flex-col gap-1 border-l-2 border-border pb-[3px] pl-2.5 pr-[3px]">
+          {/* O before é a linha que liga os itens ao grupo. O pr e o pb deixam à vista o anel do foco, que o overflow cortaria. */}
+          <div
+            inert={!open}
+            className="relative mb-0.5 ml-[27px] mt-1.5 flex flex-col gap-[3px] pb-[3px] pl-3 pr-[3px] pt-0.5 before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-border"
+          >
             {group.items.map((it) => (
               <RailItem
                 key={it.id}
@@ -132,12 +148,12 @@ export function RailGroup({ group, section, hrefOf, numbers, onSection }) {
   );
 }
 
-export function RelatoriosRail({ section, onSection, hrefOf, numbers }) {
+export function RelatoriosRail({ section, onSection, hrefOf, numbers, periodLabel = null }) {
   return (
     <>
       <nav aria-label="Relatórios" className="hidden flex-col gap-1 lg:flex">
         {RELATORIOS_RAIL_GROUPS.map((g) => (
-          <RailGroup key={g.label} group={g} section={section} hrefOf={hrefOf} numbers={numbers} onSection={onSection} />
+          <RailGroup key={g.label} group={g} section={section} hrefOf={hrefOf} numbers={numbers} onSection={onSection} periodLabel={periodLabel} />
         ))}
       </nav>
       <div className="lg:hidden">
