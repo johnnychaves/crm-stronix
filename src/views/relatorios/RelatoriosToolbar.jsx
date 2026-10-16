@@ -371,7 +371,7 @@ export function RelatoriosToolbar(props) {
   // No computador os controles ficam a 8px um do outro (gap-2) e quebram linha
   // quando não cabem (flex-wrap).
   return (
-    <div className="sticky -top-4 z-30 -mx-4 mb-[22px] flex items-center gap-2.5 border-b border-border bg-paper-50 px-4 pb-3.5 pt-2.5 dark:bg-neutral-950 md:-top-8 md:-mx-2 md:px-2">
+    <div className="sticky -top-4 z-30 -mx-4 mb-[22px] flex items-center gap-2.5 border-b border-border bg-page px-4 pb-3.5 pt-2.5 md:-top-8 md:-mx-2 md:px-2">
       <div className="hidden flex-wrap items-center gap-2 md:flex">{controls(false)}</div>
       <Popover>
         <PopoverTrigger asChild>
