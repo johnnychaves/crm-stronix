@@ -1,0 +1,192 @@
+// O que os submenus dos Relatórios de Leads dividem (spec 2026-10-09): o
+// recorte da barra, os leads da janela, os nomes de consultor, funil e
+// origem, a contagem dos recortes, o filtro da lista, as colunas de contato da
+// planilha, as datas, o aviso dos agendamentos e o nome do arquivo. Puro.
+
+import { makeScope, OTHERS_ID, APPTS_COMPLETE_MONTH, STAGE_TRACKING_SINCE } from '../../crm/scope.js';
+import { newLeadsOf } from '../../crm/cohort.js';
+import { newestRecordsOf } from '../../crm/metrics.js';
+import { getDefaultFunnel } from '../../funnels.js';
+import { contactLabel, contactOf } from '../../guardian.js';
+import { dayKeyOf, monthKeyOf, monthText } from '../../operacional/month.js';
+
+// Recorte da barra: consultores (lista; vazia é a equipe toda, com quem saiu
+// da equipe e os leads sem dono), funil (null é todos os funis de lead) e
+// origem (o nome no catálogo, sem os espaços das pontas; null é todas). O
+// funnelOk daqui já aplica a origem: quem passar ownerOk e funnelOk ao
+// pipelineNowOf, como o painel faz, leva o recorte inteiro, e os dois juntos
+// dão sempre o mesmo que o inScope.
+export function reportScope({ users, funnels, userIds = [], funnelId = null, origem = null }) {
+  const scope = makeScope({ users, funnels, userIds, funnelId });
+  const wanted = String(origem || '').trim();
+  const sourceOk = (lead) => !wanted || String(lead?.source || '').trim() === wanted;
+  const funnelOk = (lead) => scope.funnelOk(lead) && sourceOk(lead);
+  return { ...scope, sourceOk, funnelOk, inScope: (lead) => scope.ownerOk(lead) && funnelOk(lead) };
+}
+
+// Os leads de um balde de todos os meses carregados (leadsCreated, converted ou
+// lost), sem repetir id, com a versão mais nova de cada lead (leadsById), como
+// o painel faz com o mês dele.
+export const freshLeadsOf = (ctx, bucket) => newestRecordsOf(ctx.months, bucket).map((l) => ctx.leadsById?.get(l.id) || l);
+
+// Os leads cadastrados na janela [start, end), na regra do painel (newLeadsOf:
+// sem importados e sem data de cadastro ausente).
+export function newLeadsIn(ctx, scope, { start, end }) {
+  return newLeadsOf(freshLeadsOf(ctx, 'leadsCreated'), { start, end, inScope: scope.inScope });
+}
+
+// A linha de quem saiu da equipe e dos leads sem dono tem o nome dos painéis
+// (Outros), com a explicação em letra menor ao lado. O texto inteiro não cabe
+// no nome da linha, que corta, mas o responsável de cada lead continua com o
+// texto explícito, na lista e na planilha (ownerLabel).
+export const OTHERS_NAME = 'Outros';
+export const OTHERS_NOTE = 'fora da equipe ou sem responsável';
+
+// Nomes que os recortes e a lista mostram. Nos recortes, quem saiu da equipe e
+// o lead sem dono entram juntos em OTHERS_ID, como o Outros do painel. Na
+// lista, o responsável aparece com o nome atual na equipe, e o nome gravado no
+// lead (consultantName) só vale para quem já saiu dela.
+export function namesOf(ctx) {
+  const team = new Map((ctx.users || []).map((u) => [u.id, u.name || 'Sem nome']));
+  const defaultFunnelId = getDefaultFunnel(ctx.funnels || [])?.id || null;
+  const funnels = new Map((ctx.funnels || []).map((f) => [f.id, f.name || 'Funil']));
+  const channels = new Map((ctx.sources || []).map((s) => [String(s?.name || '').trim(), String(s?.channel || '').trim()]));
+  return {
+    ownerKey: (l) => (team.has(l?.consultantId) ? l.consultantId : OTHERS_ID),
+    ownerName: (id) => (id === OTHERS_ID ? OTHERS_NAME : team.get(id) || OTHERS_NAME),
+    ownerNote: (id) => (id === OTHERS_ID ? OTHERS_NOTE : ''),
+    ownerLabel: (l) => team.get(l?.consultantId) || l?.consultantName || (l?.consultantId ? 'Fora da equipe' : 'Sem responsável'),
+    funnelId: (l) => l?.funnelId || defaultFunnelId,
+    funnelName: (id) => funnels.get(id) || 'Sem funil',
+    sourceName: (l) => String(l?.source || '').trim() || 'Sem origem',
+    channelOf: (name) => channels.get(name) || '',
+  };
+}
+
+// Contagem por um recorte, do maior para o menor, e o empate pelo nome: a ordem
+// do rankCounts do painel. `keyOf` diz em que linha cada item entra, e `extra`
+// acrescenta o que a linha mostra além do nome (o canal da origem, a nota de
+// Outros).
+export function countRows(items, keyOf, nameOf, tipo, extra = () => ({})) {
+  const map = new Map();
+  items.forEach((item) => {
+    const id = keyOf(item);
+    const row = map.get(id) || { key: cutCode(tipo, id), id, name: nameOf(id), count: 0, ...extra(id) };
+    row.count += 1;
+    map.set(id, row);
+  });
+  return [...map.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'pt-BR'));
+}
+
+// Filtro da lista. Cada linha leva os códigos dos recortes em que ela entra
+// (situacao:matricularam, origem:Instagram, consultor:<id>). O recorte do
+// endereço só vale quando algum número ou recorte do submenu tem esse código;
+// senão é ignorado.
+export const cutCode = (tipo, valor) => `${tipo}:${valor}`;
+
+export function applyCut(rows, recorte, available) {
+  const cut = recorte && available.has(recorte) ? recorte : null;
+  return { cut, rows: cut ? rows.filter((r) => r.cuts.includes(cut)) : rows };
+}
+
+export const CUT_PREFIX = Object.freeze({
+  origem: 'Origem', consultor: 'Consultor', funil: 'Funil', faixa: 'Primeiro contato',
+  tipo: 'Tipo', unidade: 'Unidade', modalidade: 'Modalidade', motivo: 'Motivo', etapa: 'Etapa', professor: 'Professor',
+});
+
+// Texto do filtro aplicado, que a lista mostra: "Origem: Instagram". Os
+// números (situacao) aparecem só com o nome deles, como "Matricularam".
+export function cutLabelOf(cut, items) {
+  const item = (items || []).find((i) => i.key === cut);
+  if (!item) return null;
+  const prefix = CUT_PREFIX[cut.slice(0, cut.indexOf(':'))];
+  return prefix ? `${prefix}: ${item.name}` : item.name;
+}
+
+// Colunas de contato da planilha, no molde de Todos os leads (LeadsView): o
+// WhatsApp do lead e, quando quem atende é o responsável do menor, o nome e o
+// telefone dele. O CPF vai pela decisão 2 de 28/09/2026.
+export const CONTACT_COLUMNS = Object.freeze([
+  Object.freeze({ key: 'whatsapp', label: 'WhatsApp' }),
+  Object.freeze({ key: 'responsavel', label: 'Responsável do aluno' }),
+  Object.freeze({ key: 'telefoneResponsavel', label: 'Telefone do responsável' }),
+  Object.freeze({ key: 'cpf', label: 'CPF' }),
+]);
+
+export function contactCells(lead, now) {
+  const c = contactOf(lead, now);
+  return {
+    whatsapp: lead?.whatsapp || '',
+    responsavel: c.viaGuardian ? contactLabel(c) : '',
+    telefoneResponsavel: c.viaGuardian ? c.phone : '',
+    cpf: lead?.cpf || '',
+  };
+}
+
+const isDate = (d) => d instanceof Date && !Number.isNaN(d.getTime());
+export const fmtDate = (d) => (isDate(d) ? d.toLocaleDateString('pt-BR') : '');
+
+// Data na tela: o dia e o mês quando é do ano de agora ("02/09"), e o ano
+// inteiro quando é de outro ("02/09/2025"). Só a tela encurta, para a coluna de
+// data da lista caber numa linha: a planilha usa o fmtDate, sempre com o ano.
+export function fmtScreenDate(d, currentYear) {
+  if (!isDate(d)) return '';
+  const dayMonth = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+  return d.getFullYear() === currentYear ? dayMonth : `${dayMonth}/${d.getFullYear()}`;
+}
+
+// Dia e hora do agendamento: "04/09/2026 10:00" na planilha e "04/09 10:00" na
+// tela, que só encurta o ano, como o fmtScreenDate.
+const hhmm = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+export const fmtDateTime = (d) => (isDate(d) ? `${fmtDate(d)} ${hhmm(d)}` : '');
+export const fmtScreenDateTime = (d, currentYear) => (isDate(d) ? `${fmtScreenDate(d, currentYear)} ${hhmm(d)}` : '');
+
+// O texto do comparado ao lado do número grande ("vs. agosto de 2026", com o
+// mês em minúsculo, porque está no meio da frase). Com o mês em andamento, o
+// comparado é o mesmo começo do mês anterior, e o texto diz quantos dias, como
+// o painel CRM ("Pró-rata: mesmos 14 primeiros dias de agosto"): "vs. os 14
+// primeiros dias de agosto de 2026", ou "vs. o primeiro dia de agosto de 2026"
+// no dia 1. Os dias são os que já passaram do mês exibido,
+// contando o de hoje (a regra do painel: o dia da data de agora). Quando eles
+// cobrem todos os dias do comparado (31 de outubro contra setembro, que tem 30),
+// o comparado entra inteiro e o texto é só o nome dele. O mês fechado, o atalho
+// e o intervalo mantêm o nome do comparado.
+export function compareTextOf(period, cmp) {
+  if (!cmp) return null;
+  const name = cmp.kind === 'mes' ? monthText(cmp.monthKey, { capitalized: false }) : cmp.label;
+  if (period?.kind !== 'mes' || !period.running) return `vs. ${name}`;
+  const days = period.end.getDate();
+  if (days >= cmp.days) return `vs. ${name}`;
+  return days === 1 ? `vs. o primeiro dia de ${name}` : `vs. os ${days} primeiros dias de ${name}`;
+}
+
+// Situação de hoje do lead, pelo deriveLeadBucket.
+export const SITUACAO_LABEL = Object.freeze({ ativo: 'Em aberto', cliente: 'Cliente', perda: 'Perdido' });
+
+// Nome do arquivo da planilha: o submenu e as datas do período, sem dado
+// pessoal. O último dia é o do fim efetivo (hoje, no período em andamento).
+export function exportFileName(section, period) {
+  const last = new Date(Math.max(period.start.getTime(), period.end.getTime() - 1));
+  return `leads-${section}-${dayKeyOf(period.start)}-a-${dayKeyOf(last)}.csv`;
+}
+
+// O dia em que a etapa passou a ser gravada (STAGE_TRACKING_SINCE, 14/09/2026),
+// como a tela e a planilha escrevem: a etapa da perda e os dias na etapa de
+// Leads parados só existem a partir dele.
+export const STAGE_SINCE_TEXT = fmtDate(STAGE_TRACKING_SINCE);
+
+// O do retrato de agora (Leads parados), que não tem período: o dia de hoje.
+export const snapshotFileName = (section, now) => `leads-${section}-${dayKeyOf(now)}.csv`;
+
+// Os agendamentos só ficam completos a partir de setembro de 2026
+// (APPTS_COMPLETE_MONTH): as visitas só têm registro desde 18/08/2026. Com o
+// período ou o comparado começando antes disso, a variação dos números de
+// agendamento fica sem base, como no painel CRM (apptsOk, em
+// src/lib/crm/texts.js, que olha o apptsBase de cada mês). A Conversão e as
+// Visitas e aulas usam a mesma conta para o aviso.
+export const apptsPartialOf = (period, cmp) => [period, cmp]
+  .some((win) => Boolean(win) && monthKeyOf(win.start) < APPTS_COMPLETE_MONTH);
+
+// Ordem das listas: cadastro mais novo primeiro, depois o nome e o id.
+export const byNewest = (a, b) => (b.createdAt?.getTime?.() ?? 0) - (a.createdAt?.getTime?.() ?? 0)
+  || a.name.localeCompare(b.name, 'pt-BR') || a.id.localeCompare(b.id);

@@ -8,6 +8,7 @@
 //   primeira matrícula de quem voltou depois).
 //   leadsById = a versão mais nova de cada lead conhecido (useCrmSources).
 
+import { fmtNum } from '../format.js';
 import { monthRange, effectiveEnd, isCurrentMonthKey, addMonthsToKey, monthKeyOf } from '../operacional/month.js';
 import { pct } from './stats.js';
 import { fmtDuration, fmtDays } from './format.js';
@@ -27,16 +28,18 @@ export { OTHERS_ID };
 // insumo no mesmo objeto de ctx zera o cache.
 const caches = new WeakMap();
 
-// Registros de agendamento de todos os meses carregados, sem repetir id, com a
-// cópia do mês mais novo. O registro remarcado de 30/08 para 03/09 continua na
-// lista de agosto (memória da sessão ou cache do aparelho) e contaria nos dois
-// meses. Com a cópia mais nova, a janela por scheduledFor põe cada registro no
-// mês da data atual.
-function newestRecordsOf(months) {
+// Um balde (aulas, leadsCreated, converted, lost ou interactions) de todos os
+// meses carregados, sem repetir id, com a cópia do mês mais novo. É a regra
+// dos registros de agendamento: o registro remarcado de 30/08 para 03/09
+// continua na lista de agosto (memória da sessão ou cache do aparelho) e
+// contaria nos dois meses. Com a cópia mais nova, a janela por scheduledFor
+// põe cada registro no mês da data atual. Os Relatórios (relatorios/leads) usam
+// esta mesma função para os outros baldes, e nada a copia.
+export function newestRecordsOf(months, bucket) {
   const seen = new Set();
   const out = [];
   Object.keys(months || {}).sort().reverse().forEach((key) => {
-    (months[key]?.aulas || []).forEach((r) => {
+    (months[key]?.[bucket] || []).forEach((r) => {
       if (!r?.id || seen.has(r.id)) return;
       seen.add(r.id);
       out.push(r);
@@ -72,7 +75,7 @@ function cacheOf(ctx) {
   if (!cache || cache.sig.some((v, i) => v !== sig[i])) {
     const loaded = Object.values(ctx.months || {});
     const interactions = loaded.flatMap((m) => m.interactions || []);
-    const records = newestRecordsOf(ctx.months);
+    const records = newestRecordsOf(ctx.months, 'aulas');
     cache = {
       sig,
       results: new Map(),
@@ -230,17 +233,24 @@ function isFlat(diff, kind) {
   return abs < 0.05;
 }
 
+// Contagem comparada com menos que isso sai em número, e não em %: de 2 para 9
+// daria "▲ 350%", que assusta e não diz nada. Sai "▲ +7".
+export const SMALL_BASE = 10;
+
 // Diferença entre o mês e o comparado no formato do handoff: contagem em %
-// ("12,5%"), taxa em pontos ("+8 p.p."), duração ("40 min") e dias ("1,5
-// dias"). Sem um dos lados, ou contagem comparada com zero: "sem base".
+// ("12,5%"), ou em número com o comparado abaixo de SMALL_BASE ("+7", "−3" e
+// "=" quando igual), taxa em pontos ("+8 p.p."), duração ("40 min") e dias
+// ("1,5 dias"). Sem um dos lados, ou contagem comparada com zero: "sem base".
 export function crmDelta(cur, prev, { kind = 'pct' } = {}) {
   if (cur == null || prev == null) return { none: true, text: 'sem base' };
   if (kind === 'pct' && prev === 0) return { none: true, text: 'sem base' };
+  if (kind === 'pct' && prev < SMALL_BASE) kind = 'count';
   const diff = kind === 'pct' ? ((cur - prev) / prev) * 100 : cur - prev;
-  if (isFlat(diff, kind)) return { flat: true, value: 0, text: `= ${ZERO[kind]}` };
+  if (isFlat(diff, kind)) return { flat: true, value: 0, text: kind === 'count' ? '=' : `= ${ZERO[kind]}` };
   const abs = Math.abs(diff);
   let text;
   if (kind === 'pct') text = `${comma(Math.round(abs * 10) / 10)}%`;
+  else if (kind === 'count') text = `${diff > 0 ? '+' : '−'}${fmtNum(abs)}`;
   else if (kind === 'pp') text = `${diff > 0 ? '+' : '−'}${comma(Math.round(abs * 10) / 10)} p.p.`;
   else if (kind === 'min') text = fmtDuration(abs);
   else text = fmtDays(abs);

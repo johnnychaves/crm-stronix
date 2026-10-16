@@ -52,6 +52,16 @@ export const ROTINAS_TABS = Object.freeze({
   modelos: 'modelos',
   hoje: 'hoje',
 });
+// Submenus dos Relatórios (spec 2026-10-09). Hoje só o relatório de Leads, com
+// os cinco submenus. O id é também o segmento, e a lista ao lado
+// (src/lib/relatoriosRail.js) usa os mesmos ids.
+export const RELATORIOS_SUBS = Object.freeze({
+  entrada: 'entrada',
+  conversao: 'conversao',
+  'visitas-e-aulas': 'visitas-e-aulas',
+  perdas: 'perdas',
+  parados: 'parados',
+});
 
 // id da tela (os mesmos valores de activeTab de sempre) para os segmentos
 // depois da academia, o título da aba, a trava de acesso e, onde existe, a
@@ -68,6 +78,7 @@ export const SCREENS = Object.freeze({
   leads: tela(['leads'], 'Leads'),
   aulas: tela(['leads', 'aulas'], 'Aulas'),
   visitas: tela(['leads', 'visitas'], 'Visitas'),
+  relatorios: tela(['relatorios'], 'Relatórios', { subs: RELATORIOS_SUBS, subPadrao: 'entrada' }),
   settings: tela(['configuracoes'], 'Configurações', { gestor: true, subs: SETTINGS_SECTIONS, subPadrao: 'team' }),
   profile: tela(['perfil-da-academia'], 'Perfil da academia', { gestor: true }),
   billing: tela(['plano-e-faturas'], 'Plano e faturas', { gestor: true }),
