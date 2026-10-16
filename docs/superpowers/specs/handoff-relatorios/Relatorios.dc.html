@@ -1,0 +1,1167 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&amp;family=Geist:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F5F7FB; --card:#FFFFFF; --fg:#0E1A40; --fg2:#334155; --muted:#64748b; --faint:#94a3b8;
+  --border:#e2e8f0; --rule:#eef2f7; --soft:#f8fafc; --soft2:#eef0f5; --hover:#f1f5f9;
+  --brand:#2B59FF; --brand-50:#EAF0FF; --brand-100:#D6E1FF; --brand-200:#B8CCFF; --brand-300:#8FB0FF; --brand-700:#1C3FC4;
+  --green:#15B981; --green-t:rgba(21,185,129,.11); --green-700:#047857;
+  --red:#F43F5E; --red-t:rgba(244,63,94,.10); --red-700:#BE123C;
+  --amber:#F59E0B; --amber-t:rgba(245,158,11,.13); --amber-700:#B45309; --amber-edge:rgba(245,158,11,.32);
+  --slate-t:rgba(100,116,139,.12); --slate-fg:#475569;
+  --shadow:0 1px 0 rgba(15,23,42,.04), 0 1px 2px rgba(15,23,42,.06);
+  --shadow-lg:0 1px 0 rgba(15,23,42,.04), 0 16px 36px -12px rgba(15,23,42,.18);
+}
+:root[data-theme="dark"]{
+  --bg:#080D22; --card:#122142; --fg:#EAEEF9; --fg2:#CBD5E1; --muted:#8A93B0; --faint:#6B7593;
+  --border:rgba(255,255,255,.08); --rule:rgba(255,255,255,.06); --soft:rgba(255,255,255,.03); --soft2:rgba(255,255,255,.07); --hover:rgba(255,255,255,.06);
+  --brand-50:rgba(43,89,255,.18); --brand-100:rgba(43,89,255,.26); --brand-200:rgba(90,127,255,.5); --brand-300:#5A7FFF; --brand-700:#9FBCFF;
+  --green:#0E9F6E; --green-t:rgba(14,159,110,.18); --green-700:#34D399;
+  --red:#E11D48; --red-t:rgba(225,29,72,.18); --red-700:#FB7185;
+  --amber:#D97706; --amber-t:rgba(217,119,6,.18); --amber-700:#FBBF24; --amber-edge:rgba(217,119,6,.4);
+  --slate-t:rgba(148,163,184,.14); --slate-fg:#94A3B8;
+  --shadow:0 1px 2px rgba(0,0,0,.45);
+  --shadow-lg:0 18px 40px -14px rgba(0,0,0,.75);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);font-family:'Geist',ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--brand);text-decoration:none}
+a:hover{color:var(--brand-700)}
+button,input{font-family:inherit}
+button:focus-visible,[tabindex]:focus-visible,input:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.num{font-variant-numeric:tabular-nums}
+.tr{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+</style>
+</helmet>
+
+<section style="padding:40px 44px 56px;background:var(--bg);color:var(--fg);font-size:14px">
+
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;padding-bottom:20px;border-bottom:1px solid var(--border);margin-bottom:28px;max-width:1440px">
+    <div>
+      <div style="font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--faint)">Relatórios · redesenho sobre a branch relatorios-de-leads-pr2</div>
+      <h1 style="margin:6px 0 0;font-family:'Space Grotesk',sans-serif;font-size:26px;font-weight:700;letter-spacing:-.02em">Relatórios de leads</h1>
+      <p style="margin:8px 0 0;font-size:13px;color:var(--muted);max-width:1000px;line-height:1.6;text-wrap:pretty">Os cinco submenus da spec de 09/10, no mesmo molde: período e filtros em cima, um painel de números, os recortes e a lista de nomes. <b style="color:var(--fg2)">Tudo funciona:</b> troque de relatório na lista ao lado, mude o período e os filtros, clique num número ou numa linha de recorte para filtrar a lista.</p>
+    </div>
+    <button onClick="{{ toggleTheme }}" style="flex:none;height:36px;padding:0 14px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--fg2);font-size:12.5px;font-weight:600;white-space:nowrap;cursor:pointer" style-hover="background:var(--hover)">{{ themeLabel }}</button>
+  </div>
+
+  <div style="position:relative;width:1440px;border-radius:20px;border:1px solid var(--border);background:var(--bg);box-shadow:var(--shadow-lg);overflow:hidden;display:flex">
+
+    <aside style="width:72px;flex:none;background:var(--card);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center">
+      <div style="height:64px;width:100%;display:grid;place-items:center;border-bottom:1px solid var(--border)">
+        <svg width="22" height="22" viewBox="0 0 48 48" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M11 39 L24 29 L37 39" stroke="#2B59FF" stroke-width="4.4"></path><path d="M13.5 30 L24 21.5 L34.5 30" stroke="#2B59FF" stroke-width="4.4"></path><path d="M16 21 L24 14 L32 21" stroke="#FF6A2B" stroke-width="4.4"></path></svg>
+      </div>
+      <nav style="display:flex;flex-direction:column;gap:6px;padding:18px 0;align-items:center">
+        <span style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;color:var(--muted)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h8v8H3zM13 3h8v5h-8zM13 10h8v11h-8zM3 13h8v8H3z"></path></svg></span>
+        <span style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;color:var(--muted)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v18M12 3v12M19 3v8"></path></svg></span>
+        <span style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;color:var(--muted)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM22 21v-2a4 4 0 0 0-3-3.87"></path></svg></span>
+        <span style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:var(--brand);color:#fff"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18M7 15v2M12 10v7M17 6v11"></path></svg></span>
+      </nav>
+    </aside>
+
+    <main style="flex:1;min-width:0">
+      <header style="height:64px;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 32px;background:var(--card);border-bottom:1px solid var(--border)">
+        <h2 style="margin:0;font-family:'Space Grotesk',sans-serif;font-size:20px;font-weight:700;letter-spacing:-.02em">Relatórios</h2>
+        <div style="display:flex;align-items:center;gap:10px;padding:4px 11px 4px 4px;border-radius:999px;border:1px solid var(--border)">
+          <span style="width:28px;height:28px;border-radius:999px;background:var(--brand);color:#fff;display:grid;place-items:center;font-size:11px;font-weight:700">AR</span>
+          <div style="line-height:1.15">
+            <div style="font-size:12.5px;font-weight:600">Ana Ribeiro</div>
+            <div style="font-size:10.5px;color:var(--muted)">Iron Fit · Consultora</div>
+          </div>
+        </div>
+      </header>
+
+      <div style="padding:24px 32px 40px;display:grid;grid-template-columns:248px minmax(0,1fr);gap:28px;align-items:start">
+
+        <!-- ═══ Lista ao lado ═══ -->
+        <nav aria-label="Relatórios" style="position:sticky;top:24px;display:flex;flex-direction:column;gap:4px">
+          <button type="button" onClick="{{ toggleRail }}" aria-expanded="{{ railOpenAttr }}" style="display:flex;align-items:center;gap:11px;width:100%;text-align:left;padding:10px 11px;border-radius:14px;border:0;background:transparent;cursor:pointer" style-hover="background:var(--hover)">
+            <span style="width:34px;height:34px;flex:none;border-radius:10px;display:grid;place-items:center;background:var(--brand-50);color:var(--brand-700)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+            </span>
+            <span style="min-width:0;flex:1">
+              <span style="display:block;font-size:13.5px;font-weight:700;color:var(--fg)">Leads</span>
+              <span class="tr" style="display:block;font-size:11.5px;color:var(--muted);margin-top:1px">{{ railSummary }}</span>
+            </span>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;color:var(--muted);transform:{{ railChevron }};transition:transform .15s"><path d="m6 9 6 6 6-6"></path></svg>
+          </button>
+          <div style="display:grid;grid-template-rows:{{ railRows }};opacity:{{ railOpacity }};transition:grid-template-rows .28s ease, opacity .22s ease">
+          <div style="min-height:0;overflow:hidden">
+          <div inert="{{ railInert }}" style="display:flex;flex-direction:column;gap:4px;margin:4px 0 2px 16px;padding-left:10px;border-left:2px solid var(--border)">
+          <sc-for list="{{ rail }}" as="it" hint-placeholder-count="5">
+            <button type="button" onClick="{{ it.pick }}" aria-current="{{ it.current }}" style="display:flex;align-items:center;gap:11px;width:100%;text-align:left;padding:10px 11px;border-radius:14px;border:1px solid {{ it.edge }};background:{{ it.bg }};box-shadow:{{ it.shadow }};cursor:pointer" style-hover="border-color:var(--brand-200)">
+              <span style="width:34px;height:34px;flex:none;border-radius:10px;display:grid;place-items:center;background:{{ it.tileBg }};color:{{ it.tileFg }}">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="{{ it.icon }}"></path></svg>
+              </span>
+              <span style="min-width:0;flex:1">
+                <span class="tr" style="display:block;font-size:13.5px;font-weight:600;color:{{ it.labelFg }}">{{ it.label }}</span>
+              </span>
+              <span class="num" style="flex:none;font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:700;color:{{ it.numFg }}">{{ it.num }}</span>
+            </button>
+          </sc-for>
+          </div>
+          </div>
+          </div>
+        </nav>
+
+        <div style="min-width:0">
+
+          <!-- ═══ Barra de cima ═══ -->
+          <div style="position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:8px;padding:0 0 14px;margin-bottom:22px;border-bottom:1px solid var(--border);background:var(--bg)">
+
+            <sc-if value="{{ hasPeriod }}" hint-placeholder-val="{{ true }}">
+              <div style="position:relative">
+                <div style="display:flex;align-items:center;gap:2px;height:38px;padding:3px;border-radius:12px;border:1px solid var(--border);background:var(--card);box-shadow:var(--shadow)">
+                  <sc-if value="{{ isMonth }}" hint-placeholder-val="{{ true }}">
+                    <button type="button" onClick="{{ prevMonth }}" disabled="{{ noPrev }}" aria-label="Mês anterior" style="width:30px;height:30px;border-radius:9px;border:0;background:transparent;color:var(--muted);display:grid;place-items:center;cursor:pointer;opacity:{{ prevOpacity }}" style-hover="background:var(--hover);color:var(--fg)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg></button>
+                  </sc-if>
+                  <button type="button" onClick="{{ openPeriod }}" aria-expanded="{{ menuPeriod }}" style="display:flex;align-items:center;gap:8px;height:30px;padding:0 10px;border-radius:9px;border:0;background:transparent;color:var(--fg);font-size:13px;font-weight:600;white-space:nowrap;cursor:pointer" style-hover="background:var(--hover)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--brand)"><path d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"></path></svg>
+                    <span class="num">{{ periodLabel }}</span>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted)"><path d="m6 9 6 6 6-6"></path></svg>
+                  </button>
+                  <sc-if value="{{ isMonth }}" hint-placeholder-val="{{ true }}">
+                    <button type="button" onClick="{{ nextMonth }}" disabled="{{ noNext }}" aria-label="Próximo mês" style="width:30px;height:30px;border-radius:9px;border:0;background:transparent;color:var(--muted);display:grid;place-items:center;cursor:pointer;opacity:{{ nextOpacity }}" style-hover="background:var(--hover);color:var(--fg)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></button>
+                  </sc-if>
+                </div>
+
+                <sc-if value="{{ menuPeriod }}" hint-placeholder-val="{{ false }}">
+                  <div style="position:absolute;top:46px;left:0;z-index:60;width:318px;padding:8px;border-radius:14px;border:1px solid var(--border);background:var(--card);box-shadow:var(--shadow-lg)">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+                      <sc-for list="{{ periodOpts }}" as="o" hint-placeholder-count="6">
+                        <button type="button" onClick="{{ o.pick }}" style="height:34px;padding:0 11px;border-radius:9px;border:1px solid {{ o.edge }};background:{{ o.bg }};color:{{ o.fg }};font-size:12.5px;font-weight:600;text-align:left;white-space:nowrap;cursor:pointer" style-hover="border-color:var(--brand-200)">{{ o.label }}</button>
+                      </sc-for>
+                    </div>
+                    <sc-if value="{{ isMonth }}" hint-placeholder-val="{{ true }}">
+                      <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--rule)">
+                        <div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:0 4px 6px">Mês</div>
+                        <sc-for list="{{ monthOpts }}" as="m" hint-placeholder-count="2">
+                          <button type="button" onClick="{{ m.pick }}" style="display:flex;align-items:center;gap:9px;width:100%;height:34px;padding:0 10px;border-radius:9px;border:0;background:{{ m.bg }};color:{{ m.fg }};font-size:12.5px;font-weight:600;text-align:left;cursor:pointer" style-hover="background:var(--hover)">
+                            <span style="width:14px;flex:none;display:grid;place-items:center">
+                              <sc-if value="{{ m.on }}" hint-placeholder-val="{{ false }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></sc-if>
+                            </span>
+                            {{ m.label }}
+                          </button>
+                        </sc-for>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ isCustom }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;padding-top:10px;border-top:1px solid var(--rule)">
+                        <label style="display:flex;flex-direction:column;gap:5px;font-size:11px;font-weight:600;color:var(--muted)">De
+                          <input type="date" min="2026-08-01" max="2026-10-15" value="{{ cA }}" onChange="{{ setCA }}" style="height:34px;padding:0 8px;border-radius:9px;border:1px solid var(--border);background:var(--card);color:var(--fg);font-size:12.5px">
+                        </label>
+                        <label style="display:flex;flex-direction:column;gap:5px;font-size:11px;font-weight:600;color:var(--muted)">Até
+                          <input type="date" min="2026-08-01" max="2026-10-15" value="{{ cB }}" onChange="{{ setCB }}" style="height:34px;padding:0 8px;border-radius:9px;border:1px solid var(--border);background:var(--card);color:var(--fg);font-size:12.5px">
+                        </label>
+                      </div>
+                      <div style="font-size:11px;color:var(--muted);line-height:1.45;padding:8px 4px 2px">Até 12 meses para trás, sem data futura. O comparado é o período anterior do mesmo tamanho.</div>
+                    </sc-if>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ isParados }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;align-items:center;gap:8px;height:38px;padding:3px 3px 3px 12px;border-radius:12px;border:1px solid var(--border);background:var(--card);box-shadow:var(--shadow)">
+                <span style="font-size:12px;font-weight:600;color:var(--muted);white-space:nowrap">Sem registro há mais de</span>
+                <div style="display:flex;gap:2px;padding:2px;border-radius:9px;background:var(--soft2)">
+                  <sc-for list="{{ corteOpts }}" as="c" hint-placeholder-count="4">
+                    <button type="button" onClick="{{ c.pick }}" aria-pressed="{{ c.on }}" style="height:26px;min-width:34px;padding:0 9px;border-radius:7px;border:0;background:{{ c.bg }};color:{{ c.fg }};font-size:12px;font-weight:600;box-shadow:{{ c.shadow }};cursor:pointer">{{ c.label }}</button>
+                  </sc-for>
+                </div>
+                <span style="font-size:12px;font-weight:600;color:var(--muted);padding-right:6px">dias</span>
+              </div>
+            </sc-if>
+
+            <span style="width:1px;height:22px;flex:none;background:var(--border);margin:0 4px"></span>
+
+            <sc-for list="{{ filters }}" as="f" hint-placeholder-count="3">
+              <div style="position:relative">
+                <button type="button" onClick="{{ f.open }}" aria-expanded="{{ f.isOpen }}" style="display:flex;align-items:center;gap:7px;height:36px;padding:0 12px;border-radius:999px;border:1px solid {{ f.edge }};background:{{ f.bg }};font-size:12.5px;white-space:nowrap;cursor:pointer" style-hover="border-color:var(--brand-200)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;color:{{ f.iconFg }}"><path d="{{ f.icon }}"></path></svg>
+                  <span style="font-weight:500;color:var(--muted)">{{ f.label }}</span>
+                  <span style="font-weight:600;color:{{ f.fg }}">{{ f.value }}</span>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted)"><path d="m6 9 6 6 6-6"></path></svg>
+                </button>
+                <sc-if value="{{ f.isOpen }}" hint-placeholder-val="{{ false }}">
+                  <div style="position:absolute;top:44px;left:0;z-index:60;min-width:236px;padding:6px;border-radius:14px;border:1px solid var(--border);background:var(--card);box-shadow:var(--shadow-lg)">
+                    <sc-for list="{{ f.options }}" as="o" hint-placeholder-count="4">
+                      <div>
+                        <sc-if value="{{ o.ruleBefore }}" hint-placeholder-val="{{ false }}"><div style="height:1px;background:var(--rule);margin:4px 6px"></div></sc-if>
+                        <button type="button" onClick="{{ o.pick }}" role="{{ o.role }}" aria-checked="{{ o.on }}" style="display:flex;align-items:center;gap:10px;width:100%;height:34px;padding:0 10px;border-radius:9px;border:0;background:transparent;color:var(--fg);font-size:12.5px;font-weight:{{ o.weight }};text-align:left;white-space:nowrap;cursor:pointer" style-hover="background:var(--hover)">
+                          <span style="width:16px;height:16px;flex:none;border-radius:{{ o.radius }};border:1.5px solid {{ o.boxEdge }};background:{{ o.boxBg }};display:grid;place-items:center">
+                            <sc-if value="{{ o.on }}" hint-placeholder-val="{{ false }}"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></sc-if>
+                          </span>
+                          {{ o.label }}
+                        </button>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-for>
+
+          </div>
+
+          <!-- ═══ Cabeçalho do relatório ═══ -->
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:16px">
+            <div style="min-width:0">
+              <h3 style="margin:0;font-family:'Space Grotesk',sans-serif;font-size:24px;font-weight:700;letter-spacing:-.02em">{{ secTitle }}</h3>
+              <p style="margin:5px 0 0;font-size:13px;color:var(--muted);line-height:1.5;text-wrap:pretty">{{ secQuestion }}</p>
+            </div>
+            <button type="button" onClick="{{ doExport }}" disabled="{{ noExport }}" style="flex:none;display:flex;align-items:center;gap:8px;height:38px;padding:0 16px;border-radius:999px;border:0;background:var(--brand);color:#fff;font-size:12.5px;font-weight:700;white-space:nowrap;cursor:pointer;opacity:{{ exportOpacity }}" style-hover="background:var(--brand-700)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 10l5 5 5-5M21 21H3"></path></svg>
+              Exportar lista
+            </button>
+          </div>
+
+          <!-- ═══ Painel de números ═══ -->
+          <section style="display:flex;align-items:stretch;border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:var(--shadow);overflow:hidden">
+            <div style="flex:none;width:236px;padding:18px 22px 18px;border-right:1px solid var(--rule)">
+              <div style="font-size:12px;font-weight:600;color:var(--muted)">{{ band.heroLabel }}</div>
+              <div class="num" style="font-family:'Space Grotesk',sans-serif;font-size:42px;font-weight:700;letter-spacing:-.035em;line-height:1;margin-top:10px;color:{{ band.heroFg }}">{{ band.heroValue }}</div>
+              <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:10px;min-height:20px">
+                <sc-if value="{{ band.heroHasDelta }}" hint-placeholder-val="{{ true }}">
+                  <span class="num" style="display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:6px;font-size:11px;font-weight:700;white-space:nowrap;background:{{ band.heroDeltaBg }};color:{{ band.heroDeltaFg }}">{{ band.heroDelta }}</span>
+                </sc-if>
+                <span class="num" style="font-size:11.5px;color:var(--muted);line-height:1.35">{{ band.heroSub }}</span>
+              </div>
+            </div>
+
+            <sc-if value="{{ band.hasCells }}" hint-placeholder-val="{{ false }}">
+              <div style="flex:1;min-width:0;display:flex">
+                <sc-for list="{{ band.cells }}" as="c" hint-placeholder-count="5">
+                  <div style="flex:1;min-width:0;display:flex;align-items:stretch">
+                    <sc-if value="{{ c.hasArrow }}" hint-placeholder-val="{{ false }}">
+                      <span aria-hidden="true" style="flex:none;width:14px;display:grid;place-items:center;color:var(--faint);background:var(--card)">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>
+                      </span>
+                    </sc-if>
+                    <sc-if value="{{ c.hasRule }}" hint-placeholder-val="{{ false }}">
+                      <span aria-hidden="true" style="flex:none;width:1px;background:var(--border);margin:14px 6px"></span>
+                    </sc-if>
+                    <button type="button" onClick="{{ c.pick }}" aria-pressed="{{ c.active }}" title="{{ c.title }}" style="position:relative;flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;text-align:left;padding:18px 14px 14px;border:0;background:{{ c.bg }};cursor:pointer" style-hover="box-shadow:inset 0 0 0 1px var(--brand-200)">
+                      <span style="position:absolute;top:0;left:10px;right:10px;height:3px;border-radius:0 0 3px 3px;background:{{ c.bar }}"></span>
+                      <span class="tr" style="max-width:100%;font-size:11.5px;font-weight:600;color:{{ c.labelFg }}">{{ c.label }}</span>
+                      <span class="num" style="font-family:'Space Grotesk',sans-serif;font-size:27px;font-weight:700;letter-spacing:-.025em;line-height:1;margin-top:10px;color:{{ c.fg }}">{{ c.value }}</span>
+                      <span style="display:flex;align-items:center;min-height:20px;margin-top:10px">
+                        <sc-if value="{{ c.hasDelta }}" hint-placeholder-val="{{ true }}">
+                          <span class="num" style="display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:6px;font-size:10.5px;font-weight:700;white-space:nowrap;background:{{ c.deltaBg }};color:{{ c.deltaFg }}">{{ c.delta }}</span>
+                        </sc-if>
+                        <sc-if value="{{ c.hasNote }}" hint-placeholder-val="{{ false }}">
+                          
+                        </sc-if>
+                      </span>
+                    </button>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ band.hasChart }}" hint-placeholder-val="{{ true }}">
+              <div style="flex:1;min-width:0;display:flex;flex-direction:column;padding:16px 22px 12px">
+                <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+                  <span style="font-size:12px;font-weight:600;color:var(--muted)">{{ band.chartLabel }}</span>
+                  <span class="num" style="font-size:11.5px;color:var(--muted)">{{ band.chartPeak }}</span>
+                </div>
+                <div style="flex:1;display:flex;align-items:flex-end;gap:3px;min-height:78px;margin-top:10px">
+                  <sc-for list="{{ band.chart }}" as="b" hint-placeholder-count="15">
+                    <span tabindex="0" title="{{ b.title }}" aria-label="{{ b.title }}" style="flex:1;min-width:0;height:100%;display:flex;align-items:flex-end;justify-content:center;cursor:default">
+                      <span style="width:100%;max-width:24px;height:{{ b.h }};border-radius:4px 4px 2px 2px;background:{{ b.bg }}"></span>
+                    </span>
+                  </sc-for>
+                </div>
+                <div style="display:flex;justify-content:space-between;gap:8px;margin-top:7px;padding-top:6px;border-top:1px solid var(--rule)">
+                  <span class="num" style="font-size:10.5px;color:var(--muted)">{{ band.chartStart }}</span>
+                  <span class="num" style="font-size:10.5px;color:var(--muted)">{{ band.chartEnd }}</span>
+                </div>
+              </div>
+            </sc-if>
+          </section>
+
+          <sc-for list="{{ notices }}" as="n" hint-placeholder-count="1">
+            <div style="display:flex;align-items:flex-start;gap:9px;margin-top:10px;padding:10px 14px;border-radius:12px;border:1px solid var(--amber-edge);background:var(--amber-t)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px;color:var(--amber-700)"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 8v4M12 16h.01"></path></svg>
+              <span style="min-width:0;flex:1;font-size:12.5px;color:var(--fg2);line-height:1.5;text-wrap:pretty">{{ n.text }}</span>
+            </div>
+          </sc-for>
+
+          <!-- ═══ Recortes ═══ -->
+          <section style="margin-top:16px;border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:var(--shadow);overflow:hidden">
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--rule)">
+              <div role="tablist" aria-label="Recortes" style="display:flex;gap:2px;padding:3px;border-radius:11px;background:var(--soft2)">
+                <sc-for list="{{ rec.tabs }}" as="t" hint-placeholder-count="3">
+                  <button type="button" role="tab" aria-selected="{{ t.on }}" onClick="{{ t.pick }}" style="height:30px;padding:0 13px;border-radius:8px;border:0;background:{{ t.bg }};color:{{ t.fg }};font-size:12.5px;font-weight:600;white-space:nowrap;box-shadow:{{ t.shadow }};cursor:pointer">{{ t.label }}</button>
+                </sc-for>
+              </div>
+              <div style="flex:1"></div>
+              <span style="font-size:11.5px;color:var(--muted);white-space:nowrap">{{ rec.hint }}</span>
+            </div>
+
+            <sc-if value="{{ rec.isCount }}" hint-placeholder-val="{{ true }}">
+              <div style="padding:6px 8px 8px">
+                <sc-for list="{{ rec.rows }}" as="r" hint-placeholder-count="5">
+                  <button type="button" onClick="{{ r.pick }}" aria-pressed="{{ r.active }}" title="{{ r.title }}" style="display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,2fr) 48px 44px;align-items:center;gap:14px;width:100%;text-align:left;padding:9px 10px;border-radius:10px;border:0;background:{{ r.bg }};cursor:pointer" style-hover="background:var(--hover)">
+                    <span class="tr" style="font-size:13px;font-weight:{{ r.weight }};color:var(--fg)">{{ r.name }}<span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:6px">{{ r.side }}</span></span>
+                    <span style="height:10px;border-radius:4px;background:var(--soft2);overflow:hidden;display:flex">
+                      <span style="width:{{ r.barW }};background:{{ r.barBg }};border-radius:4px"></span>
+                    </span>
+                    <span class="num" style="text-align:right;font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:700">{{ r.n }}</span>
+                    <span class="num" style="text-align:right;font-size:11.5px;color:var(--muted)">{{ r.share }}</span>
+                  </button>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ rec.isConv }}" hint-placeholder-val="{{ false }}">
+              <div style="display:grid;grid-template-columns:minmax(0,1.15fr) 60px 60px minmax(0,1.6fr) 44px;gap:14px;padding:10px 18px 4px">
+                <span></span>
+                <span style="text-align:right;font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">{{ rec.countLabel }}</span>
+                <span style="text-align:right;font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Matr.</span>
+                <span style="font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Conversão</span>
+                <span></span>
+              </div>
+              <div style="padding:0 8px 8px">
+                <sc-for list="{{ rec.rows }}" as="r" hint-placeholder-count="4">
+                  <button type="button" onClick="{{ r.pick }}" aria-pressed="{{ r.active }}" aria-label="{{ r.title }}" title="{{ r.title }}" style="display:grid;grid-template-columns:minmax(0,1.15fr) 60px 60px minmax(0,1.6fr) 44px;align-items:center;gap:14px;width:100%;text-align:left;padding:9px 10px;border-radius:10px;border:0;background:{{ r.bg }};cursor:pointer" style-hover="background:var(--hover)">
+                    <span class="tr" style="font-size:13px;font-weight:{{ r.weight }};color:var(--fg)">{{ r.name }}<span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:6px">{{ r.side }}</span></span>
+                    <span class="num" style="text-align:right;font-size:13px">{{ r.n }}</span>
+                    <span class="num" style="text-align:right;font-size:13px;font-weight:600;color:var(--green-700)">{{ r.enrolled }}</span>
+                    <span style="height:10px;border-radius:4px;background:var(--soft2);overflow:hidden;display:flex">
+                      <span style="width:{{ r.convW }};background:var(--green);border-radius:4px"></span>
+                    </span>
+                    <span class="num" style="text-align:right;font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:700;color:{{ r.convFg }}">{{ r.conv }}</span>
+                  </button>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ rec.empty }}" hint-placeholder-val="{{ false }}">
+              <p style="margin:0;padding:18px;font-size:12.5px;color:var(--muted)">Nada no período com esses filtros.</p>
+            </sc-if>
+          </section>
+
+          <!-- ═══ Lista de nomes ═══ -->
+          <section style="margin-top:16px;border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:var(--shadow);overflow:hidden">
+            <header style="display:flex;align-items:center;gap:12px;padding:14px 18px">
+              <span class="num" style="font-family:'Space Grotesk',sans-serif;font-size:23px;font-weight:700;letter-spacing:-.02em;line-height:1">{{ list.total }}</span>
+              <span style="font-size:13px;font-weight:600;color:var(--muted)">{{ list.noun }}</span>
+              <sc-if value="{{ list.hasCut }}" hint-placeholder-val="{{ false }}">
+                <span style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 4px 0 12px;border-radius:999px;background:var(--brand-50);color:var(--brand-700);font-size:12px;font-weight:600;white-space:nowrap">
+                  {{ list.cutLabel }}
+                  <button type="button" onClick="{{ clearCut }}" aria-label="Limpar filtro da lista" style="width:20px;height:20px;border-radius:999px;border:0;background:transparent;color:var(--brand-700);display:grid;place-items:center;cursor:pointer" style-hover="background:var(--brand-100)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>
+                </span>
+              </sc-if>
+              <div style="flex:1"></div>
+              <span class="num" style="font-size:11.5px;color:var(--muted);white-space:nowrap">{{ list.shownLabel }}</span>
+            </header>
+
+            <sc-if value="{{ list.hasRows }}" hint-placeholder-val="{{ true }}">
+              <div>
+                <div style="display:grid;grid-template-columns:{{ list.grid }};gap:12px;padding:9px 18px;background:var(--soft);border-top:1px solid var(--rule)">
+                  <sc-for list="{{ list.columns }}" as="c" hint-placeholder-count="7">
+                    <span class="tr" style="font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:{{ c.align }}">{{ c.label }}</span>
+                  </sc-for>
+                </div>
+                <sc-for list="{{ list.rows }}" as="r" hint-placeholder-count="8">
+                  <div style="display:grid;grid-template-columns:{{ list.grid }};gap:12px;align-items:center;min-height:46px;padding:7px 18px;border-top:1px solid var(--rule)" style-hover="background:var(--soft)">
+                    <sc-for list="{{ r.cells }}" as="c" hint-placeholder-count="7">
+                      <div style="min-width:0;display:flex;justify-content:{{ c.justify }}">
+                        <sc-if value="{{ c.isName }}" hint-placeholder-val="{{ false }}">
+                          <a href="#" title="Abrir ficha de {{ c.text }}" style="min-width:0;display:flex;align-items:center;gap:9px;color:var(--fg)">
+                            <span style="width:28px;height:28px;flex:none;border-radius:999px;display:grid;place-items:center;font-size:10px;font-weight:700;background:var(--soft2);color:var(--fg2)">{{ c.ini }}</span>
+                            <span class="tr" style="font-size:13px;font-weight:600" style-hover="color:var(--brand-700);text-decoration:underline">{{ c.text }}</span>
+                          </a>
+                        </sc-if>
+                        <sc-if value="{{ c.isText }}" hint-placeholder-val="{{ true }}">
+                          <span class="num tr" title="{{ c.text }}" style="font-size:12.5px;font-weight:{{ c.weight }};color:{{ c.fg }}">{{ c.text }}</span>
+                        </sc-if>
+                        <sc-if value="{{ c.isPill }}" hint-placeholder-val="{{ false }}">
+                          <span class="num" style="display:inline-flex;align-items:center;gap:6px;height:24px;max-width:100%;padding:0 9px;border-radius:7px;background:{{ c.bg }};color:{{ c.fg }};font-size:11.5px;font-weight:600;white-space:nowrap;overflow:hidden">
+                            <span style="width:6px;height:6px;flex:none;border-radius:999px;background:{{ c.dot }}"></span>
+                            {{ c.text }}
+                          </span>
+                        </sc-if>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-for>
+                <sc-if value="{{ list.hasMore }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:12px;border-top:1px solid var(--rule);display:flex;justify-content:center">
+                    <button type="button" onClick="{{ showMore }}" style="height:36px;padding:0 16px;border-radius:999px;border:1px solid var(--border);background:var(--card);color:var(--fg2);font-size:12.5px;font-weight:600;cursor:pointer" style-hover="background:var(--hover)">{{ list.moreLabel }}</button>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ list.isEmpty }}" hint-placeholder-val="{{ false }}">
+              <div style="margin:4px 16px 16px;padding:26px 18px;border:1.5px dashed var(--border);border-radius:14px;text-align:center">
+                <div style="font-size:13.5px;font-weight:600">{{ list.emptyTitle }}</div>
+                <div style="font-size:12.5px;color:var(--muted);margin-top:4px">{{ list.emptyText }}</div>
+              </div>
+            </sc-if>
+          </section>
+        </div>
+      </div>
+    </main>
+
+    <sc-if value="{{ anyMenu }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ closeMenus }}" style="position:absolute;inset:0;z-index:15"></div>
+    </sc-if>
+
+    <sc-if value="{{ hasToast }}" hint-placeholder-val="{{ false }}">
+      <div role="status" style="position:absolute;right:28px;bottom:28px;z-index:70;display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:14px;background:var(--fg);color:var(--card);box-shadow:var(--shadow-lg);font-size:12.5px;font-weight:600">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+        <span class="num">{{ toast }}</span>
+      </div>
+    </sc-if>
+  </div>
+
+  <div style="margin-top:34px;padding-top:24px;border-top:1px solid var(--border);display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:26px;max-width:1440px">
+    <div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:6px">Um painel de números, não seis cartões</div>
+      <p style="margin:0;font-size:12px;color:var(--muted);line-height:1.6;text-wrap:pretty">Hoje a Conversão empilha um número grande e seis cartões soltos de 96px. Aqui os números são células de um painel só, e na Conversão as quatro primeiras ganham seta: safra, agendaram, vieram, matricularam são etapas da mesma turma de leads, e o desenho diz isso. Cada célula continua sendo o filtro da lista.</p>
+    </div>
+    <div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:6px">Recortes em abas, com largura inteira</div>
+      <p style="margin:0;font-size:12px;color:var(--muted);line-height:1.6;text-wrap:pretty">Os três cartões de recorte lado a lado espremiam o nome (o próprio código registra uns 33px a 1280px). Um recorte por vez, numa aba, deixa o nome inteiro, a barra longa e o número e a fatia lado a lado. A barra mostra o mesmo número que está ao lado dela.</p>
+    </div>
+    <div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:6px">A lista ao lado mostra o número de cada relatório</div>
+      <p style="margin:0;font-size:12px;color:var(--muted);line-height:1.6;text-wrap:pretty">Cada item traz o número principal do relatório, com os filtros da barra: dá para ver que há 11 leads parados sem abrir o relatório. Sai das mesmas funções que montam a tela, nunca de um campo gravado.</p>
+    </div>
+    <div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:6px">Situação em selo, com texto</div>
+      <p style="margin:0;font-size:12px;color:var(--muted);line-height:1.6;text-wrap:pretty">Situação, desfecho e próximo contato viram selos com o texto escrito, em vez de texto colorido. Ninguém precisa decorar a cor, e o vermelho fica onde exige ação: perdeu, faltou, atrasado.</p>
+    </div>
+  </div>
+
+</section>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1530,&quot;height&quot;:1500}}">
+const TODAY = 76;          // 15/10/2026. Dia 1 = 01/08/2026.
+const STAGE_SINCE = 45;    // 14/09/2026: a etapa da perda só existe daqui em diante.
+const APPTS_SINCE = 32;    // setembro: antes disso o registro de visita está incompleto.
+const MONTHS = { 8: 'agosto', 9: 'setembro', 10: 'outubro' };
+
+const dm = (d) => (d <= 31 ? [d, 8] : d <= 61 ? [d - 31, 9] : [d - 61, 10]);
+const two = (n) => String(n).padStart(2, '0');
+const fmtD = (d) => { const [a, m] = dm(d); return two(a) + '/' + two(m); };
+const iso = (d) => { const [a, m] = dm(d); return '2026-' + two(m) + '-' + two(a); };
+const isoToDay = (s) => {
+  const p = String(s || '').split('-').map(Number);
+  if (p.length < 3) return null;
+  const d = p[1] === 8 ? p[2] : p[1] === 9 ? 31 + p[2] : p[1] === 10 ? 61 + p[2] : null;
+  return d == null ? null : Math.max(1, Math.min(TODAY, d));
+};
+const wd = (d) => (((3 + d - TODAY) % 7) + 7) % 7; // 0 = segunda; 15/10 é quinta
+const rangeText = (a, b) => {
+  if (a === b) return fmtD(a);
+  const [da, ma] = dm(a), [db, mb] = dm(b);
+  return ma === mb ? da + ' a ' + db + ' de ' + MONTHS[ma] : fmtD(a) + ' a ' + fmtD(b);
+};
+const br = (n) => Number(n).toLocaleString('pt-BR');
+const ago = (n) => (n <= 0 ? 'hoje' : n === 1 ? 'há 1 dia' : 'há ' + n + ' dias');
+const days = (n) => (n <= 0 ? 'hoje' : n === 1 ? '1 dia' : n + ' dias');
+const fmtDur = (min) => (min < 60 ? min + ' min' : min < 1440 ? Math.round(min / 60) + 'h' : Math.round(min / 1440) + (Math.round(min / 1440) === 1 ? ' dia' : ' dias'));
+
+function rng(seed) {
+  return function () {
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const pick = (r, arr) => { const x = r(); let acc = 0; for (const [v, w] of arr) { acc += w; if (x < acc) return v; } return arr[arr.length - 1][0]; };
+
+const PEOPLE = [
+  { id: 'ana', name: 'Ana Ribeiro' },
+  { id: 'diego', name: 'Diego Santos' },
+  { id: 'larissa', name: 'Larissa Moura' },
+  { id: 'marcos', name: 'Marcos Lima' },
+];
+const ownerName = (id) => (id ? PEOPLE.find((p) => p.id === id).name : 'Sem responsável');
+
+const ORIGENS = ['Instagram', 'Indicação', 'Passante', 'Site', 'WhatsApp', 'Tráfego pago'];
+const CANAL = { Instagram: 'redes sociais', Site: 'digital', WhatsApp: 'digital', 'Tráfego pago': 'pago' };
+const FUNIS = ['Funil comercial', 'Captação digital'];
+const SRC_W = [['Instagram', .31], ['Indicação', .2], ['Passante', .14], ['Site', .12], ['WhatsApp', .12], ['Tráfego pago', .11]];
+const OWN_W = [['ana', .32], ['diego', .27], ['larissa', .23], ['marcos', .1], [null, .08]];
+const MOD_W = [['Musculação', .45], ['Funcional', .3], ['Pilates', .15], ['Cross', .1]];
+const PROF = { Musculação: 'Rafael Menezes', Funcional: 'Bianca Alves', Pilates: 'Clara Weiss', Cross: 'Tiago Rolim' };
+const LOSS_W = [['Preço', .27], ['Horário', .17], ['Distância', .13], ['Sem interesse', .14], ['Foi para outra academia', .12], ['Não respondeu', .17]];
+const HOURS = ['07:00', '08:30', '10:00', '11:30', '14:00', '16:00', '17:30', '18:30', '19:30', '20:00'];
+const FIRST = ['Camila', 'Lucas', 'Mariana', 'Rafael', 'Juliana', 'Bruno', 'Fernanda', 'Thiago', 'Patrícia', 'Gustavo', 'Aline', 'Rodrigo', 'Bianca', 'Felipe', 'Tatiane', 'Vitor', 'Renata', 'Igor', 'Sabrina', 'Otávio', 'Carla', 'Diego', 'Priscila', 'Hugo', 'Amanda', 'Leo', 'Natália', 'Eduardo', 'Simone', 'Caio', 'Luana', 'Ricardo', 'Débora', 'Mateus', 'Vanessa', 'Alex', 'Kelly', 'Sérgio', 'Manuela', 'Fabiana'];
+const LAST = ['Ferraz', 'Lemos', 'Kunz', 'Prado', 'Bastos', 'Rocha', 'Vilas', 'Pinho', 'Sampaio', 'Menegatti', 'Steffen', 'Cattani', 'Wrasse', 'Balbi', 'Deppe', 'Pilla', 'Néri', 'Cimadon', 'Fontes', 'Kraemer', 'Ost', 'Bordin', 'Luz', 'Peixoto', 'Tavares', 'Farias', 'Cordeiro', 'Andrade', 'Bragança', 'Weber'];
+
+// Uma base de detalhe só, de 01/08 a hoje. Todo número da tela, do período e
+// do comparado, sai dela: nada de total gravado ao lado das linhas.
+function genLeads() {
+  const R = rng(20261015);
+  const out = []; let i = 0;
+  for (let d = 1; d <= TODAY; d++) {
+    const weekend = wd(d) >= 5;
+    const n = weekend ? 1 + Math.floor(R() * 2) : 3 + Math.floor(R() * 3);
+    for (let k = 0; k < n; k++) {
+      i++;
+      const first = FIRST[Math.floor(R() * FIRST.length)];
+      const last = LAST[Math.floor(R() * LAST.length)];
+      const source = pick(R, SRC_W);
+      const owner = pick(R, OWN_W);
+      const funnel = R() < .7 ? FUNIS[0] : FUNIS[1];
+      let fcMin = null;
+      const rc = R();
+      if (!(d === TODAY && R() < .55)) {
+        if (rc < .44) fcMin = 4 + Math.floor(R() * 55);
+        else if (rc < .74) fcMin = 70 + Math.floor(R() * 1300);
+        else if (rc < .9) fcMin = 1500 + Math.floor(R() * 3500);
+      }
+      const fcDay = fcMin == null ? null : Math.min(TODAY, d + Math.floor(fcMin / 1440));
+      const contacted = fcMin != null;
+      const booked = contacted && R() < (fcMin <= 60 ? .7 : fcMin <= 1440 ? .56 : .38);
+      let apptDay = null, attend = null, apptType = null, unit = null, modality = null, professor = null, hour = null;
+      if (booked) {
+        apptDay = fcDay + 1 + Math.floor(R() * 6);
+        apptType = R() < .45 ? 'Visita' : 'Aula experimental';
+        unit = R() < .6 ? 'Centro' : 'Moinhos';
+        modality = apptType === 'Visita' ? null : pick(R, MOD_W);
+        professor = apptType === 'Visita' ? null : (R() < .1 ? 'Treina sozinho' : PROF[modality]);
+        hour = HOURS[Math.floor(R() * HOURS.length)];
+        if (apptDay > TODAY) attend = 'futuro';
+        else if (apptDay === TODAY) attend = hour < '16:00' ? (R() < .75 ? 'veio' : 'faltou') : 'futuro';
+        else { const ra = R(); attend = ra < .66 ? 'veio' : ra < .87 ? 'faltou' : 'sem'; }
+      }
+      let outcome = 'open', outDay = null, lossReason = null;
+      if (attend === 'veio' && R() < .58) {
+        const od = apptDay + Math.floor(R() * 4);
+        if (od <= TODAY) { outcome = 'enrolled'; outDay = od; }
+      } else if (attend !== 'futuro' && R() < (attend === 'veio' ? .3 : contacted ? .4 : .5)) {
+        const od = (booked ? apptDay : d) + 2 + Math.floor(R() * 14);
+        if (od <= TODAY) { outcome = 'lost'; outDay = od; lossReason = contacted ? pick(R, LOSS_W) : 'Não respondeu'; }
+      }
+      const lossStage = outcome !== 'lost' || outDay < STAGE_SINCE ? null
+        : !contacted ? 'Novo lead' : !booked ? 'Contato feito' : attend !== 'veio' ? 'Aula agendada' : 'Negociação';
+      let stage, since;
+      if (outcome === 'enrolled') { stage = 'Venda'; since = outDay; }
+      else if (outcome === 'lost') { stage = 'Perda'; since = outDay; }
+      else if (!contacted) { stage = 'Novo lead'; since = d; }
+      else if (!booked) { stage = 'Contato feito'; since = fcDay; }
+      else if (attend === 'veio') { stage = R() < .5 ? 'Aula realizada' : 'Negociação'; since = apptDay; }
+      else { stage = 'Aula agendada'; since = fcDay; }
+      let lastRec = Math.max(d, fcDay || 0, (attend === 'veio' || attend === 'faltou') ? apptDay : 0);
+      let nextDay = null;
+      if (outcome === 'open') {
+        if (TODAY - lastRec > 10 && R() < .55) lastRec = TODAY - Math.floor(R() * 12);
+        lastRec = Math.min(TODAY, lastRec);
+        if (booked && attend === 'futuro') nextDay = apptDay;
+        else if (R() > .24) nextDay = lastRec + 2 + Math.floor(R() * 9);
+      }
+      out.push({
+        id: 'l' + i, name: first + ' ' + last, ini: (first[0] + last[0]).toUpperCase(),
+        d, source, owner, funnel, fcMin, fcDay, booked, apptDay, attend, apptType, unit, modality, professor, hour,
+        outcome, outDay, lossReason, lossStage, stage, since, lastRec, nextDay,
+      });
+    }
+  }
+  return out;
+}
+const LEADS = genLeads();
+
+const SECS = [
+  { id: 'entrada', label: 'Entrada de leads', hint: 'Quantos chegaram e de onde', title: 'Entrada de leads',
+    question: 'Quantos leads chegaram no período, de onde e para qual consultor.',
+    icon: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM19 8v6M22 11h-6' },
+  { id: 'conversao', label: 'Conversão', hint: 'Quantos viraram matrícula', title: 'Conversão',
+    question: 'Dos leads que chegaram no período, quantos agendaram, vieram e se matricularam até hoje.',
+    icon: 'M22 7 13.5 15.5 8.5 10.5 2 17M16 7h6v6' },
+  { id: 'visitas', label: 'Visitas e aulas', hint: 'Quem veio e quem faltou', title: 'Visitas e aulas experimentais',
+    question: 'As visitas e aulas experimentais marcadas para o período e o que aconteceu em cada uma.',
+    icon: 'M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM9 16l2 2 4-4' },
+  { id: 'perdas', label: 'Perdas', hint: 'Por que e onde perdemos', title: 'Perdas',
+    question: 'Os leads perdidos no período, com o motivo e a etapa em que saíram.',
+    icon: 'M22 17 13.5 8.5 8.5 13.5 2 7M16 17h6v-6' },
+  { id: 'parados', label: 'Leads parados', hint: 'Quem ficou sem atenção', title: 'Leads parados',
+    question: 'Os leads em aberto agora que estão sem próximo passo, com contato atrasado ou sem registro há dias.',
+    icon: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM10 15V9M14 15V9' },
+];
+
+const TONE = {
+  green: { bg: 'var(--green-t)', fg: 'var(--green-700)', dot: 'var(--green)' },
+  red: { bg: 'var(--red-t)', fg: 'var(--red-700)', dot: 'var(--red)' },
+  amber: { bg: 'var(--amber-t)', fg: 'var(--amber-700)', dot: 'var(--amber)' },
+  brand: { bg: 'var(--brand-50)', fg: 'var(--brand-700)', dot: 'var(--brand)' },
+  slate: { bg: 'var(--slate-t)', fg: 'var(--slate-fg)', dot: 'var(--faint)' },
+};
+
+const FAIXAS = [
+  { k: '1h', name: 'Até 1 hora', test: (l) => l.fcMin != null && l.fcMin <= 60 },
+  { k: '24h', name: 'Até 24 horas', side: 'mais de 1h', test: (l) => l.fcMin != null && l.fcMin > 60 && l.fcMin <= 1440 },
+  { k: 'mais', name: 'Mais de 24 horas', test: (l) => l.fcMin != null && l.fcMin > 1440 },
+  { k: 'sem', name: 'Sem contato', test: (l) => l.fcMin == null },
+];
+
+// Cada recorte é "dimensão:valor". O mesmo código filtra a lista e acende a linha.
+const MATCH = {
+  origem: (x, v) => x.source === v,
+  resp: (x, v) => (x.owner || 'none') === v,
+  funil: (x, v) => x.funnel === v,
+  faixa: (x, v) => FAIXAS.find((f) => f.k === v).test(x),
+  sit: (x, v) => ({ agendou: x.booked, veio: x.attend === 'veio', matriculou: x.outcome === 'enrolled', perdeu: x.outcome === 'lost', aberto: x.outcome === 'open' })[v],
+  st: (x, v) => x.attend === v,
+  tipo: (x, v) => x.apptType === v,
+  unidade: (x, v) => x.unit === v,
+  mod: (x, v) => x.modality === v,
+  prof: (x, v) => x.professor === v && x.attend === 'veio',
+  motivo: (x, v) => x.lossReason === v,
+  etapa: (x, v) => (x.lossStage || 'sem') === v,
+  flag: (x, v) => x.flags && x.flags[v],
+};
+const matchCut = (x, cut) => { if (!cut) return true; const i = cut.indexOf(':'); return MATCH[cut.slice(0, i)](x, cut.slice(i + 1)); };
+
+const CUT_LABEL = {
+  sit: { agendou: 'Agendaram', veio: 'Vieram', matriculou: 'Matricularam', perdeu: 'Perderam', aberto: 'Em aberto' },
+  st: { veio: 'Vieram', faltou: 'Faltaram', sem: 'Sem desfecho', futuro: 'A acontecer' },
+  flag: { semProximo: 'Sem próximo passo', atrasado: 'Contato atrasado', semRegistro: 'Sem registro recente' },
+};
+function cutLabelOf(cut) {
+  if (!cut) return '';
+  const i = cut.indexOf(':'); const dim = cut.slice(0, i), v = cut.slice(i + 1);
+  if (CUT_LABEL[dim]) return CUT_LABEL[dim][v];
+  if (dim === 'origem') return 'Origem: ' + v;
+  if (dim === 'resp') return 'Consultor: ' + ownerName(v === 'none' ? null : v);
+  if (dim === 'funil') return v;
+  if (dim === 'faixa') return '1º contato: ' + FAIXAS.find((f) => f.k === v).name.toLowerCase();
+  if (dim === 'tipo') return v === 'Visita' ? 'Só visitas' : 'Só aulas experimentais';
+  if (dim === 'unidade') return 'Unidade ' + v;
+  if (dim === 'mod') return v;
+  if (dim === 'prof') return v === 'Treina sozinho' ? 'Treinou sozinho' : 'Professor: ' + v;
+  if (dim === 'motivo') return 'Motivo: ' + v;
+  if (dim === 'etapa') return v === 'sem' ? 'Etapa: sem base' : 'Etapa: ' + v;
+  return v;
+}
+
+function delta(v, base, o) {
+  o = o || {};
+  if (base == null) return null;
+  let up, text;
+  if (o.pp) {
+    const d = v - base;
+    if (d === 0) return { text: '= 0 p.p.', bg: 'var(--soft2)', fg: 'var(--muted)' };
+    up = d > 0; text = (up ? '▲ +' : '▼ −') + Math.abs(d) + ' p.p.';
+  } else {
+    if (!base) return null;
+    const d = Math.round(((v - base) / base) * 100);
+    if (d === 0) return { text: '= 0%', bg: 'var(--soft2)', fg: 'var(--muted)' };
+    up = d > 0; text = (up ? '▲ ' : '▼ ') + Math.abs(d) + '%';
+  }
+  const good = o.lowerBetter ? !up : up;
+  return { text, bg: good ? 'var(--green-t)' : 'var(--red-t)', fg: good ? 'var(--green-700)' : 'var(--red-700)' };
+}
+const pct = (a, b) => (b > 0 ? Math.round((a / b) * 100) : null);
+
+function groupBy(items, dim, keyOf, nameOf, sideOf) {
+  const m = new Map();
+  items.forEach((x) => {
+    const k = keyOf(x); if (k == null) return;
+    const e = m.get(k) || { k, name: nameOf(x), side: sideOf ? sideOf(x) : '', items: [] };
+    e.items.push(x); m.set(k, e);
+  });
+  return [...m.values()].sort((a, b) => b.items.length - a.items.length || a.name.localeCompare(b.name, 'pt-BR'))
+    .map((e) => ({ key: dim + ':' + e.k, name: e.name, side: e.side, items: e.items }));
+}
+
+const byOrigem = (xs) => groupBy(xs, 'origem', (x) => x.source, (x) => x.source, (x) => CANAL[x.source] || '');
+const byResp = (xs) => groupBy(xs, 'resp', (x) => x.owner || 'none', (x) => ownerName(x.owner), (x) => (x.owner ? '' : 'fora da equipe ou sem dono'));
+
+// Períodos: o comparado é o anterior do mesmo tamanho; no mês, o mês anterior
+// cortado no mesmo dia.
+function windowOf(s) {
+  switch (s.pkind) {
+    case 'hoje': return { a: 76, b: 76, ca: 75, cb: 75, label: 'Hoje · 15/10', cmp: 'vs. ontem, 14/10' };
+    case 'ontem': return { a: 75, b: 75, ca: 74, cb: 74, label: 'Ontem · 14/10', cmp: 'vs. 13/10' };
+    case 'semana': return { a: 73, b: 76, ca: 66, cb: 69, label: 'Esta semana · 12 a 15/10', cmp: 'vs. 5 a 8 de outubro' };
+    case 'semana-passada': return { a: 66, b: 72, ca: 59, cb: 65, label: 'Semana passada · 5 a 11/10', cmp: 'vs. 28/09 a 04/10' };
+    case 'custom': {
+      let a = isoToDay(s.cA) || 62, b = isoToDay(s.cB) || 76;
+      if (a > b) { const t = a; a = b; b = t; }
+      const len = b - a + 1, ca = a - len, cb = a - 1;
+      return { a, b, ca: ca >= 1 ? ca : null, cb: ca >= 1 ? cb : null, label: rangeText(a, b), cmp: ca >= 1 ? 'vs. ' + rangeText(ca, cb) : 'sem base para comparar' };
+    }
+    default:
+      return s.month === 9
+        ? { a: 32, b: 61, ca: 1, cb: 31, label: 'Setembro 2026', cmp: 'vs. agosto' }
+        : { a: 62, b: 76, ca: 32, cb: 46, label: 'Outubro 2026 · em andamento', cmp: 'vs. 1 a 15 de setembro' };
+  }
+}
+const inW = (d, a, b) => d != null && a != null && d >= a && d <= b;
+
+function cellName(l) { return { isName: true, isText: false, isPill: false, text: l.name, ini: l.ini, justify: 'flex-start' }; }
+function cellText(text, o) { o = o || {}; return { isName: false, isText: true, isPill: false, text, fg: o.fg || 'var(--fg2)', weight: o.w || '400', justify: o.right ? 'flex-end' : 'flex-start' }; }
+function cellPill(text, tone) { const t = TONE[tone]; return { isName: false, isText: false, isPill: true, text, bg: t.bg, fg: t.fg, dot: t.dot, justify: 'flex-start' }; }
+
+class Component extends DCLogic {
+  state = {
+    theme: 'light', sec: 'entrada', pkind: 'mes', month: 10, cA: '2026-10-01', cB: '2026-10-15',
+    resp: [], origem: null, funil: null, cut: null, tab: 0, more: 0, menu: null, corte: 7, toast: null, railOpen: false,
+  };
+
+  componentDidMount() { this.applyTheme(); }
+  componentDidUpdate() { this.applyTheme(); }
+  componentWillUnmount() { clearTimeout(this._t); }
+  applyTheme() {
+    const t = this.state.theme === 'dark' ? 'dark' : 'light';
+    if (document.documentElement.dataset.theme !== t) document.documentElement.dataset.theme = t;
+  }
+
+  // Filtro e período mudam a lista: ela volta aos 50 primeiros.
+  set(patch) { this.setState(Object.assign({ more: 0 }, patch)); }
+
+  bases(s, W) {
+    const inF = (l) => (s.resp.length === 0 || s.resp.includes(l.owner)) && (!s.origem || l.source === s.origem) && (!s.funil || l.funnel === s.funil);
+    const F = LEADS.filter(inF);
+    const open = F.filter((l) => l.outcome === 'open').map((l) => {
+      const flags = {
+        semProximo: l.nextDay == null && l.d < TODAY,
+        atrasado: l.nextDay != null && l.nextDay < TODAY,
+        semRegistro: TODAY - l.lastRec > s.corte,
+      };
+      return Object.assign({}, l, { flags });
+    }).filter((l) => l.flags.semProximo || l.flags.atrasado || l.flags.semRegistro);
+    return {
+      entrada: F.filter((l) => inW(l.d, W.a, W.b)),
+      entradaCmp: W.ca == null ? null : F.filter((l) => inW(l.d, W.ca, W.cb)),
+      appts: F.filter((l) => l.booked && inW(l.apptDay, W.a, W.b)),
+      apptsCmp: W.ca == null ? null : F.filter((l) => l.booked && inW(l.apptDay, W.ca, W.cb)),
+      losses: F.filter((l) => l.outcome === 'lost' && inW(l.outDay, W.a, W.b)),
+      lossesCmp: W.ca == null ? null : F.filter((l) => l.outcome === 'lost' && inW(l.outDay, W.ca, W.cb)),
+      parados: open,
+    };
+  }
+
+  renderVals() {
+    const s = this.state;
+    const dark = s.theme === 'dark';
+    const W = windowOf(s);
+    const B = this.bases(s, W);
+    const sec = SECS.find((x) => x.id === s.sec);
+
+    const attendRate = (xs) => { const v = xs.filter((l) => l.attend === 'veio').length, f = xs.filter((l) => l.attend === 'faltou').length; return pct(v, v + f); };
+    const convRate = (xs) => pct(xs.filter((l) => l.outcome === 'enrolled').length, xs.length);
+
+    // ── Lista ao lado: o número principal de cada relatório, com os filtros da barra
+    const railNum = {
+      entrada: br(B.entrada.length),
+      conversao: convRate(B.entrada) == null ? '—' : convRate(B.entrada) + '%',
+      visitas: attendRate(B.appts) == null ? '—' : attendRate(B.appts) + '%',
+      perdas: br(B.losses.length),
+      parados: br(B.parados.length),
+    };
+    const rail = SECS.map((x) => {
+      const on = x.id === s.sec;
+      return {
+        label: x.label, hint: x.hint, icon: x.icon, num: railNum[x.id],
+        current: on ? 'page' : 'false',
+        edge: on ? 'var(--border)' : 'transparent',
+        bg: on ? 'var(--card)' : 'transparent',
+        shadow: on ? 'var(--shadow)' : 'none',
+        tileBg: on ? 'var(--brand)' : 'var(--soft2)',
+        tileFg: on ? '#fff' : 'var(--muted)',
+        labelFg: on ? 'var(--fg)' : 'var(--fg2)',
+        numFg: on ? 'var(--brand-700)' : 'var(--muted)',
+        pick: () => { if (x.id !== s.sec) this.set({ sec: x.id, cut: null, tab: 0, menu: null }); },
+      };
+    });
+
+    // ── Monta o relatório aberto
+    let band, recTabs, rows, columns, grid, noun, notices = [], baseItems, sortFn, rowCells;
+    const cmpSub = W.cmp;
+
+    const chartOf = (items, dayOf, label, unit) => {
+      const len = W.b - W.a + 1;
+      if (len < 2) return { hasChart: false, chart: [] };
+      const counts = Array.from({ length: len }, (_, i) => ({ d: W.a + i, n: 0 }));
+      items.forEach((x) => { const d = dayOf(x); if (inW(d, W.a, W.b)) counts[d - W.a].n++; });
+      const max = Math.max(1, ...counts.map((c) => c.n));
+      const peak = counts.reduce((m, c) => (c.n > m.n ? c : m), counts[0]);
+      return {
+        hasChart: true, chartLabel: label,
+        chartPeak: 'pico de ' + peak.n + ' em ' + fmtD(peak.d),
+        chartStart: fmtD(W.a), chartEnd: W.b === TODAY ? 'hoje, ' + fmtD(W.b) : fmtD(W.b),
+        chart: counts.map((c) => ({
+          h: Math.max(3, Math.round((c.n / max) * 72)) + 'px',
+          bg: c.n === 0 ? 'var(--soft2)' : c.d === TODAY ? 'var(--brand-300)' : wd(c.d) >= 5 ? 'var(--brand-200)' : 'var(--brand)',
+          title: fmtD(c.d) + ': ' + c.n + ' ' + (c.n === 1 ? unit[0] : unit[1]) + (c.d === TODAY ? ' até agora' : ''),
+        })),
+      };
+    };
+
+    const heroOf = (label, value, d, fg) => ({
+      heroLabel: label, heroValue: value, heroFg: fg || 'var(--fg)',
+      heroHasDelta: Boolean(d), heroDelta: d ? d.text : '', heroDeltaBg: d ? d.bg : '', heroDeltaFg: d ? d.fg : '',
+      heroSub: cmpSub,
+    });
+
+    const cellsOf = (defs, items, cmpItems) => defs.map((c) => {
+      const n = c.key ? items.filter((x) => matchCut(x, c.key)).length : items.length;
+      const base = cmpItems && !c.noDelta ? (c.key ? cmpItems.filter((x) => matchCut(x, c.key)).length : cmpItems.length) : null;
+      const dl = c.noDelta ? null : delta(n, base, { lowerBetter: c.lowerBetter });
+      const active = c.key === null ? s.cut === null : s.cut === c.key;
+      return {
+        label: c.label, value: br(n), title: c.title || '',
+        fg: c.fg || 'var(--fg)',
+        labelFg: active ? 'var(--brand-700)' : 'var(--muted)',
+        bg: active ? 'var(--brand-50)' : 'transparent',
+        bar: active ? 'var(--brand)' : 'transparent',
+        active, hasArrow: Boolean(c.arrow), hasRule: Boolean(c.rule),
+        hasDelta: Boolean(dl), delta: dl ? dl.text : '', deltaBg: dl ? dl.bg : '', deltaFg: dl ? dl.fg : '',
+        hasNote: !dl && Boolean(c.note), note: c.note || '',
+        pick: () => this.set({ cut: c.key === null || active ? null : c.key }),
+      };
+    });
+
+    if (s.sec === 'entrada') {
+      baseItems = B.entrada;
+      band = Object.assign(
+        heroOf(B.entrada.length === 1 ? 'Lead novo' : 'Leads novos', br(B.entrada.length), B.entradaCmp ? delta(B.entrada.length, B.entradaCmp.length) : null),
+        { hasCells: false, cells: [] },
+        chartOf(B.entrada, (l) => l.d, 'Por dia de cadastro', ['lead', 'leads'])
+      );
+      recTabs = [
+        { label: 'Por origem', rows: byOrigem(baseItems) },
+        { label: 'Por consultor', rows: byResp(baseItems) },
+        { label: 'Por funil', rows: groupBy(baseItems, 'funil', (x) => x.funnel, (x) => x.funnel) },
+      ];
+      noun = 'leads';
+      sortFn = (a, b) => b.d - a.d;
+      columns = [['Nome'], ['Origem'], ['Consultor'], ['Funil'], ['Etapa'], ['Cadastro'], ['Situação']];
+      grid = 'minmax(170px,1.5fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.05fr) minmax(0,1fr) 64px 104px';
+      rowCells = (l) => [
+        cellName(l), cellText(l.source), cellText(ownerName(l.owner)), cellText(l.funnel), cellText(l.stage), cellText(fmtD(l.d)),
+        l.outcome === 'enrolled' ? cellPill('Cliente', 'green') : l.outcome === 'lost' ? cellPill('Perdido', 'red') : cellPill('Em aberto', 'slate'),
+      ];
+    } else if (s.sec === 'conversao') {
+      baseItems = B.entrada;
+      const conv = convRate(B.entrada), convCmp = B.entradaCmp ? convRate(B.entradaCmp) : null;
+      band = Object.assign(
+        heroOf('Conversão da safra', conv == null ? 'sem base' : conv + '%', conv != null && convCmp != null ? delta(conv, convCmp, { pp: true }) : null, conv == null ? 'var(--muted)' : 'var(--green-700)'),
+        { hasChart: false, chart: [], hasCells: true },
+        { cells: cellsOf([
+          { key: null, label: 'Leads da safra', title: 'Cadastrados no período, acompanhados até hoje' },
+          { key: 'sit:agendou', label: 'Agendaram', arrow: true },
+          { key: 'sit:veio', label: 'Vieram', arrow: true },
+          { key: 'sit:matriculou', label: 'Matricularam', arrow: true, fg: 'var(--green-700)' },
+          { key: 'sit:perdeu', label: 'Perderam', rule: true, lowerBetter: true },
+          { key: 'sit:aberto', label: 'Em aberto', noDelta: true, note: 'ainda no funil' },
+        ], B.entrada, B.entradaCmp) }
+      );
+      recTabs = [
+        { label: 'Por origem', rows: byOrigem(baseItems), conv: true },
+        { label: 'Por consultor', rows: byResp(baseItems), conv: true },
+        { label: 'Rapidez do 1º contato', conv: true, fixed: true,
+          rows: FAIXAS.map((f) => ({ key: 'faixa:' + f.k, name: f.name, side: f.side || '', items: baseItems.filter(f.test) })).filter((r) => r.items.length > 0) },
+      ];
+      noun = 'leads da safra';
+      sortFn = (a, b) => b.d - a.d;
+      columns = [['Nome'], ['Origem'], ['Consultor'], ['Cadastro'], ['1º contato'], ['Agend.'], ['Veio'], ['Desfecho']];
+      grid = 'minmax(170px,1.5fr) minmax(0,1fr) minmax(0,1fr) 64px 112px 52px 44px 150px';
+      rowCells = (l) => [
+        cellName(l), cellText(l.source), cellText(ownerName(l.owner)), cellText(fmtD(l.d)),
+        l.fcMin == null ? cellText('Sem contato', { fg: 'var(--muted)' }) : cellText(fmtDur(l.fcMin) + ' · ' + fmtD(l.fcDay)),
+        cellText(l.booked ? 'Sim' : 'Não', { fg: l.booked ? 'var(--fg)' : 'var(--muted)', w: l.booked ? '600' : '400' }),
+        cellText(l.attend === 'veio' ? 'Sim' : 'Não', { fg: l.attend === 'veio' ? 'var(--fg)' : 'var(--muted)', w: l.attend === 'veio' ? '600' : '400' }),
+        l.outcome === 'enrolled' ? cellPill('Matriculou em ' + fmtD(l.outDay), 'green') : l.outcome === 'lost' ? cellPill('Perdeu em ' + fmtD(l.outDay), 'red') : cellPill('Em aberto', 'slate'),
+      ];
+    } else if (s.sec === 'visitas') {
+      baseItems = B.appts;
+      const rate = attendRate(B.appts), rateCmp = B.apptsCmp ? attendRate(B.apptsCmp) : null;
+      band = Object.assign(
+        heroOf('Comparecimento', rate == null ? 'sem base' : rate + '%', rate != null && rateCmp != null ? delta(rate, rateCmp, { pp: true }) : null, rate == null ? 'var(--muted)' : 'var(--fg)'),
+        { hasChart: false, chart: [], hasCells: true },
+        { cells: cellsOf([
+          { key: null, label: 'Marcados' },
+          { key: 'st:veio', label: 'Vieram', fg: 'var(--green-700)' },
+          { key: 'st:faltou', label: 'Faltaram', lowerBetter: true, fg: 'var(--red-700)' },
+          { key: 'st:sem', label: 'Sem desfecho', noDelta: true, note: 'ninguém marcou', fg: 'var(--amber-700)' },
+          { key: 'st:futuro', label: 'A acontecer', noDelta: true, note: 'data ainda vem' },
+        ], B.appts, B.apptsCmp) }
+      );
+      band.heroSub = 'vieram ÷ (vieram + faltaram) · ' + cmpSub;
+      if (W.a < APPTS_SINCE) notices.push({ text: 'As visitas só têm registro desde 18/08/2026, então este período está incompleto e os números ficam abaixo do real.' });
+      else if (W.ca != null && W.ca < APPTS_SINCE) notices.push({ text: 'O período comparado começa antes de setembro, quando as visitas ainda não eram todas registradas. A variação pode parecer melhor do que é.' });
+      recTabs = [
+        { label: 'Visita ou aula', rows: groupBy(baseItems, 'tipo', (x) => x.apptType, (x) => (x.apptType === 'Visita' ? 'Visitas' : 'Aulas experimentais')) },
+        { label: 'Por professor', conv: true, countLabel: 'Aulas', hint: 'só aulas experimentais · quantos matricularam depois da aula',
+          rows: groupBy(baseItems.filter((x) => x.attend === 'veio'), 'prof', (x) => x.professor, (x) => (x.professor === 'Treina sozinho' ? 'Treinou sozinho' : x.professor), (x) => (x.professor === 'Treina sozinho' ? 'sem professor' : x.modality)) },
+        { label: 'Por consultor', rows: byResp(baseItems) },
+        { label: 'Por unidade', rows: groupBy(baseItems, 'unidade', (x) => x.unit, (x) => 'Unidade ' + x.unit) },
+        { label: 'Por modalidade', rows: groupBy(baseItems, 'mod', (x) => x.modality, (x) => x.modality), hint: 'só aulas experimentais' },
+      ];
+      noun = 'agendamentos';
+      sortFn = (a, b) => a.apptDay - b.apptDay || (a.hour < b.hour ? -1 : 1);
+      columns = [['Nome'], ['Tipo'], ['Dia e hora'], ['Unidade'], ['Modalidade'], ['Professor'], ['Consultor'], ['Desfecho']];
+      grid = 'minmax(160px,1.4fr) 92px 96px 78px minmax(0,.9fr) minmax(0,1fr) minmax(0,1fr) 116px';
+      rowCells = (l) => [
+        cellName(l), cellText(l.apptType === 'Visita' ? 'Visita' : 'Aula'), cellText(fmtD(l.apptDay) + ' · ' + l.hour), cellText(l.unit),
+        cellText(l.modality || '—', { fg: l.modality ? 'var(--fg2)' : 'var(--muted)' }),
+        cellText(l.professor || '—', { fg: l.professor ? 'var(--fg2)' : 'var(--muted)' }),
+        cellText(ownerName(l.owner)),
+        l.attend === 'veio' ? cellPill('Veio', 'green') : l.attend === 'faltou' ? cellPill('Faltou', 'red') : l.attend === 'sem' ? cellPill('Sem desfecho', 'amber') : cellPill('A acontecer', 'brand'),
+      ];
+    } else if (s.sec === 'perdas') {
+      baseItems = B.losses;
+      band = Object.assign(
+        heroOf(B.losses.length === 1 ? 'Perda' : 'Perdas', br(B.losses.length), B.lossesCmp ? delta(B.losses.length, B.lossesCmp.length, { lowerBetter: true }) : null),
+        { hasCells: false, cells: [] },
+        chartOf(B.losses, (l) => l.outDay, 'Por dia da perda', ['perda', 'perdas'])
+      );
+      notices.push({ text: 'Por enquanto, quem foi perdido e voltou ao funil sai desta conta: a volta apaga a data da perda.' });
+      if (W.a < STAGE_SINCE) notices.push({ text: 'A etapa da perda só é registrada desde 14/09/2026. Antes disso, ela aparece como "sem base".' });
+      recTabs = [
+        { label: 'Por motivo', rows: groupBy(baseItems, 'motivo', (x) => x.lossReason, (x) => x.lossReason) },
+        { label: 'Por etapa', rows: groupBy(baseItems, 'etapa', (x) => x.lossStage || 'sem', (x) => x.lossStage || 'Sem base', (x) => (x.lossStage ? '' : 'antes de 14/09')) },
+        { label: 'Por origem', rows: byOrigem(baseItems) },
+        { label: 'Por consultor', rows: byResp(baseItems) },
+      ];
+      noun = 'leads perdidos';
+      sortFn = (a, b) => b.outDay - a.outDay;
+      columns = [['Nome'], ['Motivo'], ['Etapa'], ['Perdeu em'], ['Há'], ['Origem'], ['Consultor']];
+      grid = 'minmax(170px,1.5fr) minmax(0,1.2fr) minmax(0,1fr) 78px 70px minmax(0,1fr) minmax(0,1fr)';
+      rowCells = (l) => [
+        cellName(l), cellText(l.lossReason, { fg: 'var(--fg)', w: '600' }),
+        cellText(l.lossStage || 'sem base', { fg: l.lossStage ? 'var(--fg2)' : 'var(--muted)' }),
+        cellText(fmtD(l.outDay)), cellText(days(TODAY - l.outDay), { fg: 'var(--muted)' }),
+        cellText(l.source), cellText(ownerName(l.owner)),
+      ];
+    } else {
+      baseItems = B.parados;
+      band = Object.assign(
+        { heroLabel: 'Leads parados', heroValue: br(B.parados.length), heroFg: 'var(--fg)', heroHasDelta: false, heroDelta: '', heroDeltaBg: '', heroDeltaFg: '',
+          heroSub: 'em aberto agora, 15/10 às 15:40 · cada lead conta uma vez' },
+        { hasChart: false, chart: [], hasCells: true },
+        { cells: cellsOf([
+          { key: 'flag:semProximo', label: 'Sem próximo passo', noDelta: true, note: 'fora quem chegou hoje', fg: 'var(--amber-700)' },
+          { key: 'flag:atrasado', label: 'Contato atrasado', noDelta: true, note: 'a data já passou', fg: 'var(--red-700)' },
+          { key: 'flag:semRegistro', label: 'Sem registro há +' + s.corte + ' dias', noDelta: true, note: 'nada na ficha' },
+        ], B.parados, null) }
+      );
+      recTabs = [{ label: 'Por consultor', rows: byResp(baseItems), hint: 'o dono de hoje, mesmo com o contato delegado' }];
+      noun = 'leads parados';
+      sortFn = (a, b) => a.lastRec - b.lastRec;
+      columns = [['Nome'], ['Etapa'], ['Na etapa'], ['Último registro'], ['Próximo contato'], ['Consultor']];
+      grid = 'minmax(180px,1.5fr) minmax(0,1fr) 80px 116px 156px minmax(0,1fr)';
+      rowCells = (l) => [
+        cellName(l), cellText(l.stage), cellText(days(TODAY - l.since)),
+        cellText(ago(TODAY - l.lastRec), { fg: TODAY - l.lastRec > s.corte ? 'var(--fg)' : 'var(--fg2)', w: TODAY - l.lastRec > s.corte ? '600' : '400' }),
+        l.nextDay == null ? cellPill('Sem próximo passo', 'amber') : l.nextDay < TODAY ? cellPill('Atrasado ' + days(TODAY - l.nextDay), 'red') : cellText(l.nextDay === TODAY ? 'hoje' : fmtD(l.nextDay)),
+        cellText(ownerName(l.owner)),
+      ];
+    }
+
+    // Recorte que sumiu com a troca de período ou de filtro é ignorado.
+    const tileKeys = (band.cells || []).map((c) => c && c.title !== undefined ? null : null);
+    const recKeys = recTabs.flatMap((t) => t.rows.map((r) => r.key));
+    const isTileCut = s.cut && /^(sit|st|flag):/.test(s.cut);
+    const cut = s.cut && (isTileCut || recKeys.includes(s.cut)) ? s.cut : null;
+    if (cut !== s.cut && band.cells) band.cells.forEach((c) => { if (c.title === 'Cadastrados no período, acompanhados até hoje' || c.label === 'Marcados') { c.active = true; c.bg = 'var(--brand-50)'; c.bar = 'var(--brand)'; c.labelFg = 'var(--brand-700)'; } });
+    void tileKeys;
+
+    const tabIdx = Math.min(s.tab, recTabs.length - 1);
+    const T = recTabs[tabIdx];
+    const tot = baseItems.length;
+    const maxN = Math.max(1, ...T.rows.map((r) => r.items.length));
+    const rec = {
+      tabs: recTabs.map((t, i) => ({
+        label: t.label, on: i === tabIdx ? 'true' : 'false',
+        bg: i === tabIdx ? 'var(--card)' : 'transparent',
+        fg: i === tabIdx ? 'var(--fg)' : 'var(--muted)',
+        shadow: i === tabIdx ? 'var(--shadow)' : 'none',
+        pick: () => this.setState({ tab: i }),
+      })),
+      hint: T.hint ? T.hint + ' · clique numa linha para filtrar a lista' : 'Clique numa linha para filtrar a lista',
+      countLabel: T.countLabel || 'Leads',
+      isCount: !T.conv && T.rows.length > 0,
+      isConv: Boolean(T.conv) && T.rows.length > 0,
+      empty: T.rows.length === 0,
+      rows: T.rows.map((r) => {
+        const n = r.items.length, active = cut === r.key;
+        const enrolled = r.items.filter((x) => x.outcome === 'enrolled').length;
+        const cv = pct(enrolled, n);
+        return {
+          name: r.name, side: r.side, n: br(n), share: (pct(n, tot) || 0) + '%',
+          barW: Math.max(2, Math.round((n / maxN) * 100)) + '%',
+          barBg: active ? 'var(--brand)' : 'var(--brand-300)',
+          enrolled: br(enrolled), conv: cv == null ? '—' : cv + '%', convW: (cv || 0) + '%',
+          convFg: cv == null ? 'var(--muted)' : 'var(--green-700)',
+          weight: active ? '700' : '500',
+          bg: active ? 'var(--brand-50)' : 'transparent',
+          active: active ? 'true' : 'false',
+          title: T.conv
+            ? r.name + ': ' + n + (n === 1 ? ' lead' : ' leads') + ', ' + enrolled + (enrolled === 1 ? ' matrícula' : ' matrículas') + ', ' + (cv == null ? 'sem conversão' : cv + '% de conversão')
+            : r.name + ': ' + n + ' de ' + tot + ' (' + (pct(n, tot) || 0) + '%)',
+          pick: () => this.set({ cut: active ? null : r.key }),
+        };
+      }),
+    };
+
+    // ── Lista
+    rows = baseItems.filter((x) => matchCut(x, cut)).slice().sort(sortFn);
+    const shownN = Math.min(rows.length, 50 + s.more);
+    const left = rows.length - shownN;
+    const list = {
+      total: br(rows.length), noun,
+      hasCut: Boolean(cut), cutLabel: cutLabelOf(cut),
+      shownLabel: rows.length === 0 ? '' : left > 0 ? 'mostrando ' + shownN + ' de ' + br(rows.length) : 'todos na tela',
+      grid,
+      columns: columns.map((c, i) => ({ label: c[0], align: 'left', i })),
+      rows: rows.slice(0, shownN).map((l) => ({ id: l.id, cells: rowCells(l) })),
+      hasRows: rows.length > 0, isEmpty: rows.length === 0,
+      hasMore: left > 0, moreLabel: 'Mostrar mais ' + Math.min(50, left),
+      emptyTitle: cut ? 'Ninguém neste filtro.' : s.sec === 'parados' ? 'Nenhum lead parado.' : 'Nada neste período.',
+      emptyText: cut ? 'Limpe o filtro da lista para ver todos.' : 'Escolha outro período ou limpe os filtros da barra.',
+    };
+
+    const fileName = s.sec === 'parados'
+      ? 'leads-parados-' + iso(TODAY) + '.csv'
+      : 'leads-' + s.sec + '-' + iso(W.a) + '-a-' + iso(W.b) + '.csv';
+
+    // ── Barra de cima
+    const menu = s.menu;
+    const filters = [
+      {
+        id: 'resp', label: 'Consultor', icon: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75',
+        value: s.resp.length === 0 ? 'Equipe toda' : s.resp.length === 1 ? ownerName(s.resp[0]) : s.resp.length + ' pessoas',
+        on: s.resp.length > 0, multi: true,
+        options: [{ label: 'Equipe toda', on: s.resp.length === 0, pick: () => this.set({ resp: [] }) }]
+          .concat(PEOPLE.map((p, i) => ({
+            label: p.name, on: s.resp.includes(p.id), ruleBefore: i === 0, check: true,
+            pick: () => this.set({ resp: s.resp.includes(p.id) ? s.resp.filter((x) => x !== p.id) : s.resp.concat([p.id]) }),
+          }))),
+      },
+      {
+        id: 'origem', label: 'Origem', icon: 'M22 3H2l8 9.46V19l4 2v-8.54z',
+        value: s.origem || 'Todas', on: Boolean(s.origem),
+        options: [{ label: 'Todas as origens', on: !s.origem, pick: () => this.set({ origem: null, menu: null }) }]
+          .concat(ORIGENS.map((o, i) => ({ label: o, on: s.origem === o, ruleBefore: i === 0, pick: () => this.set({ origem: o, menu: null }) }))),
+      },
+      {
+        id: 'funil', label: 'Funil', icon: 'M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5',
+        value: s.funil || 'Todos', on: Boolean(s.funil),
+        options: [{ label: 'Todos os funis', on: !s.funil, pick: () => this.set({ funil: null, menu: null }) }]
+          .concat(FUNIS.map((o, i) => ({ label: o, on: s.funil === o, ruleBefore: i === 0, pick: () => this.set({ funil: o, menu: null }) }))),
+      },
+    ].map((f) => ({
+      label: f.label, value: f.value, icon: f.icon,
+      isOpen: menu === f.id,
+      edge: f.on ? 'var(--brand-200)' : 'var(--border)',
+      bg: f.on ? 'var(--brand-50)' : 'var(--card)',
+      fg: f.on ? 'var(--brand-700)' : 'var(--fg)',
+      iconFg: f.on ? 'var(--brand)' : 'var(--muted)',
+      open: () => this.setState({ menu: menu === f.id ? null : f.id }),
+      options: f.options.map((o) => ({
+        label: o.label, on: o.on, ruleBefore: Boolean(o.ruleBefore),
+        role: o.check ? 'menuitemcheckbox' : 'menuitemradio',
+        radius: o.check ? '5px' : '999px',
+        boxEdge: o.on ? 'var(--brand)' : 'var(--border)',
+        boxBg: o.on ? 'var(--brand)' : 'transparent',
+        weight: o.on ? '600' : '500',
+        pick: o.pick,
+      })),
+    }));
+
+    const PKINDS = [['hoje', 'Hoje'], ['ontem', 'Ontem'], ['semana', 'Esta semana'], ['semana-passada', 'Semana passada'], ['mes', 'Mês'], ['custom', 'Personalizado']];
+    const isParados = s.sec === 'parados';
+
+    return {
+      rail,
+      railRows: s.railOpen ? '1fr' : '0fr',
+      railOpacity: s.railOpen ? '1' : '0',
+      railInert: s.railOpen ? undefined : '',
+      railOpenAttr: s.railOpen ? 'true' : 'false',
+      railChevron: s.railOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+      railSummary: s.railOpen ? '5 relatórios' : 'Aberto: ' + sec.label,
+      toggleRail: () => this.setState((x) => ({ railOpen: !x.railOpen })),
+      hasPeriod: !isParados,
+      isParados,
+      isMonth: s.pkind === 'mes',
+      isCustom: s.pkind === 'custom',
+      periodLabel: W.label,
+      menuPeriod: menu === 'period',
+      openPeriod: () => this.setState({ menu: menu === 'period' ? null : 'period' }),
+      periodOpts: PKINDS.map(([k, label]) => {
+        const on = s.pkind === k;
+        return {
+          label,
+          edge: on ? 'var(--brand)' : 'var(--border)',
+          bg: on ? 'var(--brand-50)' : 'var(--card)',
+          fg: on ? 'var(--brand-700)' : 'var(--fg)',
+          pick: () => this.set(k === 'mes' || k === 'custom' ? { pkind: k } : { pkind: k, menu: null }),
+        };
+      }),
+      monthOpts: [[10, 'Outubro 2026 · em andamento'], [9, 'Setembro 2026']].map(([m, label]) => ({
+        label, on: s.month === m,
+        bg: s.month === m ? 'var(--brand-50)' : 'transparent',
+        fg: s.month === m ? 'var(--brand-700)' : 'var(--fg)',
+        pick: () => this.set({ month: m, menu: null }),
+      })),
+      prevMonth: () => this.set({ month: 9 }),
+      nextMonth: () => this.set({ month: 10 }),
+      noPrev: s.month === 9, noNext: s.month === 10,
+      prevOpacity: s.month === 9 ? '.35' : '1', nextOpacity: s.month === 10 ? '.35' : '1',
+      cA: s.cA, cB: s.cB,
+      setCA: (e) => this.set({ cA: e.target.value }),
+      setCB: (e) => this.set({ cB: e.target.value }),
+      corteOpts: [3, 7, 15, 30].map((n) => ({
+        label: String(n), on: s.corte === n ? 'true' : 'false',
+        bg: s.corte === n ? 'var(--card)' : 'transparent',
+        fg: s.corte === n ? 'var(--fg)' : 'var(--muted)',
+        shadow: s.corte === n ? 'var(--shadow)' : 'none',
+        pick: () => this.set({ corte: n }),
+      })),
+      filters,
+      toolbarNote: isParados ? 'Retrato de agora · 15/10, 15:40' : 'Comparando ' + W.cmp.replace(/^vs\. /, 'com '),
+      anyMenu: Boolean(menu),
+      closeMenus: () => this.setState({ menu: null }),
+
+      secTitle: sec.title,
+      secQuestion: sec.question,
+      band,
+      notices,
+      rec,
+      list,
+      clearCut: () => this.set({ cut: null }),
+      showMore: () => this.setState((x) => ({ more: x.more + 50 })),
+
+      noExport: rows.length === 0,
+      exportOpacity: rows.length === 0 ? '.4' : '1',
+      doExport: () => {
+        if (!rows.length) return;
+        clearTimeout(this._t);
+        this.setState({ toast: 'Planilha gerada: ' + fileName + ' · ' + br(rows.length) + ' linhas' });
+        this._t = setTimeout(() => this.setState({ toast: null }), 2800);
+      },
+      hasToast: Boolean(s.toast),
+      toast: s.toast || '',
+
+      themeLabel: dark ? 'Tema claro' : 'Tema escuro',
+      toggleTheme: () => this.setState({ theme: dark ? 'light' : 'dark' }),
+    };
+  }
+}
+
+</script>
+</body>
+</html>

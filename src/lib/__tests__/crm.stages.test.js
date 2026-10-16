@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { isStageMove, movesByLead, stagePassageOf, lossStagesOf, pipelineNowOf } from '../crm/stages.js';
+import {
+  isStageMove, movesByLead, stagePassageOf, lossStagesOf, lossStageOf, pipelineNowOf, openLeadsOf, noNextStepOf
+} from '../crm/stages.js';
 
 const T = (d, h = 10) => new Date(2026, 8, d, h);
 const MONTH = { start: T(1, 0), end: T(15, 12), asOf: T(15, 12) };
@@ -260,5 +262,56 @@ describe('carteira agora', () => {
       funnelId: null, funnels: FUNNELS, defaultFunnelId: 'ven', stages: [], ownerOk: all, funnelOk: all, now: T(15, 12)
     });
     expect(r).toMatchObject({ total: 3, noNext: 2 });
+  });
+});
+
+describe('etapa da perda de um lead', () => {
+  it('a mesma etapa da contagem, lead por lead, e Sem etapa sem a troca no mês', () => {
+    const win = { moves: MOVES, start: MONTH.start, end: MONTH.end };
+    expect(lossStageOf(leadOf('a'), win)).toBe('Agendado');
+    expect(lossStageOf(leadOf('b'), win)).toBe('Contato feito');
+    expect(lossStageOf({ id: 'z' }, win)).toBe('Sem etapa');
+    expect(lossStageOf(leadOf('a'), { ...win, start: T(9, 0) })).toBe('Sem etapa');
+  });
+
+  it('tira os espaços das pontas do nome da etapa, e etapa só de espaços vira Sem etapa', () => {
+    const mv = movesByLead([M('t1', 't', ' Ligação ', 'Perda', 3), M('u1', 'u', '   ', 'Perda', 3)]);
+    expect(lossStageOf({ id: 't' }, { moves: mv, ...MONTH })).toBe('Ligação');
+    expect(lossStageOf({ id: 'u' }, { moves: mv, ...MONTH })).toBe('Sem etapa');
+  });
+});
+
+describe('leads em jogo e sem próximo passo', () => {
+  const now = T(15, 12);
+  const base = { status: 'Novo lead', funnelId: 'ven', consultantId: 'ana' };
+  const live = [
+    { ...base, id: 'com-data', nextFollowUp: T(20), createdAt: T(1) },
+    { ...base, id: 'sem-data', nextFollowUp: null, createdAt: T(13, 12) },
+    { ...base, id: 'novo', nextFollowUp: null, createdAt: T(15, 1) },
+    { ...base, id: 'sem-cadastro', nextFollowUp: null, createdAt: T(15, 11), createdAtMissing: true },
+    { ...base, id: 'cliente', status: 'Venda', isConverted: true, createdAt: T(1) },
+    { ...base, id: 'diego', consultantId: 'diego', nextFollowUp: null, createdAt: T(1) },
+    { ...base, id: 'com-data', nextFollowUp: T(20), createdAt: T(1) }
+  ];
+
+  it('os leads em jogo são os da carteira de agora: balde ativo, sem repetir, no recorte', () => {
+    expect(openLeadsOf(live, { ownerOk: all, funnelOk: all }).map((l) => l.id))
+      .toEqual(['com-data', 'sem-data', 'novo', 'sem-cadastro', 'diego']);
+    expect(openLeadsOf(live, { ownerOk: (l) => l.consultantId === 'diego', funnelOk: all }).map((l) => l.id)).toEqual(['diego']);
+  });
+
+  it('sem próximo passo: sem próximo contato e fora das 24 horas do cadastro, e o sem data de cadastro conta', () => {
+    const open = openLeadsOf(live, { ownerOk: all, funnelOk: all });
+    expect(open.filter((l) => noNextStepOf(l, now)).map((l) => l.id)).toEqual(['sem-data', 'sem-cadastro', 'diego']);
+    // Sem o instante, ninguém está coberto pela Meta.
+    expect(noNextStepOf(live[2])).toBe(true);
+    // Sem lead, com o instante dado, também não lança: não há cadastro que a Meta cubra.
+    expect(noNextStepOf(null, now)).toBe(true);
+  });
+
+  it('a carteira de agora conta o mesmo que as duas funções', () => {
+    const r = pipelineNowOf(live, { funnelId: null, funnels: [], defaultFunnelId: 'ven', stages: [], ownerOk: all, funnelOk: all, now });
+    const open = openLeadsOf(live, { ownerOk: all, funnelOk: all });
+    expect([r.total, r.noNext]).toEqual([open.length, open.filter((l) => noNextStepOf(l, now)).length]);
   });
 });

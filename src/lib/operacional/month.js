@@ -72,3 +72,9 @@ export function monthLabel(key, { capitalized = true, withYear = true } = {}) {
   const txt = capitalized ? name[0].toUpperCase() + name.slice(1) : name;
   return withYear ? `${txt} ${year}` : txt;
 }
+
+// O mês como se escreve numa frase, com "de": "Outubro de 2026" no começo e
+// "setembro de 2026" no meio dela (capitalized: false).
+export function monthText(key, { capitalized = true } = {}) {
+  return `${monthLabel(key, { capitalized, withYear: false })} de ${parseMonthKey(key).year}`;
+}

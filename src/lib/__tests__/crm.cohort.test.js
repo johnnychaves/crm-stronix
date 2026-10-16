@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  newLeadsOf, enrollmentsOf, lossesOf, outcomeAt, channelsOf, daysToEnrollOf, convertedAtOf, clienteSinceOf, firstEnrolledAtOf,
-  isImportedEnrollment
+  newLeadsOf, enrollmentsOf, lossesOf, lossReasonOf, outcomeAt, channelsOf, daysToEnrollOf, convertedAtOf, clienteSinceOf,
+  firstEnrolledAtOf, isImportedEnrollment
 } from '../crm/cohort.js';
 
 const D = (m, d, h = 10) => new Date(2026, m - 1, d, h);
@@ -187,5 +187,15 @@ describe('dias até a matrícula', () => {
   it('conta até a primeira matrícula, não até o retorno', () => {
     const r = daysToEnrollOf([{ createdAt: D(2, 20), convertedAt: D(9, 10), clienteSince: TS(D(3, 5)) }]);
     expect(r).toEqual({ total: 1, median: 13, buckets: [0, 0, 0, 1, 0, 0] });
+  });
+});
+
+describe('motivo da perda', () => {
+  it('o texto gravado sem os espaços das pontas, ou Sem motivo, como o card de perdas agrupa', () => {
+    expect(lossReasonOf({ lossReason: ' Preço ' })).toBe('Preço');
+    expect(lossReasonOf({ lossReason: '' })).toBe('Sem motivo');
+    expect(lossReasonOf({})).toBe('Sem motivo');
+    expect(lossesOf([{ id: 'p', status: 'Perda', lostAt: D(9, 3), lossReason: ' Preço ' }], { ...SEP, inScope: all }).reasons)
+      .toEqual([{ name: 'Preço', count: 1 }]);
   });
 });
