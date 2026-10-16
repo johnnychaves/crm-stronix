@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback, memo } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback, memo } from 'react';
 import { serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 import { canEditLead, normalizeLeadDoc } from '../lib/leads.js';
 import { isSeller } from '../lib/acesso.js';
@@ -578,6 +578,27 @@ function KanbanView({ leads, interactions, appUser, statuses, usersList, lossRea
   const [draggedOverColumn, setDraggedOverColumn] = useState(null);
 
   const kanbanScrollRef = useRef(null);
+  // Lados do quadro com colunas escondidas: neles as colunas esfumam em vez
+  // de serem cortadas secas. Só muda de estado quando um lado vira, então rolar
+  // não renderiza a tela a cada pixel.
+  const [hiddenSides, setHiddenSides] = useState({ left: false, right: false });
+  const updateHiddenSides = useCallback(() => {
+    const el = kanbanScrollRef.current;
+    if (!el) return;
+    const left = el.scrollLeft > 1;
+    const right = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+    setHiddenSides((prev) => (prev.left === left && prev.right === right ? prev : { left, right }));
+  }, []);
+  // O ResizeObserver avisa ao montar, quando a janela muda e quando entram ou
+  // saem colunas (ele observa também a fileira de colunas).
+  useEffect(() => {
+    const el = kanbanScrollRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(updateHiddenSides);
+    ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    return () => ro.disconnect();
+  }, [updateHiddenSides]);
 const dragScrollRef = useRef({
   isDown: false,
   startX: 0,
@@ -1562,8 +1583,15 @@ const handleKanbanMouseMove = (e) => {
           onMouseMove={handleKanbanMouseMove}
           onMouseUp={stopKanbanPan}
           onMouseLeave={stopKanbanPan}
+          onScroll={updateHiddenSides}
           className={cn(
-            'flex-1 min-h-0 overflow-x-auto overscroll-x-contain overflow-y-hidden custom-scrollbar select-none px-4 md:px-7 pt-1 pb-5',
+            // mx no lugar de px: a borda do quadro fica alinhada com a do
+            // cartão do título, e as colunas não aparecem cortadas no recuo,
+            // fora do alinhamento.
+            'flex-1 min-h-0 overflow-x-auto overscroll-x-contain overflow-y-hidden custom-scrollbar select-none mx-4 md:mx-7 pt-1 pb-5',
+            hiddenSides.left && hiddenSides.right && '[mask-image:linear-gradient(to_right,transparent,#000_28px,#000_calc(100%-28px),transparent)]',
+            hiddenSides.left && !hiddenSides.right && '[mask-image:linear-gradient(to_right,transparent,#000_28px)]',
+            !hiddenSides.left && hiddenSides.right && '[mask-image:linear-gradient(to_left,transparent,#000_28px)]',
             isPanning ? 'cursor-grabbing' : 'cursor-grab'
           )}
         >
