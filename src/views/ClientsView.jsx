@@ -1,5 +1,5 @@
-import { useMemo, useState, useEffect, useRef } from 'react';
-import { GraduationCap, Layers, Phone, SlidersHorizontal, Check, X } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { GraduationCap, Layers, SlidersHorizontal } from 'lucide-react';
 import { isClientLead } from '../lib/leads.js';
 import { ACTIONS, can, isSeller } from '../lib/acesso.js';
 import { LIST_PAGE_SIZE } from '../lib/leadStatus.js';
@@ -10,12 +10,17 @@ import { clientsAllQuerySpec } from '../lib/leadQueries.js';
 import { LEADS_PATH } from '../lib/firebase.js';
 import { deriveLeadContractStatus, CONTRACT_STATUS, CONTRACT_STATUS_LABEL } from '../lib/contracts.js';
 import { getSafeDateOrNull } from '../lib/dates.js';
+import { vigenciaOf } from '../lib/clientsList.js';
 import { cn } from '@/lib/utils';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { LeadLink } from '../components/nav/AppLink.jsx';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { Btn } from '../components/ui/Btn.jsx';
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover.jsx';
+import { FOCUS_RING } from '../components/focusRing.js';
 import { ContactPhone } from '../components/profile/ContactPhone.jsx';
+import { FilterBar } from './dashboard/DashFilterBar.jsx';
+import { ConsultoresControl, MultiControl } from './relatorios/RelatoriosToolbar.jsx';
 
 // Status "vivo" do CLIENTE a partir do resumo denormalizado no lead. Legados
 // (Venda antiga sem contrato) não têm endsAt → 'sem_contrato'. O sentinela vem
@@ -40,18 +45,34 @@ const STATUS_TONE = {
   [CONTRACT_STATUS.CANCELADO]:'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300',
   [SEM_CONTRATO]:             'bg-slate-100 text-slate-400 dark:bg-white/[0.04] dark:text-slate-500'
 };
+// A cor cheia de cada situação: a faixa da carteira, o quadradinho da legenda e
+// a régua de vigência da linha.
+const STATUS_FILL = {
+  [CONTRACT_STATUS.AGENDADO]: 'bg-violet-500',
+  [CONTRACT_STATUS.ATIVO]:    'bg-emerald-500',
+  [CONTRACT_STATUS.A_VENCER]: 'bg-amber-500',
+  [CONTRACT_STATUS.TRANCADO]: 'bg-yellow-500',
+  [CONTRACT_STATUS.VENCIDO]:  'bg-slate-400',
+  [CONTRACT_STATUS.CANCELADO]:'bg-rose-500',
+  [SEM_CONTRATO]:             'bg-slate-300 dark:bg-slate-600'
+};
 const STATUS_LABEL = { ...CONTRACT_STATUS_LABEL, [SEM_CONTRATO]: 'Sem contrato' };
 
-// Ordem das situações na bubble/chips.
+// Ordem das situações na faixa da carteira, na legenda e no filtro.
 const STATUS_OPTIONS = [
-  CONTRACT_STATUS.AGENDADO,
   CONTRACT_STATUS.ATIVO,
   CONTRACT_STATUS.A_VENCER,
+  CONTRACT_STATUS.AGENDADO,
   CONTRACT_STATUS.TRANCADO,
   CONTRACT_STATUS.VENCIDO,
   CONTRACT_STATUS.CANCELADO,
   SEM_CONTRATO
 ];
+
+// Colunas da lista: o cabeçalho e cada linha usam a mesma grade. Sem largura
+// mínima de propósito: com o menu lateral aberto o conteúdo é estreito, e o
+// texto que não cabe é cortado em vez de estourar a linha.
+const GRID = 'md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_112px_minmax(0,1.5fr)_100px]';
 
 // Anel de situação do contrato em volta do avatar, mesmo padrão do perfil do
 // aluno (RingAvatar): verde = Ativo, metade âmbar e metade verde = A vencer,
@@ -85,13 +106,143 @@ function ContractRingAvatar({ name, status, photoUrl = null }) {
   );
 }
 
+// Selo da situação: ponto e texto escrito, a cor só reforça.
+function StatusPill({ status }) {
+  return (
+    <span className={cn('inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 text-[12px] font-semibold', STATUS_TONE[status])}>
+      <span aria-hidden="true" className="size-1.5 rounded-full bg-current opacity-70" />
+      {STATUS_LABEL[status]}
+    </span>
+  );
+}
+
+// A carteira numa olhada: uma faixa com a fatia de cada situação e, embaixo, o
+// número de cada uma. Cada situação é um botão que liga o mesmo filtro da
+// pílula Situação. A faixa é só o desenho (aria-hidden): quem usa teclado e
+// leitor de tela tem a legenda.
+function CarteiraCard({ counts, total, selected, onToggle, onClear }) {
+  const picked = STATUS_OPTIONS.filter((s) => selected.includes(s));
+  return (
+    <section aria-label="Situação da carteira" className="shrink-0 rounded-[18px] border border-border bg-card px-6 pb-3 pt-5 shadow-card">
+      <div className="mb-3.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h3 className="m-0 font-display text-[17px] font-bold tracking-[-0.01em]">Situação da carteira</h3>
+        <p className="m-0 text-[12.5px] text-muted-foreground" aria-live="polite">
+          {picked.length > 0 ? (
+            <>
+              Filtrando por {picked.map((s) => STATUS_LABEL[s]).join(' e ')}.{' '}
+              <button type="button" onClick={onClear} className={cn('rounded font-semibold text-brand-700 dark:text-brand-300', FOCUS_RING)}>Limpar filtro</button>
+            </>
+          ) : 'Clique numa situação para filtrar a lista.'}
+        </p>
+      </div>
+
+      <div aria-hidden="true" className="flex h-4 gap-[3px]">
+        {STATUS_OPTIONS.filter((s) => counts[s] > 0).map((s) => (
+          <span
+            key={s}
+            onClick={() => onToggle(s)}
+            style={{ flex: counts[s] }}
+            className={cn('min-w-2 cursor-pointer rounded first:rounded-l-lg last:rounded-r-lg transition-opacity motion-reduce:transition-none', STATUS_FILL[s], picked.length > 0 && !selected.includes(s) && 'opacity-35')}
+          />
+        ))}
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-1 sm:grid-cols-4 xl:grid-cols-7">
+        {STATUS_OPTIONS.map((s) => {
+          const n = counts[s] || 0;
+          const on = selected.includes(s);
+          return (
+            <button
+              key={s}
+              type="button"
+              aria-pressed={on}
+              onClick={() => onToggle(s)}
+              className={cn(
+                'flex flex-col items-start gap-px rounded-xl px-3 py-2.5 text-left transition-[opacity,background-color] motion-reduce:transition-none',
+                FOCUS_RING,
+                on ? STATUS_TONE[s] : 'hover:bg-muted',
+                picked.length > 0 && !on && 'opacity-40'
+              )}
+            >
+              <span className={cn('inline-flex items-center gap-[7px] whitespace-nowrap text-[12.5px] font-medium', !on && 'text-muted-foreground')}>
+                <span aria-hidden="true" className={cn('size-[9px] rounded-[3px]', STATUS_FILL[s])} />
+                {STATUS_LABEL[s]}
+              </span>
+              <span className="font-display text-[26px] font-bold leading-[1.15] tracking-[-0.02em] tabular-nums">{n}</span>
+              <span className={cn('text-[12px] tabular-nums', !on && 'text-muted-foreground')}>{total ? Math.round((n / total) * 100) : 0}%</span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function ClientRow({ c, st, now }) {
+  const consultantFirst = (c.consultantName || '').trim().split(/\s+/)[0] || '';
+  const hasValue = Number.isFinite(Number(c.currentContractValue)) && c.currentContractValue != null;
+  const vg = vigenciaOf(c, st, now);
+  return (
+    <LeadLink
+      leadId={c.id}
+      draggable={false}
+      className={cn(
+        'grid grid-cols-1 gap-2 md:gap-4 md:items-center px-4 md:px-6 py-3 border-b border-slate-100 dark:border-neutral-800 last:border-b-0 cursor-pointer bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors outline-none focus-visible:bg-slate-50 dark:focus-visible:bg-white/[0.03] focus-visible:ring-inset focus-visible:anel-foco',
+        GRID
+      )}
+    >
+      {/* Cliente */}
+      <div className="flex items-center gap-3 min-w-0">
+        <ContractRingAvatar name={c.name} status={st} photoUrl={c.photoUrl} />
+        <div className="min-w-0">
+          <div className="text-[14px] font-semibold text-slate-900 dark:text-white truncate">{c.name}</div>
+          <div className="mt-px flex items-center gap-2.5 text-[12px] text-muted-foreground tabular-nums">
+            <span className="inline-flex"><ContactPhone lead={c} /></span>
+            {consultantFirst && <span className="font-medium text-brand-700 dark:text-brand-300">@{consultantFirst}</span>}
+          </div>
+        </div>
+      </div>
+
+      {/* Plano */}
+      <div className="min-w-0 truncate text-[13px] text-slate-700 dark:text-neutral-200">
+        {c.currentPlanName || <span className="text-muted-foreground">—</span>}
+      </div>
+
+      {/* Situação */}
+      <div><StatusPill status={st} /></div>
+
+      {/* Vigência */}
+      <div className="min-w-0">
+        {vg ? (
+          <>
+            <div className="mb-1.5 flex items-baseline justify-between gap-2.5 text-[12.5px]">
+              <span title={vg.dateText} className={cn('min-w-0 truncate', vg.warn ? 'font-semibold text-amber-700 dark:text-amber-300' : 'text-muted-foreground')}>{vg.text}</span>
+              {/* A data só aparece com folga: abaixo de 1280px ela disputa a linha com o texto, e vai no title dele. */}
+              <span className="hidden xl:inline shrink-0 tabular-nums text-muted-foreground">{vg.dateText}</span>
+            </div>
+            {vg.pct != null && (
+              <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                <span className={cn('block h-full rounded-full', STATUS_FILL[st])} style={{ width: `${Math.round(vg.pct * 100)}%` }} />
+              </div>
+            )}
+          </>
+        ) : <span className="text-muted-foreground">—</span>}
+      </div>
+
+      {/* Valor */}
+      <div className="md:text-right font-display text-[14px] font-semibold tabular-nums text-slate-800 dark:text-neutral-100">
+        {hasValue ? fmtBRLValor(c.currentContractValue) : <span className="text-muted-foreground">—</span>}
+      </div>
+    </LeadLink>
+  );
+}
+
 function ClientsView({ appUser, usersList, db }) {
   const { contractThresholdDays } = useGeneralConfig();
   // Responsável por cliente é quem vende. O professor não é dono de lead
   // (isSeller, em src/lib/acesso.js), então fica fora do filtro e do endereço.
   const sellers = useMemo(() => (usersList || []).filter(isSeller), [usersList]);
 
-  const [filterOpen, setFilterOpen] = useState(false);
   // Situação e responsável vêm do endereço. O filtro de responsável é de toda
   // a equipe, como o do gestor (decisão do Johnny, 07/10/2026), então o link
   // com responsável abre igual para quem receber. O filtro de plano fica fora
@@ -102,22 +253,6 @@ function ClientsView({ appUser, usersList, db }) {
   const [{ status: statusFilters, resp: consultantFilters }, setParams] = useScreenParams('clientes', paramsCtx);
   const [planFilters, setPlanFilters] = useState([]);         // plano (multi)
   const [visibleCount, setVisibleCount] = useState(LIST_PAGE_SIZE);
-
-  const now = new Date();
-
-  // Bubble de filtros fecha em clique fora / Esc (padrão das outras telas).
-  const filterWrapRef = useRef(null);
-  useEffect(() => {
-    if (!filterOpen) return;
-    const onPointerDown = (e) => { if (!filterWrapRef.current?.contains(e.target)) setFilterOpen(false); };
-    const onKeyDown = (e) => { if (e.key === 'Escape') setFilterOpen(false); };
-    document.addEventListener('mousedown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [filterOpen]);
 
   // Fonte dos clientes (E1b): query própria em vez do prop global de leads.
   // clientsAllQuerySpec traz TODOS os leads com lifecycleBucket=='cliente' de
@@ -137,284 +272,160 @@ function ClientsView({ appUser, usersList, db }) {
     [clientDocs]
   );
 
+  // Um relógio só por carga: o selo da situação e o texto da vigência de cada
+  // linha saem do mesmo instante, então nunca discordam (a lista não é ao vivo).
+  const now = useMemo(() => new Date(), [clientes, contractThresholdDays]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cada cliente com a situação do contrato, calculada uma vez por carga.
+  const withStatus = useMemo(
+    () => clientes.map((c) => ({ c, st: clientStatus(c, now, contractThresholdDays) })),
+    [clientes, now, contractThresholdDays]
+  );
+
   // Planos distintos presentes nos clientes (para o filtro de plano).
-  const planNames = useMemo(() => {
+  const planItems = useMemo(() => {
     const set = new Set();
     clientes.forEach(c => { if (c.currentPlanName) set.add(c.currentPlanName); });
-    return [...set].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    return [...set].sort((a, b) => a.localeCompare(b, 'pt-BR')).map((p) => ({ id: p, name: p }));
   }, [clientes]);
+  // Plano escolhido que deixou de existir na lista (os clientes dele mudaram de
+  // plano) sai do filtro, em vez de esvaziar a lista sem aparecer na pílula.
+  const planSel = useMemo(() => planFilters.filter((p) => planItems.some((i) => i.id === p)), [planFilters, planItems]);
+
+  // A carteira que a faixa conta: o que passa pelo responsável e pelo plano, e
+  // ainda não pela situação. Assim os números dizem quanto de cada situação
+  // sobra no recorte, e escolher uma situação não zera as outras.
+  const base = useMemo(() => withStatus.filter(({ c }) => (
+    (consultantFilters.length === 0 || consultantFilters.includes(c.consultantId))
+    && (planSel.length === 0 || planSel.includes(c.currentPlanName))
+  )), [withStatus, consultantFilters, planSel]);
+
+  const counts = useMemo(() => {
+    const out = {};
+    base.forEach(({ st }) => { out[st] = (out[st] || 0) + 1; });
+    return out;
+  }, [base]);
 
   const filtered = useMemo(() => {
-    return clientes.filter(c => {
-      const st = clientStatus(c, now, contractThresholdDays);
-      const matchStatus = statusFilters.length === 0 || statusFilters.includes(st);
-      const matchConsultant = consultantFilters.length === 0 || consultantFilters.includes(c.consultantId);
-      const matchPlan = planFilters.length === 0 || planFilters.includes(c.currentPlanName);
-      return matchStatus && matchConsultant && matchPlan;
-    }).sort((a, b) => {
-      // Ordena por vencimento mais próximo primeiro; quem não tem vai ao fim.
-      const ea = getSafeDateOrNull(a.currentContractEndsAt)?.getTime() ?? Infinity;
-      const eb = getSafeDateOrNull(b.currentContractEndsAt)?.getTime() ?? Infinity;
-      return ea - eb;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clientes, statusFilters, consultantFilters, planFilters, contractThresholdDays]);
+    // Ordena por vencimento mais próximo primeiro; quem não tem vai ao fim.
+    const endOf = (c) => getSafeDateOrNull(c.currentContractEndsAt)?.getTime() ?? Infinity;
+    return base
+      .filter(({ st }) => statusFilters.length === 0 || statusFilters.includes(st))
+      .sort((a, b) => endOf(a.c) - endOf(b.c));
+  }, [base, statusFilters]);
 
   const visible = filtered.slice(0, visibleCount);
 
   const toggleStatus = (s) => setParams((v) => ({ status: v.status.includes(s) ? v.status.filter(x => x !== s) : [...v.status, s] }));
-  const toggleConsultant = (id) => setParams((v) => ({ resp: v.resp.includes(id) ? v.resp.filter(x => x !== id) : [...v.resp, id] }));
-  const togglePlan = (p) => setPlanFilters(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]);
+  const hasActiveFilters = statusFilters.length + consultantFilters.length + planSel.length > 0;
+  // O ponto do botão do celular só fala dos filtros que moram no balão.
+  const hasPillFilters = consultantFilters.length + planSel.length > 0;
 
-  const filterCount = statusFilters.length + consultantFilters.length + planFilters.length;
-  const hasActiveFilters = filterCount > 0;
-  const clearAllFilters = () => { setPlanFilters([]); setParams({ status: [], resp: [] }); };
+  // Pílulas da barra, as mesmas do Pipeline, dos painéis e dos Relatórios.
+  // `compact` é o balão do celular, onde cada controle ocupa a largura toda.
+  // A situação não tem pílula: o filtro dela é a faixa da carteira, logo abaixo.
+  const filterControls = (compact) => (
+    <>
+      <ConsultoresControl
+        resp={consultantFilters}
+        people={sellers}
+        onResp={(ids) => setParams({ resp: ids })}
+        compact={compact}
+      />
+      {planItems.length > 0 && (
+        <MultiControl
+          label="Plano" icon={Layers} noun="planos" allText="Todos" allLabel="Todos os planos"
+          items={planItems} value={planSel} onValue={setPlanFilters} compact={compact}
+        />
+      )}
+    </>
+  );
 
-  // Chips de filtros ativos (removem individualmente).
-  const activeChips = [];
-  statusFilters.forEach(s => activeChips.push({ key: `st:${s}`, label: STATUS_LABEL[s] || s, cls: STATUS_TONE[s] || STATUS_TONE[SEM_CONTRATO], remove: () => toggleStatus(s) }));
-  consultantFilters.forEach(id => {
-    const u = (usersList || []).find(x => x.id === id);
-    activeChips.push({ key: `co:${id}`, label: u?.name || id, cls: 'bg-slate-100 text-gray-700 dark:bg-white/[0.06] dark:text-neutral-200', remove: () => toggleConsultant(id) });
-  });
-  planFilters.forEach(p => activeChips.push({ key: `pl:${p}`, label: p, cls: 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300', remove: () => togglePlan(p) }));
+  const loadingFirst = clientsLoading && clientes.length === 0;
+  const subline = loadingFirst
+    ? 'Carregando clientes…'
+    : `${hasActiveFilters ? `${filtered.length} de ${clientes.length}` : clientes.length} clientes, do vencimento mais próximo ao mais distante`;
 
   return (
-    <div className="-m-4 md:-m-8 h-[calc(100vh-4rem)] flex flex-col animate-fade-in">
-      {/* Header da página: resumo + filtro único */}
-      <div className="h-16 shrink-0 relative z-20 bg-white dark:bg-neutral-900 border-b border-gray-200 dark:border-neutral-800 flex items-center gap-3 md:gap-5 px-4 md:px-7">
-        <div className="flex-1" />
+    <div className="-m-4 md:-m-8 h-[calc(100%+2rem)] md:h-[calc(100%+4rem)] flex flex-col animate-fade-in">
+      {/* Cabeçalho no cartão dos painéis (FilterBar, o mesmo do Pipeline, do
+          Gerencial e dos Relatórios): o título e a linha de apoio à esquerda,
+          as pílulas de filtro à direita. */}
+      <FilterBar className="shrink-0 md:px-7" title="Clientes" subline={subline}>
+        <div className="hidden md:flex items-center gap-2">{filterControls(false)}</div>
 
-        <div className="hidden md:block text-[11.5px] text-slate-500 dark:text-neutral-400 whitespace-nowrap tabular-nums shrink-0">
-          <span className="font-semibold text-gray-700 dark:text-neutral-200">{filtered.length}</span> de {clientes.length} clientes
-        </div>
-
-        <div ref={filterWrapRef} className="relative shrink-0">
-          <button
-            type="button"
-            onClick={() => setFilterOpen(o => !o)}
-            title="Filtros"
-            aria-haspopup="dialog"
-            aria-expanded={filterOpen}
-            className={cn(
-              'relative size-[38px] rounded-[11px] border grid place-items-center transition-colors',
-              hasActiveFilters
-                ? 'bg-brand-50 border-brand-200 text-brand-700 dark:bg-brand-500/15 dark:border-brand-500/30 dark:text-brand-300'
-                : 'bg-paper-50 border-slate-200 text-gray-600 hover:border-brand-200 dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-300 dark:hover:border-brand-500/40'
-            )}
-          >
-            <SlidersHorizontal className="size-[17px]" />
-            {hasActiveFilters && (
-              <span className="absolute -top-[5px] -right-[5px] min-w-4 h-4 px-1 rounded-full bg-accent-500 text-white text-[9.5px] font-bold grid place-items-center ring-2 ring-white dark:ring-neutral-900 tabular-nums">
-                {filterCount}
-              </span>
-            )}
-          </button>
-
-          {filterOpen && (
-            <div className="absolute right-0 top-[46px] w-[280px] rounded-[14px] bg-white dark:bg-ink-800 border border-slate-200 dark:border-ink-700 shadow-[0_16px_40px_-8px_rgba(14,26,64,.22)] overflow-hidden z-30">
-              <div className="px-3.5 pt-3 pb-2.5 flex items-center justify-between border-b border-slate-100 dark:border-white/10">
-                <span className="text-[12.5px] font-bold text-gray-900 dark:text-white">Filtros</span>
-                <button
-                  type="button"
-                  onClick={clearAllFilters}
-                  className="text-[11.5px] font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300 transition-colors"
-                >
-                  Limpar
-                </button>
-              </div>
-
-              <div className="max-h-[420px] overflow-y-auto custom-scrollbar">
-                {/* Situação do contrato */}
-                <div className="px-2 pt-2.5 pb-1">
-                  <div className="px-1.5 pb-1.5 text-[10.5px] font-semibold uppercase tracking-[.07em] text-gray-400 dark:text-neutral-500">Situação do contrato</div>
-                  <div className="flex flex-wrap gap-[5px] px-1.5 pb-2">
-                    {STATUS_OPTIONS.map(s => {
-                      const selected = statusFilters.includes(s);
-                      return (
-                        <button
-                          key={s}
-                          type="button"
-                          onClick={() => toggleStatus(s)}
-                          className={cn(
-                            'h-[26px] px-2.5 rounded-full text-[11.5px] font-semibold whitespace-nowrap transition-colors border',
-                            selected
-                              ? `${STATUS_TONE[s]} border-transparent`
-                              : 'bg-white dark:bg-neutral-900 border-slate-200 dark:border-neutral-700 text-slate-500 dark:text-neutral-400 hover:border-brand-200'
-                          )}
-                        >
-                          {STATUS_LABEL[s] || s}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Responsável (toda a equipe usa) */}
-                {sellers.length > 0 && (
-                  <>
-                    <div className="mx-3.5 my-1 border-t border-slate-100 dark:border-white/10" />
-                    <div className="px-2 pt-1.5 pb-1">
-                      <div className="px-1.5 pb-1.5 text-[10.5px] font-semibold uppercase tracking-[.07em] text-gray-400 dark:text-neutral-500">Responsável</div>
-                      {sellers.map(u => {
-                        const selected = consultantFilters.includes(u.id);
-                        return (
-                          <button
-                            key={u.id}
-                            type="button"
-                            onClick={() => toggleConsultant(u.id)}
-                            className={cn('w-full flex items-center gap-[9px] px-2 py-[7px] rounded-[9px] text-left transition-colors', selected ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-paper-50 dark:hover:bg-white/5')}
-                          >
-                            <Avatar name={u.name} size={24} />
-                            <span className={cn('flex-1 text-[12.5px] text-gray-900 dark:text-white truncate', selected ? 'font-bold' : 'font-medium')}>{u.name}</span>
-                            {selected && <Check className="size-3.5 text-brand-600 dark:text-brand-400 shrink-0" strokeWidth={2.6} />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </>
-                )}
-
-                {/* Plano */}
-                {planNames.length > 0 && (
-                  <>
-                    <div className="mx-3.5 my-1 border-t border-slate-100 dark:border-white/10" />
-                    <div className="px-2 pt-1.5 pb-3">
-                      <div className="px-1.5 pb-1.5 text-[10.5px] font-semibold uppercase tracking-[.07em] text-gray-400 dark:text-neutral-500">Plano</div>
-                      <div className="flex flex-wrap gap-[5px] px-1.5">
-                        {planNames.map(p => {
-                          const selected = planFilters.includes(p);
-                          return (
-                            <button
-                              key={p}
-                              type="button"
-                              onClick={() => togglePlan(p)}
-                              className={cn(
-                                'h-[26px] px-2.5 rounded-full text-[11.5px] font-semibold whitespace-nowrap transition-colors border',
-                                selected
-                                  ? 'bg-brand-50 text-brand-700 border-transparent dark:bg-brand-500/15 dark:text-brand-300'
-                                  : 'bg-white dark:bg-neutral-900 border-slate-200 dark:border-neutral-700 text-slate-500 dark:text-neutral-400 hover:border-brand-200'
-                              )}
-                            >
-                              {p}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Chips de filtros ativos */}
-      {hasActiveFilters && (
-        <div className="shrink-0 px-4 md:px-7 pt-3 flex flex-wrap items-center gap-1.5">
-          {activeChips.map(c => (
-            <span key={c.key} className={cn('inline-flex items-center gap-1.5 h-[26px] pl-2.5 pr-2 rounded-full text-[11.5px] font-semibold', c.cls)}>
-              {c.label}
-              <button type="button" onClick={c.remove} title="Remover filtro" className="opacity-60 hover:opacity-100 transition-opacity grid place-items-center">
-                <X className="size-[11px]" strokeWidth={2.6} />
-              </button>
-            </span>
-          ))}
-          <button
-            type="button"
-            onClick={clearAllFilters}
-            className="text-[11.5px] font-semibold text-slate-500 hover:text-gray-900 dark:text-neutral-400 dark:hover:text-white px-1 whitespace-nowrap"
-          >
-            Limpar tudo
-          </button>
-        </div>
-      )}
-
-      {/* Tabela em card */}
-      <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-4 md:px-7 pt-4 pb-7">
-        <div className="bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(15,23,42,.06)]">
-          <div className="hidden md:grid grid-cols-[1.8fr_1.2fr_0.9fr_0.9fr] px-5 py-3 border-b border-slate-100 dark:border-neutral-800 text-[10.5px] font-semibold uppercase tracking-[.07em] text-gray-400 dark:text-neutral-500">
-            <span>Cliente</span><span>Plano</span><span className="text-right">Valor</span><span className="text-right">Vencimento</span>
-          </div>
-
-          {clientsLoading && clientes.length === 0 ? (
-            <div className="py-16 text-center grid place-items-center gap-2">
-              <GraduationCap className="size-[22px] opacity-40 text-slate-400 animate-pulse" />
-              <p className="text-[13px] text-slate-400 dark:text-neutral-500">Carregando clientes…</p>
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="py-16 text-center grid place-items-center gap-2">
-              <GraduationCap className="size-[22px] opacity-40 text-slate-400" />
-              <p className="text-[14px] font-semibold text-gray-700 dark:text-neutral-200">Nenhum cliente encontrado</p>
-              {/* O convite para matricular é de quem matricula. O professor não matricula. */}
-              {can(appUser, ACTIONS.CONTRATO_EDITAR) && (
-                <p className="text-[12.5px] text-slate-400 dark:text-neutral-500">Matricule um lead pelo Kanban ou pela ficha para vê-lo aqui.</p>
+        {/* No celular os filtros entram num balão, como no Pipeline: o botão
+            acende e ganha um ponto quando há filtro ligado. */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              aria-label={hasPillFilters ? 'Filtros de Clientes, há filtro ativo' : 'Filtros de Clientes'}
+              className={cn(
+                'relative md:hidden size-[38px] shrink-0 rounded-[11px] border grid place-items-center transition-colors',
+                FOCUS_RING,
+                hasPillFilters
+                  ? 'bg-brand-50 border-brand-200 text-brand-700 dark:bg-brand-500/15 dark:border-brand-500/30 dark:text-brand-300'
+                  : 'bg-card border-border text-muted-foreground'
               )}
+            >
+              <SlidersHorizontal className="size-[17px]" aria-hidden="true" />
+              {hasPillFilters && <span aria-hidden="true" className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-brand-600" />}
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="start" aria-label="Filtros" className="flex w-[288px] max-h-(--radix-popover-content-available-height) flex-col gap-2.5 overflow-y-auto overscroll-y-contain rounded-[14px] border-border shadow-card-lg [&>*]:shrink-0">
+            {filterControls(true)}
+          </PopoverContent>
+        </Popover>
+      </FilterBar>
+
+      <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-4 md:px-7 pt-1 pb-7">
+        <div className="flex flex-col gap-4">
+          {/* Com situação no endereço a faixa fica, mesmo com o recorte vazio: sem
+              a pílula, ela é o único jeito de limpar a situação. */}
+          {(base.length > 0 || statusFilters.length > 0) && (
+            <CarteiraCard
+              counts={counts}
+              total={base.length}
+              selected={statusFilters}
+              onToggle={toggleStatus}
+              onClear={() => setParams({ status: [] })}
+            />
+          )}
+
+          {/* Lista em cartão */}
+          <div className="bg-white dark:bg-neutral-900 border border-border rounded-[18px] overflow-hidden shadow-card">
+            <div className={cn('hidden md:grid md:gap-4 h-11 items-center px-6 border-b border-slate-100 dark:border-neutral-800 text-[12.5px] font-medium text-muted-foreground', GRID)}>
+              <span>Cliente</span><span>Plano</span><span>Situação</span><span>Vigência</span><span className="text-right">Valor</span>
             </div>
-          ) : (
-            visible.map(c => {
-              const st = clientStatus(c, now, contractThresholdDays);
-              const endsAt = getSafeDateOrNull(c.currentContractEndsAt);
-              const consultantFirst = (c.consultantName || '').trim().split(/\s+/)[0] || '';
-              const hasValue = Number.isFinite(Number(c.currentContractValue)) && c.currentContractValue != null;
-              return (
-                <LeadLink
-                  key={c.id}
-                  leadId={c.id}
-                  draggable={false}
-                  className="grid grid-cols-1 gap-2 md:gap-0 md:grid-cols-[1.8fr_1.2fr_0.9fr_0.9fr] md:items-center px-5 py-[11px] border-b border-slate-100 dark:border-neutral-800 last:border-b-0 cursor-pointer bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors outline-none focus-visible:bg-slate-50 dark:focus-visible:bg-white/[0.03] focus-visible:ring-inset focus-visible:anel-foco"
-                >
-                  {/* Cliente */}
-                  <div className="flex items-center gap-[11px] min-w-0">
-                    <ContractRingAvatar name={c.name} status={st} photoUrl={c.photoUrl} />
-                    <div className="min-w-0">
-                      <div className="text-[13.5px] font-semibold text-slate-900 dark:text-white truncate">{c.name}</div>
-                      <div className="mt-px flex items-center gap-1.5 text-[11.5px] text-slate-500 dark:text-neutral-400 tabular-nums">
-                        <span className="inline-flex items-center gap-1"><Phone className="size-[11px]" /> <ContactPhone lead={c} /></span>
-                        {consultantFirst && (
-                          <>
-                            <span className="size-1 rounded-full bg-slate-300 dark:bg-white/20" />
-                            <span className="text-[11px] text-brand-600 dark:text-brand-300">@{consultantFirst}</span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </div>
 
-                  {/* Plano */}
-                  <div className="min-w-0">
-                    {c.currentPlanName ? (
-                      <span className="inline-flex items-center gap-1.5 text-[12.5px] text-slate-700 dark:text-neutral-200 truncate">
-                        <Layers className="size-3 text-slate-400 shrink-0" /> <span className="truncate">{c.currentPlanName}</span>
-                      </span>
-                    ) : (
-                      <span className="text-[11.5px] text-slate-400 italic">—</span>
-                    )}
-                  </div>
+            {loadingFirst ? (
+              <div className="py-16 text-center grid place-items-center gap-2">
+                <GraduationCap className="size-[22px] opacity-40 text-slate-400 animate-pulse" />
+                <p className="text-[13px] text-slate-400 dark:text-neutral-500">Carregando clientes…</p>
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="py-16 text-center grid place-items-center gap-2">
+                <GraduationCap className="size-[22px] opacity-40 text-slate-400" />
+                <p className="text-[14px] font-semibold text-gray-700 dark:text-neutral-200">Nenhum cliente encontrado</p>
+                {/* O convite para matricular é de quem matricula. O professor não matricula. */}
+                {can(appUser, ACTIONS.CONTRATO_EDITAR) && (
+                  <p className="text-[12.5px] text-slate-400 dark:text-neutral-500">Matricule um lead pelo Kanban ou pela ficha para vê-lo aqui.</p>
+                )}
+              </div>
+            ) : (
+              visible.map(({ c, st }) => <ClientRow key={c.id} c={c} st={st} now={now} />)
+            )}
+          </div>
 
-                  {/* Valor */}
-                  <div className="md:text-right text-[12.5px] tabular-nums text-slate-700 dark:text-neutral-200">
-                    {hasValue ? fmtBRLValor(c.currentContractValue) : '—'}
-                  </div>
-
-                  {/* Vencimento */}
-                  <div className="md:text-right text-[12px] tabular-nums text-slate-500 dark:text-neutral-400 whitespace-nowrap">
-                    {endsAt ? endsAt.toLocaleDateString('pt-BR') : '—'}
-                  </div>
-                </LeadLink>
-              );
-            })
+          {filtered.length > visibleCount && (
+            <div className="flex justify-center">
+              <Btn kind="soft" onClick={() => setVisibleCount(n => n + LIST_PAGE_SIZE)}>
+                Carregar mais ({visible.length} de {filtered.length})
+              </Btn>
+            </div>
           )}
         </div>
-
-        {filtered.length > visibleCount && (
-          <div className="flex justify-center pt-4">
-            <Btn kind="soft" onClick={() => setVisibleCount(c => c + LIST_PAGE_SIZE)}>
-              Carregar mais ({visible.length} de {filtered.length})
-            </Btn>
-          </div>
-        )}
       </div>
     </div>
   );

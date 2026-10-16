@@ -80,7 +80,7 @@ function Mark({ on, square = false }) {
 
 // Conteúdo do balão de consultores. Exportado para o teste renderizar sem
 // abrir o Popover.
-export function ConsultoresMenu({ resp, people, onResp }) {
+export function ConsultoresMenu({ resp, people, onResp, allLabel = 'Equipe toda' }) {
   const toggle = (id) => onResp(resp.includes(id) ? resp.filter((x) => x !== id) : [...resp, id]);
   const toda = resp.length === 0;
   return (
@@ -92,7 +92,7 @@ export function ConsultoresMenu({ resp, people, onResp }) {
         className={cn(ROW, FOCUS_RING, 'text-foreground hover:bg-muted', toda ? 'font-semibold' : 'font-medium')}
       >
         <Mark on={toda} />
-        Equipe toda
+        {allLabel}
       </button>
       <div className="mx-1.5 my-1 h-px bg-border" aria-hidden="true" />
       {people.map((p) => (
@@ -123,6 +123,25 @@ export function ConsultoresControl({ resp, people, onResp, compact = false, labe
           ou os últimos nomes ficavam fora da tela. */}
       <PopoverContent align="start" aria-label="Escolher consultores" className={cn('w-[264px] max-h-(--radix-popover-content-available-height) overflow-y-auto overscroll-y-contain p-1.5', SURFACE)}>
         <ConsultoresMenu resp={resp} people={people} onResp={onResp} />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// A mesma pílula de múltipla escolha para qualquer lista de { id, name }, no
+// desenho do Consultor: Situação e Plano, na tela Clientes. `allText` é o que a
+// pílula diz sem escolha, `allLabel` a primeira opção do balão e `noun` o
+// plural da contagem ("2 planos").
+export function MultiControl({ label, icon, noun, allText, allLabel, items, value, onValue, compact = false }) {
+  const one = value.length === 1 ? items.find((i) => i.id === value[0]) : null;
+  const text = value.length === 0 ? allText : one ? one.name : `${value.length} ${noun}`;
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <FilterButton label={label} icon={icon} active={value.length > 0} text={text} compact={compact} />
+      </PopoverTrigger>
+      <PopoverContent align="start" aria-label={`Escolher ${noun}`} className={cn('w-[264px] max-h-(--radix-popover-content-available-height) overflow-y-auto overscroll-y-contain p-1.5', SURFACE)}>
+        <ConsultoresMenu resp={value} people={items} onResp={onValue} allLabel={allLabel} />
       </PopoverContent>
     </Popover>
   );
