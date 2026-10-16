@@ -66,6 +66,15 @@ const mes = param(
   (v, ctx) => (janelaDoMes(v, ctx) && v !== ctx.currentKey ? v : null),
 );
 
+// Mês de cadastro do Pipeline. Ao contrário dos painéis, o padrão é todos os
+// meses (null), que é o quadro de sempre, então o mês atual também é escrito.
+// Mês fora dos últimos 12 cai em todos os meses.
+const mesDoQuadro = param(
+  'monthKey',
+  (raw, ctx) => (janelaDoMes(raw, ctx) ? raw : null),
+  (v, ctx) => (janelaDoMes(v, ctx) ? v : null),
+);
+
 const comparar = param(
   'compareOn',
   (raw) => raw !== '0',
@@ -352,7 +361,7 @@ const TABELA = {
   dashOperacional: { mes, comparar, 'comparar-com': compararCom, pessoa },
   dashCrm: { mes, comparar, 'comparar-com': compararCom, pessoa, funil: funilRecorte },
   dashGerencial: { mes, comparar, 'comparar-com': compararCom },
-  kanban: { funil: funilDaTela, resp, atraso: ligado('overdue') },
+  kanban: { funil: funilDaTela, mes: mesDoQuadro, resp, atraso: ligado('overdue') },
   clientes: { sit, resp },
   leads: { funil: funilDaTela, fase, resp, atraso: ligado('overdue'), quente: ligado('hot') },
   aulas: { dia, de: dataDoPeriodo('de'), ate: dataDoPeriodo('ate'), resp, prof },

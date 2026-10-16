@@ -5,7 +5,7 @@
 // `now` é injetado onde a função aceita, e fake timers onde ela lê o relógio.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { filterKanbanLeads, partitionLeadsByStatus, getKanbanInitials, fmtKanbanRelDate, kanbanSilence, silenceDaysOf, monthWindow, defaultRespFilterFor, isDefaultRespFilter, KANBAN_COLUMN_ACCENT } from '../kanban.js';
+import { filterKanbanLeads, partitionLeadsByStatus, stageParts, funnelSummary, isOverdueLead, kanbanMonthOptions, createdInWindow, KANBAN_ALL_MONTHS, getKanbanInitials, fmtKanbanRelDate, kanbanSilence, silenceDaysOf, monthWindow, defaultRespFilterFor, isDefaultRespFilter, KANBAN_COLUMN_ACCENT } from '../kanban.js';
 import { SETTINGS_COLOR_OPTIONS } from '../../components/ui/ColorPicker.jsx';
 
 // 15 de julho de 2026, 10:00 local — "agora" de referência dos testes.
@@ -308,6 +308,70 @@ describe('monthWindow', () => {
 
   it('rotula o mês em português para o header da coluna', () => {
     expect(monthWindow(new Date(2026, 6, 15)).label).toBe('julho');
+  });
+});
+
+describe('atraso do card, do filtro e da coluna', () => {
+  const now = new Date(2026, 9, 16, 12, 0);
+  it('compromisso vencido é atraso; Venda, Perda, futuro e sem compromisso não são', () => {
+    expect(isOverdueLead({ status: 'Novo', nextFollowUp: new Date(2026, 9, 16, 9, 0) }, now)).toBe(true);
+    expect(isOverdueLead({ status: 'Novo', nextFollowUp: new Date(2026, 9, 16, 18, 0) }, now)).toBe(false);
+    expect(isOverdueLead({ status: 'Novo', nextFollowUp: null }, now)).toBe(false);
+    expect(isOverdueLead({ status: 'Novo', nextFollowUp: new Date('lixo') }, now)).toBe(false);
+    expect(isOverdueLead({ status: 'Venda', nextFollowUp: new Date(2026, 9, 1) }, now)).toBe(false);
+    expect(isOverdueLead({ status: 'Perda', nextFollowUp: new Date(2026, 9, 1) }, now)).toBe(false);
+  });
+});
+
+describe('barrinha das etapas e linha de apoio do título', () => {
+  const stages = [{ name: 'Novo', color: 'lime' }, { name: 'Aguardando contato', color: 'orange' }, { name: 'Negociação', color: 'roxo-que-nao-existe' }];
+  const counts = { Novo: 9, 'Aguardando contato': 12 };
+
+  it('cada etapa na ordem do funil, com a cor da coluna e quantos tem', () => {
+    expect(stageParts(stages, (n) => counts[n])).toEqual([
+      { name: 'Novo', color: '#84cc16', count: 9 },
+      { name: 'Aguardando contato', color: '#f97316', count: 12 },
+      { name: 'Negociação', color: '#94a3b8', count: 0 },
+    ]);
+  });
+
+  it('diz o total e a etapa mais cheia, e no empate fica a primeira', () => {
+    expect(funnelSummary(stageParts(stages, (n) => counts[n]))).toBe('21 leads em aberto, mais em Aguardando contato');
+    expect(funnelSummary(stageParts(stages, () => 2))).toBe('6 leads em aberto, mais em Novo');
+    expect(funnelSummary([{ name: 'Novo', color: '#000', count: 1 }])).toBe('1 lead em aberto');
+  });
+
+  it('fala de clientes nos funis de clientes, e diz quando não há ninguém', () => {
+    expect(funnelSummary(stageParts(stages, (n) => counts[n]), 'clientes')).toBe('21 clientes, mais em Aguardando contato');
+    expect(funnelSummary(stageParts(stages, () => 0))).toBe('Nenhum lead em aberto');
+    expect(funnelSummary([], 'clientes')).toBe('Nenhum cliente aqui');
+  });
+});
+
+describe('mês de cadastro do Pipeline', () => {
+  it('a lista começa por todos os meses e traz os 12 últimos, com o atual em andamento', () => {
+    const opts = kanbanMonthOptions('2026-02');
+    expect(opts).toHaveLength(13);
+    expect(opts[0]).toEqual({ key: KANBAN_ALL_MONTHS, label: 'Todos os meses' });
+    expect(opts[1]).toMatchObject({ key: '2026-02', note: 'em andamento', ruleBefore: true });
+    expect(opts[2]).toMatchObject({ key: '2026-01', note: undefined, ruleBefore: false });
+    expect(opts[12].key).toBe('2025-03');
+  });
+
+  it('conta o cadastro dentro da janela, com o fim aberto', () => {
+    const ini = new Date(2026, 8, 1).getTime();
+    const fim = new Date(2026, 9, 1).getTime();
+    expect(createdInWindow({ createdAt: new Date(2026, 8, 1, 0, 0) }, ini, fim)).toBe(true);
+    expect(createdInWindow({ createdAt: new Date(2026, 8, 30, 23, 59) }, ini, fim)).toBe(true);
+    expect(createdInWindow({ createdAt: new Date(2026, 9, 1, 0, 0) }, ini, fim)).toBe(false);
+    expect(createdInWindow({ createdAt: new Date(2026, 7, 31, 23, 59) }, ini, fim)).toBe(false);
+  });
+
+  it('lead sem data de cadastro real fica de fora, mesmo com a data da carga no mês', () => {
+    const ini = new Date(2026, 8, 1).getTime();
+    const fim = new Date(2026, 9, 1).getTime();
+    expect(createdInWindow({ createdAt: new Date(2026, 8, 10), createdAtMissing: true }, ini, fim)).toBe(false);
+    expect(createdInWindow({}, ini, fim)).toBe(false);
   });
 });
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import indexesConfig from '../../../firestore.indexes.json';
-import { LIFECYCLE_BUCKETS, clientsQuerySpec, clientsAllQuerySpec, allLeadsQuerySpec, lostByFunnelQuerySpec, bucketByFunnelQuerySpec, bucketByFunnelCountSpec, appointmentsInWindowQuerySpec, renewalClientsQuerySpec, consultantLeadsQuerySpec, adminDashboardWindowSpecs, ADMIN_DASHBOARD_WINDOW_FIELDS, wonInMonthQuerySpec, renewalWindowMs, clientsWithContactTodayQuerySpec, expiredClientsQuerySpec, renewalColumnQuerySpec, upgradeClientsQuerySpec } from '../leadQueries.js';
+import { LIFECYCLE_BUCKETS, bucketByFunnelInMonthQuerySpec, clientsQuerySpec, clientsAllQuerySpec, allLeadsQuerySpec, lostByFunnelQuerySpec, bucketByFunnelQuerySpec, bucketByFunnelCountSpec, appointmentsInWindowQuerySpec, renewalClientsQuerySpec, consultantLeadsQuerySpec, adminDashboardWindowSpecs, ADMIN_DASHBOARD_WINDOW_FIELDS, wonInMonthQuerySpec, renewalWindowMs, clientsWithContactTodayQuerySpec, expiredClientsQuerySpec, renewalColumnQuerySpec, upgradeClientsQuerySpec } from '../leadQueries.js';
 import { renewalColumnsFromCheckpoints } from '../renewalFunnel.js';
 import * as Q from '../leadQueries.js';
 
@@ -204,6 +204,19 @@ describe('leadQueries — toda spec é coberta por um índice de firestore.index
     expect(coveredByLeadsIndex(bucketByFunnelQuerySpec(LIFECYCLE_BUCKETS.PERDA, 'f1'))).toBe(true);
     expect(coveredByLeadsIndex(bucketByFunnelQuerySpec(LIFECYCLE_BUCKETS.CLIENTE, 'f1'))).toBe(true);
   });
+  it('bucketByFunnelInMonthQuerySpec (safra do Pipeline) ↔ índice #2, com e sem página', () => {
+    const ini = new Date(2026, 8, 1).getTime();
+    const fim = new Date(2026, 9, 1).getTime();
+    expect(coveredByLeadsIndex(bucketByFunnelInMonthQuerySpec(LIFECYCLE_BUCKETS.CLIENTE, 'f1', ini, fim))).toBe(true);
+    expect(coveredByLeadsIndex(bucketByFunnelInMonthQuerySpec(LIFECYCLE_BUCKETS.PERDA, 'f1', ini, fim, 10))).toBe(true);
+    const spec = bucketByFunnelInMonthQuerySpec(LIFECYCLE_BUCKETS.PERDA, 'f1', ini, fim, 10);
+    expect(spec.wheres.slice(2)).toEqual([
+      { field: 'createdAt', op: '>=', value: new Date(ini) },
+      { field: 'createdAt', op: '<', value: new Date(fim) },
+    ]);
+    expect(spec.limit).toBe(10);
+    expect(bucketByFunnelInMonthQuerySpec(LIFECYCLE_BUCKETS.CLIENTE, 'f1', ini, fim).limit).toBeUndefined();
+  });
   it('bucketByFunnelCountSpec (só igualdades) usa o prefixo dos índices #1/#2', () => {
     expect(coveredByLeadsIndex(bucketByFunnelCountSpec(LIFECYCLE_BUCKETS.PERDA, 'f1'))).toBe(true);
   });
@@ -254,6 +267,7 @@ describe('leadQueries — registro EXAUSTIVO: nenhuma spec escapa do guarda', ()
     bucketByFunnelQuerySpec: bucketByFunnelQuerySpec(LIFECYCLE_BUCKETS.ATIVO, 'f1'),
     appointmentsInWindowQuerySpec: appointmentsInWindowQuerySpec('visita', AGORA, AGORA + DIA, 10),
     bucketByFunnelCountSpec: bucketByFunnelCountSpec(LIFECYCLE_BUCKETS.PERDA, 'f1'),
+    bucketByFunnelInMonthQuerySpec: bucketByFunnelInMonthQuerySpec(LIFECYCLE_BUCKETS.PERDA, 'f1', AGORA - 30 * DIA, AGORA, 10),
   };
 
   // Dispensadas: sem NENHUMA igualdade, no máximo um campo com range/orderBy —
