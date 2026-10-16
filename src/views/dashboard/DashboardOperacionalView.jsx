@@ -1,43 +1,29 @@
 // Tela OPERACIONAL (Visão geral · Operacional): o trabalho feito e a saúde da
 // base de clientes, por mês de competência, igual para todos os perfis, com
-// comparativo e filtro de pessoa. Visual e textos: handoff do Claude Design
-// (docs/superpowers/specs/handoff-operacional/). Toda a matemática vem de
-// src/lib/operacional/ (metricsOf); aqui é só orquestração e apresentação.
+// comparativo e filtro de pessoa. Desenho do mockup D, "Duas metas"
+// (docs/superpowers/specs/mockups/2026-10-15-operacional-d-duas-metas.html):
+// as duas metas por pessoa no topo e as faixas abaixo, no padrão do CRM e do
+// Gerencial. Toda a matemática vem de src/lib/operacional/ (metricsOf); aqui é
+// só orquestração.
 
 import { useEffect, useMemo, useState } from 'react';
-import { CircleAlert, Lock, TrendingDown, UserX } from 'lucide-react';
+import { CircleAlert } from 'lucide-react';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 import { TooltipProvider } from '../../components/ui/tooltip.jsx';
 import { useOperacionalSources } from '../../hooks/useOperacionalSources.js';
 import { normalizeContracts } from '../../lib/operacional/base.js';
 import { monthKeyOf, monthRange, addMonthsToKey, comparisonCut, compareOptions, monthLabel } from '../../lib/operacional/month.js';
-import { metricsOf, deltaOf, buildHighlights, seriesOf, milestoneMonthsAfter, OTHERS_ID } from '../../lib/operacional/metrics.js';
+import { metricsOf, seriesOf, milestoneMonthsAfter } from '../../lib/operacional/metrics.js';
 import { normalizeCheckpoints } from '../../lib/operacional/renewal.js';
-import { TASK_ROWS } from '../../lib/operacional/routine.js';
-import { fmtNum } from '../../lib/format.js';
 import { cn } from '../../lib/utils.js';
-import { BreakdownCard, DashHelpTip } from './DashPrimitives.jsx';
-import { dashInitials } from './dashTokens.js';
-import { ChartMark } from './ChartMark.jsx';
 import { OperacionalToolbar } from './OperacionalToolbar.jsx';
-import { DashSummaryBand } from './DashSummaryBand.jsx';
-import { DashHighlights } from './DashHighlights.jsx';
-import { ProspectionByDay } from './ProspectionByDay.jsx';
-import { MetaDaysCalendar } from './MetaDaysCalendar.jsx';
-import { BaseBridge } from './BaseBridge.jsx';
-import { RenewalOutcomeBar } from './RenewalOutcomeBar.jsx';
-import { MilestoneBars } from './MilestoneBars.jsx';
-import { TeamMonthTable } from './TeamMonthTable.jsx';
+import { OperacionalDashboard } from './OperacionalDashboard.jsx';
 import { useScreenParams } from '../../hooks/useScreenParams.js';
 import { isSeller } from '../../lib/acesso.js';
-import { hasModule, MODULES } from '../../lib/modules.js';
 
 // Padrões fora do componente: um array novo a cada render mudaria os memos.
 const DEFAULT_WEEKDAYS = [1, 2, 3, 4, 5];
 const DEFAULT_CHECKPOINTS = [90, 60, 30];
-
-const SHORT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-const shortOf = (key) => SHORT[Number(key.slice(5, 7)) - 1];
 
 // Mês em texto corrido: "agosto", ou "setembro de 2025" quando o ano é outro.
 const monthName = (key, refKey) => {
@@ -45,247 +31,14 @@ const monthName = (key, refKey) => {
   return key.slice(0, 4) === refKey.slice(0, 4) ? name : `${name} de ${key.slice(0, 4)}`;
 };
 
-const plural = (n, one, many) => `${fmtNum(n)} ${n === 1 ? one : many}`;
-const pctFmt = (v) => `${String(v).replace('.', ',')}%`;
-// Largura relativa ao maior valor, com piso de 2% (mesmo helper do handoff).
-const barPct = (v, max) => `${max > 0 ? Math.max(2, Math.round((v / max) * 100)) : 0}%`;
-
-const CARD = 'rounded-2xl border border-border bg-card shadow-card';
-const RULE = 'border-slate-100 dark:border-white/[0.06]';
-const UPCOMING = [
-  { key: 'd30', label: 'até 30 dias' },
-  { key: 'd60', label: '31 a 60 dias' },
-  { key: 'd90', label: '61 a 90 dias' }
-];
-
-// Título de seção com a pergunta e a régua de 2px (README §2).
-function SectionTitle({ title, question }) {
-  return (
-    <div className="mb-3.5 flex items-baseline gap-[11px] border-b-2 border-border pb-[9px]">
-      <h3 className="m-0 font-display text-[16px] font-bold tracking-[-0.01em]">{title}</h3>
-      <span className="text-[12.5px] text-muted-foreground">{question}</span>
-    </div>
-  );
-}
-
-// Aviso sob a barra de controles, quando algum número da tela não é o
-// completo (mês que não carregou, meta só da própria pessoa).
+// Aviso sob o cabeçalho, quando algum número da tela não é o completo (mês
+// que não carregou, meta só da própria pessoa).
 function Notice({ children }) {
   return (
-    <p role="status" className="flex items-center gap-1.5 px-4 md:px-8 pt-3 text-[12px] text-amber-700 dark:text-amber-300">
+    <p role="status" className="flex items-center gap-1.5 px-4 pt-1 text-[12px] text-amber-700 md:px-8 dark:text-amber-300">
       <CircleAlert size={13} strokeWidth={2.2} className="flex-none" />
       {children}
     </p>
-  );
-}
-
-function NowTag() {
-  return (
-    <span className="flex h-[19px] items-center whitespace-nowrap rounded-md bg-muted px-[7px] text-[9.5px] font-bold uppercase tracking-[0.05em] text-muted-foreground">
-      Agora
-    </span>
-  );
-}
-
-// No mês fechado, no lugar do retrato do agora, diz por que ele sumiu
-// (handoff linhas 315 a 325 e 569 a 579).
-function ClosedMonthCard({ title, text }) {
-  return (
-    <div className="flex items-center gap-3 rounded-2xl border border-dashed border-border bg-slate-50 p-[18px] dark:bg-white/[0.03]">
-      <span className="grid size-8 flex-none place-items-center rounded-[10px] bg-muted text-muted-foreground">
-        <Lock size={15} strokeWidth={2} />
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="text-[12.5px] font-semibold text-foreground/80">{title}</div>
-        <div className="mt-0.5 text-[11.5px] leading-normal text-muted-foreground">{text}</div>
-      </div>
-    </div>
-  );
-}
-
-// Prospecção do mês ainda carregando: a mesma casca, para a grade da Rotina
-// não trocar de trilha quando o dado chegar.
-function ProspectionPending() {
-  return (
-    <div className={cn(CARD, 'px-[18px] pt-4 pb-3.5')}>
-      <span className="text-[13.5px] font-semibold">Prospecção por dia</span>
-      <div className="mt-4 h-[132px]" />
-      <div className={cn('mt-[7px] h-[22px] border-t', RULE)} />
-    </div>
-  );
-}
-
-// Tarefas concluídas por tipo, com a marca fina e a coluna de diferença do mês
-// comparado (handoff linhas 259 a 285). Sem fonte ainda, os números ficam "—".
-function TasksCard({ tasks, compareTasks, compareName, className }) {
-  const showCompare = compareName != null;
-  const rows = TASK_ROWS.map((r) => ({
-    ...r,
-    v: tasks ? tasks[r.id] : null,
-    c: showCompare && compareTasks ? compareTasks[r.id] : null
-  }));
-  const max = Math.max(1, ...rows.flatMap((r) => [r.v || 0, r.c || 0]));
-  return (
-    <div className={cn(CARD, 'px-[18px] pt-4 pb-3.5', className)}>
-      <div className="mb-[13px] flex items-baseline gap-2.5">
-        <span className="text-[13.5px] font-semibold">Tarefas concluídas por tipo</span>
-        <div className="flex-1" />
-        {showCompare && (
-          <span className="flex items-center gap-1.5 whitespace-nowrap text-[11px] text-muted-foreground">
-            <span className="h-3 w-0.5 bg-foreground/80" />
-            {compareName}
-          </span>
-        )}
-      </div>
-      <div className="flex flex-col gap-[9px]">
-        {rows.map((r) => {
-          const diff = r.v != null && r.c != null ? r.v - r.c : null;
-          return (
-            <div key={r.id} className="flex items-center gap-3">
-              <span className="w-[124px] flex-none truncate text-[12px] text-foreground/80">{r.label}</span>
-              <div className="relative h-4 min-w-0 flex-1">
-                {r.v != null && (
-                  <ChartMark
-                    tip={`${r.label}: ${fmtNum(r.v)} concluídas`}
-                    className="absolute inset-y-0 left-0 rounded bg-brand-600"
-                    style={{ width: barPct(r.v, max) }}
-                  />
-                )}
-                {r.c != null && (
-                  <ChartMark
-                    tip={`${compareName}: ${fmtNum(r.c)}`}
-                    className="absolute -inset-y-0.5 w-0.5 bg-foreground/80"
-                    style={{ left: barPct(r.c, max) }}
-                  />
-                )}
-              </div>
-              <span className="num w-[34px] flex-none text-right text-[12.5px] font-semibold">{r.v != null ? fmtNum(r.v) : '—'}</span>
-              {showCompare && (
-                <span
-                  className={cn(
-                    'num w-10 flex-none text-right text-[11px] font-semibold',
-                    diff == null || diff === 0 ? 'text-muted-foreground' : diff > 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'
-                  )}
-                >
-                  {diff == null ? '—' : diff === 0 ? '=' : `${diff > 0 ? '+' : '−'}${fmtNum(Math.abs(diff))}`}
-                </span>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// Atrasados agora de uma pessoa: só com pessoa filtrada, porque com a equipe o
-// número vai para a coluna da tabela (handoff linhas 287 a 313). `late` é o
-// retrato da equipe inteira, com o número de cada um em byUser.
-function LateCard({ late, user, className }) {
-  const n = late ? (late.byUser.get(user.id) ?? 0) : null;
-  const max = late ? Math.max(1, ...late.byUser.values()) : 1;
-  const name = user.name || 'Sem nome';
-  return (
-    <div className={cn(CARD, 'px-[18px] pt-4 pb-3.5', className)}>
-      <div className="flex items-baseline gap-2">
-        <span className="text-[13.5px] font-semibold">Atrasados agora</span>
-        <DashHelpTip
-          text="Contatos que passaram da data sem retorno. É um retrato de agora e não existe para mês fechado."
-          label='O que é "Atrasados agora"?'
-        />
-        <div className="flex-1" />
-        <NowTag />
-      </div>
-      <div className="mt-2.5 flex items-baseline gap-2">
-        <span className="num font-display text-[30px] font-bold leading-none tracking-[-0.03em] text-rose-700 dark:text-rose-300">
-          {n != null ? fmtNum(n) : '—'}
-        </span>
-        <span className="text-[12px] text-muted-foreground">{n === 1 ? 'contato sem retorno' : 'contatos sem retorno'}</span>
-      </div>
-      {n != null && (
-        <div className={cn('mt-3.5 flex flex-col gap-[7px] border-t pt-3', RULE)}>
-          <div className="flex items-center gap-2.5">
-            <span className="grid size-6 flex-none place-items-center rounded-full bg-muted text-[9px] font-bold text-foreground/80">
-              {dashInitials(name)}
-            </span>
-            <span className="min-w-0 flex-1 truncate text-[12px] font-medium">{name}</span>
-            <div className="flex h-1.5 w-[74px] flex-none overflow-hidden rounded-full bg-muted">
-              <ChartMark
-                tip={`${name}: ${plural(n, 'contato atrasado', 'contatos atrasados')}`}
-                className="rounded-full bg-danger dark:bg-[#E11D48]"
-                style={{ width: barPct(n, max) }}
-              />
-            </div>
-            <span className={cn('num w-5 flex-none text-right text-[12px] font-semibold', n >= 8 ? 'text-rose-700 dark:text-rose-300' : 'text-foreground')}>
-              {fmtNum(n)}
-            </span>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Upgrades (do vendedor no contrato) e saldo de trancamentos (da academia),
-// handoff linhas 406 a 427. O saldo é o dos trancamentos feitos no mês, e não o
-// passo da ponte: quem tranca um de dois contratos segue na base (base.js).
-function UpgradesLocksCard({ upgrades, delta, movement }) {
-  const trancaram = movement?.trancaram || 0;
-  const destrancaram = movement?.destrancaram || 0;
-  const saldo = destrancaram - trancaram;
-  const deltaTone = !delta || delta.none || delta.flat ? 'text-muted-foreground'
-    : delta.up ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300';
-  return (
-    <div className={cn(CARD, 'flex flex-1 items-stretch px-[18px] py-4')}>
-      <div className="min-w-0 flex-1">
-        <div className="text-[10.5px] font-bold uppercase tracking-[0.07em] text-muted-foreground">Upgrades</div>
-        <div className="mt-[9px] flex items-baseline gap-[7px]">
-          <span className="num font-display text-[24px] font-bold leading-none tracking-[-0.03em]">{upgrades != null ? fmtNum(upgrades) : '—'}</span>
-          {delta && <span className={cn('num text-[11.5px] font-semibold', deltaTone)}>{delta.text}</span>}
-        </div>
-        <div className="mt-[5px] text-[11px] text-muted-foreground">vendas pelo funil Upgrade</div>
-      </div>
-      <span className="mx-[18px] w-px flex-none bg-slate-100 dark:bg-white/[0.06]" />
-      <div className="min-w-0 flex-1">
-        <div className="text-[10.5px] font-bold uppercase tracking-[0.07em] text-muted-foreground">Trancamentos</div>
-        <div className="mt-[9px] flex items-baseline gap-[7px]">
-          <span className="num font-display text-[24px] font-bold leading-none tracking-[-0.03em]">
-            {saldo === 0 ? '0' : `${saldo > 0 ? '+' : '−'}${fmtNum(Math.abs(saldo))}`}
-          </span>
-          <span className="num text-[11.5px] font-semibold text-muted-foreground">saldo</span>
-        </div>
-        <div className="num mt-[5px] text-[11px] text-muted-foreground">
-          {`${plural(trancaram, 'trancou', 'trancaram')} · ${plural(destrancaram, 'destrancou', 'destrancaram')}`}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// A vencer: retrato de agora, só no mês em andamento (handoff linhas 549 a 567).
-// As faixas não se sobrepõem, daí os rótulos "até 30", "31 a 60" e "61 a 90".
-function UpcomingCard({ upcoming }) {
-  return (
-    <div className={cn(CARD, 'px-[18px] pt-4 pb-3.5')}>
-      <div className="flex items-baseline gap-2">
-        <span className="text-[13.5px] font-semibold">A vencer</span>
-        <div className="flex-1" />
-        <NowTag />
-      </div>
-      <div className="mt-4 flex items-stretch">
-        {UPCOMING.map((u, i) => (
-          <div key={u.key} className={cn('min-w-0 flex-1 border-l text-center', i === 0 ? 'border-transparent' : RULE)}>
-            <div className="num font-display text-[24px] font-bold leading-none tracking-[-0.03em]">
-              {upcoming ? fmtNum(upcoming[u.key]) : '—'}
-            </div>
-            <div className="num mt-[5px] text-[11px] text-muted-foreground">{u.label}</div>
-          </div>
-        ))}
-      </div>
-      <div className={cn('mt-[13px] border-t pt-[11px] text-[10.5px] leading-normal text-muted-foreground', RULE)}>
-        Contratos com fim nos próximos 30, 60 e 90 dias. Serve para planejar o contato, não entra na taxa do mês.
-      </div>
-    </div>
   );
 }
 
@@ -306,7 +59,8 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
 
   const currentKey = monthKeyOf(now);
   // As linhas por pessoa, o seletor de pessoa e o endereço são de quem vende.
-  // O que o professor registra (anotação, agendamento) cai em Outros.
+  // O que o professor registra (anotação, agendamento) entra só nos totais da
+  // equipe, como o de quem saiu da equipe.
   const users = useMemo(() => (usersList || []).filter((u) => u?.id && isSeller(u)), [usersList]);
   // Mês, comparativo e pessoa vêm do endereço: F5 mantém, o link abre igual e
   // cada aba pode estar num recorte diferente. Pessoa que saiu da equipe e mês
@@ -357,16 +111,13 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
     [compareOn, ctx, cmpKey, userId, monthKey, now]
   );
   const seriesLoaded = useMemo(() => ({
-    meta: seriesOf(ctx, { monthKey, userId, pick: (m) => m.meta?.pct ?? null }),
-    prosp: seriesOf(ctx, { monthKey, userId, pick: (m) => (m.prosp?.on ? m.prosp.pct : null) }),
-    active: seriesOf(ctx, { monthKey, pick: (m) => m.base.active }),
-    renew: seriesOf(ctx, { monthKey, userId, pick: (m) => m.renewal.rate })
-  }), [ctx, monthKey, userId]);
-  // Com "Equipe toda": uma linha por pessoa e a de quem está fora da equipe.
-  const teamLoaded = useMemo(() => (userId ? null : {
-    rows: users.map((u) => ({ user: u, m: metricsOf(ctx, { monthKey, userId: u.id }) })),
-    others: metricsOf(ctx, { monthKey, userId: OTHERS_ID })
-  }), [ctx, monthKey, userId, users]);
+    active: seriesOf(ctx, { monthKey, pick: (m) => m.base.active })
+  }), [ctx, monthKey]);
+  // As linhas do topo: uma por pessoa, ou só a da pessoa filtrada.
+  const teamLoaded = useMemo(
+    () => (userId ? users.filter((u) => u.id === userId) : users).map((u) => ({ user: u, m: metricsOf(ctx, { monthKey, userId: u.id }) })),
+    [ctx, monthKey, userId, users]
+  );
 
   // Trocar de mês pede a fonte de novo (interações, leads, histórico); até ela
   // chegar, o mês novo tem hasSource falso e todo campo que depende dela
@@ -392,91 +143,27 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
     ? { cur: curLoaded, cmp: cmpLoaded, series: seriesLoaded, team: teamLoaded }
     : lastGood;
 
-  const highlights = useMemo(() => (compareOn ? buildHighlights(cur, cmp) : []), [compareOn, cur, cmp]);
-
-  // Textos do regime de comparação (README §7).
-  const running = cur.running;
+  // O cabeçalho descreve o que está escolhido, mesmo enquanto carrega; o
+  // corpo, sob o véu, fala do retrato que está nele (cur e cmp).
   const dayN = now.getDate();
-  const shownName = monthLabel(monthKey, { capitalized: false, withYear: false });
-  const cmpName = monthName(cmpKey, monthKey);
-  const range = running ? (dayN === 1 ? `1 de ${shownName}` : `1 a ${dayN} de ${shownName}`) : `${shownName} inteiro`;
+  const pickedName = monthLabel(monthKey, { capitalized: false, withYear: false });
+  const pickedRunning = monthKey === currentKey;
+  const range = pickedRunning ? (dayN === 1 ? `1 de ${pickedName}` : `1 a ${dayN} de ${pickedName}`) : `${pickedName} inteiro`;
   const firstDays = dayN === 1 ? 'o primeiro dia' : `os ${dayN} primeiros dias`;
+  const pickedCmp = monthName(cmpKey, monthKey);
   const subline = compareOn
-    ? (running
-      ? `${range} comparado com ${firstDays} de ${cmpName}. O mês está em andamento, então a comparação é pró-rata.`
-      : `${range} comparado com ${cmpName}. Mês fechado.`)
-    : (running ? `${range}. O mês está em andamento: hoje conta à parte.` : `${range}. Mês fechado.`);
-  const note = compareOn
-    ? (running ? `Comparação pró-rata: ${dayN === 1 ? 'mesmo primeiro dia' : `mesmos ${dayN} primeiros dias`}` : 'Mês fechado contra mês fechado')
-    : 'Sem comparativo';
+    ? (pickedRunning
+      ? `${range} comparado com ${firstDays} de ${pickedCmp}. O mês está em andamento, então a comparação é pró-rata.`
+      : `${range} comparado com ${pickedCmp}. Mês fechado.`)
+    : (pickedRunning ? `${range}. O mês está em andamento: hoje conta à parte.` : `${range}. Mês fechado.`);
+  const shownName = monthLabel(cur.monthKey, { capitalized: false, withYear: false });
+  const cmpName = cmp ? monthName(cmp.monthKey, cur.monthKey) : pickedCmp;
 
   // Mês cuja busca falhou em todas as tentativas entra vazio: avisa, em vez de
   // deixar o zero passar por número do mês.
   const failedNames = [monthKey, ...(compareOn ? [cmpKey] : [])]
     .filter((k) => sources.failedKeys.includes(k))
     .map((k) => monthName(k, monthKey));
-
-  const spark = (points, fmt) => {
-    const last = points[points.length - 1];
-    const partial = running && last?.key === monthKey;
-    return {
-      series: points.length > 1 ? points.map((p) => p.value) : null,
-      seriesFrom: points[0] ? shortOf(points[0].key) : '',
-      seriesTo: last ? `${shortOf(last.key)}${partial ? ' · parcial' : ''}` : '',
-      seriesLabel: `${points.length} ${points.length === 1 ? 'mês' : 'meses'} · ${points.map((p) => `${shortOf(p.key)} ${fmt(p.value)}`).join(' · ')}${partial ? ` (${shortOf(last.key)} parcial)` : ''}`
-    };
-  };
-  const d = (a, b, kind) => (compareOn ? deltaOf(a, b, { kind }) : null);
-
-  // Clientes ativos: o handoff só diz que o trancado conta à parte. O número
-  // de trancados no fim do mês (hoje, no mês em andamento) vai na dica.
-  const when = running ? 'hoje' : 'no fim do mês';
-  const lockedCount = cur.base.locked > 0 ? plural(cur.base.locked, 'trancado', 'trancados') : 'nenhum trancado';
-  const activeHelp = cur.base.known
-    ? `Pessoas com contrato vigente ${when}. Quem está trancado conta à parte: ${lockedCount} ${when}.`
-    : `Pessoas com contrato vigente ${when}. Quem está trancado conta à parte.`;
-
-  const summary = [
-    {
-      key: 'meta', label: 'Meta diária', goodUp: true,
-      help: 'Dias com meta batida ÷ dias de meta do mês. No mês em andamento conta só os dias já fechados; hoje aparece à parte na régua de dias.',
-      value: cur.meta?.pct != null ? `${cur.meta.pct}%` : '—',
-      sub: cur.meta
-        ? `${fmtNum(cur.meta.done)} de ${fmtNum(cur.meta.total)} ${userId ? 'dias' : 'dias-pessoa'}`
-        : cur.metaHidden ? 'indisponível' : 'carregando',
-      delta: d(cur.meta?.pct, cmp?.meta?.pct, 'pp'),
-      ...spark(series.meta, pctFmt)
-    },
-    cur.prosp && !cur.prosp.on
-      ? {
-        key: 'prosp', label: 'Prospecção', value: 'Desligada', muted: true, sub: 'alvo 0 no cadastro', delta: null, series: null,
-        help: 'Alvo diário 0 no cadastro: a pessoa está sem cota de prospecção. Não é 0%.'
-      }
-      : {
-        key: 'prosp', label: 'Prospecção', goodUp: true,
-        help: 'Ações de prospecção ÷ alvo do mês (alvo diário da pessoa × dias de meta).',
-        value: cur.prosp?.pct != null ? `${cur.prosp.pct}%` : '—',
-        sub: cur.prosp ? `${fmtNum(cur.prosp.done)} de ${fmtNum(cur.prosp.target)} ações` : 'carregando',
-        delta: d(cur.prosp?.pct, cmp?.prosp?.pct, 'pp'),
-        ...spark(series.prosp, pctFmt)
-      },
-    {
-      key: 'active', label: 'Clientes ativos', goodUp: true,
-      help: activeHelp,
-      value: cur.base.active != null ? fmtNum(cur.base.active) : '—',
-      sub: userId ? 'base da academia, não da carteira' : running ? 'com contrato vigente hoje' : 'no fim do mês',
-      delta: d(cur.base.active, cmp?.base.active, 'count'),
-      ...spark(series.active, fmtNum)
-    },
-    {
-      key: 'renew', label: 'Taxa de renovação', goodUp: true,
-      help: 'Renovados ÷ vencendo. No mês em andamento, renovados ÷ contratos que já tiveram desfecho.',
-      value: cur.renewal.rate != null ? `${cur.renewal.rate}%` : '—',
-      sub: `${fmtNum(cur.renewal.counts.renew)} de ${fmtNum(cur.renewal.decided)} ${running ? 'com desfecho' : 'vencendo'}`,
-      delta: d(cur.renewal.rate, cmp?.renewal.rate, 'pp'),
-      ...spark(series.renew, pctFmt)
-    }
-  ];
 
   const monthOptions = useMemo(
     () => Array.from({ length: 12 }, (_, i) => addMonthsToKey(currentKey, -i))
@@ -488,16 +175,8 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
   // Trocar de mês zera o mês da comparação, como sempre zerou. É uma navegação
   // só: os dois parâmetros trocam juntos.
   const changeMonth = (k) => setParams({ monthKey: k, compareKey: null });
-
-  // Alvo 0 não é alvo pequeno: o card de prospecção sai e a Rotina troca de trilhas.
-  const prospOff = Boolean(cur.prosp && !cur.prosp.on);
-  const movement = cur.base.movement;
-  const cancels = cur.base.cancels;
-  const wont = cur.renewal.wontReasons;
-  const firstName = (personUser?.name || '').trim().split(/\s+/)[0] || 'Sem nome';
-  const renewSummary = personUser
-    ? `${plural(cur.renewal.cohort, 'contrato', 'contratos')} na carteira de ${firstName}`
-    : `${plural(cur.renewal.cohort, 'contrato com fim', 'contratos com fim')} neste mês`;
+  // O nome no topo filtra a tela; clicar de novo no mesmo nome volta à equipe.
+  const pickPerson = (id) => setParams((v) => ({ person: v.person === id ? 'all' : id }));
   // Marcos ainda sem fonte (mês carregando): uma linha por marco, sem número.
   const milestoneItems = cur.milestones || normalizeCheckpoints(renewalCheckpoints)
     .map((days) => ({ days, done: null, total: null, pct: null }));
@@ -505,18 +184,14 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
   return (
     <TooltipProvider delayDuration={150}>
       <div className="-m-4 md:-m-8 font-sans">
-        <header className="bg-card px-4 md:px-8 pb-4 pt-5">
-          <h2 className="m-0 font-display text-[24px] font-bold tracking-[-0.02em]">Operacional</h2>
-          <p className="mt-[5px] max-w-[820px] text-[12.5px] leading-normal text-muted-foreground">{subline}</p>
-        </header>
         <OperacionalToolbar
+          title="Operacional" subline={subline}
           monthKey={monthKey} monthOptions={monthOptions} onMonth={changeMonth}
           canPrev={monthKey > oldestKey} onPrev={() => { if (monthKey > oldestKey) changeMonth(addMonthsToKey(monthKey, -1)); }}
           canNext={monthKey < currentKey} onNext={() => { if (monthKey < currentKey) changeMonth(addMonthsToKey(monthKey, 1)); }}
           compareOn={compareOn} onCompareOn={(v) => setParams({ compareOn: v })}
           compareKey={cmpKey} compareOptions={cmpOptions} onCompare={(k) => setParams({ compareKey: k })}
           person={person} people={people} onPerson={(id) => setParams({ person: id })}
-          note={note}
         />
         {failedNames.length > 0 && (
           <Notice>Não foi possível carregar os dados de {failedNames.join(' e ')}. Recarregue a página para tentar de novo.</Notice>
@@ -533,101 +208,19 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
             </div>
           )}
           <div className={cn('transition-opacity', sources.loading && 'opacity-35')} aria-busy={sources.loading}>
-            {compareOn && highlights.length > 0 && (
-              <div className="px-4 md:px-8 pt-[18px]"><DashHighlights items={highlights} /></div>
-            )}
-            <div className="flex flex-col gap-[22px] px-4 md:px-8 pb-8 pt-5">
-              <DashSummaryBand items={summary} />
-
-              <section>
-                <SectionTitle title="Rotina" question="o trabalho foi feito?" />
-                <div
-                  className={cn(
-                    'grid grid-cols-1 gap-3.5',
-                    prospOff ? 'md:grid-cols-[minmax(0,505px)_minmax(0,1fr)]' : 'md:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]'
-                  )}
-                >
-                  {!prospOff && (cur.prosp
-                    ? <ProspectionByDay days={cur.prosp.days} values={cur.prosp.perDay} dailyTarget={cur.prosp.dailyTarget} />
-                    : <ProspectionPending />)}
-                  <MetaDaysCalendar cells={cur.calendar} teamSize={users.length} person={Boolean(userId)} />
-                  <TasksCard
-                    tasks={cur.tasks}
-                    compareTasks={cmp?.tasks}
-                    compareName={compareOn ? cmpName : null}
-                    className={running && !userId && !prospOff ? 'md:col-span-2' : undefined}
-                  />
-                  {running && personUser && (
-                    <LateCard late={cur.late} user={personUser} className={prospOff ? 'md:col-span-full' : undefined} />
-                  )}
-                  {!running && (
-                    <ClosedMonthCard
-                      title="Atrasados agora só existe no mês em andamento"
-                      text="É um retrato do momento, não um número do mês fechado."
-                    />
-                  )}
-                </div>
-              </section>
-
-              <section>
-                <SectionTitle title="Base de clientes" question="a carteira cresceu ou encolheu?" />
-                <div className="grid grid-cols-1 gap-3.5 md:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
-                  <BaseBridge startCount={movement.startCount} endCount={movement.endCount} steps={movement.steps} />
-                  <div className="flex flex-col gap-3.5">
-                    <BreakdownCard
-                      icon={TrendingDown}
-                      title="Cancelamentos por motivo"
-                      sub={plural(cancels.total, 'cancelamento', 'cancelamentos')}
-                      eyebrow="Motivo mais comum"
-                      items={cancels.items}
-                      total={cancels.total}
-                      emptyText="Nenhum cancelamento neste mês."
-                    />
-                    <UpgradesLocksCard
-                      upgrades={cur.upgrades}
-                      delta={compareOn ? deltaOf(cur.upgrades, cmp?.upgrades, { kind: 'count' }) : null}
-                      movement={movement}
-                    />
-                  </div>
-                </div>
-              </section>
-
-              <section>
-                <SectionTitle title="Renovação" question="estamos segurando quem vence?" />
-                <div className="grid grid-cols-1 gap-3.5 md:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
-                  <RenewalOutcomeBar counts={cur.renewal.counts} when={cur.renewal.when} running={running} summary={renewSummary} />
-                  <MilestoneBars items={milestoneItems} />
-                  <BreakdownCard
-                    icon={UserX}
-                    title="Motivos de quem não vai renovar"
-                    sub={plural(wont.total, 'cliente', 'clientes')}
-                    eyebrow="Motivo mais comum"
-                    items={wont.items}
-                    total={wont.total}
-                    emptyText="Ninguém declarou que não vai renovar neste mês."
-                  />
-                  {running ? (
-                    <UpcomingCard upcoming={cur.upcoming} />
-                  ) : (
-                    <ClosedMonthCard
-                      title="A vencer só existe no mês em andamento"
-                      text="Em mês fechado todos os contratos do período já tiveram desfecho."
-                    />
-                  )}
-                </div>
-              </section>
-
-              {team && (
-                <section>
-                  <SectionTitle title="Equipe no mês" question="clique numa linha para filtrar a tela por essa pessoa" />
-                  <TeamMonthTable
-                    rows={team.rows} others={team.others} total={cur} running={running}
-                    onPick={(id) => setParams({ person: id })}
-                    withProfessors={hasModule(appUser?.tenantModules, MODULES.FALTOSOS)}
-                  />
-                </section>
-              )}
-            </div>
+            <OperacionalDashboard
+              cur={cur}
+              cmp={cmp}
+              series={series}
+              team={team}
+              compareOn={compareOn}
+              shownName={shownName}
+              cmpName={cmpName}
+              person={userId}
+              personName={personUser?.name || 'Sem nome'}
+              milestoneItems={milestoneItems}
+              onPick={pickPerson}
+            />
           </div>
         </div>
       </div>

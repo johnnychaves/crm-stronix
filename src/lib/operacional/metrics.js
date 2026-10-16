@@ -143,6 +143,9 @@ function computeMetrics(ctx, cache, { monthKey, userId, cutEnd, src, after, win 
     start,
     end,
     hasSource: Boolean(src),
+    // Os dias de meta do mês (fechados, hoje e os que faltam), com ou sem
+    // histórico: são as colunas das linhas por pessoa no topo da tela.
+    metaDays,
     meta: meta ? pickMeta(meta, userId) : null,
     metaHidden,
     calendar: meta ? metaCalendar({ metaDays, hitsBy: meta.hitsBy, userId }) : [],

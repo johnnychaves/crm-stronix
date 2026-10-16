@@ -75,7 +75,7 @@ function sparkOf(points, fmt) {
   };
 }
 
-// As cinco células da faixa de resumo, no formato do DashSummaryBand.
+// As cinco células da faixa de resumo, no formato da faixa de números (CrmTape).
 export function summaryItems({ cur, cmp, series, compareOn, shownName }) {
   // Mês que falhou não está carregando: a tela mostra o aviso sob a barra.
   const waiting = cur.failed ? 'não carregou' : 'carregando';

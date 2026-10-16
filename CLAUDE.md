@@ -91,9 +91,9 @@ A fundação shadcn está instalada: `components.json`, alias `@/` → `src/`, `
 - Gestor e consultor fazem todas as ações de `ACTIONS` (como hoje, desde a PR #193), e o professor não faz nenhuma. O que é só do gestor continua em `isGestor` e na trava `gestor` de `SCREENS`, fora de `ACTIONS`: Configurações, excluir lead e cobrança. Quando os perfis editáveis vierem, a tabela `PERMISSOES` sai do código e as telas continuam perguntando igual.
 - `can` olha só o papel. O login (`canEditLead`, pelo `authUid`) continua conferido à parte, e a ficha combina os dois. A sessão do super-admin puro tem `role: 'superadmin'`, que `roleOf` lê como consultor, então `can` devolve true para ela. Tela que o super-admin puro alcance sem academia não pode confiar só no `can`.
 - Lista de pessoas que vira filtro de responsável, escolha de dono, painel por pessoa ou meta de prospecção passa por `isSeller`. Busca de nome (o chip do filtro, o autor da linha do tempo, o `usersById` da Meta) continua com o `usersList` inteiro. As telas da varredura ficam em `LISTAS_DE_QUEM_VENDE`, no `acessoSweep.test.js` (os painéis, o Pipeline, as listas, Clientes, a ficha, o cadastro do cliente, Metas & ritmo, Migrar leads, a importação de clientes e as Rotinas, pelo `routineParticipants` de `src/lib/rotinas.js`), e tela nova com lista de pessoas entra ali.
-- O que o professor registra (anotação, WhatsApp, ligação, agendamento) cai em Outros no volume do Operacional, porque ele não está nas linhas por pessoa. Decidido no plano do PR 1, em 02/10/2026, e o Johnny pode mudar. O subtítulo de Outros só cita os professores com o módulo `faltosos` ligado (`withProfessors`, no `TeamMonthTable.jsx`); sem ele, continua "fora da equipe ou sem responsável".
+- O que o professor registra (anotação, WhatsApp, ligação, agendamento) não entra nas linhas por pessoa do Operacional nem na prospecção da equipe, que só somam quem vende. Decidido no plano do PR 1, em 02/10/2026, e o Johnny pode mudar. A linha Outros da tabela da equipe, que juntava isso, saiu com o desenho "Duas metas" (16/10/2026, ver "Dashboard Operacional").
 - O dia batido da Meta (`goalHitKeyToRecord`, em `src/lib/dailyGoalHistory.js`) só grava para quem vende. O `App.jsx` passa `seller: isSeller(appUser)`.
-- No Gerencial, o rótulo de quem vendeu sai de `sellerRoleText`. O gestor aparece como "Gestor · também vende" e os outros, pelo `roleLabel`. As tabelas de pessoas do Operacional e do CRM usam o `roleLabel`.
+- No Gerencial, o rótulo de quem vendeu sai de `sellerRoleText`. O gestor aparece como "Gestor · também vende" e os outros, pelo `roleLabel`. A tabela de pessoas do CRM usa o `roleLabel`.
 
 ## Módulos da academia
 
@@ -420,6 +420,24 @@ A tela do dinheiro vendido: quanto a academia vendeu no mês, quanto a carteira 
 - **Contrato sem valor** (os 494 importados da STRONIX) fica fora de todo dinheiro e fora do denominador do ticket médio. Desde 16/10/2026 a tela não o menciona: sem trilha tracejada, sem legenda e sem aviso nas dicas, a pedido do Johnny. A conta por trás não mudou (`hasValue`, em `src/lib/gerencial/scope.js`): ele continua na contagem de contratos da carteira e dos vencidos, e o `blind` do risco segue calculado. O `gerencial.components.test.js` garante que a palavra "importado" e a trilha não voltam.
 - **Carga:** a tela não abre consulta de contrato nenhuma, porque a coleção inteira já chega assinada pelo `useGeneralConfig` (`src/App.jsx`). A única leitura é a dos docs de lead das vendas do mês (`src/hooks/useGerencialLeads.js`), que serve só à origem, em lotes de 30 e uma vez por id na sessão.
 - **Histórico curto:** contrato só existe no sistema desde junho de 2026. Mês sem venda não entra na lista de comparação, e sem nenhum mês anterior com venda o controle Comparar sai da barra.
+
+## Dashboard Operacional (Visão geral → Operacional)
+
+O trabalho feito e a saúde da base de clientes, por mês de competência. Spec em `docs/superpowers/specs/2026-09-11-operacional-mensal-design.md`.
+
+- **Desenho "Duas metas" (16/10/2026, mockup D escolhido pelo Johnny depois de duas rodadas, em `docs/superpowers/specs/mockups/2026-10-15-operacional-*.html`).** De cima para baixo:
+  - o cabeçalho no cartão do CRM e do Gerencial (`OperacionalToolbar`, sobre o `FilterBar`);
+  - o topo escuro com a Meta diária e a Meta de prospecção lado a lado, com o mesmo peso (`OperacionalGoalsHero.jsx`);
+  - a faixa de quatro números (clientes ativos, taxa de renovação, tarefas concluídas e atrasados agora), no `CrmTape`;
+  - Tarefas concluídas e Contatos nos marcos;
+  - A base no mês;
+  - Quem vence no mês e Por que saem (`OperacionalBands.jsx`).
+- **O topo tem uma linha por pessoa, nas duas metas, nos mesmos dias de meta do mês.** Na meta, um ponto por dia: bateu, não bateu, hoje com anel e os dias que faltam em ponto pequeno. Na prospecção, uma barrinha por dia com as ações da pessoa contra o alvo diário dela, laranja quando bateu. As contas das linhas moram em `src/lib/operacional/view.js` (`goalRows` e `goalAxis`), e os dias vêm do `metaDays` que o `metricsOf` devolve.
+- **Nome curto e filtro.** A linha mostra o primeiro nome, e o primeiro nome com a inicial do sobrenome quando dois da equipe dividem o primeiro nome (`shortNames`). O nome é um botão que filtra a tela pela pessoa, e clicar de novo volta à equipe toda. Com pessoa filtrada, o topo mostra só a linha dela.
+- **Saíram da tela** (pedido do Johnny): a tabela Equipe no mês (renovação, entradas, upgrades e atrasados de cada pessoa, e a linha Outros), o "A vencer" de 30, 60 e 90 dias, a faixa de destaques, as tendências de 6 meses dos números do topo e o card de upgrades e trancamentos. Os números de uma pessoa aparecem filtrando a tela por ela. As contas que alimentavam essas peças (`buildHighlights`, `upcomingExpirations`, `calendarGrid`) continuam em `src/lib/operacional/` com os testes delas.
+- **A base no mês** é a linha dos clientes ativos nos últimos 6 meses (o trecho do mês em andamento tracejado) e o balanço do mês: o saldo, e duas barras na mesma escala, quem entrou (matrículas, retornos, importados) e quem saiu (cancelaram, venceram sem renovar). Os passos são os da ponte (`computeBaseMovement`), pelo `baseBalance`. O passo de trancamentos é um saldo: negativo entra como "Trancaram" nas saídas e positivo como "Destrancaram" nas entradas. A base é sempre da academia, mesmo com pessoa filtrada.
+- **Quem vence no mês** desenha um quadrado por contrato, pintado pelo desfecho; acima de 300 contratos (`UNITS_MAX`) vira uma barra. **Por que saem** são duas roscas, cancelamentos (da academia) e "não vão renovar" (da carteira, quando há pessoa filtrada), com a mesma cor por motivo nas duas (`reasonColor`, paleta validada contra daltonismo; "Outro" e motivo fora da lista ficam em cinza).
+- **O marco mais esquecido** (`forgottenMilestone`) é o de menor taxa entre os marcos com cliente, quando ela fica abaixo de 70%.
 
 ## Proteção de erro fora do conteúdo
 
