@@ -228,7 +228,7 @@ function FlowBar({ items, colors, max }) {
   );
 }
 
-function Balance({ balance, monthName }) {
+function Balance({ balance, locks, monthName }) {
   const { net, entries, exits, entered, left } = balance;
   if (!entered && !left) {
     return <p className="text-[13.5px] text-muted-foreground">{`Ninguém entrou nem saiu da base em ${monthName}.`}</p>;
@@ -259,6 +259,11 @@ function Balance({ balance, monthName }) {
           </div>
         ))}
       </div>
+      {(locks.trancaram > 0 || locks.destrancaram > 0) && (
+        <p className="mt-3.5 text-[12.5px] text-muted-foreground">
+          {`Trancamentos no mês: ${plural(locks.trancaram, 'contrato trancado', 'contratos trancados')} e ${plural(locks.destrancaram, 'destrancado', 'destrancados')}.`}
+        </p>
+      )}
     </div>
   );
 }
@@ -281,7 +286,7 @@ export function BaseBand({ movement, known, series, running, monthName, person }
               ? <TrendChart points={points} running={running} />
               : <p className="text-[13.5px] text-muted-foreground">A evolução aparece quando houver mais de um mês com contratos.</p>}
           </div>
-          <Balance balance={balance} monthName={monthName} />
+          <Balance balance={balance} locks={{ trancaram: movement?.trancaram || 0, destrancaram: movement?.destrancaram || 0 }} monthName={monthName} />
         </div>
       )}
     </Band>
@@ -372,8 +377,12 @@ export function RenewalBand({ renewal, running, monthName, delta, personFirst })
 }
 
 // ---------- Por que saem: duas roscas com a mesma cor por motivo ----------
-function Donut({ items, total, word, emptyText }) {
+// Quem saiu sem motivo gravado vira a fatia "Sem motivo", para o anel fechar
+// com o número do centro.
+function Donut({ items: given, total, word, emptyText }) {
   if (!total) return <p className="text-[13px] text-muted-foreground">{emptyText}</p>;
+  const known = given.reduce((a, it) => a + it.count, 0);
+  const items = known < total ? [...given, { name: 'Sem motivo', count: total - known }] : given;
   const size = 132; const stroke = 20; const r = (size - stroke) / 2; const c = 2 * Math.PI * r; const gap = 3;
   // Onde cada fatia começa no anel, somando as anteriores.
   const segs = items.reduce((list, it) => {

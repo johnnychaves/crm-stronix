@@ -14,6 +14,7 @@
 //   prosp    { on, pct, done, target, delta } ou null
 //   rows     goalRows (src/lib/operacional/view.js)
 //   axis     goalAxis
+//   running  mês em andamento (a prospecção conta "até hoje")
 //   cmpName  nome do mês comparado
 //   picked   id da pessoa filtrada, ou null
 //   onPick   (id) => void
@@ -77,7 +78,7 @@ function NameButton({ row, said, picked, onPick }) {
     <button
       type="button"
       onClick={() => onPick?.(row.id)}
-      aria-label={`${said}. ${on ? 'Voltar à equipe toda' : 'Ver a tela só dessa pessoa'}`}
+      aria-label={`${row.short}. ${said}. ${on ? 'Voltar à equipe toda' : 'Ver a tela só dessa pessoa'}`}
       title={on ? `${row.name}: voltar à equipe toda` : `${row.name}: ver a tela só dela`}
       className={cn(
         'min-w-0 truncate rounded text-left text-[12px] font-semibold outline-none hover:text-white hover:underline hover:underline-offset-[3px] focus-visible:ring-2 focus-visible:ring-white/50 sm:text-[13px]',
@@ -208,7 +209,7 @@ function Key({ items }) {
   );
 }
 
-export function OperacionalGoalsHero({ meta, prosp, rows, axis, cmpName, picked, onPick }) {
+export function OperacionalGoalsHero({ meta, prosp, rows, axis, running, cmpName, picked, onPick }) {
   const list = rows || [];
   const days = axis || [];
   const metaValue = meta?.pct != null ? `${meta.pct}%` : '—';
@@ -217,7 +218,7 @@ export function OperacionalGoalsHero({ meta, prosp, rows, axis, cmpName, picked,
   const prospOff = Boolean(prosp && !prosp.on);
   const prospValue = prospOff ? 'Desligada' : prosp?.pct != null ? `${prosp.pct}%` : '—';
   const prospSub = prospOff ? 'alvo 0 no cadastro'
-    : prosp ? `${fmtNum(prosp.done)} de ${fmtNum(prosp.target)} ações até ${days.some((d) => d.state === 'today') ? 'hoje' : 'o fim do mês'}` : null;
+    : prosp ? `${fmtNum(prosp.done)} de ${fmtNum(prosp.target)} ações até ${running ? 'hoje' : 'o fim do mês'}` : null;
   const showRows = list.length > 0 && days.length > 0;
 
   return (

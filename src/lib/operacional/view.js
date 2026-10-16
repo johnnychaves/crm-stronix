@@ -8,20 +8,28 @@ import { CONTRACT_CANCEL_REASONS } from '../contracts.js';
 const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
 const orderOf = (weekday) => DAY_ORDER.indexOf(weekday);
 
-// Nome curto de cada pessoa para as linhas do topo: o primeiro nome, e o
-// primeiro nome com a inicial do sobrenome quando dois da equipe dividem o
-// mesmo primeiro nome ("Ana R." e "Ana S.").
+// Nome curto de cada pessoa para as linhas do topo: o primeiro nome; com o
+// primeiro nome repetido na equipe, a inicial do sobrenome ("Ana R." e
+// "Ana S."); e, se a inicial também repete, o sobrenome inteiro ("Ana
+// Ribeiro" e "Ana Rocha").
 export function shortNames(users) {
   const parts = (users || []).map((u) => {
     const words = String(u?.name || '').trim().split(/\s+/).filter(Boolean);
-    return { id: u?.id, first: words[0] || 'Sem nome', last: words.length > 1 ? words[words.length - 1] : '' };
+    const first = words[0] || 'Sem nome';
+    const last = words.length > 1 ? words[words.length - 1] : '';
+    return { id: u?.id, first, last, initial: last ? `${first} ${last[0].toUpperCase()}.` : first };
   });
-  const count = new Map();
-  parts.forEach((p) => count.set(p.first.toLowerCase(), (count.get(p.first.toLowerCase()) || 0) + 1));
-  return new Map(parts.map((p) => [
-    p.id,
-    count.get(p.first.toLowerCase()) > 1 && p.last ? `${p.first} ${p.last[0].toUpperCase()}.` : p.first
-  ]));
+  const countOf = (pick) => {
+    const m = new Map();
+    parts.forEach((p) => m.set(pick(p).toLowerCase(), (m.get(pick(p).toLowerCase()) || 0) + 1));
+    return (p) => m.get(pick(p).toLowerCase());
+  };
+  const firsts = countOf((p) => p.first);
+  const initials = countOf((p) => p.initial);
+  return new Map(parts.map((p) => {
+    if (firsts(p) < 2 || !p.last) return [p.id, p.first];
+    return [p.id, initials(p) < 2 ? p.initial : `${p.first} ${p.last}`];
+  }));
 }
 
 // Os dias de meta do mês na régua do topo, com a marca do primeiro dia de cada

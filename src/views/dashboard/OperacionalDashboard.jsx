@@ -80,6 +80,7 @@ export function OperacionalDashboard({ cur, cmp, series, team, compareOn, shownN
         prosp={cur.prosp ? { ...cur.prosp, delta: d(cur.prosp.pct, cmp?.prosp?.pct, 'pp') } : null}
         rows={rows}
         axis={axis}
+        running={running}
         cmpName={cmpName}
         picked={person}
         onPick={onPick}

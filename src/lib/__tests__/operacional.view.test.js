@@ -60,6 +60,13 @@ describe('nome curto das linhas do topo', () => {
     expect(names.get('c')).toBe('Diego');
     expect(names.get('d')).toBe('Sem nome');
   });
+
+  it('com a mesma inicial do sobrenome, o sobrenome inteiro', () => {
+    const names = shortNames([{ id: 'a', name: 'Ana Ribeiro' }, { id: 'b', name: 'Ana Rocha' }, { id: 'c', name: 'Ana Souza' }]);
+    expect(names.get('a')).toBe('Ana Ribeiro');
+    expect(names.get('b')).toBe('Ana Rocha');
+    expect(names.get('c')).toBe('Ana S.');
+  });
 });
 
 describe('régua de dias do topo', () => {
@@ -188,6 +195,35 @@ describe('tela Operacional (render)', () => {
     expect(html).not.toContain('>Diego</button>');
     expect(html).toContain('Clique no nome de novo para voltar à equipe toda.');
     expect(html).toContain('base da academia, não da carteira');
+  });
+
+  it('quem avisou sem motivo vira a fatia "Sem motivo" da rosca', () => {
+    const html = render(createElement(OperacionalDashboard, {
+      ...props,
+      cur: { ...cur, renewal: { ...cur.renewal, wontReasons: { total: 3, items: [{ name: 'Financeiro', count: 1 }] } } }
+    }));
+    expect(html).toContain('Sem motivo');
+    expect(html).toContain('3 avisaram: Financeiro 1, Sem motivo 2');
+  });
+
+  it('no fim de semana do mês em andamento, a prospecção continua "até hoje"', () => {
+    // 12/09/2026 é sábado: nenhum dia de meta tem o estado de hoje.
+    const sat = metricsOf({ ...ctx, now: new Date(2026, 8, 12, 14) }, { monthKey: '2026-09' });
+    expect(sat.metaDays.some((d) => d.state === 'today')).toBe(false);
+    const html = render(createElement(OperacionalDashboard, { ...props, cur: sat }));
+    expect(html).toMatch(/ações até hoje/);
+    expect(html).not.toContain('até o fim do mês');
+  });
+
+  it('o nome acessível do botão começa pelo nome que aparece', () => {
+    const html = render(createElement(OperacionalDashboard, props));
+    expect(html).toContain('aria-label="Ana. Ana Ribeiro: bateu a meta');
+  });
+
+  it('o balanço da base conta quem trancou e destrancou no mês', () => {
+    const base = { ...cur.base, known: true, movement: { ...cur.base.movement, startCount: 10, endCount: 10, steps: { entraram: 1, cancelaram: 1, trancamentos: 0 }, trancaram: 2, destrancaram: 2 } };
+    const html = render(createElement(OperacionalDashboard, { ...props, cur: { ...cur, base } }));
+    expect(html).toContain('Trancamentos no mês: 2 contratos trancados e 2 destrancados.');
   });
 
   it('mês fechado: sem atrasados de agora', () => {
