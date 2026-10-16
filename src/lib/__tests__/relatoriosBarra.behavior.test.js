@@ -458,8 +458,8 @@ describe('fundo da barra fixa', () => {
     await montar(h(RelatoriosToolbar, barra));
     const fundo = container.firstElementChild.className;
     expect(fundo).toContain('sticky');
-    expect(fundo).toContain('bg-paper-50');
-    expect(fundo).toContain('dark:bg-neutral-950');
+    // O fundo da página (bg-page, de src/index.css), o mesmo da raiz do App nos dois temas.
+    expect(fundo.split(/\s+/)).toContain('bg-page');
     expect(fundo).not.toContain('bg-background');
     // No computador a barra passa 8px para cada lado do conteúdo (md:-mx-2, com o md:px-2 que deixa os
     // controles onde estavam), para o anel do número aceso e a sombra dos cartões que rolam por baixo
@@ -467,13 +467,11 @@ describe('fundo da barra fixa', () => {
     const classes = fundo.split(/\s+/);
     for (const classe of ['md:-mx-2', 'md:px-2', '-mx-4', 'px-4']) expect(classes, classe).toContain(classe);
     for (const classe of ['md:mx-0', 'md:px-0']) expect(classes, classe).not.toContain(classe);
-    // A raiz do App continua com esse mesmo par: se ela mudar, a barra tem de mudar junto. A tela de
-    // carregamento (min-h-screen) tem o mesmo par e não é o que fica atrás da barra, então a conferência
-    // se prende à div da raiz pelas classes que só ela tem (flex h-[100dvh]). O fim do par olha adiante
-    // para não aceitar uma classe mais comprida, como dark:bg-neutral-950/50.
+    // A raiz do App pinta o mesmo bg-page: se ela mudar, a barra tem de mudar junto. A conferência se
+    // prende à div da raiz pelas classes que só ela tem (flex h-[100dvh]).
     // Pelo caminho em texto: no jsdom o URL global não é o do Node, e o readFileSync recusa.
     const app = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../App.jsx'), 'utf8');
-    const raizDoApp = /<div className="flex h-\[100dvh\] bg-paper-50 dark:bg-neutral-950(?=[\s"])/;
+    const raizDoApp = /<div className="flex h-\[100dvh\] bg-page(?=[\s"])/;
     expect(raizDoApp.test(app), 'a div da raiz do App (flex h-[100dvh]) mudou de fundo: acerte o da barra em RelatoriosToolbar.jsx').toBe(true);
   });
 });
