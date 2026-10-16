@@ -178,12 +178,12 @@ describe('texto do comparado', () => {
 
   it('o mês em andamento compara os mesmos primeiros dias do mês anterior', () => {
     // Dia 14 ao meio-dia: o painel diz "mesmos 14 primeiros dias" (os 13 dias e meio contam o de hoje).
-    expect(textoDe({ monthKey: '2026-09' })).toBe('vs. os 14 primeiros dias de Agosto 2026');
-    expect(textoDe({ monthKey: '2026-09' }, setembroEm(1))).toBe('vs. o primeiro dia de Agosto 2026');
-    expect(textoDe({ monthKey: '2026-09' }, setembroEm(2, 0))).toBe('vs. os 2 primeiros dias de Agosto 2026');
-    expect(textoDe({ monthKey: '2026-09' }, new Date(2026, 8, 30, 23, 59))).toBe('vs. os 30 primeiros dias de Agosto 2026');
+    expect(textoDe({ monthKey: '2026-09' })).toBe('vs. os 14 primeiros dias de agosto de 2026');
+    expect(textoDe({ monthKey: '2026-09' }, setembroEm(1))).toBe('vs. o primeiro dia de agosto de 2026');
+    expect(textoDe({ monthKey: '2026-09' }, setembroEm(2, 0))).toBe('vs. os 2 primeiros dias de agosto de 2026');
+    expect(textoDe({ monthKey: '2026-09' }, new Date(2026, 8, 30, 23, 59))).toBe('vs. os 30 primeiros dias de agosto de 2026');
     // O ano do comparado aparece, como no nome dele.
-    expect(textoDe({ monthKey: '2026-01' }, new Date(2026, 0, 10, 9, 0))).toBe('vs. os 10 primeiros dias de Dezembro 2025');
+    expect(textoDe({ monthKey: '2026-01' }, new Date(2026, 0, 10, 9, 0))).toBe('vs. os 10 primeiros dias de dezembro de 2025');
   });
 
   it('usa os mesmos dias que o painel CRM diz na nota do comparativo', () => {
@@ -197,14 +197,14 @@ describe('texto do comparado', () => {
 
   it('quando os dias que já passaram são todos os do mês comparado, ele entra inteiro', () => {
     // Setembro tem 30 dias, e fevereiro de 2026 tem 28: "os 31 primeiros dias" não existe.
-    expect(textoDe({ monthKey: '2026-10' }, new Date(2026, 9, 31, 12, 0))).toBe('vs. Setembro 2026');
-    expect(textoDe({ monthKey: '2026-03' }, new Date(2026, 2, 30, 12, 0))).toBe('vs. Fevereiro 2026');
-    expect(textoDe({ monthKey: '2026-03' }, new Date(2026, 2, 28, 12, 0))).toBe('vs. Fevereiro 2026');
-    expect(textoDe({ monthKey: '2026-03' }, new Date(2026, 2, 27, 12, 0))).toBe('vs. os 27 primeiros dias de Fevereiro 2026');
+    expect(textoDe({ monthKey: '2026-10' }, new Date(2026, 9, 31, 12, 0))).toBe('vs. setembro de 2026');
+    expect(textoDe({ monthKey: '2026-03' }, new Date(2026, 2, 30, 12, 0))).toBe('vs. fevereiro de 2026');
+    expect(textoDe({ monthKey: '2026-03' }, new Date(2026, 2, 28, 12, 0))).toBe('vs. fevereiro de 2026');
+    expect(textoDe({ monthKey: '2026-03' }, new Date(2026, 2, 27, 12, 0))).toBe('vs. os 27 primeiros dias de fevereiro de 2026');
   });
 
   it('o mês fechado, o atalho e o intervalo mantêm o nome do comparado', () => {
-    expect(textoDe({ monthKey: '2026-08' })).toBe('vs. Julho 2026');
+    expect(textoDe({ monthKey: '2026-08' })).toBe('vs. julho de 2026');
     expect(textoDe({ de: '2026-09-08', ate: '2026-09-13' })).toBe('vs. 2 a 7 set');
     for (const params of [{ periodo: 'hoje' }, { periodo: 'ontem' }, { periodo: 'semana' }, { periodo: 'semana-passada' }]) {
       const period = periodFromParams(params, NOW);

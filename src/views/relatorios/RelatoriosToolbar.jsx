@@ -219,12 +219,14 @@ export function PeriodBox({
       )}
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
+          {/* 12,5px e folgas de 6 e 8px: com o "de" no mês ("Outubro de 2026 · em
+              andamento"), a 13px a barra passava da largura a 1280px e o funil caía de linha. */}
           <button
             type="button"
             aria-label="Período"
             aria-describedby={valueId}
             className={cn(
-              'num flex h-[30px] min-w-0 items-center gap-2 rounded-[9px] px-2.5 text-[13px] font-semibold whitespace-nowrap text-foreground transition-colors duration-150 hover:bg-muted motion-reduce:transition-none',
+              'num flex h-[30px] min-w-0 items-center gap-1.5 rounded-[9px] px-2 text-[12.5px] font-semibold whitespace-nowrap text-foreground transition-colors duration-150 hover:bg-muted motion-reduce:transition-none',
               FOCUS_RING,
               compact && 'flex-1'
             )}

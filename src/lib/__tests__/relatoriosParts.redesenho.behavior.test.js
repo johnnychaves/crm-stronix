@@ -56,7 +56,7 @@ describe('painel de números', () => {
 
   it('a célula filtra, a mesma célula de novo limpa, e a acesa leva a barra de cima e o fundo azul', async () => {
     const onCut = vi.fn();
-    const painel = (cut) => h(ReportBand, { label: 'Conversão da safra', value: 20, percent: true, tone: 'emerald', sub: 'vs. Setembro 2026', cells: celulas(cut, onCut) });
+    const painel = (cut) => h(ReportBand, { label: 'Conversão da safra', value: 20, percent: true, tone: 'emerald', sub: 'vs. setembro de 2026', cells: celulas(cut, onCut) });
     await montar(painel(null));
     expect(botao('Leads da safra').getAttribute('aria-pressed')).toBe('true');
     expect(botao('Agendaram').getAttribute('aria-pressed')).toBe('false');
@@ -108,8 +108,8 @@ describe('painel de números', () => {
   });
 
   it('o herói: rótulo, número, pílula e o comparado; sem base, apagado e sem pílula', async () => {
-    await montar(h(ReportBand, { label: 'Perdas', value: 12, delta: { up: true, text: '20%' }, lowerBetter: true, sub: 'vs. Setembro 2026' }));
-    expect(container.textContent).toContain('Perdas12▲ 20%vs. Setembro 2026');
+    await montar(h(ReportBand, { label: 'Perdas', value: 12, delta: { up: true, text: '20%' }, lowerBetter: true, sub: 'vs. setembro de 2026' }));
+    expect(container.textContent).toContain('Perdas12▲ 20%vs. setembro de 2026');
     expect([...container.querySelectorAll('span')].find((s) => s.textContent === '▲ 20%').className).toContain('bg-rose-50');
     await remontar(h(ReportBand, { label: 'Conversão da safra', value: null, percent: true, tone: 'emerald', delta: { none: true, text: 'sem base' }, sub: 'vs. 14/10' }));
     expect(container.textContent.split('sem base')).toHaveLength(2);
@@ -160,18 +160,36 @@ describe('gráfico por dia', () => {
     expect(days.reduce((s, d) => s + d.count, 0)).toBe(rows.length);
     expect(barras()[1].getAttribute('aria-label')).toBe('02/10: 3 leads');
     expect(barras()[5].getAttribute('aria-label')).toBe('06/10: 1 lead');
-    expect(barras()[14].getAttribute('aria-label')).toBe('15/10: 1 lead até agora');
+    expect(barras()[14].getAttribute('aria-label')).toBe('15/10, em andamento: 1 lead até agora');
+    // A legenda das listras de hoje fica na linha do título, junto do pico.
+    expect(container.textContent).toContain('hoje, em andamento');
+    expect(container.querySelector('i[aria-hidden="true"]').className).toContain('repeating-linear-gradient');
   });
 
-  it('o dia zerado fica no tom mais claro, e o mais alto tem 72px', async () => {
+  it('o dia zerado fica no tom mais claro, todo dia no mesmo azul, hoje listrado, e o mais alto tem 72px', async () => {
     await montar(h(DayBars, { days, label: 'Por dia de cadastro' }));
     const fill = (i) => barras()[i].firstElementChild;
     expect(fill(0).className).toContain('bg-muted');
     expect(fill(0).style.height).toBe('3px');
     expect(fill(1).style.height).toBe('72px');
     expect(fill(1).className).toContain('bg-brand-600');
-    expect(fill(14).className).toContain('bg-brand-300');
+    // 04/10 é domingo: o fim de semana não tem mais tom próprio.
+    const domingo = porDia([{ when: new Date(2026, 9, 4, 9) }], monthPeriod('2026-10', now), (r) => r.when, now);
+    await remontar(h(DayBars, { days: domingo, label: 'Por dia de cadastro' }));
+    expect(fill(3).className).toContain('bg-brand-600');
+    await remontar(h(DayBars, { days, label: 'Por dia de cadastro' }));
+    expect(fill(14).className).toContain('bg-[repeating-linear-gradient(135deg,var(--color-brand-600)');
+    expect(fill(14).className).toContain('dark:bg-brand-500/20');
+    expect(fill(1).className).not.toContain('repeating-linear-gradient');
     expect(fill(1).className).toContain('motion-reduce:transition-none');
+  });
+
+  it('hoje zerado fica no toco claro, sem listras e sem a legenda', async () => {
+    const semHoje = porDia(rows.filter((r) => r.when.getDate() !== 15), monthPeriod('2026-10', now), (r) => r.when, now);
+    await montar(h(DayBars, { days: semHoje, label: 'Por dia de cadastro' }));
+    expect(barras()[14].firstElementChild.className).toContain('bg-muted');
+    expect(barras()[14].getAttribute('aria-label')).toBe('15/10, em andamento: 0 leads até agora');
+    expect(container.textContent).not.toContain('em andamento');
   });
 
   it('cada barra recebe o foco do teclado, com o anel, e a dica aparece no foco', async () => {
@@ -267,6 +285,8 @@ describe('recortes em abas', () => {
     expect(container.textContent).toContain('só aulas experimentais · quantos matricularam depois da aula · clique numa linha para filtrar a lista');
     const cabecalho = container.querySelector('[role="tabpanel"] > div[aria-hidden="true"]');
     expect([...cabecalho.children].map((c) => c.textContent)).toEqual(['', 'Aulas', 'Matr.', 'Conversão', '']);
+    expect(cabecalho.className).toContain('text-[11px]');
+    expect(cabecalho.className).not.toMatch(/uppercase|tracking-/);
     expect(botao('Bianca Alves').getAttribute('aria-label')).toBe('Bianca Alves (Funcional): 5 aulas, 2 matrículas, 40% de conversão');
     expect(botao('Treinou sozinho').getAttribute('aria-label')).toBe('Treinou sozinho (sem professor): 1 aula, 0 matrículas, sem conversão');
     const span = (b, t) => [...b.querySelectorAll('span')].find((s) => s.textContent === t);
@@ -330,14 +350,18 @@ describe('selo, nome, aviso e lista vazia', () => {
     expect(container.textContent).toContain('Nenhum lead parado.');
   });
 
-  it('a lista diz quantos estão na tela, e as colunas ficam em versalete sobre o fundo apagado', async () => {
+  it('a lista diz quantos estão na tela, e as colunas ficam em caixa normal sobre o fundo apagado', async () => {
     const columns = [{ key: 'nome', label: 'Nome', render: (r) => r.name }];
     const rows = Array.from({ length: 60 }, (_, i) => ({ id: `l${i}`, name: `Lead ${i}` }));
     await montar(h(ReportList, { listId: 'a', total: 60, noun: 'leads', columns, rows }));
     expect(container.textContent).toContain('mostrando 50 de 60');
     expect(container.querySelector('thead tr').className).toContain('bg-muted/50');
-    expect(container.querySelector('th').className).toContain('uppercase');
-    expect(container.querySelector('th').className).toContain('text-[9.5px]');
+    const th = container.querySelector('th');
+    expect(th.textContent).toBe('Nome');
+    expect(th.className).toContain('text-[11px]');
+    expect(th.className).toContain('font-semibold');
+    expect(th.className).toContain('text-muted-foreground');
+    expect(th.className).not.toMatch(/uppercase|tracking-/);
     expect(container.querySelector('td').className).toContain('h-[46px]');
     await remontar(h(ReportList, { listId: 'a', total: 3, noun: 'leads', columns, rows: rows.slice(0, 3) }));
     expect(container.textContent).toContain('todos na tela');

@@ -26,7 +26,7 @@ describe('Entrada de leads', () => {
   it('o total, a variação e os recortes do mês', () => {
     const r = rel(ctxOf());
     expect(r.total).toBe(5);
-    expect(r.delta).toMatchObject({ up: true, text: '25%' });
+    expect(r.delta).toMatchObject({ up: true, text: '+1' });
     expect(r.bySource.map((x) => [x.name, x.count, x.channel])).toEqual([['Instagram', 4, 'Pago'], ['Indicação', 1, '']]);
     // Quem saiu da equipe e o lead sem dono se chamam Outros, como nos painéis, com a explicação em letra menor.
     expect(r.byOwner.map((x) => [x.name, x.count, x.note])).toEqual([

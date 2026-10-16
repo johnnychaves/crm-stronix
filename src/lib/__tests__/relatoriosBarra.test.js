@@ -14,7 +14,7 @@ const NOW = new Date(2026, 8, 25, 14, 30);
 const people = [{ id: 'u1', name: 'Ana Ribeiro' }, { id: 'u2', name: 'Bruno Lima' }];
 const base = {
   todayKey: '2026-09-25', onPeriod: noop, onRange: noop,
-  monthKey: '2026-09', monthOptions: [{ key: '2026-09', label: 'Setembro 2026 · em andamento' }], onMonth: noop,
+  monthKey: '2026-09', monthOptions: [{ key: '2026-09', label: 'Setembro de 2026 · em andamento' }], onMonth: noop,
   canPrev: true, canNext: false, onPrev: noop, onNext: noop,
   resp: [], people, onResp: noop, origem: null, origens: ['Instagram'], onOrigem: noop,
   funnel: 'all', funnels: [{ id: 'f1', name: 'Vendas' }], onFunnel: noop,
@@ -25,7 +25,7 @@ describe('barra dos Relatórios', () => {
     const out = renderToString(createElement(RelatoriosToolbar, { ...base, period: periodFromParams({ monthKey: '2026-09' }, NOW) }));
     for (const l of ['Período', 'Mês anterior', 'Próximo mês', 'Consultor', 'Origem', 'Funil']) expect(out).toContain(`aria-label="${l}"`);
     // O botão do período diz o mês, e a lista dos meses mora no balão dele.
-    expect(out).toContain('Setembro 2026 · em andamento</span>');
+    expect(out).toContain('Setembro de 2026 · em andamento</span>');
     expect(out).not.toContain('aria-label="Mês de competência"');
     expect(out).toContain('Equipe toda');
     expect(out).toContain('>Todas</span>');
@@ -55,7 +55,7 @@ describe('barra dos Relatórios', () => {
     expect(out).toMatch(/aria-checked="true" aria-label="15 dias"/);
     // No celular, o texto ao lado do botão de filtros é o corte, e não o período.
     expect(out).toContain('Sem registro há mais de 15 dias');
-    expect(out).not.toContain('Setembro 2026 · em andamento</span>');
+    expect(out).not.toContain('Setembro de 2026 · em andamento</span>');
     for (const l of ['Consultor', 'Origem', 'Funil']) expect(out).toContain(`aria-label="${l}"`);
   });
 

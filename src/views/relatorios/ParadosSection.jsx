@@ -85,9 +85,8 @@ const HEADING = Object.freeze({
 export function ParadosSection({ report, listId, year, onCut, exportAction }) {
   const cells = report.tiles.map((t, i) => ({
     key: t.key,
-    // "Sem registro há mais de 7 dias" fica curto na célula; o nome inteiro vai no title e no chip da lista.
-    label: i === 2 ? `Sem registro há +${report.dias} dias` : t.name,
-    title: t.name,
+    // O nome inteiro, igual ao título e ao chip da lista; na célula estreita ele quebra em duas linhas.
+    label: t.name,
     value: t.value,
     ...TILE_LOOK[i],
     active: report.cut === t.key,

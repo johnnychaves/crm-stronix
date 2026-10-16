@@ -69,9 +69,9 @@ describe('mês', () => {
   it('sem período é o mês do endereço, com o texto de sempre', () => {
     const atual = periodFromParams({ monthKey: '2026-09' }, NOW);
     expect(atual).toMatchObject({ kind: 'mes', start: D(9, 1), fullEnd: D(10, 1), end: NOW, running: true, monthKey: '2026-09', days: 30 });
-    expect(atual.label).toBe('Setembro 2026 · em andamento');
+    expect(atual.label).toBe('Setembro de 2026 · em andamento');
     const fechado = periodFromParams({ monthKey: '2026-08' }, NOW);
-    expect(fechado).toMatchObject({ end: D(9, 1), running: false, label: 'Agosto 2026', days: 31 });
+    expect(fechado).toMatchObject({ end: D(9, 1), running: false, label: 'Agosto de 2026', days: 31 });
     expect(crossesMonths(fechado)).toBe(false);
   });
 
@@ -178,7 +178,7 @@ describe('período anterior', () => {
 
   it('mês: o mês anterior, ou o escolhido, com o corte pró-rata no mês em andamento', () => {
     const atual = periodFromParams({ monthKey: '2026-09' }, NOW);
-    expect(previousPeriod(atual, NOW)).toMatchObject({ kind: 'mes', monthKey: '2026-08', start: D(8, 1), fullEnd: D(9, 1), end: D(8, 25, 14, 30), label: 'Agosto 2026' });
+    expect(previousPeriod(atual, NOW)).toMatchObject({ kind: 'mes', monthKey: '2026-08', start: D(8, 1), fullEnd: D(9, 1), end: D(8, 25, 14, 30), label: 'Agosto de 2026' });
     expect(previousPeriod(atual, NOW, { compareKey: '2026-06' })).toMatchObject({ monthKey: '2026-06', end: D(6, 25, 14, 30) });
     const fechado = periodFromParams({ monthKey: '2026-08' }, NOW);
     expect(previousPeriod(fechado, NOW)).toMatchObject({ monthKey: '2026-07', end: D(8, 1) });

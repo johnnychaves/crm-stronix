@@ -19,7 +19,7 @@
 // O intervalo leva também `de` e `ate`, como vieram do endereço.
 
 import {
-  addMonthsToKey, comparisonCut, dayKeyOf, effectiveEnd, isCurrentMonthKey, monthKeyOf, monthLabel, monthRange
+  addMonthsToKey, comparisonCut, dayKeyOf, effectiveEnd, isCurrentMonthKey, monthKeyOf, monthRange, monthText
 } from './operacional/month.js';
 
 // Os atalhos do endereço (`periodo`). O mês e o intervalo não entram: o mês é
@@ -98,7 +98,7 @@ export function monthPeriod(key, now) {
     end: effectiveEnd(key, now),
     running,
     monthKey: key,
-    label: `${monthLabel(key)}${running ? ' · em andamento' : ''}`,
+    label: `${monthText(key)}${running ? ' · em andamento' : ''}`,
     days: daysBetween(start, fullEnd)
   };
 }
@@ -158,7 +158,7 @@ export function previousPeriod(period, now, { compareKey = null } = {}) {
       end: comparisonCut(period.monthKey, key, now),
       running: false,
       monthKey: key,
-      label: monthLabel(key),
+      label: monthText(key),
       days: daysBetween(start, fullEnd)
     };
   }

@@ -233,17 +233,24 @@ function isFlat(diff, kind) {
   return abs < 0.05;
 }
 
+// Contagem comparada com menos que isso sai em número, e não em %: de 2 para 9
+// daria "▲ 350%", que assusta e não diz nada. Sai "▲ +7".
+export const SMALL_BASE = 10;
+
 // Diferença entre o mês e o comparado no formato do handoff: contagem em %
-// ("12,5%"), taxa em pontos ("+8 p.p."), duração ("40 min") e dias ("1,5
-// dias"). Sem um dos lados, ou contagem comparada com zero: "sem base".
+// ("12,5%"), ou em número com o comparado abaixo de SMALL_BASE ("+7", "−3" e
+// "=" quando igual), taxa em pontos ("+8 p.p."), duração ("40 min") e dias
+// ("1,5 dias"). Sem um dos lados, ou contagem comparada com zero: "sem base".
 export function crmDelta(cur, prev, { kind = 'pct' } = {}) {
   if (cur == null || prev == null) return { none: true, text: 'sem base' };
   if (kind === 'pct' && prev === 0) return { none: true, text: 'sem base' };
+  if (kind === 'pct' && prev < SMALL_BASE) kind = 'count';
   const diff = kind === 'pct' ? ((cur - prev) / prev) * 100 : cur - prev;
-  if (isFlat(diff, kind)) return { flat: true, value: 0, text: `= ${ZERO[kind]}` };
+  if (isFlat(diff, kind)) return { flat: true, value: 0, text: kind === 'count' ? '=' : `= ${ZERO[kind]}` };
   const abs = Math.abs(diff);
   let text;
   if (kind === 'pct') text = `${comma(Math.round(abs * 10) / 10)}%`;
+  else if (kind === 'count') text = `${diff > 0 ? '+' : '−'}${fmtNum(abs)}`;
   else if (kind === 'pp') text = `${diff > 0 ? '+' : '−'}${comma(Math.round(abs * 10) / 10)} p.p.`;
   else if (kind === 'min') text = fmtDuration(abs);
   else text = fmtDays(abs);

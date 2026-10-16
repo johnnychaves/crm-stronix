@@ -199,7 +199,7 @@ const barras = (rotulo) => [...container.querySelectorAll(`[role="group"][aria-l
 const somaDasBarras = (rotulo) => barras(rotulo).reduce((s, b) => s + Number(b.getAttribute('aria-label').match(/: (\d+) /)[1]), 0);
 const AVISO = 'os agendamentos estão incompletos';
 // O comparado do mês em andamento (dia 14 às 12h): os mesmos primeiros dias do mês anterior, como o painel CRM diz.
-const PRORATA = 'vs. os 14 primeiros dias de Agosto 2026';
+const PRORATA = 'vs. os 14 primeiros dias de agosto de 2026';
 // O texto do comparado ao lado do número grande.
 const comparado = () => [...container.querySelectorAll('span')].find((s) => s.textContent.startsWith('vs. '))?.textContent;
 
@@ -525,7 +525,7 @@ describe('região de estado', () => {
 describe('texto do comparado', () => {
   it.each([
     ['o mês em andamento compara os mesmos primeiros dias do mês anterior', '/acad/relatorios', PRORATA],
-    ['o mês fechado mantém o nome do comparado', '/acad/relatorios?mes=2026-08', 'vs. Julho 2026'],
+    ['o mês fechado mantém o nome do comparado', '/acad/relatorios?mes=2026-08', 'vs. julho de 2026'],
     ['a semana passada mantém o nome do comparado', '/acad/relatorios?periodo=semana-passada', 'vs. 31 ago a 6 set'],
     ['o intervalo mantém o nome do comparado', '/acad/relatorios?de=2026-09-08&ate=2026-09-13', 'vs. 2 a 7 set'],
   ])('na Entrada, %s', async (_, url, esperado) => {
@@ -541,7 +541,7 @@ describe('texto do comparado', () => {
   it('no dia 1 o comparado é o primeiro dia do mês anterior', async () => {
     vi.setSystemTime(new Date(2026, 8, 1, 12, 0));
     await montar('/acad/relatorios');
-    expect(comparado()).toBe('vs. o primeiro dia de Agosto 2026');
+    expect(comparado()).toBe('vs. o primeiro dia de agosto de 2026');
   });
 });
 
@@ -561,18 +561,18 @@ describe('agendamentos sem base', () => {
 
   it('com o comparado antes de setembro, Agendaram e Vieram saem sem base e os outros números têm variação', async () => {
     await montar('/acad/relatorios/conversao', { section: 'conversao' });
-    // Setembro (3 agendaram, 1 veio) contra agosto (1 e 1) teria +200% e = 0%.
+    // Setembro (3 agendaram, 1 veio) contra agosto (1 e 1) teria +2 e = (com a base pequena, a variação sai em número).
     expect(botao('Agendaram').textContent).toContain('sem base');
     expect(botao('Vieram').textContent).toContain('sem base');
-    expect(botao('Agendaram').textContent).not.toContain('200%');
-    expect(botao('Leads da safra').textContent).toContain('▲ 25%');
+    expect(botao('Agendaram').textContent).not.toContain('▲ +2');
+    expect(botao('Leads da safra').textContent).toContain('▲ +1');
   });
 
   it('com a base dos dois lados, Agendaram e Vieram têm a variação de sempre', async () => {
     // Os dias 8 a 13 contra os dias 2 a 7, ambos depois da base: 1 agendou contra 2, e 0 vieram contra 1.
     await montar('/acad/relatorios/conversao?de=2026-09-08&ate=2026-09-13', { section: 'conversao' });
-    expect(botao('Agendaram').textContent).toContain('▼ 50%');
-    expect(botao('Vieram').textContent).toContain('▼ 100%');
+    expect(botao('Agendaram').textContent).toContain('▼ −1');
+    expect(botao('Vieram').textContent).toContain('▼ −1');
     expect(botao('Agendaram').textContent).not.toContain('sem base');
     expect(botao('Vieram').textContent).not.toContain('sem base');
   });

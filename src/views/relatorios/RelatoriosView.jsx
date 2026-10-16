@@ -28,7 +28,7 @@ import { useScreenParams } from '../../hooks/useScreenParams.js';
 import { useCrmSources } from '../../hooks/useCrmSources.js';
 import { screenParamsQuery } from '../../lib/screenParams.js';
 import { periodFromParams, previousPeriod } from '../../lib/period.js';
-import { addMonthsToKey, dayKeyOf, monthKeyOf, monthLabel } from '../../lib/operacional/month.js';
+import { addMonthsToKey, dayKeyOf, monthKeyOf, monthText } from '../../lib/operacional/month.js';
 import { leadFunnelsOf } from '../../lib/crm/scope.js';
 import { RELATORIOS_RAIL_IDS, railNumberOf, relatoriosSection } from '../../lib/relatoriosRail.js';
 import { hrefFor, parseAppPath } from '../../lib/routes.js';
@@ -131,7 +131,7 @@ export function RelatoriosView({
   );
 
   // Enquanto o período novo carrega, o último resultado do mesmo submenu fica
-  // na tela sob o véu, junto com o período e o comparado dele: o "vs. Agosto" e
+  // na tela sob o véu, junto com o período e o comparado dele: o "vs. agosto" e
   // o aviso dos agendamentos falam dos números que estão na tela, e não do que
   // foi escolhido agora, como no painel CRM. Ajuste de estado no render,
   // guardado por condição, como no painel: o lint react-hooks v7 recusa efeito
@@ -153,7 +153,7 @@ export function RelatoriosView({
   if (current && lastGood?.report !== report) setLastGood(current);
   const shown = current || (!failed && lastGood?.secao === secao ? lastGood : null);
   const veiled = !current && Boolean(shown);
-  // O texto do comparado ("vs. os 14 primeiros dias de Agosto 2026") fala dos
+  // O texto do comparado ("vs. os 14 primeiros dias de agosto de 2026") fala dos
   // números que estão na tela: sob o véu, é o do resultado velho.
   const compareText = shown ? compareTextOf(shown.period, shown.cmp) : null;
 
@@ -203,7 +203,7 @@ export function RelatoriosView({
   const oldestKey = addMonthsToKey(currentKey, -11);
   const monthOptions = useMemo(
     () => Array.from({ length: 12 }, (_, i) => addMonthsToKey(currentKey, -i))
-      .map((k) => ({ key: k, label: `${monthLabel(k)}${k === currentKey ? ' · em andamento' : ''}` })),
+      .map((k) => ({ key: k, label: `${monthText(k)}${k === currentKey ? ' · em andamento' : ''}` })),
     [currentKey]
   );
 

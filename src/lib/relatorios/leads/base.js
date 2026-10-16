@@ -8,7 +8,7 @@ import { newLeadsOf } from '../../crm/cohort.js';
 import { newestRecordsOf } from '../../crm/metrics.js';
 import { getDefaultFunnel } from '../../funnels.js';
 import { contactLabel, contactOf } from '../../guardian.js';
-import { dayKeyOf, monthKeyOf } from '../../operacional/month.js';
+import { dayKeyOf, monthKeyOf, monthText } from '../../operacional/month.js';
 
 // Recorte da barra: consultores (lista; vazia é a equipe toda, com quem saiu
 // da equipe e os leads sem dono), funil (null é todos os funis de lead) e
@@ -141,21 +141,23 @@ const hhmm = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinu
 export const fmtDateTime = (d) => (isDate(d) ? `${fmtDate(d)} ${hhmm(d)}` : '');
 export const fmtScreenDateTime = (d, currentYear) => (isDate(d) ? `${fmtScreenDate(d, currentYear)} ${hhmm(d)}` : '');
 
-// O texto do comparado ao lado do número grande ("vs. Agosto 2026"). Com o mês
-// em andamento, o comparado é o mesmo começo do mês anterior, e o texto diz
-// quantos dias, como o painel CRM ("Pró-rata: mesmos 14 primeiros dias de
-// agosto"): "vs. os 14 primeiros dias de Agosto 2026", ou "vs. o primeiro dia
-// de Agosto 2026" no dia 1. Os dias são os que já passaram do mês exibido,
+// O texto do comparado ao lado do número grande ("vs. agosto de 2026", com o
+// mês em minúsculo, porque está no meio da frase). Com o mês em andamento, o
+// comparado é o mesmo começo do mês anterior, e o texto diz quantos dias, como
+// o painel CRM ("Pró-rata: mesmos 14 primeiros dias de agosto"): "vs. os 14
+// primeiros dias de agosto de 2026", ou "vs. o primeiro dia de agosto de 2026"
+// no dia 1. Os dias são os que já passaram do mês exibido,
 // contando o de hoje (a regra do painel: o dia da data de agora). Quando eles
 // cobrem todos os dias do comparado (31 de outubro contra setembro, que tem 30),
 // o comparado entra inteiro e o texto é só o nome dele. O mês fechado, o atalho
-// e o intervalo mantêm o nome do comparado (cmp.label).
+// e o intervalo mantêm o nome do comparado.
 export function compareTextOf(period, cmp) {
   if (!cmp) return null;
-  if (period?.kind !== 'mes' || !period.running) return `vs. ${cmp.label}`;
+  const name = cmp.kind === 'mes' ? monthText(cmp.monthKey, { capitalized: false }) : cmp.label;
+  if (period?.kind !== 'mes' || !period.running) return `vs. ${name}`;
   const days = period.end.getDate();
-  if (days >= cmp.days) return `vs. ${cmp.label}`;
-  return days === 1 ? `vs. o primeiro dia de ${cmp.label}` : `vs. os ${days} primeiros dias de ${cmp.label}`;
+  if (days >= cmp.days) return `vs. ${name}`;
+  return days === 1 ? `vs. o primeiro dia de ${name}` : `vs. os ${days} primeiros dias de ${name}`;
 }
 
 // Situação de hoje do lead, pelo deriveLeadBucket.

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  metricsOf, crmDelta, bestChannelOf, buildCrmHighlights, seriesOf, loadedRunStart, newestRecordsOf, OTHERS_ID
+  metricsOf, crmDelta, SMALL_BASE, bestChannelOf, buildCrmHighlights, seriesOf, loadedRunStart, newestRecordsOf, OTHERS_ID
 } from '../crm/metrics.js';
 import { comparisonCut } from '../operacional/month.js';
 import { NOW, D, USERS, FUNNELS, STATUSES, L, MV, A, a3, s5, makeCtx } from './fixtures/crmCtx.js';
@@ -232,8 +232,21 @@ describe('crmDelta', () => {
   it('sem base, comparado com zero e igual', () => {
     expect(crmDelta(null, 5)).toEqual({ none: true, text: 'sem base' });
     expect(crmDelta(5, 0)).toEqual({ none: true, text: 'sem base' });
-    expect(crmDelta(5, 5)).toEqual({ flat: true, value: 0, text: '= 0%' });
+    expect(crmDelta(5, 5)).toEqual({ flat: true, value: 0, text: '=' });
+    expect(crmDelta(12, 12)).toEqual({ flat: true, value: 0, text: '= 0%' });
     expect(crmDelta(30, 30, { kind: 'pp' })).toMatchObject({ flat: true, text: '= 0 p.p.' });
+  });
+
+  it('contagem com o comparado abaixo de 10 sai em número, e não em %', () => {
+    expect(SMALL_BASE).toBe(10);
+    expect(crmDelta(9, 2)).toEqual({ up: true, value: 7, text: '+7' });
+    expect(crmDelta(6, 9)).toEqual({ up: false, value: -3, text: '−3' });
+    expect(crmDelta(1500, 9)).toMatchObject({ up: true, text: '+1.491' });
+    expect(crmDelta(15, 10)).toMatchObject({ up: true, text: '50%' });
+    expect(crmDelta(7, 10)).toMatchObject({ up: false, text: '30%' });
+    // Comparado com zero continua sem base, e a taxa continua em pontos.
+    expect(crmDelta(4, 0)).toEqual({ none: true, text: 'sem base' });
+    expect(crmDelta(9, 2, { kind: 'pp' })).toMatchObject({ up: true, text: '+7 p.p.' });
   });
 
   it('duração e dias que arredondam a zero no texto são iguais', () => {
@@ -270,7 +283,7 @@ describe('destaques', () => {
   it('leads acima de 24 horas sem contato, com veredito e o pior primeiro no celular', () => {
     expect(buildCrmHighlights(cur, cmp, { cmpName: 'agosto' })).toEqual([{
       text: '3 dos 5 leads passaram de 24 horas sem primeiro contato',
-      delta: '▲ 50%',
+      delta: '▲ +1',
       tone: 'bad',
       verdict: 'pior que agosto',
       rank: 0

@@ -231,6 +231,8 @@ describe('Conversão: variação dos agendamentos sem base', () => {
       lead('c1', 4),
       lead('p1', 8), lead('p2', 9, venda(11)), lead('p3', 10, venda(12)), lead('p4', 11, venda(12)),
       lead('p5', 10, perda(11)), lead('p6', 12, perda(13)), lead('p7', 9),
+      // Duas perdas a mais, para cada número ter uma diferença própria em número (o comparado é pequeno).
+      lead('p8', 9, perda(10)), lead('p9', 12, perda(13)),
     ];
     const registros = [
       A('rc1', 'c1', 'attended', D(9, 5), D(9, 4)),
@@ -249,11 +251,11 @@ describe('Conversão: variação dos agendamentos sem base', () => {
   it('com a base dos dois lados, cada um dos cinco números tem a própria variação, e nenhuma é igual a outra', () => {
     const r = conversaoReport(trechoCtx(), { period: trecho, cmp: previousPeriod(trecho, NOW) });
     expect(r.before).toEqual({ leads: 5, sched: 3, came: 2, enrolled: 1, lost: 1, open: 3, conv: 20 });
-    expect(r.totals).toEqual({ leads: 8, sched: 7, came: 3, enrolled: 3, lost: 2, open: 3, conv: 38 });
+    expect(r.totals).toEqual({ leads: 10, sched: 7, came: 3, enrolled: 3, lost: 4, open: 3, conv: 30 });
     const delta = deltasOf(r);
     Object.entries(keyOf).forEach(([name, k]) => expect(delta[name], name).toEqual(crmDelta(r.totals[k], r.before[k])));
     expect(Object.fromEntries(Object.keys(keyOf).map((name) => [name, delta[name].text]))).toEqual({
-      'Leads da safra': '60%', Agendaram: '133,3%', Vieram: '50%', Matricularam: '200%', Perderam: '100%',
+      'Leads da safra': '+5', Agendaram: '+4', Vieram: '+1', Matricularam: '+2', Perderam: '+3',
     });
     // Cinco variações diferentes: trocar a chave de um número pela de outro muda a variação dele.
     expect(new Set(Object.keys(keyOf).map((name) => delta[name].value)).size).toBe(5);

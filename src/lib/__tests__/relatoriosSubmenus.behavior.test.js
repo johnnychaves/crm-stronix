@@ -155,7 +155,7 @@ describe('Visitas e aulas experimentais', () => {
     expect(heroi()).toBe('50%');
     const herói = [...container.querySelectorAll('.num.font-display')].find((el) => !el.closest('nav'));
     expect(herói.className).toContain('text-emerald-700');
-    expect(container.textContent).toContain('vieram ÷ (vieram + faltaram) · vs. os 14 primeiros dias de Agosto 2026');
+    expect(container.textContent).toContain('vieram ÷ (vieram + faltaram) · vs. os 14 primeiros dias de agosto de 2026');
     expect(submenu('Visitas e aulas').getAttribute('aria-current')).toBe('page');
     const numero = (nome) => botao(nome).textContent;
     expect(numero('Marcados')).toContain('3');
@@ -306,13 +306,13 @@ describe('Perdas', () => {
   });
 
   it('subir as perdas pinta a variação de vermelho', async () => {
-    // Agosto, de 1 a 20, com uma perda; setembro, de 1 a 20, com duas: subiu 100%, e subir é ruim.
+    // Agosto, de 1 a 20, com uma perda; setembro, de 1 a 20, com duas: subiu 1 (com a base pequena, em número), e subir é ruim.
     comPerdas('2026-08', L('p1', { name: 'Paula Reis', createdAt: D(8, 1), status: 'Perda', lostAt: D(8, 10), lossReason: 'Preço' }));
     comPerdas('2026-09', L('p3', { name: 'Pietra Melo', createdAt: D(9, 1), status: 'Perda', lostAt: D(9, 12), lossReason: 'Horário' }));
     await abrir();
     expect(heroi()).toBe('2');
     const pilula = [...numeroGrande().parentElement.querySelectorAll('span')].find((s) => s.textContent.startsWith('▲'));
-    expect(pilula.textContent).toBe('▲ 100%');
+    expect(pilula.textContent).toBe('▲ +1');
     expect(pilula.className).toContain('text-rose-700');
     expect(pilula.className).not.toContain('text-emerald-700');
   });
@@ -413,8 +413,12 @@ describe('Leads parados', () => {
     // Retrato de agora: nenhuma variação no painel.
     expect(container.textContent).not.toContain('sem base');
     expect(botao('Sem próximo passo').textContent).toContain('3');
-    expect(botao('Sem registro há +7 dias').textContent).toContain('4');
-    expect(botao('Sem registro há +7 dias').title).toBe('Sem registro há mais de 7 dias');
+    // O nome inteiro na célula, igual ao título e ao chip da lista: quebra em duas linhas, sem reticências.
+    expect(botao('Sem registro há mais de 7 dias').textContent).toContain('4');
+    const rotulo = botao('Sem registro há mais de 7 dias').querySelector('span:not([aria-hidden])');
+    expect(rotulo.textContent).toBe('Sem registro há mais de 7 dias');
+    expect(rotulo.className).toContain('line-clamp-2');
+    expect(rotulo.className).not.toContain('truncate');
     expect(numeroDaCelula('Sem próximo passo').className).toContain('text-amber-700');
     expect(numeroDaCelula('Contato atrasado').className).toContain('text-rose-700');
     // Quem está há mais dias sem registro primeiro.
@@ -430,7 +434,7 @@ describe('Leads parados', () => {
     await clicar(radio('30 dias'));
     expect(sonda()).toBe('?dias=30');
     expect(radio('30 dias').getAttribute('aria-checked')).toBe('true');
-    expect(botao('Sem registro há +30 dias').textContent).toContain('2');
+    expect(botao('Sem registro há mais de 30 dias').textContent).toContain('2');
     // Pelo teclado também: a seta volta um corte e escreve no endereço.
     radio('30 dias').focus();
     await tecla(radio('30 dias'), 'ArrowLeft');

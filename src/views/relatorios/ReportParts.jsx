@@ -145,7 +145,7 @@ export function ReportList({ listId = '', total, noun, cutLabel = null, onClearC
                     <th
                       key={c.key}
                       scope="col"
-                      className={cn('whitespace-nowrap py-[9px] text-[9.5px] font-bold uppercase tracking-[0.08em] text-muted-foreground', CELL, c.className)}
+                      className={cn('whitespace-nowrap py-[9px] text-[11px] font-semibold text-muted-foreground', CELL, c.className)}
                     >
                       {c.label}
                     </th>
@@ -292,7 +292,7 @@ export function BandCell({ label, value, tone = 'neutral', delta = null, lowerBe
             active ? 'scale-y-100 opacity-100' : 'scale-y-0 opacity-0'
           )}
         />
-        <span className={cn('max-w-full truncate text-[11.5px] font-semibold transition-colors motion-reduce:transition-none', active ? 'text-brand-700 dark:text-brand-300' : 'text-muted-foreground')}>
+        <span className={cn('line-clamp-2 max-w-full text-[11.5px] font-semibold transition-colors motion-reduce:transition-none', active ? 'text-brand-700 dark:text-brand-300' : 'text-muted-foreground')}>
           {label}
         </span>
         <span className={cn('num mt-2.5 font-display text-[27px] font-bold leading-none tracking-[-0.025em]', TONE_700[tone])}>{fmtNum(value)}</span>
@@ -305,17 +305,15 @@ export function BandCell({ label, value, tone = 'neutral', delta = null, lowerBe
   );
 }
 
+// Hoje, que ainda corre, em listras do azul da marca: na barra e na legenda.
+const TODAY_STRIPES = 'bg-brand-100 bg-[repeating-linear-gradient(135deg,var(--color-brand-600)_0_3px,transparent_3px_6px)] dark:bg-brand-500/20';
+
 // Uma barra do gráfico por dia. É focável e mostra a dica do shadcn no hover e
 // no foco do teclado: o title nativo não aparece no foco (README do handoff, §2).
 function DayBar({ day, max, unit }) {
-  const tip = `${ddmm(day.date)}: ${fmtNum(day.count)} ${day.count === 1 ? unit[0] : unit[1]}${day.today ? ' até agora' : ''}`;
-  const weekend = day.date.getDay() === 0 || day.date.getDay() === 6;
-  // Dia zerado no tom mais claro, hoje (ainda correndo) e fim de semana no
-  // azul claro, e os outros dias no azul cheio, como no mockup.
-  const fill = day.count === 0 ? 'bg-muted'
-    : day.today ? 'bg-brand-300 dark:bg-brand-500'
-      : weekend ? 'bg-brand-200 dark:bg-brand-500/50'
-        : 'bg-brand-600';
+  const tip = `${ddmm(day.date)}${day.today ? ', em andamento' : ''}: ${fmtNum(day.count)} ${day.count === 1 ? unit[0] : unit[1]}${day.today ? ' até agora' : ''}`;
+  // Todo dia no azul da marca; o zerado fica no tom mais claro e hoje, listrado.
+  const fill = day.count === 0 ? 'bg-muted' : day.today ? TODAY_STRIPES : 'bg-brand-600';
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -356,12 +354,22 @@ export function DayBars({ days, label, unit = ['lead', 'leads'], className }) {
   const max = Math.max(1, ...days.map((d) => d.count));
   const peak = days.reduce((top, d) => (d.count > top.count ? d : top), days[0]);
   const last = days.at(-1);
+  // A legenda das listras só aparece com a barra de hoje desenhada (o zerado é o toco claro).
+  const todayShown = last.today && last.count > 0;
   return (
     <TooltipProvider delayDuration={150}>
       <div className={cn('flex min-w-0 flex-1 flex-col', className)}>
-        <div className="flex items-baseline justify-between gap-3">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <span className="text-[12px] font-semibold text-muted-foreground">{label}</span>
-          {peak.count > 0 && <span className="num whitespace-nowrap text-[11.5px] text-muted-foreground">{`pico de ${fmtNum(peak.count)} em ${ddmm(peak.date)}`}</span>}
+          <span className="num flex flex-wrap items-baseline justify-end gap-x-3 gap-y-1 text-[11.5px] text-muted-foreground">
+            {todayShown && (
+              <span className="whitespace-nowrap">
+                <i aria-hidden="true" className={cn('mr-[5px] inline-block h-2 w-3.5 rounded-[3px]', TODAY_STRIPES)} />
+                hoje, em andamento
+              </span>
+            )}
+            {peak.count > 0 && <span className="whitespace-nowrap">{`pico de ${fmtNum(peak.count)} em ${ddmm(peak.date)}`}</span>}
+          </span>
         </div>
         <div role="group" aria-label={label} className="mt-2.5 flex min-h-[78px] flex-1 items-end gap-[3px]">
           {days.map((d) => <DayBar key={d.key} day={d} max={max} unit={unit} />)}
@@ -477,7 +485,7 @@ function ConvRows({ tab, activeRow, onRow }) {
   };
   return (
     <>
-      <div aria-hidden="true" className={cn(CONV_ROW_GRID, 'overflow-hidden px-[18px] pb-1 pt-2.5 text-[9.5px] font-bold uppercase tracking-[0.08em] text-muted-foreground')}>
+      <div aria-hidden="true" className={cn(CONV_ROW_GRID, 'overflow-hidden px-[18px] pb-1 pt-2.5 text-[11px] font-semibold text-muted-foreground')}>
         <span />
         <span className="text-right">{tab.countLabel ?? 'Leads'}</span>
         <span className="text-right">Matr.</span>

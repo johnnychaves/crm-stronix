@@ -8,6 +8,7 @@ import { CrmSection, CrmCard, DashedNote, DeltaPill, ScopeTag } from '../../view
 import { CrmToolbar } from '../../views/dashboard/CrmToolbar.jsx';
 import { MonthControl, OperacionalToolbar } from '../../views/dashboard/OperacionalToolbar.jsx';
 import { LOSS_PALETTE } from '../../views/dashboard/dashTokens.js';
+import { crmDelta } from '../crm/metrics.js';
 import { ChannelTable } from '../../views/dashboard/ChannelTable.jsx';
 import { CohortMilestones } from '../../views/dashboard/CohortMilestones.jsx';
 import { StagePassageTable } from '../../views/dashboard/StagePassageTable.jsx';
@@ -54,6 +55,11 @@ describe('peças do CRM', () => {
     expect(render(createElement(DeltaPill, { delta: { up: true, text: '40 min' }, lowerBetter: true }))).toContain('text-rose-700');
     expect(render(createElement(DeltaPill, { delta: { none: true, text: 'sem base' }, lowerBetter: true }))).toContain('sem base');
     expect(render(createElement(DeltaPill, { delta: null }))).toBe('');
+    // Em número, com o comparado pequeno: a seta e a cor seguem o lowerBetter.
+    expect(render(createElement(DeltaPill, { delta: crmDelta(9, 2), lowerBetter: true }))).toMatch(/text-rose-700.*▲ \+7/);
+    expect(render(createElement(DeltaPill, { delta: crmDelta(6, 9), lowerBetter: true }))).toMatch(/text-emerald-700.*▼ −3/);
+    expect(render(createElement(DeltaPill, { delta: crmDelta(9, 2) }))).toContain('text-emerald-700');
+    expect(render(createElement(DeltaPill, { delta: crmDelta(5, 5) }))).toMatch(/bg-muted.*>=</);
   });
 
   it('barra de filtros com os quatro controles e a nota do regime', () => {
