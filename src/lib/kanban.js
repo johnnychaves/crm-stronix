@@ -136,6 +136,26 @@ const KANBAN_COLUMN_ACCENT = {
 };
 const getKanbanColumnAccent = (color) => KANBAN_COLUMN_ACCENT[color] || KANBAN_COLUMN_ACCENT.gray;
 
+// --- KANBAN: distribuição das etapas (a barrinha do seletor de funil) ---
+// Cada etapa na ordem do funil, com a cor da coluna e quantos tem. `countOf`
+// diz quantos há numa etapa pelo nome.
+const stageParts = (stages, countOf) =>
+  (stages || []).map((s) => ({ name: s.name, color: getKanbanColumnAccent(s.color).border, count: Number(countOf(s.name)) || 0 }));
+
+// A linha de apoio do título: o total e a etapa mais cheia ("36 leads em
+// aberto, mais em Aguardando contato"). No empate vale a primeira etapa.
+function funnelSummary(parts, unit = 'leads') {
+  const list = parts || [];
+  const total = list.reduce((sum, p) => sum + p.count, 0);
+  if (!total) return unit === 'clientes' ? 'Nenhum cliente aqui' : 'Nenhum lead em aberto';
+  const head = unit === 'clientes'
+    ? `${total} ${total === 1 ? 'cliente' : 'clientes'}`
+    : `${total} ${total === 1 ? 'lead em aberto' : 'leads em aberto'}`;
+  if (list.length < 2) return head;
+  const top = list.reduce((best, p) => (p.count > best.count ? p : best), list[0]);
+  return `${head}, mais em ${top.name}`;
+}
+
 // --- KANBAN: avatar com iniciais (cor estável por hash do nome) ---
 // Cores de categoria do app a ~15%, texto no tom 700 — mesma mecânica de hash
 // da paleta pastel anterior, sem o confete. [fundo, texto claro, texto dark].
@@ -214,4 +234,4 @@ const monthWindow = (ref = new Date()) => {
   };
 };
 
-export { KANBAN_COLUMN_ACCENT, getKanbanColumnAccent, KANBAN_AVATAR_PALETTES, getKanbanAvatarPalette, getKanbanInitials, fmtKanbanRelDate, fmtKanbanRelDateTime, KANBAN_PAGE_SIZE, silenceDaysOf, kanbanSilence, monthWindow };
+export { KANBAN_COLUMN_ACCENT, getKanbanColumnAccent, stageParts, funnelSummary, KANBAN_AVATAR_PALETTES, getKanbanAvatarPalette, getKanbanInitials, fmtKanbanRelDate, fmtKanbanRelDateTime, KANBAN_PAGE_SIZE, silenceDaysOf, kanbanSilence, monthWindow };

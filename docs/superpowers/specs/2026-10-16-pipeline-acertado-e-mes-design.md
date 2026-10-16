@@ -22,11 +22,12 @@ Medidos num harness com o `KanbanView` de verdade, a 1440 × 900:
 - **Card.** Etiqueta de 11 px, sem caixa alta. A urgência sai do rodapé pintado e vira uma borda à esquerda (vermelha no atraso, âmbar no sem agenda, verde na venda). O chip passa a ter reticências, e o segundo chip encolhe antes do primeiro. O compromisso diz "hoje às 18:21". Os três links, os títulos e as ações do rodapé continuam como hoje.
 - **Faixa de saída no arrasto.** Enquanto um card é arrastado, aparece no pé do quadro uma faixa com Venda e Perda, que recebem o card como as colunas. Nos funis de clientes os textos seguem o sentido de lá (renovar, não vai renovar, matricular de novo, não volta, fechar o upgrade, não quis).
 - **Altura pelo espaço que sobra**, e não por `100vh`: o quadro cabe com qualquer faixa de aviso.
-- **Abas.** Funil sem lead não mostra o "0". Os funis de clientes (Upgrade, Renovações e Vencidos) ficam depois de um traço. Vale também em Todos os leads, que usa as mesmas abas.
+- **O funil é o título** (mockup `mockups/2026-10-16-pipeline-seletor-de-funil.html`, opção 1, escolhida pelo Johnny no mesmo dia). As abas saíram do Pipeline: o nome do funil aberto é o título do cabeçalho, e a linha de apoio diz o total e a etapa mais cheia, com uma barrinha das etapas na cor de cada coluna. O clique no título abre a lista dos funis, separada em "Funis de leads" e "Funis de clientes": cada funil de leads com o total, a barrinha e a etapa mais cheia; cada funil de clientes com o total e o que ele reúne. Cabe qualquer número de funis, sem o "+N".
+- **Abas de Todos os leads.** Continuam abas, e lá funil sem lead deixa de mostrar o "0" e os funis de clientes ficam depois de um traço.
 
 ## A barra de filtros
 
-No lugar do botão de filtro com balão, as pílulas dos painéis, à direita das abas:
+O cabeçalho é o cartão dos painéis (`FilterBar`, o mesmo do Gerencial, do CRM e do Operacional): o funil como título à esquerda e, à direita, no lugar do botão de filtro com balão, as pílulas dos painéis:
 
 - **Período**, o `PeriodControl` da barra dos painéis (setas e a lista de meses). A lista começa por "Todos os meses" e traz os últimos 12 meses, com "em andamento" no atual.
 - **Consultor**, a pílula de escolha múltipla dos Relatórios (`ConsultoresControl`). A carteira padrão do papel continua sem acender a pílula: o consultor abre na própria carteira e o gestor na equipe toda.

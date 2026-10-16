@@ -21,7 +21,7 @@ import { useScreenParams } from '../hooks/useScreenParams.js';
 import { bucketByFunnelQuerySpec, bucketByFunnelInMonthQuerySpec, wonInMonthQuerySpec, LIFECYCLE_BUCKETS, expiredClientsQuerySpec, upgradeClientsQuerySpec } from '../lib/leadQueries.js';
 import { LEADS_PATH, appId } from '../lib/firebase.js';
 import { fmtBRL } from '../lib/format.js';
-import { filterKanbanLeads, partitionLeadsByStatus, getKanbanColumnAccent, getKanbanAvatarPalette, getKanbanInitials, fmtKanbanRelDate, KANBAN_PAGE_SIZE, kanbanSilence, monthWindow, defaultRespFilterFor, isDefaultRespFilter, isOverdueLead, kanbanMonthOptions, createdInWindow, KANBAN_ALL_MONTHS } from '../lib/kanban.js';
+import { filterKanbanLeads, partitionLeadsByStatus, getKanbanColumnAccent, getKanbanAvatarPalette, getKanbanInitials, fmtKanbanRelDate, KANBAN_PAGE_SIZE, stageParts, funnelSummary, kanbanSilence, monthWindow, defaultRespFilterFor, isDefaultRespFilter, isOverdueLead, kanbanMonthOptions, createdInWindow, KANBAN_ALL_MONTHS } from '../lib/kanban.js';
 import { monthKeyOf, monthRange } from '../lib/operacional/month.js';
 import { isImportCreatedLead } from '../lib/operacional/routine.js';
 import { markConvertingAula } from '../lib/aulasWrites.js';
@@ -33,10 +33,10 @@ import { LeadLink } from '../components/nav/AppLink.jsx';
 import { LossReasonModal } from '../modals/LossReasonModal.jsx';
 import { ContractModal } from '../modals/ContractModal.jsx';
 import { AlertCircle, ArrowRightLeft, ArrowUpRight, Ban, Check, CheckCircle, SlidersHorizontal, TrendingUp } from 'lucide-react';
-import { FunnelTabs } from '../components/layout/FunnelTabs.jsx';
+import { FunnelSwitcher, StageBar } from '../components/layout/FunnelSwitcher.jsx';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover.jsx';
 import { FOCUS_RING } from '../components/focusRing.js';
-import { FilterChip, PeriodControl } from './dashboard/DashFilterBar.jsx';
+import { FilterBar, FilterChip, PeriodControl } from './dashboard/DashFilterBar.jsx';
 import { ConsultoresControl } from './relatorios/RelatoriosToolbar.jsx';
 
 // Avatar de iniciais compacto (card 22px / bubble 24px). O KanbanAvatar
@@ -167,7 +167,7 @@ function ExitDock({ visible, labels, hovered, onColumnDragOver, onColumnDragLeav
       data-no-pan="true"
       className={cn(
         'pointer-events-none absolute inset-x-0 bottom-5 z-30 flex justify-center transition-[opacity,transform] duration-150 motion-reduce:transition-none',
-        visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'
+        visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
       )}
     >
       <div className={cn(
@@ -908,6 +908,24 @@ const [isPanning, setIsPanning] = useState(false);
     return map;
   }, [funnels, leads, defaultFunnelId, safra, expiredFunnel, expiredCount, renewalFunnel, renewalTotal, upgradeFunnel, upgradeCount]);
 
+  // Etapas de cada funil de leads, para a barrinha do menu de funis. Mesma base
+  // do número de cada funil: todos os leads em aberto dele, com a safra quando
+  // há mês escolhido.
+  const partsByFunnel = useMemo(() => {
+    const map = new Map();
+    (funnels || []).filter((f) => !f.systemKind).forEach((f) => {
+      const counts = new Map();
+      (leads || []).forEach((l) => {
+        if (!isItemInFunnel(l, f.id, defaultFunnelId)) return;
+        if (safra && !createdInWindow(l, safra.startMs, safra.endMs)) return;
+        counts.set(l.status, (counts.get(l.status) || 0) + 1);
+      });
+      const stages = (statuses || []).filter((st) => isItemInFunnel(st, f.id, defaultFunnelId));
+      map.set(f.id, stageParts(stages, (name) => counts.get(name)));
+    });
+    return map;
+  }, [funnels, leads, statuses, defaultFunnelId, safra]);
+
   const stopKanbanPan = () => {
   dragScrollRef.current.isDown = false;
   setIsPanning(false);
@@ -1437,6 +1455,11 @@ const handleKanbanMouseMove = (e) => {
     </>
   );
 
+  // Linha de apoio do título: o total e a etapa mais cheia do que está no
+  // quadro agora (com a carteira, a situação e o mês escolhidos).
+  const boardParts = stageParts(pipelineColumns, (name) => getLeadsByStatus(name).length);
+  const boardSummary = funnelSummary(boardParts, isClientFunnelView ? 'clientes' : 'leads');
+
   // O que soltar em Venda e em Perda faz em cada funil (os handlers são os das
   // colunas; só o texto muda).
   const exitLabels = isRenewalView ? EXIT_LABELS.renewal
@@ -1450,23 +1473,36 @@ const handleKanbanMouseMove = (e) => {
 
   return (
     <>
-      {/* Full-bleed: cancela o padding do container p/ o header da página
-          colar no header global e o board correr de borda a borda. A altura
+      {/* Full-bleed: cancela o padding do container para o quadro correr de
+          borda a borda. A altura
           é a da área de conteúdo mais o recuo dela (100% + 2rem / 4rem), e
           não 100vh - 4rem: com a faixa do teste, da mensalidade ou do
           "Acessar como", o 100vh passava do fim da tela e a barra de
           rolagem do quadro sumia embaixo. */}
       <div className="-m-4 md:-m-8 h-[calc(100%+2rem)] md:h-[calc(100%+4rem)] flex flex-col animate-fade-in">
-        {/* Linha de header da página: abas de funil e as pílulas de filtro */}
-        <div className="h-16 shrink-0 relative z-20 bg-white dark:bg-neutral-900 border-b border-gray-200 dark:border-neutral-800 flex items-center gap-3 md:gap-4 px-4 md:px-7">
-          <FunnelTabs
-            funnels={funnels}
-            counts={funnelCounts}
-            selectedId={selectedFunnelId}
-            onSelect={pickFunnel}
-          />
-
-          <div className="hidden md:flex items-center gap-2 shrink-0">{filterControls(false)}</div>
+        {/* Cabeçalho no cartão dos painéis (FilterBar, o mesmo do Gerencial,
+            do CRM e do Operacional): o funil é o título, com o seletor, e a
+            linha de apoio diz o total e onde os leads estão; à direita, as
+            pílulas de filtro. */}
+        <FilterBar
+          className="shrink-0 md:px-7"
+          title={(
+            <FunnelSwitcher
+              funnels={funnels}
+              selectedId={selectedFunnelId}
+              counts={funnelCounts}
+              partsOf={(id) => partsByFunnel.get(id)}
+              onSelect={pickFunnel}
+            />
+          )}
+          subline={(
+            <>
+              <span>{boardSummary}</span>
+              <StageBar parts={boardParts} className="ml-2.5 inline-flex w-[132px] align-middle" />
+            </>
+          )}
+        >
+          <div className="hidden md:flex items-center gap-2">{filterControls(false)}</div>
 
           {/* No celular os filtros entram num balão, como nos Relatórios: o
               botão acende e ganha um ponto quando há filtro fora do padrão. */}
@@ -1480,18 +1516,18 @@ const handleKanbanMouseMove = (e) => {
                   FOCUS_RING,
                   hasActiveFilters
                     ? 'bg-brand-50 border-brand-200 text-brand-700 dark:bg-brand-500/15 dark:border-brand-500/30 dark:text-brand-300'
-                    : 'bg-paper-50 border-slate-200 text-gray-600 dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-300'
+                    : 'bg-card border-border text-muted-foreground'
                 )}
               >
                 <SlidersHorizontal className="size-[17px]" aria-hidden="true" />
                 {hasActiveFilters && <span aria-hidden="true" className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-brand-600" />}
               </button>
             </PopoverTrigger>
-            <PopoverContent align="end" aria-label="Filtros" className="flex w-[288px] max-h-(--radix-popover-content-available-height) flex-col gap-2.5 overflow-y-auto overscroll-y-contain rounded-[14px] border-border shadow-card-lg [&>*]:shrink-0">
+            <PopoverContent align="start" aria-label="Filtros" className="flex w-[288px] max-h-(--radix-popover-content-available-height) flex-col gap-2.5 overflow-y-auto overscroll-y-contain rounded-[14px] border-border shadow-card-lg [&>*]:shrink-0">
               {filterControls(true)}
             </PopoverContent>
           </Popover>
-        </div>
+        </FilterBar>
 
         {/* O board dos funis de sistema é alimentado por uma busca própria, e o
             número da aba vem de uma CONTAGEM separada. Quando a busca falha, o
@@ -1527,7 +1563,7 @@ const handleKanbanMouseMove = (e) => {
           onMouseUp={stopKanbanPan}
           onMouseLeave={stopKanbanPan}
           className={cn(
-            'flex-1 min-h-0 overflow-x-auto overscroll-x-contain overflow-y-hidden custom-scrollbar select-none px-4 md:px-7 pt-5 pb-5',
+            'flex-1 min-h-0 overflow-x-auto overscroll-x-contain overflow-y-hidden custom-scrollbar select-none px-4 md:px-7 pt-1 pb-5',
             isPanning ? 'cursor-grabbing' : 'cursor-grab'
           )}
         >

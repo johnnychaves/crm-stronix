@@ -5,7 +5,7 @@
 // `now` é injetado onde a função aceita, e fake timers onde ela lê o relógio.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { filterKanbanLeads, partitionLeadsByStatus, isOverdueLead, kanbanMonthOptions, createdInWindow, KANBAN_ALL_MONTHS, getKanbanInitials, fmtKanbanRelDate, kanbanSilence, silenceDaysOf, monthWindow, defaultRespFilterFor, isDefaultRespFilter, KANBAN_COLUMN_ACCENT } from '../kanban.js';
+import { filterKanbanLeads, partitionLeadsByStatus, stageParts, funnelSummary, isOverdueLead, kanbanMonthOptions, createdInWindow, KANBAN_ALL_MONTHS, getKanbanInitials, fmtKanbanRelDate, kanbanSilence, silenceDaysOf, monthWindow, defaultRespFilterFor, isDefaultRespFilter, KANBAN_COLUMN_ACCENT } from '../kanban.js';
 import { SETTINGS_COLOR_OPTIONS } from '../../components/ui/ColorPicker.jsx';
 
 // 15 de julho de 2026, 10:00 local — "agora" de referência dos testes.
@@ -320,6 +320,31 @@ describe('atraso do card, do filtro e da coluna', () => {
     expect(isOverdueLead({ status: 'Novo', nextFollowUp: new Date('lixo') }, now)).toBe(false);
     expect(isOverdueLead({ status: 'Venda', nextFollowUp: new Date(2026, 9, 1) }, now)).toBe(false);
     expect(isOverdueLead({ status: 'Perda', nextFollowUp: new Date(2026, 9, 1) }, now)).toBe(false);
+  });
+});
+
+describe('barrinha das etapas e linha de apoio do título', () => {
+  const stages = [{ name: 'Novo', color: 'lime' }, { name: 'Aguardando contato', color: 'orange' }, { name: 'Negociação', color: 'roxo-que-nao-existe' }];
+  const counts = { Novo: 9, 'Aguardando contato': 12 };
+
+  it('cada etapa na ordem do funil, com a cor da coluna e quantos tem', () => {
+    expect(stageParts(stages, (n) => counts[n])).toEqual([
+      { name: 'Novo', color: '#84cc16', count: 9 },
+      { name: 'Aguardando contato', color: '#f97316', count: 12 },
+      { name: 'Negociação', color: '#94a3b8', count: 0 },
+    ]);
+  });
+
+  it('diz o total e a etapa mais cheia, e no empate fica a primeira', () => {
+    expect(funnelSummary(stageParts(stages, (n) => counts[n]))).toBe('21 leads em aberto, mais em Aguardando contato');
+    expect(funnelSummary(stageParts(stages, () => 2))).toBe('6 leads em aberto, mais em Novo');
+    expect(funnelSummary([{ name: 'Novo', color: '#000', count: 1 }])).toBe('1 lead em aberto');
+  });
+
+  it('fala de clientes nos funis de clientes, e diz quando não há ninguém', () => {
+    expect(funnelSummary(stageParts(stages, (n) => counts[n]), 'clientes')).toBe('21 clientes, mais em Aguardando contato');
+    expect(funnelSummary(stageParts(stages, () => 0))).toBe('Nenhum lead em aberto');
+    expect(funnelSummary([], 'clientes')).toBe('Nenhum cliente aqui');
   });
 });
 
