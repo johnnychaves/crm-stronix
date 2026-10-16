@@ -24,11 +24,14 @@ function niceMax(max) {
 //   cur      [valor | null] por dia, null depois do último dia coberto
 //   prev     [valor | null] do mês comparado inteiro, ou null sem comparação
 //   cutDay   o último dia coberto do mês exibido
+//   prevAtCut o que o mês comparado tinha vendido no mesmo momento, quando é
+//            menor que o acumulado do dia inteiro (mês em andamento, pró-rata)
 //   prevName nome do mês comparado, para a legenda
 //   curName  nome do mês exibido
-export function SalesCurve({ days, cur, prev, cutDay, curName, prevName }) {
+export function SalesCurve({ days, cur, prev, prevAtCut = null, cutDay, curName, prevName }) {
   const curVals = cur || [];
-  const prevVals = prev || [];
+  // A linha do mês comparado passa pelo mesmo ponto do marcador.
+  const prevVals = (prev || []).map((v, i) => (i === cutDay - 1 && prevAtCut != null ? prevAtCut : v));
   const top = niceMax(Math.max(1, ...curVals.filter((v) => v != null), ...prevVals.filter((v) => v != null)));
   const x = (d) => L + ((d - 1) / Math.max(1, days - 1)) * (R - L);
   const y = (v) => BOTTOM - (v / top) * (BOTTOM - TOP);

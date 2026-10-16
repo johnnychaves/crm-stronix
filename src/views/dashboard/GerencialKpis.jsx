@@ -23,7 +23,7 @@ const VALUE = 'num whitespace-nowrap font-display text-[24px] font-bold leading-
 // Props:
 //   sold    { mix, delta } — o vendido e a contagem saem do mix
 //   period  { monthName, running, day }
-//   curve   { days, cur, cutDay, prev, prevName }
+//   curve   { days, cur, cutDay, prev, prevAtCut, prevName }
 export function SoldHero({ sold, period, curve }) {
   const mix = sold?.mix || [];
   const total = mix.reduce((s, m) => s + (Number(m.value) || 0), 0);
@@ -58,7 +58,7 @@ export function SoldHero({ sold, period, curve }) {
         <p className="mt-4 text-[13px] text-white/60" title={CASH_WARNING}>Valor de contrato fechado, não dinheiro que já entrou no caixa.</p>
       </div>
       {curve && curve.days > 0 && (
-        <SalesCurve days={curve.days} cur={curve.cur} prev={curve.prev} cutDay={curve.cutDay} curName={monthName} prevName={curve.prevName} />
+        <SalesCurve days={curve.days} cur={curve.cur} prev={curve.prev} prevAtCut={curve.prevAtCut} cutDay={curve.cutDay} curName={monthName} prevName={curve.prevName} />
       )}
     </section>
   );
