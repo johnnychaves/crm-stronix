@@ -24,7 +24,7 @@ const SRC = fileURLToPath(new URL('../..', import.meta.url));
 const css = readFileSync(join(SRC, 'index.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
 const temaTailwind = readFileSync(createRequire(import.meta.url).resolve('tailwindcss/theme.css'), 'utf8');
 const app = readFileSync(join(SRC, 'App.jsx'), 'utf8');
-const barra = readFileSync(join(SRC, 'views', 'dashboard', 'OperacionalToolbar.jsx'), 'utf8');
+const barra = readFileSync(join(SRC, 'views', 'dashboard', 'DashFilterBar.jsx'), 'utf8');
 
 // --- leitura das variáveis -------------------------------------------------
 
@@ -99,9 +99,8 @@ function contraste(anel, fundo) {
 
 // A raiz do App pinta a página escura de neutral-950 (conferido no teste).
 const paginaEscura = cor(tw('neutral-950'));
-// A barra fixa dos painéis (Operacional, CRM, Gerencial) tem fundo próprio no
-// escuro, escrito na classe; a conta lê o valor do arquivo.
-const corDaBarra = /dark:bg-\[(#[0-9a-fA-F]{6})\]/.exec(barra)?.[1] ?? '#000000';
+// A barra fixa dos painéis (Operacional, CRM, Gerencial, o FilterBar) põe os
+// controles num cartão (bg-card) sobre o fundo da página, já contado abaixo.
 
 const FUNDOS = {
   claro: {
@@ -116,7 +115,6 @@ const FUNDOS = {
     'cartão (--card sobre a página)': sobre(cor(variavel(escuro, '--card')), paginaEscura),
     'balão (--popover)': cor(variavel(escuro, '--popover')),
     'diálogo (--background)': cor(variavel(escuro, '--background')),
-    'barra dos painéis': cor(corDaBarra),
     'cabeçalho e menu (ink-900)': cor(variavel(tema, '--color-ink-900')),
     'linha antiga (neutral-900)': cor(tw('neutral-900')),
   },
@@ -188,7 +186,7 @@ describe('anel de foco do app', () => {
 
   it('os fundos da conta são os que as telas pintam', () => {
     expect(app).toMatch(/\bdark:bg-neutral-950\b/);
-    expect(barra).toMatch(/dark:bg-\[#[0-9a-fA-F]{6}\]/);
+    expect(barra).toMatch(/\bbg-card\b/);
   });
 
   it('dá 3:1 ou mais em todos os fundos, no claro e no escuro', () => {

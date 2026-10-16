@@ -1,337 +1,233 @@
-# Handoff — tela Gerencial (Visão geral)
+# Handoff — tela Gerencial (Visão geral) · v2
 
 Substitui a página "Em breve" da aba Gerencial
 (`src/views/dashboard/DashboardComingSoonView.jsx`).
 
-O mockup é **especificação visual e de comportamento**, não código para colar. Abra
-`Gerencial.dc.html` e mexa: as setas e a lista trocam o mês, a caixa Comparar liga e
-desliga todo o comparativo, e o seletor de academia percorre os três estados de base.
-Os estados que o brief pede são todos alcançáveis pelos controles:
+## Sobre os arquivos
+
+`Gerencial.dc.html` é um **protótipo em HTML de referência**, não código para colar.
+A tarefa é recriar a tela no ambiente do codebase (React + Tailwind + shadcn, com
+`DashPrimitives` / `dashTokens`), usando os padrões e componentes que já existem.
+Abra o arquivo no navegador (precisa do `support.js` ao lado) e use os filtros: todos
+os estados abaixo são alcançáveis por eles.
+
+**Fidelidade: alta.** Cores, tipografia, espaçamentos e comportamento são finais.
 
 | Estado | Como chegar |
 | --- | --- |
-| Mês em andamento contra agosto | padrão (Setembro 2026, Unidade Centro) |
-| Mês fechado | escolha Agosto 2026 ou Julho 2026 |
-| Base com 494 importados sem valor | seletor de academia → Unidade Moinhos |
-| Mês sem venda, carteira cheia | escolha Maio 2026 |
-| Academia sem contrato nenhum | seletor de academia → Unidade Nova |
-| Celular 390 e tema escuro | bloco ao pé da página, e o botão de tema no topo |
+| Mês em andamento contra agosto (pró-rata) | padrão (Setembro 2026, Unidade Centro) |
+| Mês fechado | Período → Agosto ou Julho 2026 |
+| Sem comparação | Comparar com → Sem comparação |
+| Base com 494 importados sem valor | Unidade → Unidade Moinhos |
+| Mês sem venda, carteira cheia | Período → Maio 2026 |
+| Academia sem contrato nenhum | Unidade → Unidade Nova |
+| Tema escuro | botão de lua no cabeçalho |
+
+## O que mudou em relação à v1
+
+- **Menos texto.** Saíram as perguntas de seção, notas de rodapé de card, dicas "?" e
+  a leitura em texto do ranking. Cada card tem só título + dado. Explicações ficam no
+  tooltip das marcas (§5).
+- **Hierarquia por importância.** Os 4 números principais no topo; detalhe de venda no
+  meio; risco detalhado; planos e origem por último.
+- **Gráficos de pizza** em três formatos: rosca (tipo de venda), pizza cheia (planos),
+  meia-rosca (origem).
+- **Barra de filtros igual à de Relatórios** (mesmo componente; ver §3).
+- Ranking de consultores perdeu a coluna "Ticket da venda" (fica só ticket mensal).
+- Removidos da tela: faixa de 4 células da carteira, cartão "N pessoas sem valor",
+  notas tracejadas, chip longo de aviso (virou etiqueta "não é caixa").
 
 ---
 
-# 1. As escolhas de design, e por quê
+## 1. Layout
 
-## Duas moedas, nunca somadas
+Quadro de 1440px: trilho lateral 72px (`card`, borda direita) + `main`.
 
-O maior risco desta tela não é gráfico, é **unidade**. "Vendido" é o valor de um
-contrato inteiro, que acontece uma vez. "Carteira" e "risco" são valor por mês. São
-grandezas diferentes e alguém vai tentar somar R$ 78.400 com R$ 134.200.
+```
+┌ header 72px ─ "Gerencial" + subline ─────────────── [tema] ┐
+├ barra de filtros (sticky top:0, fundo bg) ─────────────────┤
+│ [‹ 📅 Setembro 2026 ⌄ ›] │ (Comparar com Agosto 2026 ⌄) (Unidade Centro ⌄)
+├────────────────────────────────────────────────────────────┤
+│ L1  KPIs: grid 1.35fr | 1fr | 1fr | 1fr, gap 16           │
+│     Vendido no mês · Carteira mensal · Em risco 90d · Vencidos sem renovar
+│ L2  grid 1fr | 1.25fr  → Vendas por tipo (rosca) | Consultores
+│ L3  grid 1.25fr | 1fr  → Vencimentos | Saídas do mês
+│ L4  grid 1fr | 1fr     → Planos (pizza) | Origem das vendas (meia-rosca)
+└────────────────────────────────────────────────────────────┘
+```
 
-Três defesas, todas estruturais:
+- Conteúdo: padding `20px 32px 32px`; linhas empilhadas com `gap 20px`.
+- Card padrão: `border 1px var(--border)`, `radius 16px`, `bg card`,
+  `shadow-card`, padding `20px 22px`. Título de card: Space Grotesk 700 15px,
+  `tracking -.01em`. → `DashCard`.
+- Cabeçalho: altura 72, padding `0 32px`, `bg card`, borda inferior. Título Space
+  Grotesk 700 22px; subline Geist 12px `muted`. Botão de tema 38×38, radius 12, ícone
+  Lucide `Moon` 16px.
 
-- **O sufixo `/mês` nunca se separa do número.** Onde o valor é mensal, o `/mês` é
-  um `&lt;span&gt;` irmão do número, no mesmo baseline, em 13-14px. Nunca some, nunca vai
-  para a linha de apoio.
-- **Os dois grupos moram em blocos distintos**, cada um com título e pergunta
-  próprios, separados por régua de 2px. Nenhuma faixa mistura as duas unidades.
-- **O bloco de venda usa valor absoluto; carteira e risco usam valor por mês.** O
-  único número que atravessa os dois é o ticket mensal, e ele é mensal por definição.
+## 2. Componentes por linha
 
-## O aviso de "não é caixa" fica na barra fixa
+### L1 · KPIs
+Rótulo: Geist 700 11px, `uppercase`, `tracking .08em`, `muted`.
 
-"Valor de contrato vendido, não caixa recebido" é um chip âmbar na **barra fixa de
-controles**, que acompanha a rolagem. Nota de pé de página é onde avisos vão morrer:
-o número grande desta tela é dinheiro, e quem olha precisa ler a ressalva no mesmo
-movimento do olho. O chip é `--amber-t` com texto `--amber-700`, 30px de altura,
-sem botão de fechar.
-
-## Contratos sem valor viram trilha tracejada
-
-Os 494 importados não podem entrar na soma nem desaparecer da tela. Solução:
-
-- Cada barra de risco ganha uma **trilha hachurada anexa** (borda tracejada 1.5px
-  `--slate` + `repeating-linear-gradient` a 135°), rotulada só com a contagem:
-  "+41 sem valor". Ela não compartilha o eixo de dinheiro da barra sólida.
-- Um cartão tracejado ao lado do total: "114 pessoas sem valor · vencem no período e
-  não entram na conta acima".
-- Na carteira, a contagem de contratos sobe para 1.122 e o valor por mês **não se
-  move** (R$ 134.200), com uma nota tracejada explicando que preencher o valor em
-  Contratos corrige a carteira.
-
-A forma carrega a informação, não a cor: é gente que vence, e o dinheiro ainda vai
-ser preenchido. **Onde não há contrato sem valor, o item de legenda desaparece** —
-explicar um símbolo ausente seria o oposto do argumento.
-
-## Ticket é a coluna que revela
-
-No ranking de consultores o total premia quem atende mais. Por isso a tabela tem
-**duas colunas de ticket**: por venda (valor ÷ nº de vendas) e mensal (valor ÷ nº de
-vendas ÷ duração média do plano). É o que mostra quem vende melhor: Marcos fecha 4
-contratos a R$ 125/mês contra R$ 232/mês da Ana. A barra ordena por total, e a
-leitura no rodapé aponta a diferença em texto, para não depender da leitura da coluna.
-
-## A venda vem antes de tudo, o risco é o segundo mais alto
-
-A ordem é a das três perguntas: vendi → tenho → posso perder → quem trouxe. Mas
-"quanto posso perder" recebe o segundo tratamento mais forte da tela (número de 32px
-em âmbar, esteira de barras), porque é a única das quatro que **gera ação hoje**.
-Carteira fica numa faixa de células baixas: é contexto, não alarme.
-
-## O que eu deixei de fora do que você descreveu
-
-O brief permite reorganizar. Duas escolhas conscientes:
-
-- **Não fiz cartões separados para 30, 60 e 90 dias.** Três cartões iguais lado a
-  lado esconderiam o que importa, que é o acumulado e a proporção sobre a carteira.
-  Virou uma esteira de três barras num painel só, com o total de 90 dias no topo.
-- **Não pus tendência de seis meses em toda métrica.** Contratos existem desde
-  junho de 2026: uma linha de três pontos finge série histórica. Onde a comparação
-  não existe, a tela diz isso (ver §5).
-
----
-
-# 2. Componentes: o que reusar e o que é novo
-
-## Reusar como está
-
-| Componente | Onde | Observação |
+| Card | Valor | Linha de apoio |
 | --- | --- | --- |
-| `DashCard` (DashPrimitives) | as ~8 cascas de card | `rounded-2xl border-border bg-card shadow-card` |
-| `BreakdownCard` (DashPrimitives) | "Planos mais vendidos" e "Origem do lead que fechou" | Cobre inteiro: ícone `accent-50`, herói do líder, cápsula segmentada de 42px na `BREAKDOWN_PALETTE`, legenda ranqueada e rodapé. O mockup já foi desenhado nesse formato — **não reimplemente**. A única adição é a coluna de contagem (`11x`) entre o rótulo e o valor. |
-| `DashHelpTip` (DashPrimitives) | o "?" de cada métrica | `HelpCircle` 12px em `size-4`, `aria-label` no padrão `O que é "X"?` |
-| `DASH_TONES`, `BREAKDOWN_PALETTE`, `dashInitials` (dashTokens) | tons e monogramas | |
-| `OperacionalToolbar` (do handoff Operacional) | a barra fixa | Mesmo componente: mês com setas + lista, caixa Comparar + mês comparado. Precisa de dois slots novos: o seletor de academia e o chip de aviso. Vale generalizar para `DashToolbar`. |
-| `Select` (`components/ui/select.jsx`) | os 3 seletores | O mockup usa `&lt;select&gt;` nativo porque é HTML puro |
-| `Tooltip` (`components/ui/tooltip.jsx`) | **toda marca de gráfico** | Ver §4 |
-| `Checkbox`, `Separator` (components/ui) | caixa Comparar, réguas verticais | |
+| **Vendido no mês** (`border-top 3px brand`) | Space Grotesk 700 **40px**, `tracking -.035em` + pílula de delta (24px alt., radius 8, `green-t`/`green-700` ou `red-t`/`red-700`, "▲ 9%"; `title` = base de comparação). Etiqueta "não é caixa" à direita do rótulo: 10.5px 600, `amber-t` / `amber-700`, pílula | "42 contratos · ticket R$ 214/mês" |
+| Carteira mensal | Space Grotesk 700 30px + "/mês" 13px 600 `muted` | "628 contratos · 19 trancados" |
+| Em risco · 90 dias | 30px `amber-700` + "/mês" `amber-700` | "26% da carteira" |
+| Vencidos sem renovar | 30px `red-700` | "contratos para recuperar" |
 
-## Componentes novos
+Apoio: Geist 12.5px `muted`, `tabular-nums`. Valor da carteira usa formato curto
+("R$ 134,2 mil").
 
-Em `src/views/dashboard/`, seguindo o estilo de `DashPrimitives.jsx`: apresentação
-só, com a matemática em `lib/`.
+### L2 · Vendas por tipo (rosca)
+- Cabeçalho: título + à direita "desconto **8%**" (12px; valor `amber-700` se ≥ 12%).
+- Rosca 148×148: `conic-gradient` com os 4 tipos; furo `inset 22px` na cor do card;
+  no centro "42" (Space Grotesk 700 22px) + "contratos" (11px `muted`).
+- Legenda à direita (gap 24): linhas de 8px de padding com régua `rule` em cima —
+  quadrado 9px radius 3 · rótulo 13px · % 12px `muted` (36px) · valor Space Grotesk
+  700 13.5px (80px, à direita).
+- Clawback (se houver): linha abaixo com régua, ícone `RotateCcw` 14px, 12px
+  `red-700`: "2 vendas já canceladas · R$ 3.100".
 
-| Novo | O que é | Props |
+### L2 · Consultores
+- Cabeçalho: título + colunas "VENDAS" (60px) e "TICKET/MÊS" (90px), 10px versalete.
+- Linha (padding 11px 0, régua `rule`): avatar 32px círculo `brand-50`/`brand-700`
+  com iniciais 11px 700 · nome 13px 600 + valor Space Grotesk 700 14px na mesma linha
+  · barra 6px radius 999 (`soft2` de fundo; líder `brand`, demais `brand-200`) ·
+  vendas 13px 600 · ticket mensal 13px 600.
+
+### L3 · Vencimentos
+- Cabeçalho: título + "168 contratos" (12px `muted`, **nowrap**).
+- 3 linhas (gap 14): rótulo 78px ("Em 30 dias") · barra 10px `amber` radius 999
+  (largura ∝ valor, máx 74%) · valor Space Grotesk 700 13.5px `amber-700` (92px).
+- Contratos sem valor: trilha anexa, mesma altura, **borda 1.5px tracejada `slate`**,
+  sem preenchimento; abaixo, legenda "114 contratos importados sem valor". Só aparece
+  quando há importados (Unidade Moinhos).
+
+### L3 · Saídas do mês
+- Cabeçalho: título + "R$ 2.300/mês".
+- Linhas: rótulo 110px · barra 10px (`red` cancelamento, `amber` trancamento) ·
+  contagem 13px 700 na cor do tom.
+
+### L4 · Planos (pizza) e Origem das vendas (meia-rosca)
+- Planos: pizza cheia 140×140 via `conic-gradient`.
+- Origem: meia-rosca 180×90 (círculo de 180 cortado na metade, `conic-gradient` a
+  partir de -90°, metade transparente; furo de 120px). No centro-base: % do líder
+  (Space Grotesk 700 18px) + nome do líder (10.5px `muted`).
+- Legenda igual à da rosca (bolinha 9px). Paleta `BREAKDOWN_PALETTE`:
+  claro `accent, brand, #0E1A40, #94a3b8, green`; escuro `accent, brand-500, #94a3b8, #475569, green`.
+- Na implementação, use **Recharts `PieChart`** (ou o que o projeto já tiver) com
+  `innerRadius` para rosca e `startAngle 180 / endAngle 0` para meia-rosca, em vez de
+  `conic-gradient`. Separador entre fatias: stroke 2px cor do card.
+
+## 3. Barra de filtros (mesma de Relatórios)
+
+Reaproveite o componente da barra de Relatórios — se ainda não for compartilhado,
+extraia como `DashFilterBar` e use nas duas telas.
+
+- Contêiner: `sticky top-0 z-20`, `bg var(--bg)`, `padding-bottom 14px`, borda
+  inferior 1px, `margin-bottom 22px`, `gap 8px`.
+- **Período**: caixa 38px, radius 12, borda, `bg card`, `shadow-card`, padding 3.
+  Setas 30×30 radius 9 (desabilitadas a 35% nos extremos). Botão central: ícone
+  `Calendar` 14px `brand` + "Setembro 2026" 13px 600 + `ChevronDown` 13px.
+  Abre popover (top 46px, 240px, radius 14, `shadow-card-lg`) com versalete "MÊS" e a
+  lista de meses; selecionado em `brand-50`/`brand-700` com check; "em andamento" à
+  direita em 11px `muted`.
+- Divisor vertical 1×22px `border`.
+- **Chips de filtro** (pílula 36px, radius 999, padding 0 12): ícone 14px · rótulo
+  500 `muted` · valor 600 · `ChevronDown` 12px. Ativo (fora do padrão): borda
+  `brand-200`, fundo `brand-50`, valor `brand-700`, ícone `brand`. Popover: top 44px,
+  min 236px, radius 14, itens 34px com rádio 16px.
+  - **Comparar com** (ícone `LineChart`): meses anteriores com venda + régua +
+    "Sem comparação". Ativo enquanto houver comparação.
+  - **Unidade** (ícone `Building2`): lista de academias. Ativo quando ≠ unidade padrão.
+- Ao escolher uma opção o popover fecha. Clique fora fecha (o protótipo não faz;
+  use o `Popover` do shadcn).
+- Quando não há mês anterior com venda, o chip "Comparar com" lista só "Sem comparação".
+
+## 4. Comportamento
+
+- **Venda conta no mês em que o contrato foi fechado.**
+- Mês em andamento: comparação **pró-rata** (dia 17 contra os 17 primeiros dias do
+  mês comparado). Subline: "1 a 17 de setembro · vs. mesmos dias de agosto". Mês
+  fechado: "agosto inteiro · vs. julho". Sem comparar: "1 a 17 de setembro · em
+  andamento".
+- Sem comparação: some a pílula de delta.
+- **`gymEmpty`** (academia sem contrato): corpo inteiro vira um card único "Ainda não
+  há contratos" + botão "Ir para o pipeline" (40px, `brand`, radius 12).
+- **`monthNoSales`**: L2 e L4 saem, entra card "Nenhum contrato fechado neste mês".
+  KPIs de carteira/risco e L3 continuam (olham contratos vigentes).
+- **Duas moedas**: "Vendido" é valor de contrato inteiro; carteira, risco e saídas são
+  por mês. O sufixo `/mês` nunca se separa do número.
+- Celular (< 768px): uma coluna; KPIs em 2×2 com "Vendido" ocupando a linha toda;
+  rosca/pizza ficam acima da legenda; barra de filtros vira um botão que abre um
+  painel com período, comparação e unidade.
+
+## 5. Tooltips
+
+Toda marca de gráfico (fatias, barras, trilhas tracejadas) tem dica no hover **e no
+foco**. O protótipo usa `title`; em produção use `Tooltip` do shadcn em elementos
+focáveis. Conteúdo: "Matrícula nova: 21 contratos · R$ 34.700 · 44% do vendido",
+"Em 30 dias: 63 contratos valendo R$ 13.100 por mês", etc. (ver `title` no HTML).
+Foco visível: `outline 2px brand, offset 2px`.
+
+## 6. Design tokens
+
+| Token | Claro | Escuro |
 | --- | --- | --- |
-| `SoldHeroCard` | o painel de venda do mês: herói + cápsula de tipos + clawback | `{sold, count, delta, ticket, discount, mix, clawback}` |
-| `WalletBand` | a faixa de 4 células da carteira | `{items, notes}` |
-| `ExpiryRunway` | a esteira 30/60/90 com trilha tracejada | `{total, share, horizon, blind}` |
-| `ExitsCard` | cancelamentos e trancamentos do mês | `{items, total}` |
-| `SellerRankTable` | o ranking com as duas colunas de ticket | `{rows, read}` |
-| `BlindValueNote` | a nota tracejada de contratos sem valor | `{count, context}` |
-| `GerencialEmpty` | o painel único de academia sem contrato | — |
+| `--bg` | `#F5F7FB` | `#080D22` |
+| `--card` | `#FFFFFF` | `#122142` |
+| `--fg` / `--fg2` | `#0E1A40` / `#334155` | `#EAEEF9` / `#CBD5E1` |
+| `--muted` / `--faint` | `#64748b` / `#94a3b8` | `#8A93B0` / `#6B7593` |
+| `--border` / `--rule` | `#e2e8f0` / `#eef2f7` | `rgba(255,255,255,.08)` / `.06` |
+| `--soft2` (trilho de barra) | `#eef0f5` | `rgba(255,255,255,.07)` |
+| `--brand` / `-50` / `-200` / `-700` | `#2B59FF` / `#EAF0FF` / `#B8CCFF` / `#1C3FC4` | `#2B59FF` / `rgba(43,89,255,.18)` / `.36` / `#8FB0FF` |
+| `--accent` | `#FF6A2B` | `#F2541A` |
+| `--green` / `-700` / `-t` | `#15B981` / `#047857` / `rgba(21,185,129,.10)` | `#0E9F6E` / `#34D399` / `.18` |
+| `--red` / `-700` / `-t` | `#F43F5E` / `#BE123C` / `rgba(244,63,94,.09)` | `#E11D48` / `#FB7185` / `.18` |
+| `--amber` / `-700` / `-t` | `#F59E0B` / `#B45309` / `rgba(245,158,11,.12)` | `#D97706` / `#FBBF24` / `.20` |
+| `--violet` (upgrade) | `#8B5CF6` | idem |
+| `--slate` (retorno, sem valor) | `#94a3b8` | `#6B7593` |
+| `--shadow-card` | `0 1px 0 rgba(15,23,42,.04), 0 1px 2px rgba(15,23,42,.06)` | `0 1px 0 rgba(0,0,0,.3), 0 1px 2px rgba(0,0,0,.4)` |
+| `--shadow-card-lg` | `0 1px 0 rgba(15,23,42,.04), 0 8px 24px -8px rgba(15,23,42,.10)` | `0 8px 24px -8px rgba(0,0,0,.6)` |
 
----
+Tipos de venda: Matrícula nova `brand` · Renovação `green` · Upgrade `violet` ·
+Retorno de ex-cliente `slate`.
 
-# 3. Medidas, tipografia e cores
+- Fontes: **Space Grotesk** 500–700 (números grandes, títulos) e **Geist** 400–700
+  (resto). Todo número com `tabular-nums`.
+- Radius: 16 (card), 12 (controles), 9 (itens de menu), 999 (pílulas, barras).
+- Espaçamento: gaps 8 / 10 / 14 / 16 / 20 / 24.
+- Ícones: Lucide, stroke 2–2.2.
+- Texto colorido usa o passo 700, nunca a base.
 
-Largura de conteúdo 1440. Seções empilhadas com `gap` 24px; cada uma abre com
-título 16px Space Grotesk 700 + pergunta 12.5px `muted` sobre **régua de 2px**
-`border-border` — a mesma gramática do Operacional e do CRM.
+## 7. Regras de dados
 
-## Tipografia
+- **Nunca guarde um agregado ao lado do detalhe.** Ticket médio, % em risco,
+  participação e todo % de gráfico saem de `lib/gerencialMetrics.js`, calculados a
+  partir dos contratos.
+- **Contratos sem valor não entram no denominador do ticket médio** (Moinhos: R$
+  134.200 ÷ 628, não ÷ 1.122) e nunca somam em valor por mês.
+- **Ticket mensal por consultor** = vendido ÷ vendas ÷ duração média do plano vendido.
+  O protótipo usa `AVG_MONTHS` fixo como stand-in: ⚠ substitua por consulta real ou
+  remova a coluna.
+- % em risco = soma dos 3 horizontes ÷ valor por mês da carteira.
 
-| Onde | Fonte e tamanho |
-| --- | --- |
-| Herói "Vendido no mês" | Space Grotesk 700, 44px, `tracking -.035em`, `leading .95` |
-| Número de risco 90 dias | Space Grotesk 700, 32px, `tracking -.03em` |
-| Herói do BreakdownCard, "já venceu" | Space Grotesk 700, 28-30px |
-| Células da carteira | Geist 600, 28px, `tracking -.025em` |
-| Títulos de seção | Space Grotesk 700, 16px |
-| Título de card | Geist 600, 13.5-14px |
-| Rótulo de célula | Geist 500, 12px, `muted-foreground`, **caixa baixa** |
-| Versalete estrutural | Geist 700, 9.5-10px, `tracking .08em`, `muted-foreground` |
-| Valor em tabela | Geist 600, 13px, `num` |
-| Linha de apoio | Geist 400, 11-11.5px, `muted-foreground` |
+## 8. Dados do protótipo
 
-Todo número usa `num` (`font-variant-numeric: tabular-nums`). Valores grandes em
-Space Grotesk; valores de tabela em Geist, para a coluna não brigar com o herói.
+Consultores: Ana Ribeiro, Diego Santos, Larissa Moura e Marcos Lima (gestor que
+também vende). Meses: maio (sem venda, antes do sistema), junho, julho, agosto
+fechados; setembro em andamento até o dia 17. Academias: Centro (base limpa), Moinhos
+(494 importados sem valor), Nova (sem contrato).
 
-## Cores
+Setembro, Centro: R$ 78.400 em 42 contratos contra R$ 71.900 nos mesmos dias de
+agosto (▲ 9%); ticket R$ 214/mês; desconto 8%; 21 novas, 14 renovações, 5 upgrades,
+2 retornos; 2 já canceladas (R$ 3.100). Carteira 628 contratos, R$ 134.200/mês, 19
+trancados. Risco 63 / 48 / 57 contratos, R$ 13.100 / 9.800 / 11.400 por mês; 29 já
+vencidos; saídas 7 cancelamentos e 4 trancamentos (R$ 2.300/mês).
 
-| Papel | Token | Claro | Escuro |
-| --- | --- | --- | --- |
-| Matrícula nova, marca | `brand-600` | `#2B59FF` | idem |
-| Renovação | `success` | `#15B981` | `#0E9F6E` |
-| Upgrade | `violet-500` | `#8B5CF6` | idem |
-| Retorno de ex-cliente | `slate-400` | `#94a3b8` | `#6B7593` |
-| Risco, vencimento, trancamento | `amber-500` / texto `amber-700` | `#F59E0B` / `#B45309` | `#D97706` / `#FBBF24` |
-| Cancelamento, já vencido | `danger` / texto `--red-700` | `#F43F5E` / `#BE123C` | `#E11D48` / `#FB7185` |
-| Líder de breakdown | `accent-500` / texto `accent-600` | `#FF6A2B` / `#C2410C` | `#F2541A` / `#FF8A52` |
+## Arquivos
 
-**Nenhuma cor nova.** Os quatro tipos de venda reusam brand / success / violet /
-slate, que já existem no `index.css`. Violeta é o único que não aparece nas telas
-irmãs; se preferir evitá-lo, a alternativa é `brand-300` para upgrade, já que
-upgrade é parente de renovação.
-
-Regras que o mockup segue:
-
-- **Texto colorido usa o passo 700**, nunca a base. `#15B981` e `#FF6A2B` são
-  preenchimento; texto verde é `emerald-700`, texto laranja é `accent-600`.
-- **Versalete estrutural é `muted-foreground`, nunca `slate-400`** — a 9.5px o
-  segundo dá 2.56:1.
-- **Informação nunca só pela cor.** Cada cápsula e cada barra tem legenda com rótulo
-  e número; o tipo de venda aparece escrito na lista abaixo da cápsula; contratos sem
-  valor se distinguem por **forma** (hachura + borda tracejada), não por tom.
-- Barras até 24px de espessura, ponta arredondada 4px; cápsulas de 42-44px com
-  separador de 2px na cor do card.
-- Ícones Lucide, 12-23px, `strokeWidth` 2-2.2.
-
----
-
-# 4. Dicas — o que o mockup não consegue entregar
-
-O brief pede dica no hover **e no foco do teclado**. O mockup usa `title` nativo em
-todas as marcas com valor e dá `tabindex="0"` a elas, mas `title` **não dispara no
-foco**. Não há como resolver em HTML puro sem reconstruir um tooltip à mão.
-
-Na implementação, cada marca é um elemento focável dentro de
-`Tooltip`/`TooltipTrigger` do shadcn, como o `DashHelpTip` já faz. Marcas que
-precisam de dica: os 4 segmentos da cápsula de tipos, as 3 barras de risco, as 3
-trilhas tracejadas, as 2 barras de saída, as 4 barras de consultor e os 5 segmentos
-de cada breakdown. O foco visível é `outline: 2px solid var(--brand); outline-offset: 2px`.
-
----
-
-# 5. Comportamento
-
-## Mês e comparação
-
-Setas andam um mês; a lista abre direto. **Uma venda conta no mês em que o contrato
-foi fechado**, não no mês em que a vigência começa.
-
-A caixa **Comparar** governa todo o comparativo: desligada, saem a pílula de delta e
-a linha de base do herói, e a subline passa de "comparado com os 17 primeiros dias
-de agosto" para "1 a 17 de setembro. O mês está em andamento e ainda vai receber
-vendas."
-
-No mês em andamento a comparação é **pró-rata**: dia 17 contra os 17 primeiros dias
-do mês comparado, e a subline diz isso em texto. O mockup guarda o recorte pró-rata
-no próprio mês comparado (`prorata: { 17: {...} }`); em produção isso é uma consulta
-com o mesmo limite de dia.
-
-**Histórico curto, tratado na interface:** quando não existe mês anterior com venda,
-o controle Comparar inteiro sai da barra e no lugar entra "Não há mês anterior com
-venda para comparar". A base padrão pula meses sem venda, e eles não aparecem na
-lista de comparação. Não há comparação com o ano passado, então essa opção não existe.
-
-## Os dois estados vazios são diferentes
-
-Esta distinção custou uma rodada de correção e vale respeitar na implementação:
-
-- **`gymEmpty`** (a academia não tem contrato nenhum) substitui o **corpo inteiro**
-  pelo painel único "Ainda não há contratos" + CTA "Ir para o pipeline". Nenhum
-  cabeçalho de seção, nenhum card de zeros, nenhuma tabela com cabeçalho e zero
-  linhas.
-- **`monthNoSales`** (`count === 0` no mês escolhido) esvazia só o que descreve a
-  venda do mês: o herói vira o card "Nenhum contrato fechado neste mês" e "Quem traz
-  receita" vira a nota "Sem vendas no mês, não há ranking". **Carteira e risco
-  continuam inteiros**, porque olham contratos vigentes.
-
-## Quebra para celular (abaixo de 768px)
-
-Uma coluna. O herói da venda mantém número, delta e a cápsula de tipos com a legenda
-em duas colunas. **Carteira e risco viram dois cartões pareados**, porque juntos
-respondem "tenho X, posso perder Y". As barras de risco ficam, inclusive as trilhas
-tracejadas. O que sai das tabelas é a coluna de ticket mensal, que desce para a linha
-de apoio ("16 vendas · R$ 1.950 por venda"). Os três controles não cabem em linha:
-viram um ícone no canto que abre painel com mês, comparação e academia.
-
----
-
-# 6. Textos finais
-
-**Barra e cabeçalho**
-- `Gerencial`
-- chip fixo: "Valor de contrato vendido, não caixa recebido"
-- em andamento, comparando: "1 a 17 de setembro comparado com os 17 primeiros dias de agosto. O mês está em andamento, então a comparação é pró-rata."
-- em andamento, sem comparar: "1 a 17 de setembro. O mês está em andamento e ainda vai receber vendas."
-- fechado: "agosto inteiro comparado com julho. Mês fechado."
-- sem base: "Não há mês anterior com venda para comparar"
-
-**Seções**
-- `Quanto vendi` — "contratos fechados no mês"
-- `A carteira hoje` — "o que os contratos vigentes geram por mês"
-- `Quanto posso perder` — "o que sai da carteira se ninguém renovar"
-- `Quem traz receita` — "as vendas do mês por consultor, plano e origem"
-
-**Rótulos**
-- "Vendido no mês" · "Ticket mensal" / "média das vendas" · "Desconto" / "R$ 6.800 abaixo da tabela"
-- "De onde veio a venda" / "cada contrato entra em um tipo só" · Matrícula nova · Renovação · Upgrade · Retorno de ex-cliente
-- "Contratos vigentes" · "Valor por mês" · "Ticket mensal médio" · "Trancados"
-- "Vencendo nos próximos 90 dias" · "Em 30 dias" / "Em 60 dias" / "Em 90 dias" · "26% da carteira"
-- "Já venceu e ninguém renovou" · "Saiu neste mês" · "Cancelamentos" / "Trancamentos"
-- "Quem vendeu" / "o consultor dono do lead na hora da venda" · colunas CONSULTOR · VENDIDO NO MÊS · VENDAS · TICKET DA VENDA · TICKET MENSAL
-- "Planos mais vendidos" · "Origem do lead que fechou" · eyebrow "Plano que mais trouxe" / "Canal que mais trouxe"
-
-**Dicas**
-- Contratos vigentes: "Contratos com vigência em curso hoje. A carteira soma contrato, não pessoa: quem tem dois contratos vigentes conta duas vezes."
-- Valor por mês: "Soma do ticket mensal de cada contrato vigente. Não é caixa recebido nem previsão de recebimento: é o que os contratos valem por mês."
-- Trancados: "Contrato trancado segue vigente e continua na carteira, porque volta a valer quando o cliente destranca. A contagem fica à parte para não parecer receita ativa."
-- Já venceu: "Contratos que passaram do fim da vigência e não têm contrato sucessor. É um retrato de agora, não um número do mês."
-- Trilha tracejada: "Em 30 dias: mais 41 contratos importados sem valor. Contam como pessoas que vencem, não entram no valor por mês."
-
-**Notas de rodapé de card**
-- clawback: "2 vendas deste mês já foram canceladas, somando R$ 3.100. O valor continua no total do mês, porque o contrato foi fechado aqui."
-- sobreposição: "A carteira soma contrato, não pessoa: 6 pessoas têm dois contratos vigentes ao mesmo tempo, então o número de contratos é maior que o de gente."
-- importados: "494 contratos vieram de um sistema antigo sem o valor. Entram na contagem de contratos e no risco, e nunca somam no valor por mês. Preencher o valor deles em Contratos corrige a carteira."
-- já vencido: "Já saíram da carteira, então o valor por mês deles não aparece aqui. É a fila de recuperação."
-- saídas: "Trancamento é reversível e continua contando na carteira. Cancelamento sai."
-- planos: "Combinação de modalidades é um grupo próprio, não a soma das partes: 'Musculação + Pilates' não entra em nenhum dos dois isolados."
-- origem: "É a origem do lead que virou contrato, não o volume de leads do canal. Quanto cada canal gera em leads fica no painel CRM."
-
-**Vazios**
-- academia: "Ainda não há contratos" + "Esta tela ganha vida na primeira matrícula registrada. Enquanto isso, o funil de leads continua no painel CRM." + botão "Ir para o pipeline"
-- mês: "Nenhum contrato fechado neste mês" + "Os contratos existem no sistema desde junho de 2026, então este mês não tem venda registrada. A carteira e o risco abaixo continuam valendo: eles olham os contratos vigentes, não as vendas do mês."
-- ranking: "Sem vendas no mês, não há ranking" + "Consultor, plano e origem descrevem as vendas do mês escolhido. Troque o mês para ver o ranking."
-
----
-
-# 7. Números que eu sugeri, e de onde vêm
-
-Três derivados que não estavam na sua lista. Todos calculáveis do que já existe:
-
-| Número | Conta | Por que vale |
-| --- | --- | --- |
-| **% da carteira em risco** ("26%") | (soma dos 3 horizontes) ÷ valor por mês da carteira | Transforma R$ 34.300 em "isso é um quarto do que tenho". Sem ele, o número de risco não tem escala. |
-| **Ticket por venda** | valor vendido ÷ nº de vendas, por consultor | Mostra quem fecha contrato maior, independente de volume. |
-| **Ticket mensal por consultor** | valor vendido ÷ nº de vendas ÷ **duração média do plano vendido** | É o que revela quem vende plano longo. ⚠ **Precisa confirmar**: exige agrupar a duração dos planos vendidos por consultor no mês. Se o sistema não fizer esse agrupamento, fico só com o ticket por venda e a coluna sai. |
-| **Participação de cada consultor** ("40%") | valor do consultor ÷ vendido no mês | Barato e já derivável. |
-
-O mockup usa `AVG_MONTHS` por consultor como stand-in da duração média. **Substitua
-por consulta real ou remova a coluna** — não invente a média.
-
----
-
-# 8. ⚠ Regra de implementação herdada do Operacional
-
-**Nunca guarde um agregado ao lado do detalhe que o gera.** No Operacional esse
-mesmo erro apareceu quatro vezes: um percentual autorado ao lado das contagens que
-deveriam produzi-lo, e os dois divergindo na tela.
-
-Aqui vale para: ticket mensal médio da carteira (= valor por mês ÷ contratos com
-valor), % da carteira em risco, participação de cada consultor, e todo percentual de
-cápsula. Nada de campo `ticketMedio` no documento. `lib/gerencialMetrics.js` deve
-expor uma função que calcula tudo a partir dos contratos do período, e a view nunca
-lê percentual gravado.
-
-Consequência direta nesta tela: **contratos sem valor não podem entrar no
-denominador do ticket médio**. Na Unidade Moinhos são 1.122 contratos e 628 com
-valor — o ticket é R$ 134.200 ÷ 628, não ÷ 1.122.
-
----
-
-# 9. Dados do mockup
-
-4 pessoas: Ana Ribeiro, Diego Santos, Larissa Moura (consultores) e Marcos Lima
-(gestor que também vende). Cinco meses: maio (sem venda, antes do sistema), junho,
-julho, agosto fechados e setembro em andamento até o dia 17. Três academias: Centro
-(base limpa), Moinhos (494 importados sem valor) e Nova (sem contrato).
-
-Setembro, Unidade Centro: R$ 78.400 em 42 contratos contra R$ 71.900 nos mesmos dias
-de agosto; ticket mensal R$ 214; desconto 8%; 21 matrículas novas, 14 renovações, 5
-upgrades, 2 retornos; 2 vendas já canceladas (R$ 3.100). Carteira 628 contratos, R$
-134.200/mês, 19 trancados (R$ 4.100/mês), 6 pessoas com dois contratos. Risco: 63 /
-48 / 57 contratos valendo R$ 13.100 / 9.800 / 11.400 por mês; 29 já vencidos; saídas
-7 cancelamentos (R$ 1.480/mês) e 4 trancamentos (R$ 820/mês).
-
-Toda soma fecha: mix, consultores, planos e origens somam R$ 78.400 e 42 contratos.
+- `Gerencial.dc.html` — protótipo (template + lógica `renderVals()` com todos os
+  cálculos e dados de exemplo no fim do arquivo).
+- `support.js` — runtime para abrir o protótipo localmente.

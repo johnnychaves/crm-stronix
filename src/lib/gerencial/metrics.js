@@ -1,10 +1,13 @@
 // Uma função calcula o mês inteiro do Gerencial (molde de src/lib/crm/metrics.js):
-// vendido, carteira, risco, saídas e os três rankings. ctx = { now, contracts,
-// leadsById }. Carteira e risco são retrato de hoje: olham sempre ctx.now, nunca
+// vendido, carteira, risco, saídas, churn e os três rankings. ctx = { now,
+// contracts, leadsById, graceDays }; graceDays é a tolerância de vencimento da
+// academia (renewalGraceDays) e só o churn usa. Carteira e risco são retrato de hoje: olham sempre ctx.now, nunca
 // o mês escolhido. Só a venda, as saídas e os rankings usam a janela do mês.
 
 import { monthRange, effectiveEnd, isCurrentMonthKey } from '../operacional/month.js';
+import { computeChurn } from '../operacional/base.js';
 import { salesOf } from './sales.js';
+import { cumulativeByDay } from './series.js';
 import { walletAt } from './wallet.js';
 import { expiryHorizons, expiredWithoutSuccessor, exitsInWindow } from './risk.js';
 import { sellersOf, plansOf, sourcesOf } from './people.js';
@@ -18,7 +21,7 @@ import { sellersOf, plansOf, sourcesOf } from './people.js';
 const caches = new WeakMap();
 
 function cacheOf(ctx) {
-  const sig = [ctx.now?.getTime(), ctx.contracts, ctx.leadsById];
+  const sig = [ctx.now?.getTime(), ctx.contracts, ctx.leadsById, ctx.graceDays];
   let cache = caches.get(ctx);
   if (!cache || cache.sig.some((v, i) => v !== sig[i])) {
     cache = { sig, results: new Map(), snapshot: null };
@@ -70,7 +73,11 @@ function computeMetrics(ctx, cache, { monthKey, cutEnd }) {
   const { wallet, risk } = snapshotOf(ctx, cache);
 
   const sold = salesOf(contracts, { start, end });
+  const curve = cumulativeByDay(sold.rows, { start, end });
   const exits = exitsInWindow(contracts, { start, end });
+  // Churn é conta do mês, não retrato de hoje: pessoas que saíram de vez no
+  // mês ÷ clientes ativos no início dele. Mês em andamento conta até agora.
+  const churn = computeChurn(contracts, { start, end, graceDays: ctx.graceDays });
   const sellers = sellersOf(sold.rows, sold.sold);
   const plans = plansOf(sold.rows, sold.sold);
   const sources = sourcesOf(sold.rows, sold.sold, ctx.leadsById);
@@ -81,9 +88,11 @@ function computeMetrics(ctx, cache, { monthKey, cutEnd }) {
     start,
     end,
     sold,
+    curve,
     wallet,
     risk,
     exits,
+    churn,
     sellers,
     plans,
     sources,

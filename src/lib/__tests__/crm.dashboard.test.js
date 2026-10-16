@@ -5,7 +5,7 @@ import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { TooltipProvider } from '../../components/ui/tooltip.jsx';
 import { metricsOf, seriesOf } from '../crm/metrics.js';
-import { regimeTexts, channelRead, summaryItems, scopeNote, joinPt } from '../crm/texts.js';
+import { regimeTexts, channelRead, summaryItems, safraNote, joinPt } from '../crm/texts.js';
 import { CrmDashboard } from '../../views/dashboard/CrmDashboard.jsx';
 
 const NOW = new Date(2026, 8, 14, 12, 0);
@@ -47,17 +47,14 @@ describe('textos do regime', () => {
   it('mês em andamento comparando, sem comparar, fechado e com agendamento incompleto', () => {
     expect(regimeTexts({ running: true, compareOn: true, dayN: 14, shownName: 'setembro', cmpName: 'agosto', apptsPartial: false })).toEqual({
       range: '1 a 14 de setembro',
-      subline: '1 a 14 de setembro comparado com os 14 primeiros dias de agosto. O mês está em andamento, então a comparação é pró-rata e a conversão da safra ainda vai subir.',
-      note: 'Pró-rata: mesmos 14 primeiros dias de agosto'
+      subline: '1 a 14 de setembro comparado com os 14 primeiros dias de agosto. O mês está em andamento, então a comparação é pró-rata e a conversão da safra ainda vai subir.'
     });
     expect(regimeTexts({ running: true, compareOn: false, dayN: 14, shownName: 'setembro', cmpName: 'agosto' }).subline)
       .toBe('1 a 14 de setembro. O mês está em andamento: a conversão da safra de setembro ainda vai subir.');
     expect(regimeTexts({ running: false, compareOn: true, dayN: 14, shownName: 'agosto', cmpName: 'julho' }))
-      .toMatchObject({ subline: 'agosto inteiro comparado com julho. Mês fechado.', note: 'Mês fechado contra mês fechado' });
+      .toMatchObject({ subline: 'agosto inteiro comparado com julho. Mês fechado.' });
     expect(regimeTexts({ running: false, compareOn: false, dayN: 14, shownName: 'julho', cmpName: 'junho', apptsPartial: true }))
-      .toMatchObject({ subline: 'julho inteiro. Mês fechado. Os agendamentos de julho estão incompletos no histórico.', note: 'Sem comparativo · julho inteiro' });
-    expect(scopeNote(null, null)).toBe('Equipe toda · Todos os funis');
-    expect(scopeNote('Ana Ribeiro', 'Vendas')).toBe('Ana Ribeiro · Vendas');
+      .toMatchObject({ subline: 'julho inteiro. Mês fechado. Os agendamentos de julho estão incompletos no histórico.' });
   });
 });
 
@@ -114,7 +111,7 @@ describe('tela do CRM (render)', () => {
   const props = (monthKey, shownName) => ({
     cur: metricsOf(ctx, { monthKey }),
     cmp: null,
-    highlights: [],
+    cmpName: 'agosto',
     series: { ...noSeries, leads: seriesOf(ctx, { monthKey, pick: (m) => m.leads }) },
     team: { rows: [{ user: USERS[0], m: metricsOf(ctx, { monthKey, userId: 'ana' }) }], others: null },
     compareOn: false,
@@ -127,14 +124,23 @@ describe('tela do CRM (render)', () => {
     onClear: () => {}
   });
 
-  it('mês em andamento: as cinco seções, a carteira de agora e a passagem pedindo um funil', () => {
+  it('mês em andamento: herói, faixa de números, onde travam, origem, perdas, velocidade e carteira', () => {
     const html = render(createElement(CrmDashboard, props('2026-09', 'setembro')));
-    ['>Origem</h3>', '>Funil</h3>', '>Pessoas</h3>', '>Velocidade</h3>', '>Carteira agora</h3>'].forEach((s) => expect(html).toContain(s));
-    expect(html).toContain('Safra de setembro');
-    expect(html).toContain('Escolha um funil para ver a passagem entre etapas');
+    expect(html).toContain('Conversão da safra de setembro');
+    expect(html).toContain('33%');
+    ['Leads novos', 'Agendamentos', 'Comparecimento', 'Matrículas'].forEach((s) => expect(html).toContain(s));
+    expect(html).toContain('Onde os leads travam');
+    expect(html).toContain('Escolha um funil para ver onde os leads travam');
     expect(html).toContain('Em jogo por funil');
     expect(html).toContain('Sem próximo contato');
-    expect(html).toContain('Equipe toda · Todos os funis');
+    expect(html).not.toContain('Equipe toda · Todos os funis');
+  });
+
+  it('a conversão da safra mora no herói, não na faixa de números', () => {
+    const html = render(createElement(CrmDashboard, props('2026-09', 'setembro')));
+    // O herói traz a conversão; a faixa de números fica com os outros quatro.
+    expect(html).toContain('Conversão da safra de setembro');
+    expect(html).not.toContain('>Conversão da safra<');
   });
 
   it('mês fechado: o cartão tracejado no lugar da carteira de agora', () => {
@@ -150,17 +156,27 @@ describe('tela do CRM (render)', () => {
     expect(html).toContain('Os números de agosto não carregaram');
     expect(html).toContain('Origem, funil, pessoas e velocidade voltam quando o mês carregar.');
     expect(html).toContain('A carteira agora só existe no mês em andamento');
-    expect(html).not.toContain('>Origem</h3>');
-    expect(html).not.toContain('Nenhum lead cadastrado neste mês.');
+    expect(html).not.toContain('Onde os leads travam');
   });
 
-  it('mês sem fonte ainda: cartão de carregando no lugar das quatro seções', () => {
+  it('mês sem fonte ainda: cartão de carregando no lugar das faixas do meio', () => {
     const html = render(createElement(CrmDashboard, props('2026-07', 'julho')));
     expect(html).toContain('Carregando os números de julho');
     expect(html).toContain('Os cards aparecem assim que os dados chegarem.');
-    expect(html).not.toContain('>Origem</h3>');
-    expect(html).not.toContain('>Funil</h3>');
-    expect(html).not.toContain('>Pessoas</h3>');
-    expect(html).not.toContain('>Velocidade</h3>');
+    expect(html).not.toContain('Onde os leads travam');
+  });
+});
+
+describe('frase da safra', () => {
+  it('explica por que as matrículas do mês e a conversão da safra convivem', () => {
+    expect(safraNote({ enroll: 29, fromCohort: 10, conv: 18, monthName: 'setembro' }))
+      .toBe('29 matrículas no mês e 18% de conversão não se contradizem. A conversão olha só a safra de setembro, e 19 das 29 matrículas vieram de leads de meses anteriores.');
+  });
+
+  it('só aparece quando há diferença a explicar', () => {
+    expect(safraNote({ enroll: 10, fromCohort: 10, conv: 18, monthName: 'setembro' })).toBeNull();
+    expect(safraNote({ enroll: 0, fromCohort: 0, conv: 0, monthName: 'setembro' })).toBeNull();
+    expect(safraNote({ enroll: null, fromCohort: null, conv: null, monthName: 'setembro' })).toBeNull();
+    expect(safraNote({ enroll: 5, fromCohort: 2, conv: null, monthName: 'setembro' })).toBeNull();
   });
 });

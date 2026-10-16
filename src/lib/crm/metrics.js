@@ -8,7 +8,6 @@
 //   primeira matrícula de quem voltou depois).
 //   leadsById = a versão mais nova de cada lead conhecido (useCrmSources).
 
-import { fmtNum } from '../format.js';
 import { monthRange, effectiveEnd, isCurrentMonthKey, addMonthsToKey, monthKeyOf } from '../operacional/month.js';
 import { pct } from './stats.js';
 import { fmtDuration, fmtDays } from './format.js';
@@ -256,51 +255,6 @@ export function bestChannelOf(m) {
     .map((c) => ({ ...c, conv: pct(c.enrolled, c.leads) }))
     .filter((c) => c.leads >= MIN_CHANNEL_LEADS && c.conv != null)
     .sort((a, b) => b.conv - a.conv || b.leads - a.leads)[0] || null;
-}
-
-// Destaques (Decisão 1 do plano): os leads que passaram de 24 horas sem
-// primeiro contato e o canal de melhor conversão, cada um contra o mês
-// comparado. Só entra o que tem base dos dois lados. `rank` ordena o
-// carrossel do celular com o pior primeiro.
-export function buildCrmHighlights(cur, cmp, { cmpName }) {
-  if (!cur?.hasSource || !cmp?.hasSource) return [];
-  const out = [];
-  const add = (text, delta, lowerBetter) => {
-    if (!delta || delta.none) return;
-    const tone = delta.flat ? 'flat' : (delta.up !== lowerBetter ? 'good' : 'bad');
-    out.push({
-      text,
-      delta: delta.flat ? delta.text : `${delta.up ? '▲' : '▼'} ${delta.text}`,
-      tone,
-      verdict: tone === 'good' ? `melhor que ${cmpName}` : tone === 'bad' ? `pior que ${cmpName}` : `igual a ${cmpName}`,
-      rank: tone === 'bad' ? 0 : tone === 'flat' ? 1 : 2
-    });
-  };
-  const fc = cur.firstContact;
-  const pfc = cmp.firstContact;
-  if (fc?.total > 0 && pfc) {
-    // Passaram de 24 horas: o primeiro contato veio depois de 24 horas, ou o
-    // lead segue sem contato e já tinha mais de 24 horas no limite. O lead de
-    // poucas horas sem contato ainda está no prazo.
-    const late = fc.over + fc.noneLate;
-    add(
-      `${fmtNum(late)} dos ${fmtNum(fc.total)} leads ${late === 1 ? 'passou' : 'passaram'} de 24 horas sem primeiro contato`,
-      crmDelta(late, pfc.over + pfc.noneLate, { kind: 'pct' }),
-      true
-    );
-  }
-  // O comparado só vale com amostra comparável: o mesmo canal, com ao menos 5
-  // leads também lá. Sem isso o destaque de canal sai.
-  const best = bestChannelOf(cur);
-  const prev = best && (cmp.channels || []).find((c) => c.name === best.name);
-  if (best && prev && prev.leads >= MIN_CHANNEL_LEADS) {
-    add(
-      `${best.name} converteu ${best.conv}%, a melhor taxa entre os canais`,
-      crmDelta(best.conv, pct(prev.enrolled, prev.leads), { kind: 'pp' }),
-      false
-    );
-  }
-  return out;
 }
 
 // Tendência dos `months` meses até o exibido. Mês sem valor fica fora. Nos

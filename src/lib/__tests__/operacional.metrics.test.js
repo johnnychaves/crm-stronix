@@ -50,7 +50,8 @@ describe('metricsOf', () => {
 
   it('com pessoa filtrada a base continua da academia', () => {
     expect(ana.base.active).toBe(team.base.active);
-    expect(ana.base.churn).toEqual(team.base.churn);
+    // O churn saiu do Operacional: agora é do Gerencial.
+    expect(team.base.churn).toBeUndefined();
   });
 
   it('renovação segue o responsável atual pelo cliente', () => {

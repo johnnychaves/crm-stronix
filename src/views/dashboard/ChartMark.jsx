@@ -3,7 +3,7 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip.jsx';
 import { cn } from '../../lib/utils.js';
 
-export function ChartMark({ tip, as: Comp = 'span', className, style, children }) {
+export function ChartMark({ tip, as: Comp = 'span', className, style, children, ...rest }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -13,6 +13,7 @@ export function ChartMark({ tip, as: Comp = 'span', className, style, children }
           aria-label={tip}
           className={cn('cursor-help outline-none focus-visible:anel-foco', className)}
           style={style}
+          {...rest}
         >
           {children}
         </Comp>
