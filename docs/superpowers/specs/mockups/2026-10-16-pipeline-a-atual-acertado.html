@@ -72,28 +72,39 @@ svg{display:block;flex:none}
 .tab.zero{color:var(--faint)}
 .more-tab{align-self:center;flex:none;height:32px;padding:0 10px;border-radius:9px;border:1px dashed var(--brand-200);background:var(--brand-50);color:var(--brand-700);font-size:12.5px;font-weight:700;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
 .tabs .sep{width:1px;margin:20px 8px;background:var(--line-strong);flex:none}
-.active-filters{display:flex;gap:6px;align-items:center}
-.fchip{height:30px;display:inline-flex;align-items:center;gap:6px;padding:0 6px 0 10px;border-radius:999px;background:var(--brand-50);color:var(--brand-700);font-size:12.5px;font-weight:600;white-space:nowrap}
-.fchip button{width:20px;height:20px;border-radius:50%;display:grid;place-items:center}
-.fchip button:hover{background:var(--brand-200)}
-.fbtn{position:relative;width:38px;height:38px;border-radius:11px;border:1px solid var(--line-strong);display:grid;place-items:center;color:var(--muted);background:var(--paper)}
-.fbtn.on{background:var(--brand-50);border-color:var(--brand-200);color:var(--brand-700)}
-.fbtn .badge{position:absolute;top:-5px;right:-5px;min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:#FF6A2B;color:#fff;font-size:9.5px;font-weight:700;display:none;place-items:center;box-shadow:0 0 0 2px var(--surface)}
-.fbtn.on .badge{display:grid}
-.pop{position:absolute;right:28px;top:56px;width:272px;border-radius:14px;background:var(--surface);border:1px solid var(--line-strong);box-shadow:0 16px 40px -8px rgba(14,26,64,.25);display:none;overflow:hidden}
-.pop.open{display:block}
-.pop h4{margin:0;padding:12px 14px 10px;display:flex;justify-content:space-between;font-size:12.5px;color:var(--ink);border-bottom:1px solid var(--line)}
-.pop h4 button{color:var(--brand);font-weight:600;font-size:12px}
-.pop .sec{padding:10px 8px 6px}
-.pop .lbl{padding:0 6px 6px;font-size:12px;font-weight:600;color:var(--muted)}
-.opt{width:100%;display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:9px;text-align:left;font-size:12.5px;font-weight:500}
-.opt:hover{background:var(--lane)}
-.opt.on{background:var(--brand-50);font-weight:700}
-.opt .ck{margin-left:auto;color:var(--brand);visibility:hidden}.opt.on .ck{visibility:visible}
-.sw{display:flex;align-items:center;justify-content:space-between;width:100%;padding:10px 14px 14px;border-top:1px solid var(--line);font-size:12.5px;font-weight:600}
-.sw .tr{width:34px;height:20px;border-radius:99px;background:var(--line-strong);position:relative;transition:background .15s}
-.sw .tr::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:left .15s}
-.sw[aria-checked="true"] .tr{background:var(--brand)}.sw[aria-checked="true"] .tr::after{left:16px}
+/* Barra de filtros, no desenho dos painéis (DashFilterBar) e dos Relatórios. */
+.filters{display:flex;align-items:center;gap:8px;flex:none}
+.period{display:flex;align-items:center;gap:2px;height:38px;padding:3px;border-radius:12px;border:1px solid var(--line-strong);background:var(--surface);box-shadow:var(--shadow)}
+.period .arrow{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;color:var(--muted)}
+.period .arrow:hover{background:var(--lane);color:var(--text)}
+.period .arrow:disabled{opacity:.35;pointer-events:none}
+.pbtn{height:30px;display:inline-flex;align-items:center;gap:8px;padding:0 10px;border-radius:9px;font-size:13px;font-weight:600;white-space:nowrap}
+.pbtn:hover{background:var(--lane)}
+.pbtn .cal{color:var(--brand)}.pbtn .chev{color:var(--muted)}
+.vsep{width:1px;height:22px;background:var(--line-strong);flex:none;margin:0 2px}
+.pill{height:36px;display:inline-flex;align-items:center;gap:7px;padding:0 12px;border-radius:999px;border:1px solid var(--line-strong);background:var(--surface);font-size:12.5px;white-space:nowrap}
+.pill:hover{border-color:var(--brand-200)}
+.pill .pl{font-weight:500;color:var(--muted)}
+.pill b{font-weight:600;max-width:150px;overflow:hidden;text-overflow:ellipsis}
+.pill .ic,.pill .chev{color:var(--muted)}
+.pill.on{background:var(--brand-50);border-color:var(--brand-200)}
+.pill.on b{color:var(--brand-700)}.pill.on .ic{color:var(--brand)}
+.menu{position:absolute;top:56px;min-width:236px;border-radius:14px;background:var(--surface);border:1px solid var(--line-strong);box-shadow:0 16px 40px -8px rgba(14,26,64,.25);padding:6px;display:none;z-index:8}
+.menu.open{display:block}
+.menu .mh{padding:4px 6px 6px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.menu .rule{height:1px;background:var(--line);margin:4px 6px}
+.row{width:100%;height:34px;display:flex;align-items:center;gap:10px;padding:0 10px;border-radius:9px;text-align:left;font-size:12.5px;font-weight:600;white-space:nowrap}
+.row:hover{background:var(--lane)}
+.row.chk.on{background:var(--brand-50);color:var(--brand-700)}
+.row .note{margin-left:auto;padding-left:12px;font-size:11px;font-weight:500;color:var(--muted)}
+.row .tick{width:14px;display:grid;place-items:center;flex:none}
+.row.radio:not(.on){font-weight:500}
+.mark{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--line-strong);display:grid;place-items:center;flex:none;color:#fff}
+.mark.sq{border-radius:5px}
+.row.on .mark{background:var(--brand);border-color:var(--brand)}
+.fmobile{display:none;position:relative;width:38px;height:38px;border-radius:11px;border:1px solid var(--line-strong);place-items:center;color:var(--muted);background:var(--paper);flex:none}
+.fmobile.on{background:var(--brand-50);border-color:var(--brand-200);color:var(--brand-700)}
+.fmobile.on::after{content:"";position:absolute;top:6px;right:6px;width:6px;height:6px;border-radius:50%;background:var(--brand)}
 
 /* Quadro */
 .board-wrap{flex:1;min-height:0;position:relative}
@@ -177,7 +188,7 @@ svg{display:block;flex:none}
 .notes ol{margin:0;padding-left:18px;display:grid;gap:7px}
 .notes b{color:var(--ink)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
-@media (max-width:760px){.rail{display:none}.topbar{padding:0 16px}.bar{padding:0 16px;gap:10px}.board{padding:16px}.drop{width:150px}.mk{top:auto;bottom:12px;right:12px;flex-wrap:wrap;border-radius:16px}.notes{top:auto;bottom:96px;right:12px;width:calc(100% - 24px)}}
+@media (max-width:760px){.filters{display:none}.filters.open{display:flex;position:absolute;top:56px;right:16px;flex-direction:column;align-items:stretch;gap:10px;padding:10px;border-radius:14px;background:var(--surface);border:1px solid var(--line-strong);box-shadow:0 16px 40px -8px rgba(14,26,64,.25);z-index:7}.filters.open .vsep{display:none}.fmobile{display:grid}.rail{display:none}.topbar{padding:0 16px}.bar{padding:0 16px;gap:10px}.board{padding:16px}.drop{width:150px}.mk{top:auto;bottom:12px;right:12px;flex-wrap:wrap;border-radius:16px}.notes{top:auto;bottom:96px;right:12px;width:calc(100% - 24px)}}
 </style>
 </head>
 <body>
@@ -189,16 +200,20 @@ svg{display:block;flex:none}
     <section class="screen" aria-label="Pipeline">
       <div class="bar">
         <nav class="tabs" id="tabs" aria-label="Funis"></nav>
-        <div class="active-filters" id="activeFilters"></div>
-        <button class="fbtn" id="fbtn" aria-haspopup="dialog" aria-expanded="false" title="Filtros">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"/></svg>
-          <span class="badge num" id="fcount">1</span>
-        </button>
-        <div class="pop" id="pop" role="dialog" aria-label="Filtros">
-          <h4>Filtros <button id="clear">Limpar</button></h4>
-          <div class="sec"><div class="lbl">Responsável</div><div id="respList"></div></div>
-          <button class="sw" role="switch" aria-checked="false" id="overdueSw"><span>Somente em atraso</span><span class="tr"></span></button>
+        <div class="filters" id="filters">
+          <div class="period">
+            <button class="arrow" id="mPrev" aria-label="Mês anterior"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m15 18-6-6 6-6"/></svg></button>
+            <button class="pbtn" id="mBtn" aria-haspopup="menu" aria-expanded="false" aria-label="Mês de cadastro dos leads"><svg class="cal" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg><span class="num" id="mLabel"></span><svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></button>
+            <button class="arrow" id="mNext" aria-label="Próximo mês"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m9 18 6-6-6-6"/></svg></button>
+          </div>
+          <span class="vsep" aria-hidden="true"></span>
+          <button class="pill" id="cBtn" aria-haspopup="dialog" aria-expanded="false"><svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg><span class="pl">Consultor</span><b id="cVal"></b><svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></button>
+          <button class="pill" id="sBtn" aria-haspopup="menu" aria-expanded="false"><svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg><span class="pl">Situação</span><b id="sVal"></b><svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></button>
         </div>
+        <button class="fmobile" id="fMobile" aria-label="Filtros do Pipeline" aria-expanded="false"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"/></svg></button>
+        <div class="menu" id="mMenu" role="menu" aria-label="Mês de cadastro"></div>
+        <div class="menu" id="cMenu" role="dialog" aria-label="Escolher consultores"></div>
+        <div class="menu" id="sMenu" role="menu" aria-label="Situação"></div>
       </div>
       <div class="board-wrap">
         <div class="board" id="board"></div>
@@ -222,7 +237,8 @@ svg{display:block;flex:none}
     <li><b>Texto maior e sem caixa alta.</b> A etiqueta tinha 9,5 px em maiúsculas; agora tem 11 px. O nome da etapa sai em letra normal.</li>
     <li><b>A coluna diz quantos estão atrasados</b>, ao lado do total, e a Venda mostra o valor vendido no mês.</li>
     <li><b>Funil vazio não mostra "0".</b> Os funis de clientes (Upgrade, Renovações e Vencidos) ficam depois de um traço.</li>
-    <li><b>O filtro ligado aparece na barra</b>, com o X para tirar, em vez de só um número no botão.</li>
+    <li><b>Filtros em pílula, como no Gerencial.</b> Período com setas e a lista de meses, Consultor (escolha várias pessoas) e Situação (Todos ou Em atraso), no lugar do botão com balão. A pílula acende quando o filtro sai do padrão.</li>
+    <li><b>O mês é a safra.</b> "Todos os meses" é o padrão e é o quadro de sempre. Com um mês escolhido, o quadro inteiro mostra só os leads cadastrados nele: etapas, Venda, Perda e o número da aba.</li>
     <li><b>Rodapé sem fundo colorido.</b> O atraso e o "sem agenda" aparecem numa borda à esquerda do card, e o quadro deixa de parecer uma colcha.</li>
   </ol>
 </div>
@@ -255,15 +271,23 @@ let LEADS = NAMES.map((name, i) => ({
   id: 'l' + i, name, stage: STAGES[STAGE_OF[i % 14]].name, owner: USERS[i % 3].id,
   source: SOURCES[i % 6], mod: MODS[(i * 5) % 6], type: TYPES[i % 4],
   fu: FU[i % 14] ? at(FU[i % 14][0], FU[i % 14][1], (i * 7) % 60) : null,
-  last: (i * 3) % 14,
+  last: (i * 3) % 14, created: at(-((i * 11) % 75) - 1, 10, 0),
 }));
 const WON = [['Sabrina Teles',1188,0],['Otávio Prado',2988,1],['Yasmin Coutinho',699,3],['Murilo Bastos',1788,5],['Clara Valente',2388,8],['Igor Vasconcelos',149.9,11]]
-  .map(([name, v, d], i) => ({ id: 'w' + i, name, stage: 'Venda', owner: USERS[i % 3].id, source: SOURCES[(i + 2) % 6], mod: MODS[i % 6], value: v, closed: at(-d, 15, 20) }));
+  .map(([name, v, d], i) => ({ id: 'w' + i, name, stage: 'Venda', owner: USERS[i % 3].id, source: SOURCES[(i + 2) % 6], mod: MODS[i % 6], value: v, closed: at(-d, 15, 20), created: at(-(i * 9) - 3, 10, 0) }));
 const LOST = [['Sérgio Antunes','Preço'],['Lúcia Ramos','Sem retorno após 3 tentativas'],['Paulo Vitor','Mudou de cidade'],['Elaine Couto','Escolheu academia mais perto de casa'],['Fábio Torres','Preço'],['Simone Arruda','Sem retorno após 3 tentativas']]
-  .map(([name, reason], i) => ({ id: 'p' + i, name, stage: 'Perda', owner: USERS[i % 3].id, source: SOURCES[i % 6], mod: MODS[(i + 3) % 6], reason }));
+  .map(([name, reason], i) => ({ id: 'p' + i, name, stage: 'Perda', owner: USERS[i % 3].id, source: SOURCES[i % 6], mod: MODS[(i + 3) % 6], reason, created: at(-(i * 8) - 2, 10, 0) }));
 LEADS = LEADS.concat(WON, LOST);
 
-const state = { resp: [], overdue: false };
+const state = { resp: [], overdue: false, month: null };
+// Período: "Todos os meses" e os últimos 12 meses (kanbanMonthOptions, no app).
+const MONTH_NAMES = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+const keyOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+const addM = (key, n) => { const [y, m] = key.split('-').map(Number); return keyOf(new Date(y, m - 1 + n, 1)); };
+const labelOf = (key) => { const [y, m] = key.split('-').map(Number); const n = MONTH_NAMES[m - 1]; return `${n[0].toUpperCase()}${n.slice(1)} ${y}`; };
+const CUR = keyOf(NOW);
+const MONTH_OPTS = [{ key: 'todos', label: 'Todos os meses' }, ...Array.from({ length: 12 }, (_, i) => ({ key: addM(CUR, -i), label: labelOf(addM(CUR, -i)), note: i === 0 ? 'em andamento' : '', rule: i === 0 }))];
+const inSafra = (d) => { if (!state.month) return true; const [y, m] = state.month.split('-').map(Number); return d >= new Date(y, m - 1, 1) && d < new Date(y, m, 1); };
 const PALETTES = [['rgba(43,89,255,.14)','#1C3FC4','#9FBCFF'],['rgba(139,92,246,.16)','#6D28D9','#C4B5FD'],['rgba(255,106,43,.16)','#C2410C','#FDBA74'],['rgba(16,185,129,.16)','#047857','#6EE7B7'],['rgba(6,182,212,.16)','#0E7490','#67E8F9'],['rgba(236,72,153,.16)','#BE185D','#F9A8D4']];
 const isDark = () => document.documentElement.dataset.theme === 'dark' || (!document.documentElement.dataset.theme && matchMedia('(prefers-color-scheme: dark)').matches);
 function avatar(name, size = 20) {
@@ -333,14 +357,14 @@ const ORDER = { overdue: 1, today: 2, normal: 3, none: 4, won: 0, lost: 0 };
 function visible(l) {
   if (state.resp.length && !state.resp.includes(l.owner)) return false;
   if (state.overdue && stateOf(l) !== 'overdue') return false;
-  return true;
+  return inSafra(l.created);
 }
 function laneHTML(name, color, items) {
   const late = items.filter(l => stateOf(l) === 'overdue').length;
   const right = name === 'Venda'
-    ? `<span class="month">${NOW.toLocaleDateString('pt-BR', { month: 'long' })}</span><span class="money num">${fmtBRL(items.reduce((a, l) => a + l.value, 0))}</span>`
+    ? `${state.month ? '' : `<span class="month">${NOW.toLocaleDateString('pt-BR', { month: 'long' })}</span>`}<span class="money num">${fmtBRL(items.reduce((a, l) => a + l.value, 0))}</span>`
     : late ? `<span class="late num">${late} ${late === 1 ? 'atrasado' : 'atrasados'}</span>` : '';
-  const emptyText = name === 'Venda' ? 'Nenhuma venda no mês' : name === 'Perda' ? 'Arraste para marcar perda' : 'Nenhum lead nesta etapa';
+  const emptyText = name === 'Venda' ? 'Nenhuma venda aqui' : name === 'Perda' ? 'Arraste para marcar perda' : 'Nenhum lead nesta etapa';
   const shown = items.slice(0, 10);
   return `<div class="lane" style="--c:${color}" data-lane="${esc(name)}">
     <header class="lh"><h3 title="${esc(name)}">${esc(name)}</h3><span class="cnt num">${items.length}</span>${right}</header>
@@ -354,39 +378,56 @@ function render() {
   board.innerHTML = STAGES.map(s => laneHTML(s.name, s.c, by(s.name))).join('')
     + laneHTML('Venda', '#10b981', by('Venda')) + laneHTML('Perda', '#94a3b8', by('Perda'));
   board.scrollLeft = keep;
-  const active = LEADS.filter(l => STAGES.some(s => s.name === l.stage)).length;
+  const active = LEADS.filter(l => STAGES.some(s => s.name === l.stage) && inSafra(l.created)).length;
   document.getElementById('tabs').innerHTML = FUNNELS.map((f, i) => f === '|' ? '<span class="sep" aria-hidden="true"></span>'
     : `<button class="tab ${i === 0 ? 'on' : ''} ${f[1] === 0 ? 'zero' : ''}" ${i === 0 ? 'aria-current="true"' : ''}>${f[0]}${(i === 0 ? active : f[1]) ? `<span class="n num">${i === 0 ? active : f[1]}</span>` : ''}</button>`).join('');
   requestAnimationFrame(fitTabs);
-  // Filtro ligado aparece na barra.
-  const chips = state.resp.map(id => `<span class="fchip">${esc(shortName(userOf(id).name))}<button aria-label="Tirar ${esc(userOf(id).name)} do filtro" data-rm="${id}">${svg('x', 11, 2.4)}</button></span>`);
-  if (state.overdue) chips.push(`<span class="fchip">Em atraso<button aria-label="Tirar filtro de atraso" data-rm="overdue">${svg('x', 11, 2.4)}</button></span>`);
-  document.getElementById('activeFilters').innerHTML = chips.join('');
-  const n = state.resp.length + (state.overdue ? 1 : 0);
-  const fb = document.getElementById('fbtn'); fb.classList.toggle('on', n > 0); document.getElementById('fcount').textContent = n;
-  document.getElementById('respList').innerHTML = `<button class="opt ${state.resp.length ? '' : 'on'}" data-resp=""><span class="avatar" style="width:24px;height:24px;background:var(--lane);color:var(--muted)">${svg('users', 13, 2)}</span>Toda a equipe<span class="ck">${svg('check', 14, 2.6)}</span></button>`
-    + USERS.filter(u => !u.me).map(u => `<button class="opt ${state.resp.includes(u.id) ? 'on' : ''}" data-resp="${u.id}">${avatar(u.name, 24)}${esc(u.name)}<span class="ck">${svg('check', 14, 2.6)}</span></button>`).join('');
-  document.getElementById('overdueSw').setAttribute('aria-checked', state.overdue);
+  // Pílulas: o texto de cada uma e quando acende.
+  const mIdx = Math.max(0, MONTH_OPTS.findIndex(o => o.key === (state.month || 'todos')));
+  document.getElementById('mLabel').textContent = MONTH_OPTS[mIdx].label;
+  document.getElementById('mPrev').disabled = mIdx >= MONTH_OPTS.length - 1;
+  document.getElementById('mNext').disabled = mIdx <= 1;
+  const one = state.resp.length === 1 ? userOf(state.resp[0]) : null;
+  document.getElementById('cVal').textContent = !state.resp.length ? 'Equipe toda' : one ? one.name : `${state.resp.length} pessoas`;
+  document.getElementById('cBtn').classList.toggle('on', state.resp.length > 0);
+  document.getElementById('sVal').textContent = state.overdue ? 'Em atraso' : 'Todos';
+  document.getElementById('sBtn').classList.toggle('on', state.overdue);
+  document.getElementById('fMobile').classList.toggle('on', state.resp.length > 0 || state.overdue || Boolean(state.month));
+  const tick = (on) => `<span class="tick">${on ? svg('check', 13, 2.8) : ''}</span>`;
+  const mark = (on, sq) => `<span class="mark ${sq ? 'sq' : ''}">${on ? svg('check', 10, 3.6) : ''}</span>`;
+  document.getElementById('mMenu').innerHTML = '<div class="mh">Mês</div>' + MONTH_OPTS.map(o => `${o.rule ? '<div class="rule"></div>' : ''}<button class="row chk ${o.key === (state.month || 'todos') ? 'on' : ''}" data-m="${o.key}">${tick(o.key === (state.month || 'todos'))}${o.label}${o.note ? `<span class="note">${o.note}</span>` : ''}</button>`).join('');
+  document.getElementById('cMenu').innerHTML = `<button class="row radio ${state.resp.length ? '' : 'on'}" data-c="">${mark(!state.resp.length)}Equipe toda</button><div class="rule"></div>`
+    + USERS.filter(u => !u.me).map(u => `<button class="row radio ${state.resp.includes(u.id) ? 'on' : ''}" data-c="${u.id}">${mark(state.resp.includes(u.id), true)}${esc(u.name)}</button>`).join('');
+  document.getElementById('sMenu').innerHTML = [['todos', 'Todos'], ['atraso', 'Em atraso']].map(([k, t]) => `<button class="row radio ${(k === 'atraso') === state.overdue ? 'on' : ''}" data-s="${k}">${mark((k === 'atraso') === state.overdue)}${t}</button>`).join('');
 }
 
-// Filtros
-const pop = document.getElementById('pop'); const fbtn = document.getElementById('fbtn');
-fbtn.onclick = () => { const o = !pop.classList.contains('open'); pop.classList.toggle('open', o); fbtn.setAttribute('aria-expanded', o); };
-document.addEventListener('mousedown', (e) => { if (!pop.contains(e.target) && !fbtn.contains(e.target)) { pop.classList.remove('open'); fbtn.setAttribute('aria-expanded', false); } });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { pop.classList.remove('open'); fbtn.setAttribute('aria-expanded', false); } });
-document.getElementById('respList').onclick = (e) => {
-  const b = e.target.closest('[data-resp]'); if (!b) return;
-  const id = b.dataset.resp;
+// Balões das pílulas: um aberto por vez, fecham ao clicar fora e no Esc.
+const bar = document.querySelector('.bar');
+const MENUS = { mBtn: 'mMenu', cBtn: 'cMenu', sBtn: 'sMenu' };
+function closeMenus() { Object.entries(MENUS).forEach(([b, m]) => { document.getElementById(m).classList.remove('open'); document.getElementById(b).setAttribute('aria-expanded', false); }); }
+Object.entries(MENUS).forEach(([b, m]) => {
+  document.getElementById(b).onclick = () => {
+    const menu = document.getElementById(m); const was = menu.classList.contains('open');
+    closeMenus(); if (was) return;
+    menu.classList.add('open'); document.getElementById(b).setAttribute('aria-expanded', true);
+    const br = bar.getBoundingClientRect(); const tr = document.getElementById(b).getBoundingClientRect();
+    menu.style.top = (tr.bottom - br.top + 8) + 'px';
+    menu.style.left = Math.max(8, Math.min(tr.left - br.left, br.width - menu.offsetWidth - 8)) + 'px';
+  };
+});
+document.addEventListener('mousedown', (e) => { if (!e.target.closest('.menu,.pbtn,.pill,.fmobile,.filters.open')) { closeMenus(); document.getElementById('filters').classList.remove('open'); } });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeMenus(); document.getElementById('filters').classList.remove('open'); } });
+const pickMonth = (key) => { state.month = key === 'todos' ? null : key; render(); };
+document.getElementById('mMenu').onclick = (e) => { const b = e.target.closest('[data-m]'); if (!b) return; closeMenus(); pickMonth(b.dataset.m); };
+document.getElementById('mPrev').onclick = () => { const i = MONTH_OPTS.findIndex(o => o.key === (state.month || 'todos')); pickMonth(MONTH_OPTS[i + 1].key); };
+document.getElementById('mNext').onclick = () => { const i = MONTH_OPTS.findIndex(o => o.key === (state.month || 'todos')); pickMonth(MONTH_OPTS[i - 1].key); };
+document.getElementById('cMenu').onclick = (e) => {
+  const b = e.target.closest('[data-c]'); if (!b) return; const id = b.dataset.c;
   state.resp = !id ? [] : state.resp.includes(id) ? state.resp.filter(x => x !== id) : [...state.resp, id];
   render();
 };
-document.getElementById('overdueSw').onclick = () => { state.overdue = !state.overdue; render(); };
-document.getElementById('clear').onclick = () => { state.resp = []; state.overdue = false; render(); };
-document.getElementById('activeFilters').onclick = (e) => {
-  const b = e.target.closest('[data-rm]'); if (!b) return;
-  if (b.dataset.rm === 'overdue') state.overdue = false; else state.resp = state.resp.filter(x => x !== b.dataset.rm);
-  render();
-};
+document.getElementById('sMenu').onclick = (e) => { const b = e.target.closest('[data-s]'); if (!b) return; closeMenus(); state.overdue = b.dataset.s === 'atraso'; render(); };
+document.getElementById('fMobile').onclick = () => { const f = document.getElementById('filters'); f.classList.toggle('open'); document.getElementById('fMobile').setAttribute('aria-expanded', f.classList.contains('open')); };
 
 // Arrasto
 let dragId = null;
