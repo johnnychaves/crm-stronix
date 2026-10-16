@@ -25,7 +25,7 @@ describe('tabela de parâmetros', () => {
     expect(SCREEN_PARAM_NAMES.dashOperacional).toEqual(['mes', 'comparar', 'comparar-com', 'pessoa']);
     expect(SCREEN_PARAM_NAMES.dashCrm).toEqual(['mes', 'comparar', 'comparar-com', 'pessoa', 'funil']);
     expect(SCREEN_PARAM_NAMES.dashGerencial).toEqual(['mes', 'comparar', 'comparar-com']);
-    expect(SCREEN_PARAM_NAMES.kanban).toEqual(['funil', 'resp', 'atraso']);
+    expect(SCREEN_PARAM_NAMES.kanban).toEqual(['funil', 'mes', 'resp', 'atraso']);
     expect(SCREEN_PARAM_NAMES.clientes).toEqual(['sit', 'resp']);
     expect(SCREEN_PARAM_NAMES.leads).toEqual(['funil', 'fase', 'resp', 'atraso', 'quente']);
     expect(SCREEN_PARAM_NAMES.aulas).toEqual(['dia', 'de', 'ate', 'resp', 'prof']);
@@ -302,7 +302,7 @@ describe('ida e volta de tudo', () => {
       ['dashOperacional', '?mes=2026-08&comparar=0&comparar-com=2026-06&pessoa=u1'],
       ['dashCrm', '?mes=2026-08&pessoa=u1&funil=f2'],
       ['dashGerencial', '?mes=2026-08&comparar=0'],
-      ['kanban', '?funil=f2&resp=u1&atraso=1'],
+      ['kanban', '?funil=f2&mes=2026-07&resp=u1&atraso=1'],
       ['clientes', '?sit=ativo&resp=u1,u2'],
       ['leads', '?funil=f1&fase=s1&resp=u2&atraso=1&quente=1'],
       ['aulas', '?de=2026-09-01&ate=2026-09-10&resp=u1&prof=p1'],
@@ -394,6 +394,33 @@ describe('contrato do contexto dos três dashboards', () => {
   });
 });
 
+describe('mês de cadastro do Pipeline', () => {
+  const kanban = { users, funis, podeResp: true, respPadrao: [], funilPadrao: 'f1', currentKey: HOJE };
+
+  it('ausente é todos os meses, e todos os meses não é escrito', () => {
+    expect(ler('kanban', '', kanban).monthKey).toBeNull();
+    expect(montar('kanban', { funnel: 'f1', monthKey: null, resp: [], overdue: false }, kanban)).toBe('?funil=f1');
+  });
+
+  it('o mês atual também é escrito, porque o padrão é todos os meses', () => {
+    expect(ler('kanban', '?mes=2026-09', kanban).monthKey).toBe('2026-09');
+    expect(montar('kanban', { funnel: 'f1', monthKey: '2026-09', resp: [], overdue: false }, kanban)).toBe('?funil=f1&mes=2026-09');
+  });
+
+  it('vale até 11 meses antes do atual; fora disso, e lixo, cai em todos os meses', () => {
+    expect(ler('kanban', '?mes=2025-10', kanban).monthKey).toBe('2025-10');
+    expect(ler('kanban', '?mes=2025-09', kanban).monthKey).toBeNull();
+    expect(ler('kanban', '?mes=2026-10', kanban).monthKey).toBeNull();
+    expect(ler('kanban', '?mes=setembro', kanban).monthKey).toBeNull();
+    expect(montar('kanban', { funnel: 'f1', monthKey: '2025-09', resp: [], overdue: false }, kanban)).toBe('?funil=f1');
+  });
+
+  it('sem o mês atual no contexto, nenhum mês vale', () => {
+    const semHoje = { ...kanban, currentKey: undefined };
+    expect(ler('kanban', '?mes=2026-09', semHoje).monthKey).toBeNull();
+  });
+});
+
 describe('contrato do contexto do Pipeline e de Clientes', () => {
   const kanban = { users, funis, podeResp: true, respPadrao: ['u2'], funilPadrao: 'f1' };
   const gestorNoKanban = { ...kanban, respPadrao: [] };
@@ -413,7 +440,7 @@ describe('contrato do contexto do Pipeline e de Clientes', () => {
   });
 
   it('o Pipeline não tem fase, situação nem quente no endereço', () => {
-    expect(ler('kanban', '?fase=s1&sit=ativo&quente=1', kanban)).toEqual({ funnel: 'f1', resp: ['u2'], overdue: false });
+    expect(ler('kanban', '?fase=s1&sit=ativo&quente=1', kanban)).toEqual({ funnel: 'f1', monthKey: null, resp: ['u2'], overdue: false });
   });
 
   it('Clientes junta situação e responsável na mesma query, na ordem da tabela', () => {

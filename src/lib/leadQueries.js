@@ -255,6 +255,21 @@ export const bucketByFunnelQuerySpec = (bucket, funnelId, pageSize = LIST_PAGE_S
   limit: pageSize,
 });
 
+// Venda e Perda do Pipeline com um mês escolhido: os leads do funil CADASTRADOS
+// no mês (a safra), num balde. Mesmo índice #2: igualdade no balde e no funil,
+// faixa e ordem no createdAt. Sem pageSize vem o mês inteiro (Venda); com ele,
+// a página da coluna Perda. Os mesmos `wheres` servem à contagem do cabeçalho.
+export const bucketByFunnelInMonthQuerySpec = (bucket, funnelId, startMs, endMs, pageSize = null) => ({
+  wheres: [
+    { field: 'lifecycleBucket', op: '==', value: bucket },
+    { field: 'funnelId', op: '==', value: funnelId },
+    { field: 'createdAt', op: '>=', value: new Date(startMs) },
+    { field: 'createdAt', op: '<', value: new Date(endMs) },
+  ],
+  orderBy: { field: 'createdAt', dir: 'desc' },
+  ...(pageSize ? { limit: pageSize } : {}),
+});
+
 // AppointmentTrackingView (E2b) — agendamentos de UM tipo numa JANELA de datas,
 // pra alimentar as tabs Hoje/Ontem/Amanhã e o range custom (≤30d) sem carregar
 // todo o histórico (agendamentos crescem sem limite). Casa com o índice #5

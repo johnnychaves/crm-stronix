@@ -108,13 +108,15 @@ export function ConsultoresMenu({ resp, people, onResp }) {
   );
 }
 
-export function ConsultoresControl({ resp, people, onResp, compact = false }) {
+// `active` diz quando a pílula acende. Nos Relatórios é qualquer escolha; no
+// Pipeline, a carteira padrão do papel não acende (isDefaultRespFilter).
+export function ConsultoresControl({ resp, people, onResp, compact = false, label = 'Consultor', active = resp.length > 0 }) {
   const one = resp.length === 1 ? people.find((p) => p.id === resp[0]) : null;
   const text = resp.length === 0 ? 'Equipe toda' : one ? one.name : `${resp.length} pessoas`;
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <FilterButton label="Consultor" icon={Users} active={resp.length > 0} text={text} compact={compact} />
+        <FilterButton label={label} icon={Users} active={active} text={text} compact={compact} />
       </PopoverTrigger>
       {/* A lista cabe na tela e rola por dentro: a altura livre é a que o Radix mede
           do lado em que o balão abre. Com muitos consultores, sem isso o topo (Equipe toda)

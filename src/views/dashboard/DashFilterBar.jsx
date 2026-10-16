@@ -80,8 +80,8 @@ export function OptionList({ options, value, onPick, radio = false, label }) {
 }
 
 // Período: setas e o mês no meio, que abre a lista de meses. `options` é
-// [{ key, label, note }]; as setas se desligam nos extremos.
-export function PeriodControl({ label, options, value, onPick, canPrev, onPrev, canNext, onNext }) {
+// [{ key, label, note, ruleBefore }]; as setas se desligam nos extremos.
+export function PeriodControl({ label, options, value, onPick, canPrev, onPrev, canNext, onNext, ariaLabel = 'Mês de competência' }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="flex h-[38px] items-center gap-0.5 rounded-xl border border-border bg-card p-[3px] shadow-card">
@@ -92,7 +92,7 @@ export function PeriodControl({ label, options, value, onPick, canPrev, onPrev, 
         <PopoverTrigger asChild>
           <button
             type="button"
-            aria-label="Mês de competência"
+            aria-label={ariaLabel}
             className="flex h-[30px] items-center gap-2 whitespace-nowrap rounded-[9px] px-2.5 text-[13px] font-semibold outline-none hover:bg-muted focus-visible:anel-foco"
           >
             <Calendar size={14} strokeWidth={2} className="flex-none text-brand-600" />
