@@ -85,6 +85,24 @@ describe('peças do CRM', () => {
     expect(html).toContain('min-w-[150px]');
   });
 
+  it('cabeçalho: sem espaço, os controles descem de linha em vez de encolher e cortar o rótulo', () => {
+    const noop = () => {};
+    const html = render(createElement(CrmToolbar, {
+      monthKey: '2026-10', monthOptions: [{ key: '2026-10', label: 'Outubro 2026 · em andamento' }], onMonth: noop,
+      canPrev: true, canNext: false, onPrev: noop, onNext: noop,
+      compareOn: true, onCompareOn: noop, compareKey: '2026-09', compareOptions: [{ key: '2026-09', label: 'Setembro 2026' }], onCompare: noop,
+      person: 'all', people: [], onPerson: noop, funnel: 'all', funnels: [], onFunnel: noop,
+      title: 'CRM', subline: 'Uma linha de apoio longa que, sozinha, ocuparia a largura toda do cartão.'
+    }));
+    // O cartão quebra linha, o texto tem largura-base e os controles não encolhem.
+    expect(html).toContain('md:flex-wrap');
+    expect(html).toContain('md:basis-[360px]');
+    expect(html).toContain('md:flex-none');
+    expect(html).toContain('[&amp;&gt;*]:shrink-0');
+    // O chip do funil não quebra "Todos os funis" em duas linhas.
+    expect(html).toMatch(/aria-label="Funil"[^>]*class="[^"]*whitespace-nowrap/);
+  });
+
   it('controle de mês compacto: rótulo curto no botão, sem o "em andamento"; sem compact, o de antes', () => {
     const noop = () => {};
     const props = {

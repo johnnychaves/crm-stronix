@@ -24,7 +24,7 @@ function FunnelControl({ funnel, funnels, onFunnel }) {
           type="button"
           aria-label="Funil"
           className={cn(
-            'flex h-9 items-center gap-2 rounded-xl border px-3 text-[12.5px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
+            'flex h-9 items-center gap-2 whitespace-nowrap rounded-xl border px-3 text-[12.5px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
             active ? 'border-brand-600 bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300' : 'border-border bg-card text-foreground'
           )}
         >
@@ -47,7 +47,7 @@ export function CrmToolbar(props) {
   const filtered = person !== 'all' || funnel !== 'all';
   return (
     <FilterBar title={title} subline={subline}>
-      <div className="hidden items-center gap-2.5 md:flex">
+      <div className="hidden items-center gap-2.5 md:flex md:flex-wrap [&>*]:shrink-0">
         <MonthControl {...props} />
         <CompareControl {...props} />
         <PersonControl {...props} />
