@@ -246,47 +246,6 @@ function TagToggles({ tags, selected, onToggle }) {
   );
 }
 
-// ---------- card do lead cadastrado (tela de sucesso) ----------
-function PreviewCard({ form, statusObj, tags }) {
-  const t = statusObj ? settingsColorTone(statusObj.color) : settingsColorTone('slate');
-  return (
-    <div className="bg-white dark:bg-white/[0.04] rounded-2xl border border-slate-200 dark:border-white/[0.08] shadow-card-lg overflow-hidden">
-      <div className="h-1.5 w-full bg-brand-500"></div>
-      <div className="p-4">
-        <div className="flex items-center gap-3">
-          <LeadAvatar name={form.name} size={44} />
-          <div className="min-w-0 flex-1">
-            <div className="font-display font-bold text-[15px] tracking-tight text-slate-900 dark:text-white truncate">{form.name}</div>
-            <div className="text-[12px] text-slate-500 dark:text-slate-400 num">
-              {form.isMinor && form.guardianPhone
-                ? `${formatPhone(form.guardianPhone)} · resp.`
-                : (form.whatsapp ? formatPhone(form.whatsapp) : '')}
-            </div>
-          </div>
-        </div>
-
-        {form.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-3">
-            {form.tags.slice(0, 3).map((name) => {
-              const tg = (tags || []).find((x) => x.name === name);
-              const tt = settingsColorTone(tg ? tg.color : 'slate');
-              return <span key={name} className={cn('text-[10.5px] font-semibold px-1.5 py-0.5 rounded-md', tt.soft, tt.text, tt.darkSoft, tt.darkText)}>{name}</span>;
-            })}
-            {form.tags.length > 3 && <span className="text-[10.5px] font-semibold text-slate-400 self-center">+{form.tags.length - 3}</span>}
-          </div>
-        )}
-
-        <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100 dark:border-white/[0.06]">
-          <span className={cn('inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-1 rounded-md', t.soft, t.text, t.darkSoft, t.darkText)}>
-            <span className={cn('size-1.5 rounded-full', t.strong)}></span>{form.status || '—'}
-          </span>
-          {form.source && <span className="text-[11px] text-slate-400 dark:text-slate-500">{form.source}</span>}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 const byOrder = (a, b) => (a.order || 0) - (b.order || 0);
 
 // ==========================================================================
@@ -864,7 +823,8 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
             <SheetTitle className="sr-only">Lead cadastrado</SheetTitle>
             <SheetDescription className="sr-only">O lead foi cadastrado no funil.</SheetDescription>
             <SuccessView
-              form={form} statusObj={statusObj} tags={tags} funnelName={funnel?.name}
+              form={form} statusObj={statusObj} tags={tags} funnelName={funnel?.name} referrerName={referrer?.name}
+              onClose={onClose}
               onView={() => { if (createdId && onCreated) onCreated(createdId); onClose(); }}
               onAgain={reset}
             />
@@ -1032,26 +992,83 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
 }
 
 // ── Tela de sucesso ──
-function SuccessView({ form, statusObj, tags, funnelName, onView, onAgain }) {
+// Um comprovante, na linguagem dos passos: o nome em destaque e, embaixo, o que
+// foi gravado, linha a linha. É assim que a pessoa confere o destino do lead sem
+// reabrir o formulário. Alinhada ao topo e com o rodapé fixo, como o formulário,
+// para a gaveta não mudar de forma quando o cadastro termina.
+function SuccessView({ form, statusObj, tags, funnelName, referrerName, onClose, onView, onAgain }) {
+  const tone = statusObj ? settingsColorTone(statusObj.color) : settingsColorTone('slate');
+  const phone = form.isMinor ? form.guardianPhone : form.whatsapp;
+  const rows = [
+    ['Entra em', (
+      <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span>{funnelName || 'Sem funil'}</span>
+        <ChevronRight size={14} className="text-slate-400" />
+        <span className={cn('inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px] font-semibold', tone.soft, tone.text, tone.darkSoft, tone.darkText)}>
+          <span className={cn('size-1.5 rounded-full', tone.strong)} />{form.status}
+        </span>
+      </span>
+    )],
+    ['Origem', !form.source ? 'Sem origem' : referrerName ? `${form.source} · ${referrerName}` : form.source],
+    ['Dor', form.dor],
+    form.modalidade && ['Modalidade', form.modalidade],
+    form.isMinor && ['Responsável', `${form.guardianName.trim()}${form.guardianRelation ? ` (${form.guardianRelation})` : ''}`],
+    form.tags.length > 0 && ['Etiquetas', (
+      <span className="flex flex-wrap gap-1.5">
+        {form.tags.map((name) => {
+          const tg = (tags || []).find((x) => x.name === name);
+          const tt = settingsColorTone(tg ? tg.color : 'slate');
+          return <span key={name} className={cn('rounded-md px-2 py-0.5 text-[12px] font-semibold', tt.soft, tt.text, tt.darkSoft, tt.darkText)}>{name}</span>;
+        })}
+      </span>
+    )],
+    ['Consultor', 'Você'],
+  ].filter(Boolean);
+
   return (
-    <div className="flex-1 grid place-items-center px-7 py-14 relative overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-b from-emerald-50/60 to-transparent dark:from-emerald-500/[0.06] pointer-events-none"></div>
-      <div className="text-center fade-in relative max-w-sm">
-        <div className="size-16 rounded-2xl bg-emerald-100 dark:bg-emerald-500/15 grid place-items-center mx-auto mb-5 check-pop">
-          <Check size={32} className="text-emerald-600 dark:text-emerald-400" />
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex items-center justify-between gap-3 px-7 pt-6">
+        <span className="inline-flex items-center gap-2 text-[13px] font-semibold text-emerald-700 dark:text-emerald-300">
+          <span className="check-pop grid size-6 place-items-center rounded-full bg-emerald-500 text-white"><Check size={14} /></span>
+          Lead cadastrado
+        </span>
+        <button
+          type="button" onClick={onClose} aria-label="Fechar"
+          className="-mr-2 grid size-9 place-items-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-900 focus-visible:anel-foco dark:hover:bg-white/[0.06] dark:hover:text-white"
+        ><X size={18} /></button>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain thin-scroll px-7 pb-4 pt-8">
+        <div className="fade-in flex items-center gap-4">
+          <LeadAvatar name={form.name} size={56} />
+          <div className="min-w-0">
+            <h3 className="break-words font-display text-[28px] font-bold leading-tight tracking-tight">{form.name.trim()}</h3>
+            <p className="num mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[14px] text-slate-500 dark:text-slate-400">
+              {formatPhone(phone)}
+              {form.isMinor && <span className="rounded-md bg-brand-50 px-2 py-0.5 text-[12px] font-semibold text-brand-700 dark:bg-brand-500/12 dark:text-brand-300">Menor de idade</span>}
+            </p>
+          </div>
         </div>
-        <h3 className="font-display text-[22px] font-bold tracking-tight">{form.name.trim()} entrou no funil</h3>
-        <p className="text-[13.5px] text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
-          Na etapa <strong className="text-slate-700 dark:text-slate-200">{form.status}</strong>{funnelName ? <> de <strong className="text-slate-700 dark:text-slate-200">{funnelName}</strong></> : null}, com você como responsável.
-        </p>
-        <div className="mt-5 max-w-[260px] mx-auto text-left"><PreviewCard form={form} statusObj={statusObj} tags={tags} /></div>
-        <div className="flex items-center justify-center gap-2 mt-6">
-          <button type="button" onClick={onView} className="h-10 px-4 rounded-xl text-[13px] font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-white/[0.06] dark:text-slate-200 focus-visible:anel-foco">Ver ficha</button>
-          <button
-            type="button" onClick={onAgain} autoFocus
-            className="h-10 px-4 rounded-xl text-[13px] font-semibold bg-brand-600 text-white hover:bg-brand-700 inline-flex items-center gap-1.5 focus-visible:anel-foco focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-          >Cadastrar outro</button>
-        </div>
+
+        <dl className="mt-8 border-t border-slate-100 dark:border-white/[0.06]">
+          {rows.map(([label, value], i) => (
+            <div
+              key={label} style={{ animationDelay: `${i * 50}ms` }}
+              className="opt-in grid grid-cols-[96px_minmax(0,1fr)] gap-3 border-b border-slate-100 py-3.5 dark:border-white/[0.06]"
+            >
+              <dt className="text-[13px] text-slate-500 dark:text-slate-400">{label}</dt>
+              <dd className="min-w-0 break-words text-[14px] font-semibold text-slate-900 dark:text-white">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+
+      <div className="flex items-center justify-end gap-2 border-t border-slate-200/80 px-7 pb-5 pt-3.5 dark:border-white/[0.07]">
+        <button
+          type="button" onClick={onView}
+          className="h-11 rounded-xl bg-slate-100 px-5 text-[13.5px] font-semibold text-slate-700 transition hover:bg-slate-200 focus-visible:anel-foco dark:bg-white/[0.06] dark:text-slate-200 dark:hover:bg-white/[0.1]"
+        >Ver ficha</button>
+        <button type="button" onClick={onAgain} autoFocus className={BTN_PRIMARY}>Cadastrar outro</button>
       </div>
     </div>
   );

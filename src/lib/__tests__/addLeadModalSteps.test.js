@@ -365,6 +365,12 @@ describe('Novo lead em etapas', () => {
       name: 'Pedro Alves', isMinor: true, whatsapp: '',
       guardian: { name: 'Luciana Alves', phone: '(51) 9 9712-3380', relationship: 'Mãe' },
     });
+
+    // O comprovante mostra o número do responsável, o aviso e quem responde pelo aluno.
+    const texto = gaveta().textContent;
+    expect(texto).toContain('(51) 9 9712-3380');
+    expect(texto).toContain('Menor de idade');
+    expect(texto).toContain('Luciana Alves (Mãe)');
   });
 
   it('a chave Menor de idade troca os números de lugar sem perder nenhum', async () => {
@@ -461,6 +467,44 @@ describe('Novo lead em etapas', () => {
     });
   });
 
+  describe('depois de cadastrar', () => {
+    it('mostra o comprovante do que foi gravado e "Cadastrar outro" começa um cadastro limpo', async () => {
+      await montar({ modalidades: [{ id: 'm1', name: 'Pilates' }] });
+      await ateAOrigem();
+      await clicar(opcao('Instagram'));
+      await clicar(opcao('Emagrecer'));
+      await clicar(opcao('Pilates'));
+      await clicar(opcao('Novo'));
+      await clicar(botao('Cadastrar lead'));
+
+      const texto = gaveta().textContent;
+      expect(texto).toContain('Lead cadastrado');
+      expect(texto).toContain('Rafael Moura');
+      expect(texto).toContain('(51) 9 8214-4700');
+      // Uma linha para cada coisa gravada, com o destino à vista.
+      for (const linha of ['Digital', 'Novo', 'Instagram', 'Emagrecer', 'Pilates', 'Consultor', 'Você']) {
+        expect(texto).toContain(linha);
+      }
+      expect(texto).not.toContain('Menor de idade');
+      expect(gaveta().querySelector('form')).toBeNull();
+
+      await clicar(botao('Cadastrar outro'));
+      expect(anuncio()).toBe('Passo 1 de 6: WhatsApp.');
+      expect(telefones()[0].value).toBe('');
+    });
+
+    it('o X da tela de sucesso fecha sem perguntar', async () => {
+      const onClose = vi.fn();
+      await montar({ onClose });
+      await tudoPreenchido();
+      await clicar(botao('Cadastrar lead'));
+
+      await clicar(fechar());
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(gaveta().textContent).not.toContain('Descartar este cadastro?');
+    });
+  });
+
   describe('fechar a gaveta', () => {
     const AVISO = 'Descartar este cadastro?';
 
@@ -502,7 +546,7 @@ describe('Novo lead em etapas', () => {
       await montar({ onClose });
       await tudoPreenchido();
       await clicar(botao('Cadastrar lead'));
-      expect(gaveta().textContent).toContain('entrou no funil');
+      expect(gaveta().textContent).toContain('Lead cadastrado');
 
       await teclar(document, { key: 'Escape' });
       expect(onClose).toHaveBeenCalledTimes(1);
