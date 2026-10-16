@@ -1,0 +1,638 @@
+<!doctype html>
+<html lang="pt-BR" translate="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pipeline B · Trilho</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Tokens do app (src/index.css): brand #2B59FF, accent #FF6A2B, paper, ink. */
+:root{
+  --paper:#F5F7FB;--surface:#fff;--sunk:#EEF1F7;--line:#E6EAF2;--line-strong:#D5DCE8;
+  --ink:#0E1A40;--text:#1E293B;--muted:#64748B;--faint:#94A3B8;
+  --brand:#2B59FF;--brand-50:#EAF0FF;--brand-200:#B8CCFF;--brand-700:#1C3FC4;
+  --rose:#E11D48;--rose-bg:#FFEEF1;--amber:#B45309;--amber-bg:#FEF4E2;
+  --green:#0F9D6E;--green-bg:#E7F7F0;--green-edge:#10B981;--violet:#6D28D9;--violet-bg:#F1EBFE;
+  --shadow:0 1px 2px rgba(14,26,64,.06);--shadow-hover:0 12px 26px -14px rgba(14,26,64,.32);
+  --sidebar:#fff;--scroll:#CBD3E1;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#080D22;--surface:#122142;--sunk:#0C1533;--line:#1B2A52;--line-strong:#263867;
+  --ink:#fff;--text:#E2E8F0;--muted:#94A3B8;--faint:#64748B;
+  --brand:#5A7FFF;--brand-50:rgba(90,127,255,.16);--brand-200:rgba(90,127,255,.4);--brand-700:#9FBCFF;
+  --rose:#FB7185;--rose-bg:rgba(244,63,94,.15);--amber:#FBBF24;--amber-bg:rgba(245,158,11,.14);
+  --green:#6EE7B7;--green-bg:rgba(16,185,129,.15);--violet:#C4B5FD;--violet-bg:rgba(139,92,246,.18);
+  --shadow:none;--shadow-hover:0 12px 26px -14px rgba(0,0,0,.6);--sidebar:#0E1A40;--scroll:#2A3B66;color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --paper:#080D22;--surface:#122142;--sunk:#0C1533;--line:#1B2A52;--line-strong:#263867;
+  --ink:#fff;--text:#E2E8F0;--muted:#94A3B8;--faint:#64748B;
+  --brand:#5A7FFF;--brand-50:rgba(90,127,255,.16);--brand-200:rgba(90,127,255,.4);--brand-700:#9FBCFF;
+  --rose:#FB7185;--rose-bg:rgba(244,63,94,.15);--amber:#FBBF24;--amber-bg:rgba(245,158,11,.14);
+  --green:#6EE7B7;--green-bg:rgba(16,185,129,.15);--violet:#C4B5FD;--violet-bg:rgba(139,92,246,.18);
+  --shadow:none;--shadow-hover:0 12px 26px -14px rgba(0,0,0,.6);--sidebar:#0E1A40;--scroll:#2A3B66;color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--text);font:14px/1.45 Geist,ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+a{color:inherit;text-decoration:none}
+svg{display:block;flex:none}
+:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.num{font-variant-numeric:tabular-nums}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+.app{height:100vh;display:flex}
+.rail{width:72px;flex:none;background:var(--sidebar);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:10px;padding-top:16px}
+.rail i{width:36px;height:36px;border-radius:11px;background:var(--sunk)}
+.rail i.on{background:var(--brand-50);box-shadow:inset 0 0 0 1.5px var(--brand-200)}
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.banner{display:none;flex:none;height:38px;align-items:center;justify-content:center;gap:10px;font-size:12.5px;font-weight:500;background:var(--brand-50);color:var(--brand-700);border-bottom:1px solid var(--brand-200)}
+.has-banner .banner{display:flex}
+.topbar{height:64px;flex:none;display:flex;align-items:center;gap:16px;padding:0 32px;background:var(--surface);border-bottom:1px solid var(--line)}
+.topbar h1{margin:0;font:700 19px 'Space Grotesk';letter-spacing:-.01em;color:var(--ink)}
+.topbar .sp{flex:1}
+.topbar .av{width:34px;height:34px;border-radius:50%;background:var(--sunk)}
+
+.screen{flex:1;min-height:0;display:flex;flex-direction:column}
+.bar{height:60px;flex:none;display:flex;align-items:center;gap:14px;padding:0 28px;background:var(--surface);border-bottom:1px solid var(--line);position:relative;z-index:6}
+.tabs{flex:1;min-width:0;height:100%;display:flex;align-items:stretch;gap:2px;overflow:hidden}
+.tab{padding:0 12px;display:inline-flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:var(--muted);white-space:nowrap;box-shadow:inset 0 -2px 0 transparent}
+.tab:hover{color:var(--text)}
+.tab.on{color:var(--brand-700);box-shadow:inset 0 -2px 0 var(--brand)}
+.tab .n{font-size:11px;font-weight:700;padding:1px 6px;border-radius:6px;background:var(--sunk);color:var(--muted)}
+.tab.on .n{background:var(--brand-50);color:var(--brand-700)}
+.tab.zero{color:var(--faint)}
+.more-tab{align-self:center;flex:none;height:32px;padding:0 10px;border-radius:9px;border:1px dashed var(--brand-200);background:var(--brand-50);color:var(--brand-700);font-size:12.5px;font-weight:700;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.tabs .sep{width:1px;margin:19px 8px;background:var(--line-strong);flex:none}
+.tabmenu{position:absolute;top:54px;width:240px;border-radius:14px;background:var(--surface);border:1px solid var(--line-strong);box-shadow:0 16px 40px -8px rgba(14,26,64,.25);padding:6px;display:none;z-index:7}
+.tabmenu.open{display:block}
+.tabmenu button{width:100%;display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:9px;font-size:13px;font-weight:600;text-align:left}
+.tabmenu button:hover{background:var(--sunk)}
+.tabmenu .n{margin-left:auto;font-size:11px;font-weight:700;padding:1px 6px;border-radius:6px;background:var(--sunk);color:var(--muted)}
+.who-btn{height:38px;flex:none;display:inline-flex;align-items:center;gap:8px;padding:0 10px 0 6px;border-radius:11px;border:1px solid var(--line-strong);font-size:13px;font-weight:600;white-space:nowrap}
+.who-btn.on{background:var(--brand-50);border-color:var(--brand-200);color:var(--brand-700)}
+.stack{display:flex}.stack .avatar{box-shadow:0 0 0 2px var(--surface)}.stack .avatar+.avatar{margin-left:-7px}
+.seg{display:inline-flex;flex:none;padding:3px;border-radius:11px;background:var(--sunk);gap:2px}
+.seg button{height:30px;padding:0 10px;border-radius:8px;font-size:12.5px;font-weight:600;color:var(--muted);display:inline-flex;align-items:center;gap:6px}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow),0 0 0 1px var(--line)}
+.pop{position:absolute;top:54px;width:272px;border-radius:14px;background:var(--surface);border:1px solid var(--line-strong);box-shadow:0 16px 40px -8px rgba(14,26,64,.25);display:none;overflow:hidden;padding:8px}
+.pop.open{display:block}
+.opt{width:100%;display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:9px;text-align:left;font-size:12.5px;font-weight:500}
+.opt:hover{background:var(--sunk)}
+.opt.on{background:var(--brand-50);font-weight:700}
+.opt .ck{margin-left:auto;color:var(--brand);visibility:hidden}.opt.on .ck{visibility:visible}
+
+/* Fila de trabalho: o filtro de atraso saiu do balão e virou a primeira
+   coisa da tela, com a contagem de cada grupo. */
+.queue{flex:none;display:flex;align-items:center;gap:8px;padding:14px 28px 4px}
+.q{height:34px;flex:none;display:inline-flex;align-items:center;gap:8px;padding:0 12px 0 10px;border-radius:999px;border:1px solid var(--line-strong);background:var(--surface);font-size:13px;font-weight:600;color:var(--text);white-space:nowrap}
+.q[data-q="all"]{padding-left:12px}
+.q .dot{width:8px;height:8px;border-radius:50%;background:var(--faint)}
+.q b{font:700 13px 'Space Grotesk';color:var(--muted)}
+.q[data-q="overdue"] .dot{background:var(--rose)}.q[data-q="today"] .dot{background:var(--brand)}.q[data-q="none"] .dot,.q[data-q="pending"] .dot{background:#F59E0B}.q[data-q="handled"] .dot{background:var(--green-edge)}
+.q[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--surface)}
+.q[aria-pressed="true"] b{color:inherit;opacity:.75}
+.queue .hint{margin-left:auto;font-size:12px;color:var(--muted);white-space:nowrap}
+
+/* Quadro */
+.board-wrap{flex:1;min-height:0;position:relative}
+.board{position:absolute;inset:0;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;display:flex;align-items:stretch;padding:14px 0 0 28px}
+.board::-webkit-scrollbar{height:10px}.board::-webkit-scrollbar-thumb{background:var(--scroll);border-radius:99px;border:2px solid var(--paper)}
+.col{width:272px;flex:none;display:flex;flex-direction:column;min-height:0;margin-right:20px;position:relative}
+/* Trilho: um nó por etapa ligado ao da etapa seguinte, na cor das duas. */
+.station{flex:none;position:relative;padding:0 2px 12px}
+.track{display:flex;align-items:center;height:30px}
+.node{position:relative;z-index:1;height:30px;min-width:30px;padding:0 9px;border-radius:999px;display:grid;place-items:center;font:700 13px 'Space Grotesk';color:var(--node-ink);background:var(--node-bg);box-shadow:inset 0 0 0 1.5px var(--c);transition:box-shadow .12s}
+.line{flex:1;height:2px;margin-right:-22px;background:linear-gradient(90deg,var(--c),var(--next))}
+.col.last .line{display:none}
+.station h3{margin:8px 0 0;font-size:14px;font-weight:650;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.station p{margin:1px 0 0;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:18px}
+.station p .late{color:var(--rose);font-weight:600}
+.station p .wait{color:var(--amber);font-weight:600}
+.col.over .node{box-shadow:inset 0 0 0 2px var(--c),0 0 0 5px var(--brand-50)}
+.list{flex:1;min-height:0;overflow-y:auto;scrollbar-gutter:stable;margin:0 -8px 0 -4px;padding:2px 4px 16px 4px;display:flex;flex-direction:column;gap:8px;border-radius:14px;transition:background .12s;scrollbar-width:thin;scrollbar-color:var(--scroll) transparent}
+.list::-webkit-scrollbar{width:6px}.list::-webkit-scrollbar-thumb{background:var(--scroll);border-radius:99px}
+.col.over .list{background:var(--brand-50);box-shadow:inset 0 0 0 2px var(--brand-200)}
+.empty{min-height:96px;border:1.5px dashed var(--line-strong);border-radius:12px;display:grid;place-items:center;text-align:center;padding:0 16px;font-size:12.5px;color:var(--muted)}
+.more{flex:none;height:34px;border-radius:10px;font-size:12.5px;font-weight:600;color:var(--brand-700)}
+.more:hover{background:var(--brand-50)}
+.more span{font-weight:500;color:var(--muted)}
+/* Cadastro rápido no topo da primeira etapa, já no funil aberto. */
+.add{flex:none;height:38px;border-radius:12px;border:1.5px dashed var(--line-strong);display:flex;align-items:center;justify-content:center;gap:6px;font-size:13px;font-weight:600;color:var(--muted)}
+.add:hover{border-color:var(--brand-200);color:var(--brand-700);background:var(--brand-50)}
+
+/* Card: o relógio à esquerda. A coluna já vem ordenada pelo próximo
+   compromisso, então ler de cima para baixo é ler a agenda da etapa. */
+.card{flex:none;display:flex;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);cursor:grab;overflow:hidden;transition:border-color .12s,box-shadow .12s}
+.card:hover{border-color:var(--brand-200);box-shadow:var(--shadow-hover)}
+.card.dragging{opacity:.4}
+.clock{width:60px;flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;background:var(--sunk);color:var(--text);border-right:1px solid var(--line);text-align:center}
+.clock b{font:700 16px/1.05 'Space Grotesk';letter-spacing:-.02em}
+.clock small{font-size:11px;font-weight:600;color:var(--muted);white-space:nowrap;line-height:1.2}
+.card[data-s="overdue"] .clock,.card[data-s="r-hot"] .clock{background:var(--rose-bg);color:var(--rose);border-right-color:transparent}
+.card[data-s="today"] .clock,.card[data-s="r-cool"] .clock{background:var(--brand-50);color:var(--brand-700);border-right-color:transparent}
+.card[data-s="none"] .clock,.card[data-s="r-warm"] .clock{background:var(--amber-bg);color:var(--amber);border-right-color:transparent}
+.card[data-s="overdue"] .clock small,.card[data-s="r-hot"] .clock small,.card[data-s="today"] .clock small,.card[data-s="r-cool"] .clock small,.card[data-s="none"] .clock small,.card[data-s="r-warm"] .clock small{color:inherit}
+.card[data-s="none"] .clock small{white-space:normal;line-height:1.15}
+.cbody{flex:1;min-width:0;padding:9px 10px 8px 11px;display:flex;flex-direction:column}
+.r1{display:flex;align-items:center;gap:6px;min-width:0}
+.name{flex:1;min-width:0;font-size:14px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.name:hover{color:var(--brand-700)}
+.acts{flex:none;display:none;gap:2px;margin:-3px -4px -3px 0}
+.card:hover .acts,.card:focus-within .acts{display:flex}
+.acts button,.acts a{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;color:var(--faint)}
+.acts button:hover,.acts a:hover{background:var(--brand-50);color:var(--brand)}
+.r2{margin-top:2px;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:500;color:var(--muted);min-width:0}
+.r2 span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.r2.ok{color:var(--green);font-weight:600}.r2.wait{color:var(--amber);font-weight:600}
+.chips{margin-top:7px;display:flex;gap:4px;min-width:0}
+.chip{display:block;min-width:0;max-width:100%;height:20px;line-height:20px;padding:0 7px;border-radius:6px;background:var(--sunk);font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip:first-child{flex:none;max-width:50%}
+/* Nos funis de clientes o contexto é o contrato, não a origem. */
+/* O plano encolhe com reticências; a data fica inteira. */
+.contract{margin-top:6px;display:flex;gap:5px;min-width:0;font-size:11.5px;color:var(--muted);white-space:nowrap}
+.contract b{min-width:0;overflow:hidden;text-overflow:ellipsis;font-weight:600;color:var(--text)}
+.contract span{flex:none}
+/* Tarefa com outra pessoa: quem agendou a visita, ou recebeu o contato. */
+.task{margin-top:7px;align-self:flex-start;max-width:100%;display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px 0 3px;border-radius:999px;background:var(--violet-bg);color:var(--violet);font-size:11.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.foot{margin-top:8px;display:flex;align-items:center;gap:6px;font-size:11.5px;min-width:0}
+.foot .who{flex:1;min-width:0;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.foot .sil{flex:none;font-weight:600;color:var(--faint)}
+.foot .sil.warn{color:var(--amber)}.foot .sil.cold{color:var(--muted)}
+.avatar{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-weight:700;flex:none}
+/* Modo Lista: uma linha por lead, para coluna com 40 nomes. O dia continua
+   embaixo da hora, menor: "09:00" sozinho não diz se foi ontem ou há 3 dias. */
+.compact .card .chips,.compact .card .foot,.compact .card .contract,.compact .card .task{display:none}
+.compact .card .clock b{font-size:13.5px}
+.compact .card .clock small{font-size:10px}
+.compact .card[data-s="none"] .clock b{display:none}
+.compact .cbody{padding:6px 10px}
+.compact .list{gap:5px}
+
+/* Saídas: Venda e Perda presas à direita do quadro. Ficam à vista com
+   qualquer quantidade de etapas, e é onde o card solta. */
+.dock{position:sticky;right:0;margin-left:auto;width:264px;flex:none;display:flex;flex-direction:column;gap:10px;padding:0 20px 16px 16px;background:var(--paper);border-left:1px solid var(--line);z-index:3}
+.board.scrolled .dock{box-shadow:-14px 0 24px -18px rgba(14,26,64,.35)}
+.exit{flex:1;min-height:0;display:flex;flex-direction:column;border-radius:14px;background:var(--surface);border:1px solid var(--line);overflow:hidden;transition:background .12s}
+.exit.win{flex:1.1}
+.exit header{flex:none;padding:12px 14px 10px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line)}
+.exit .ic{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;flex:none}
+.exit.win .ic{background:var(--green-bg);color:var(--green);box-shadow:inset 0 0 0 1.5px var(--green-edge)}
+.exit.loss .ic{background:var(--sunk);color:var(--muted);box-shadow:inset 0 0 0 1.5px var(--line-strong)}
+.exit header>div:not(.tot){min-width:0}
+.exit h3{margin:0;font-size:14px;font-weight:650;color:var(--ink);white-space:nowrap}
+.exit header p{margin:0;font-size:12px;color:var(--muted);white-space:nowrap}
+.exit header .tot{margin-left:auto;text-align:right;flex:none}
+.exit header .tot b{display:block;font:700 15px 'Space Grotesk';color:var(--ink)}
+.exit.win header .tot b{color:var(--green)}
+.exit header .tot span{font-size:11.5px;color:var(--muted)}
+.exit ul{list-style:none;margin:0;padding:4px 6px 8px;overflow-y:auto;flex:1;min-height:0;scrollbar-width:thin;scrollbar-color:var(--scroll) transparent}
+.exit li{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:9px;font-size:12.5px}
+.exit li:hover{background:var(--sunk)}
+.exit li[draggable]{cursor:grab}
+.exit li .grip{color:var(--faint);margin-left:-4px}
+.exit li .nm{flex:1;min-width:0;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.exit li a.nm:hover{color:var(--brand-700);text-decoration:underline;text-underline-offset:2px}
+.exit li .v{flex:none;font-weight:600;color:var(--green)}
+.exit li .rs{flex:none;max-width:42%;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.exit li.more-li{padding:0}.exit li.more-li:hover{background:none}
+.exit li.more-li .more{width:100%}
+.exit .note{padding:12px 14px;font-size:12.5px;color:var(--muted)}
+.exit .droptip{display:none;flex:1;place-items:center;text-align:center;font-weight:600;font-size:13px;padding:0 16px}
+.dragging-card .exit ul,.dragging-card .exit .note{display:none}
+.dragging-card .exit .droptip{display:grid}
+.dragging-card .exit.win{border:1.5px dashed var(--green-edge)}
+.dragging-card .exit.loss{border:1.5px dashed var(--line-strong)}
+.exit.win.over{background:var(--green-bg)}
+.exit.loss.over{background:var(--sunk)}
+.exit.win .droptip{color:var(--green)}.exit.loss .droptip{color:var(--muted)}
+
+.toast{position:fixed;left:50%;top:84px;transform:translateX(-50%);max-width:calc(100% - 32px);background:#0E1A40;color:#fff;padding:10px 16px;border-radius:12px;font-size:13px;font-weight:500;box-shadow:0 12px 30px -10px rgba(0,0,0,.5);opacity:0;transition:opacity .2s;z-index:50;pointer-events:none}
+.toast.show{opacity:1}
+
+.mk{position:fixed;right:76px;top:14px;z-index:60;display:flex;gap:6px;align-items:center;background:#0E1A40;color:#fff;border-radius:999px;padding:5px 6px 5px 14px;font-size:12px;font-weight:600;box-shadow:0 8px 24px -8px rgba(0,0,0,.5)}
+.mk button{padding:5px 10px;border-radius:999px;background:rgba(255,255,255,.1);font-size:11.5px;color:#fff}
+.mk button[aria-pressed="true"]{background:#fff;color:#0E1A40}
+.notes{position:fixed;right:76px;top:58px;z-index:60;width:410px;max-height:76vh;overflow:auto;background:var(--surface);color:var(--text);border:1px solid var(--line-strong);border-radius:16px;padding:16px 18px;box-shadow:0 20px 50px -14px rgba(14,26,64,.45);display:none;font-size:13px}
+.notes.open{display:block}
+.notes h5{margin:0 0 8px;font:700 15px 'Space Grotesk';color:var(--ink)}
+.notes h6{margin:14px 0 6px;font-size:13px;color:var(--ink)}
+.notes ul{margin:0;padding-left:18px;display:grid;gap:7px}
+.notes b{color:var(--ink)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+/* No celular as saídas viram a última coluna do quadro, sem ficar presas,
+   e os botões do topo ficam só com o ícone. */
+@media (max-width:760px){.rail{display:none}.topbar,.bar,.queue{padding-left:16px;padding-right:16px}.bar{gap:8px}.board{padding-left:16px}.queue{overflow-x:auto}.queue .hint{display:none}.dock{position:static;margin-left:0;width:272px;border-left:0;padding-left:0}.board.scrolled .dock{box-shadow:none}.who-btn .lbl,.seg .lbl{display:none}.seg button{padding:0 8px}.mk{top:auto;bottom:12px;right:12px;flex-wrap:wrap;border-radius:16px}.notes{top:auto;bottom:96px;right:12px;width:calc(100% - 24px)}}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <nav class="rail" aria-hidden="true"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></nav>
+  <div class="main">
+    <div class="banner" role="status">Seu teste acaba em 3 dias. <b>Ativar plano</b></div>
+    <header class="topbar"><h1>Pipeline</h1><span class="sp"></span><span class="av"></span></header>
+    <section class="screen" aria-label="Pipeline">
+      <div class="bar">
+        <nav class="tabs" id="tabs" aria-label="Funis"></nav>
+        <button class="who-btn" id="whoBtn" aria-haspopup="dialog" aria-expanded="false"></button>
+        <div class="seg" role="group" aria-label="Como mostrar os leads">
+          <button id="vCards" aria-pressed="true" aria-label="Cartões"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span class="lbl">Cartões</span></button>
+          <button id="vList" aria-pressed="false" aria-label="Lista"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg><span class="lbl">Lista</span></button>
+        </div>
+        <div class="pop" id="pop" role="dialog" aria-label="Carteira"><div id="respList"></div></div>
+        <div class="tabmenu" id="tabmenu" role="menu" aria-label="Outros funis"></div>
+      </div>
+      <div class="queue" id="queue" role="group" aria-label="Fila de trabalho"></div>
+      <div class="board-wrap">
+        <div class="board" id="board"></div>
+      </div>
+    </section>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<div class="notes" id="notes">
+  <h5>A ideia do desenho B</h5>
+  <ul>
+    <li><b>O relógio à esquerda de cada card.</b> A coluna já é ordenada pelo próximo compromisso, então a hora grande transforma a coluna numa agenda: vermelho é atrasado, azul é hoje, âmbar é sem agenda.</li>
+    <li><b>A fila de trabalho no topo.</b> Atrasados, Para hoje e Sem agenda viram botões com a contagem, a um clique. Hoje o "Somente em atraso" mora dentro do balão de filtros.</li>
+    <li><b>O trilho.</b> Cada etapa é uma estação com o total no nó, ligada à seguinte. Embaixo do nome, quantos estão atrasados e quantos são para hoje.</li>
+    <li><b>Venda e Perda presas à direita.</b> Ficam à vista com qualquer número de etapas e viram o alvo do arrasto.</li>
+    <li><b>Carteira com rosto.</b> O botão mostra de quem são os leads na tela, com os avatares, no lugar do ícone de filtro.</li>
+    <li><b>Modo Lista.</b> Uma linha por lead, com a hora e o dia, para a coluna cheia caber na tela.</li>
+  </ul>
+  <h6>O que entrou depois da primeira versão</h6>
+  <ul>
+    <li><b>Funis de clientes.</b> Abra Renovações, Vencidos e Upgrade nas abas. Em Renovações o relógio mostra os dias até vencer e a linha diz se o marco já foi tratado. As colunas seguem o vencimento e não se movem à mão, como hoje. Em Vencidos e Upgrade o card mostra o plano e quando venceu ou até quando vale.</li>
+    <li><b>A Perda é a do funil inteiro</b>, como hoje, com "Carregar mais". Arraste um nome da Perda de volta para uma etapa para recuperar o lead. Em Renovações e Vencidos, o mesmo gesto desfaz o "não vai renovar" e o "não volta".</li>
+    <li><b>O modo Lista mostra o dia</b> embaixo da hora.</li>
+    <li><b>Cada coluna mostra 10 cards</b> e oferece "Carregar mais", como hoje. Veja Aguardando contato, no Digital.</li>
+    <li><b>Os nomes da Venda e da Perda abrem a ficha.</b></li>
+    <li><b>Tarefa de outra pessoa.</b> Quando um colega agendou a visita ou recebeu o contato, o card mostra "Tarefa de" com o nome dele. Veja Larissa, em Agendado.</li>
+    <li><b>Novo lead no topo da primeira etapa</b>, já no funil aberto.</li>
+  </ul>
+</div>
+<div class="mk" role="group" aria-label="Controles do mockup">
+  <span>B · Trilho</span>
+  <button id="mkTheme" aria-pressed="false">Tema escuro</button>
+  <button id="mkBanner" aria-pressed="false">Faixa de aviso</button>
+  <button id="mkNotes" aria-pressed="false">A ideia</button>
+</div>
+
+<script>
+const NOW = new Date();
+const at = (days, h = 10, m = 0) => { const d = new Date(NOW); d.setDate(d.getDate() + days); d.setHours(h, m, 0, 0); return d; };
+const USERS = [{ id: 'ana', name: 'Ana Paula Ribeiro' }, { id: 'bruno', name: 'Bruno Carvalho' }, { id: 'carla', name: 'Carla Menezes' }];
+const SOURCES = ['Instagram','WhatsApp','Indicação','Google','Passante','Facebook Ads'];
+const MODS = ['Musculação','Condicionamento físico','Pilates','Funcional','Emagrecimento','Hipertrofia'];
+const PLANS = ['Plano Anual','Plano Semestral','Plano Trimestral','Plano Mensal'];
+const TYPES = ['Mensagem','Ligação','Visita','Aula'];
+const FU = [[-3,9],[-1,10],[0,8],[0,18],[1,9],[2,15],null,[5,10],[-6,17],[0,20],[3,10],null,[-2,12],[9,9]];
+const fuOf = (i) => FU[i % 14] ? at(FU[i % 14][0], FU[i % 14][1], (i * 7) % 60) : null;
+
+// Funis. Os de clientes seguem as regras de hoje (KanbanView.jsx):
+// Renovações tem colunas de vencimento (renewalColumnsFromCheckpoints),
+// Vencidos e Upgrade têm etapas próprias, e as saídas mudam de sentido.
+const FUNNELS = {
+  digital: { kind: 'lead', stages: [['Novo','#84cc16'],['Aguardando contato','#f97316'],['Em conversa','#ec4899'],['Agendado','#f59e0b'],['Negociação','#8b5cf6']],
+    win: { title: 'Venda', sub: 'month', unit: ['matrícula','matrículas'], drop: 'Soltar para matricular', toast: (n) => `Abriria a matrícula de ${n}.` },
+    loss: { title: 'Perda', sub: 'todas do funil', unit: 'leads', drop: 'Soltar para marcar perda', back: 'Arraste para uma etapa para recuperar' } },
+  renov: { kind: 'renewal', stages: [['90 dias','#f59e0b'],['60 dias','#f97316'],['30 dias','#f43f5e']],
+    win: { title: 'Renovou', sub: 'month', unit: ['renovação','renovações'], drop: 'Soltar para renovar', toast: (n) => `Abriria a renovação do contrato de ${n}.` },
+    loss: { title: 'Não vai renovar', sub: 'neste ciclo', unit: 'clientes', drop: 'Soltar se não vai renovar', back: 'Arraste para o quadro para desfazer' } },
+  venc: { kind: 'client', stages: [['Aguardando contato','#94a3b8'],['Em contato','#10b981'],['Freepass','#f59e0b'],['Negociação','#8b5cf6']],
+    win: { title: 'Voltou', sub: 'month', unit: ['matrícula','matrículas'], drop: 'Soltar para matricular de novo', toast: (n) => `Abriria a matrícula de volta de ${n}.` },
+    loss: { title: 'Não volta', sub: 'todos do funil', unit: 'clientes', drop: 'Soltar se não volta', back: 'Arraste para uma etapa para desfazer' } },
+  upg: { kind: 'client', stages: [['Aguardando contato','#94a3b8'],['Abordagem','#14b8a6'],['Freepass','#f59e0b']],
+    win: { title: 'Fez upgrade', sub: 'month', unit: ['upgrade','upgrades'], drop: 'Soltar para fechar o upgrade', toast: (n) => `Abriria o contrato do upgrade de ${n}.` },
+    loss: { title: 'Não quis', sub: '', unit: 'clientes', drop: 'Soltar e escolher o motivo', note: 'Quem não quis o upgrade sai deste funil, com o motivo gravado na ficha.' } },
+};
+const TABS = [['Digital','digital'],['Inativos',112],['Visitas presenciais',0],['Migrações e renovações',3],['Indicações',14],'|',['Upgrade','upg'],['Renovações','renov'],['Vencidos','venc']];
+
+const DIGITAL_NAMES = ['Mariana Costa','Lucas Fernandes','Beatriz Almeida Santos','Rafael Moura','Juliana Prates','Thiago Nunes','Fernanda Lima','Gabriel Rocha','Camila Duarte','Pedro Henrique Batista','Larissa Teixeira','Rodrigo Saraiva','Aline Figueiredo','Diego Martins','Patrícia Gomes','Vinícius Araújo','Natália Freitas','Eduardo Pires','Bianca Monteiro','Felipe Cardoso','Isabela Correia','Marcelo Viana','Tatiane Rezende','André Luiz Siqueira','Renata Barros','Gustavo Peixoto','Carolina Assis','Leonardo Dias','Priscila Moraes','Matheus Cunha','Vanessa Lopes','Henrique Brandão','Débora Fontes','Caio Machado','Letícia Campos','Ricardo Amaral'];
+const DIGITAL_STAGE = [0,0,0,1,1,1,1,2,2,2,3,3,4,4];
+// Tarefa com outra pessoa: visita agendada por um colega (l10, l22) e
+// contato passado a outra consultora (l13).
+const TASK = { l10: 'carla', l22: 'ana', l13: 'carla' };
+const ITEMS = {
+  digital: DIGITAL_NAMES.map((name, i) => ({ id: 'l' + i, name, stage: FUNNELS.digital.stages[DIGITAL_STAGE[i % 14]][0], owner: USERS[i % 3].id,
+    source: SOURCES[i % 6], mod: MODS[(i * 5) % 6], type: TYPES[i % 4], fu: fuOf(i), last: (i * 3) % 14, task: TASK['l' + i] || null })),
+  renov: [['Adriana Lopes',4],['Bruno Tavares',9],['Cíntia Rocha',13],['Daniel Prado',18],['Elisa Moura',22],['Fabrício Lima',27],['Giovana Reis',33],['Hugo Barreto',38],['Ingrid Sales',46],['Jonas Ferraz',52],['Kátia Neves',58],['Lauro Pinto',64],['Márcia Dantas',77],['Nicolas Ribas',85]]
+    .map(([name, endsIn], i) => ({ id: 'r' + i, name, endsIn, owner: USERS[i % 3].id, plan: PLANS[i % 3], mod: MODS[i % 6], handled: [1,4,6,9,12].includes(i), last: (i * 5) % 16 })),
+  venc: [['Rosana Pires',3],['Sílvio Matos',6],['Telma Andrade',9],['Ulisses Faria',12],['Valéria Cruz',17],['Wesley Gomes',21],['Xênia Prado',26],['Yuri Barbosa',33],['Zilda Ramos',40],['Alan Medeiros',48],['Bárbara Lins',55],['César Fonseca',63]]
+    .map(([name, expiredDays], i) => ({ id: 'v' + i, name, expiredDays, stage: FUNNELS.venc.stages[[0,0,0,0,0,1,1,1,2,2,3,3][i]][0], owner: USERS[i % 3].id, plan: PLANS[(i + 1) % 4], mod: MODS[(i + 2) % 6], type: TYPES[(i + 1) % 2], fu: fuOf(i + 3), last: (i * 4) % 15 })),
+  upg: [['Iara Mendes',38],['João Victor Lima',12],['Karen Duarte',25],['Leandro Sousa',41],['Melissa Rocha',19],['Nathan Alves',8],['Olga Pereira',30],['Pietro Campos',22],['Raquel Torres',15]]
+    .map(([name, validDays], i) => ({ id: 'u' + i, name, validDays, stage: FUNNELS.upg.stages[[0,0,0,0,1,1,1,2,2][i]][0], owner: USERS[i % 3].id, plan: 'Plano Mensal', mod: MODS[(i + 4) % 6], type: TYPES[i % 2], fu: fuOf(i + 5), last: (i * 3) % 12 })),
+};
+const renewalStageOf = (it) => it.endsIn <= 30 ? '30 dias' : it.endsIn <= 60 ? '60 dias' : '90 dias';
+ITEMS.renov.forEach(it => { it.stage = renewalStageOf(it); });
+
+const WINS = {
+  digital: [['Sabrina Teles',1188],['Otávio Prado',2988],['Yasmin Coutinho',699],['Murilo Bastos',1788],['Clara Valente',2388],['Igor Vasconcelos',149.9]],
+  renov: [['Tiago Moreira',2388],['Úrsula Brandt',1188],['Vítor Hugo Paz',2988],['Wanda Castro',1788],['Xavier Nóbrega',699]],
+  venc: [['Gilberto Sá',1788],['Helena Paiva',2388]],
+  upg: [['Sandra Leite',2988]],
+};
+Object.keys(WINS).forEach(k => { WINS[k] = WINS[k].map(([name, value], i) => ({ id: `${k}w${i}`, name, value, owner: USERS[i % 3].id })); });
+const LOSSES = {
+  digital: [['Sérgio Antunes','Preço'],['Lúcia Ramos','Sem retorno'],['Paulo Vitor','Mudou de cidade'],['Elaine Couto','Mais perto de casa'],['Fábio Torres','Preço'],['Simone Arruda','Sem retorno'],['Nelson Quintana','Horário'],['Mônica Alves','Preço'],['Olívia Rangel','Não respondeu'],['Plínio Cortez','Preço'],['Quitéria Leal','Horário'],['Raul Bittar','Já treina em outro lugar'],['Selma Godoy','Preço'],['Túlio Sampaio','Sem retorno']]
+    .map(([name, reason], i) => ({ id: 'p' + i, name, reason, owner: USERS[i % 3].id, source: SOURCES[i % 6], mod: MODS[(i + 3) % 6] })),
+  renov: [['Otávio Brum',21],['Paula Seixas',40],['Quirino Assis',12]].map(([name, endsIn], i) => ({ id: 'rp' + i, name, endsIn, owner: USERS[i % 3].id, plan: PLANS[i % 3], mod: MODS[i % 6] })),
+  venc: [['Débora Quadros',30],['Elton Vieira',44],['Flávia Nunes',71]].map(([name, expiredDays], i) => ({ id: 'vp' + i, name, expiredDays, owner: USERS[i % 3].id, plan: PLANS[i % 4], mod: MODS[i % 6] })),
+  upg: [],
+};
+
+const state = { f: 'digital', resp: [], q: 'all', compact: false, more: {}, lossMore: 0 };
+const F = () => FUNNELS[state.f];
+const PAGE = 10, LOSS_PAGE = 8;
+
+const PALETTES = [['rgba(43,89,255,.14)','#1C3FC4','#9FBCFF'],['rgba(139,92,246,.16)','#6D28D9','#C4B5FD'],['rgba(255,106,43,.16)','#C2410C','#FDBA74'],['rgba(16,185,129,.16)','#047857','#6EE7B7'],['rgba(6,182,212,.16)','#0E7490','#67E8F9'],['rgba(236,72,153,.16)','#BE185D','#F9A8D4']];
+const isDark = () => document.documentElement.dataset.theme === 'dark' || (!document.documentElement.dataset.theme && matchMedia('(prefers-color-scheme: dark)').matches);
+// Fundo do avatar sobre a cor da superfície: na pilha do botão Carteira um
+// avatar cobre o outro, e com fundo transparente as iniciais se misturavam.
+function avatar(name, size = 20) {
+  let h = 0; for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const [bg, fg, fgd] = PALETTES[h % 6];
+  const ini = name.trim().split(/\s+/).slice(0, 2).map(p => p[0]).join('').toUpperCase();
+  return `<span class="avatar" style="width:${size}px;height:${size}px;background:linear-gradient(${bg},${bg}),var(--surface);color:${isDark() ? fgd : fg};font-size:${Math.round(size * .42)}px">${ini}</span>`;
+}
+const userOf = (id) => USERS.find(u => u.id === id);
+// Primeiro nome e a inicial do último: cabe no rodapé ao lado do silêncio.
+const firstName = (n) => { const p = n.trim().split(/\s+/); return p.length > 1 ? `${p[0]} ${p[p.length - 1][0]}.` : p[0]; };
+const dayDiff = (d) => Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate())) / 864e5);
+const hhmm = (d) => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+const ddmm = (d) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+function dayLabel(d) {
+  const n = dayDiff(d);
+  if (n === 0) return 'hoje'; if (n === 1) return 'amanhã'; if (n === -1) return 'ontem';
+  if (n < -1) return `há ${-n} dias`;
+  if (n < 7) return d.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '');
+  return ddmm(d);
+}
+function itemState(it) {
+  if (F().kind === 'renewal') return it.endsIn <= 7 ? 'r-hot' : it.endsIn <= 30 ? 'r-warm' : 'r-cool';
+  if (!it.fu) return 'none'; if (it.fu < NOW) return 'overdue';
+  if (dayDiff(it.fu) === 0) return 'today'; return 'normal';
+}
+const fmtBRL = (v, cents) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: cents && v % 1 ? 2 : 0, maximumFractionDigits: cents ? 2 : 0 });
+const ICON = {
+  Mensagem: '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
+  Ligação: '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>',
+  Visita: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+  Aula: '<rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  alert: '<circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  ban: '<circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/>',
+  move: '<path d="m16 3 4 4-4 4M20 7H4M8 21l-4-4 4-4M4 17h16"/>',
+  open: '<path d="M7 7h10v10M7 17 17 7"/>',
+  chev: '<path d="m6 9 6 6 6-6"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  grip: '<circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/>',
+  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+};
+const svg = (k, s = 12, w = 2.2) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round">${ICON[k]}</svg>`;
+const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const VERB = { Mensagem: 'Mandar mensagem', Ligação: 'Ligar', Visita: 'Visita marcada', Aula: 'Aula experimental' };
+
+function cardHTML(it) {
+  const f = F(); const s = itemState(it);
+  let clock, r2, said, context;
+  if (f.kind === 'renewal') {
+    clock = `<b class="num">${it.endsIn}</b><small>${it.endsIn === 1 ? 'dia' : 'dias'}</small>`;
+    r2 = it.handled ? `<div class="r2 ok">${svg('check')}<span>Marco de ${it.stage} tratado</span></div>` : `<div class="r2 wait">${svg('alert')}<span>Aguardando contato</span></div>`;
+    said = `vence em ${it.endsIn} dias`;
+    context = `<div class="contract"><b>${esc(it.plan)}</b><span>até ${ddmm(at(it.endsIn))}</span></div>`;
+  } else {
+    clock = s === 'none' ? `<b>—</b><small>sem agenda</small>` : `<b class="num">${hhmm(it.fu)}</b><small>${dayLabel(it.fu)}</small>`;
+    r2 = `<div class="r2">${s === 'none' ? `${svg('alert')}<span>Marcar o próximo passo</span>` : `${svg(it.type)}<span>${VERB[it.type]}</span>`}</div>`;
+    said = s === 'none' ? 'sem agenda' : `${VERB[it.type]}, ${dayLabel(it.fu)} às ${hhmm(it.fu)}${s === 'overdue' ? ', atrasado' : ''}`;
+    if (state.f === 'venc') context = `<div class="contract"><b>${esc(it.plan)}</b><span>venceu há ${it.expiredDays} dias</span></div>`;
+    else if (state.f === 'upg') context = `<div class="contract"><b>${esc(it.plan)}</b><span>até ${ddmm(at(it.validDays))}</span></div>`;
+    else context = `<div class="chips"><span class="chip" title="${esc(it.source)}">${esc(it.source)}</span><span class="chip" title="${esc(it.mod)}">${esc(it.mod)}</span></div>`;
+  }
+  const task = it.task ? `<span class="task" title="Tarefa de ${esc(userOf(it.task).name)}">${avatar(userOf(it.task).name, 16)}Tarefa de ${esc(firstName(userOf(it.task).name))}</span>` : '';
+  const u = userOf(it.owner);
+  const tone = it.last >= 7 ? 'cold' : it.last >= 4 ? 'warn' : '';
+  return `<article class="card" draggable="true" data-id="${it.id}" data-s="${s}">
+    <div class="clock" aria-hidden="true">${clock}</div>
+    <div class="cbody">
+      <div class="r1"><a class="name" href="#ficha-${it.id}" draggable="false" title="${esc(it.name)}">${esc(it.name)}<span class="sr">, ${esc(said)}</span></a>
+        <span class="acts"><button type="button" title="Mover para outra etapa" aria-label="Mover ${esc(it.name)} para outra etapa">${svg('move', 12, 2)}</button><a href="#ficha-${it.id}" target="_blank" title="Abrir ficha em outra guia" aria-label="Abrir ficha em outra guia" tabindex="-1">${svg('open', 12, 2)}</a></span></div>
+      ${r2}${context}${task}
+      <div class="foot">${avatar(u.name, 18)}<span class="who" title="Consultor: ${esc(u.name)}">${esc(firstName(u.name))}</span><span class="sil ${tone} num">${it.last === 0 ? 'contato hoje' : it.last + 'd sem contato'}</span></div>
+    </div>
+  </article>`;
+}
+
+const ORDER = { overdue: 1, today: 2, normal: 3, none: 4 };
+const inResp = (x) => !state.resp.length || state.resp.includes(x.owner);
+function matchQ(it) {
+  if (state.q === 'all') return true;
+  if (F().kind === 'renewal') return state.q === 'handled' ? it.handled : !it.handled;
+  return itemState(it) === state.q;
+}
+const sortItems = (a, b) => F().kind === 'renewal' ? a.endsIn - b.endsIn
+  : ORDER[itemState(a)] - ORDER[itemState(b)] || (a.fu || 0) - (b.fu || 0);
+
+function colHTML([name, color], i, items, stages) {
+  const f = F();
+  const next = stages[i + 1]?.[1] || color;
+  let sub;
+  if (f.kind === 'renewal') {
+    const wait = items.filter(it => !it.handled).length;
+    sub = wait ? `<span class="wait">${wait} aguardando contato</span>` : (items.length ? 'todos tratados' : '');
+  } else {
+    const late = items.filter(it => itemState(it) === 'overdue').length;
+    const today = items.filter(it => itemState(it) === 'today').length;
+    sub = [late && `<span class="late">${late} ${late === 1 ? 'atrasado' : 'atrasados'}</span>`, today && `${today} para hoje`].filter(Boolean).join(', ') || (items.length ? 'nada atrasado' : '');
+  }
+  const key = state.f + ':' + name;
+  const shown = items.slice(0, PAGE + (state.more[key] || 0));
+  const rest = items.length - shown.length;
+  const add = f.kind === 'lead' && i === 0 ? `<button class="add" data-add="${esc(name)}">${svg('plus', 14, 2.4)}Novo lead</button>` : '';
+  const nodeBg = `color-mix(in srgb, ${color} ${isDark() ? 22 : 14}%, var(--surface))`;
+  return `<div class="col ${i === stages.length - 1 ? 'last' : ''}" data-col="${esc(name)}" style="--c:${color};--next:${next};--node-bg:${nodeBg};--node-ink:${isDark() ? '#fff' : 'var(--ink)'}">
+    <header class="station"><div class="track" aria-hidden="true"><span class="node num">${items.length}</span><span class="line"></span></div>
+      <h3 title="${esc(name)}">${esc(name)}<span class="sr">, ${items.length} ${f.kind === 'lead' ? 'leads' : 'clientes'}</span></h3><p>${sub}</p></header>
+    <div class="list">${add}${items.length ? shown.map(cardHTML).join('') + (rest > 0 ? `<button class="more" data-more="${esc(key)}">Carregar mais <span class="num">(${rest})</span></button>` : '')
+      : `<div class="empty">${state.q === 'all' ? (f.kind === 'lead' ? 'Nenhum lead nesta etapa' : 'Ninguém nesta coluna') : 'Ninguém aqui neste filtro'}</div>`}</div>
+  </div>`;
+}
+function lossReason(p) {
+  if (state.f === 'renov') return `vence ${ddmm(at(p.endsIn))}`;
+  if (state.f === 'venc') return `venceu há ${p.expiredDays}d`;
+  return p.reason;
+}
+function dockHTML() {
+  const f = F();
+  const wins = WINS[state.f].filter(inResp); const losses = LOSSES[state.f].filter(inResp);
+  const total = wins.reduce((a, w) => a + w.value, 0);
+  const month = NOW.toLocaleDateString('pt-BR', { month: 'long' });
+  const lossShown = losses.slice(0, LOSS_PAGE + state.lossMore);
+  const lossRest = losses.length - lossShown.length;
+  const lossList = f.loss.note && !losses.length ? `<div class="note">${f.loss.note}</div>`
+    : `<ul>${lossShown.map(p => `<li draggable="true" data-loss="${p.id}" title="${f.loss.back}"><span class="grip" aria-hidden="true">${svg('grip', 14, 2.4)}</span><a class="nm" href="#ficha-${p.id}" draggable="false">${esc(p.name)}</a><span class="rs" title="${esc(lossReason(p))}">${esc(lossReason(p))}</span></li>`).join('')
+      || `<li style="color:var(--muted)">Ninguém aqui</li>`}${lossRest > 0 ? `<li class="more-li"><button class="more" data-lossmore>Carregar mais <span class="num">(${lossRest})</span></button></li>` : ''}</ul>`;
+  return `<aside class="dock" aria-label="Saídas do funil">
+    <section class="exit win" data-drop="win">
+      <header><span class="ic">${svg('check', 15, 2.6)}</span><div><h3>${f.win.title}</h3><p>${month}</p></div><div class="tot"><b class="num">${fmtBRL(total)}</b><span class="num">${wins.length} ${wins.length === 1 ? f.win.unit[0] : f.win.unit[1]}</span></div></header>
+      <ul>${wins.map(w => `<li>${avatar(w.name, 22)}<a class="nm" href="#ficha-${w.id}">${esc(w.name)}</a><span class="v num">${fmtBRL(w.value, true)}</span></li>`).join('') || '<li style="color:var(--muted)">Nada no mês ainda</li>'}</ul>
+      <div class="droptip">${f.win.drop}</div>
+    </section>
+    <section class="exit loss" data-drop="loss">
+      <header><span class="ic">${svg('ban', 15, 2.2)}</span><div><h3>${f.loss.title}</h3>${f.loss.sub ? `<p>${f.loss.sub}</p>` : ''}</div><div class="tot"><b class="num">${losses.length}</b><span>${f.loss.unit}</span></div></header>
+      ${lossList}
+      <div class="droptip">${f.loss.drop}</div>
+    </section>
+  </aside>`;
+}
+function render() {
+  const f = F();
+  const board = document.getElementById('board');
+  const keep = board.scrollLeft;
+  const mine = ITEMS[state.f].filter(inResp);
+  board.innerHTML = f.stages.map((st, i) => colHTML(st, i, mine.filter(it => it.stage === st[0] && matchQ(it)).sort(sortItems), f.stages)).join('') + dockHTML();
+  board.classList.toggle('compact', state.compact);
+  board.scrollLeft = keep;
+  const queue = f.kind === 'renewal' ? [['all', 'Tudo'], ['pending', 'Aguardando contato'], ['handled', 'Marco tratado']] : [['all', 'Tudo'], ['overdue', 'Atrasados'], ['today', 'Para hoje'], ['none', 'Sem agenda']];
+  const count = (q) => mine.filter(it => { const keepQ = state.q; state.q = q; const ok = matchQ(it); state.q = keepQ; return ok; }).length;
+  document.getElementById('queue').innerHTML = queue.map(([q, t]) => `<button class="q" data-q="${q}" aria-pressed="${state.q === q}">${q === 'all' ? '' : '<span class="dot"></span>'}${t}<b class="num">${count(q)}</b></button>`).join('')
+    + `<span class="hint">${f.kind === 'renewal' ? 'Cada coluna começa por quem vence primeiro' : 'Cada coluna começa pelo compromisso mais antigo'}</span>`;
+  document.getElementById('tabs').innerHTML = TABS.map(t => {
+    if (t === '|') return '<span class="sep" aria-hidden="true"></span>';
+    const [label, v] = t; const key = typeof v === 'string' ? v : null; const n = key ? ITEMS[key].length : v;
+    return `<button class="tab ${key === state.f ? 'on' : ''} ${n === 0 ? 'zero' : ''}" ${key === state.f ? 'aria-current="true"' : ''} data-tab="${key || ''}">${label}${n ? `<span class="n num">${n}</span>` : ''}</button>`;
+  }).join('');
+  requestAnimationFrame(fitTabs);
+  const who = state.resp.length ? state.resp.map(userOf) : USERS;
+  const wb = document.getElementById('whoBtn');
+  wb.classList.toggle('on', state.resp.length > 0);
+  wb.innerHTML = `<span class="stack">${who.slice(0, 3).map(u => avatar(u.name, 24)).join('')}</span><span class="lbl">${state.resp.length === 1 ? esc(firstName(who[0].name)) : state.resp.length ? `${state.resp.length} pessoas` : 'Toda a equipe'}</span>${svg('chev', 14, 2.2)}`;
+  document.getElementById('respList').innerHTML = `<button class="opt ${state.resp.length ? '' : 'on'}" data-resp=""><span class="avatar" style="width:24px;height:24px;background:var(--sunk);color:var(--muted)">${svg('users', 13, 2)}</span>Toda a equipe<span class="ck">${svg('check', 14, 2.6)}</span></button>`
+    + USERS.map(u => `<button class="opt ${state.resp.includes(u.id) ? 'on' : ''}" data-resp="${u.id}">${avatar(u.name, 24)}${esc(u.name)}<span class="ck">${svg('check', 14, 2.6)}</span></button>`).join('');
+  syncScrolled();
+}
+const syncScrolled = () => { const b = document.getElementById('board'); b.classList.toggle('scrolled', b.scrollLeft + b.clientWidth < b.scrollWidth - 2); };
+document.getElementById('board').addEventListener('scroll', syncScrolled, { passive: true });
+addEventListener('resize', syncScrolled);
+
+// Abas que não cabem vão para o "+N", como o FunnelTabs do app. A aba aberta nunca some.
+function fitTabs() {
+  const nav = document.getElementById('tabs');
+  nav.querySelector('.more-tab')?.remove();
+  const items = [...nav.children]; items.forEach(t => { t.hidden = false; });
+  // O espaço da aba aberta é reservado antes, para ela caber mesmo quando vem depois das outras.
+  const active = items.find(t => t.classList.contains('on'));
+  const room = nav.clientWidth - 64; let used = active ? active.offsetWidth + 2 : 0; let full = false; const hidden = [];
+  for (const t of items) {
+    if (t === active) continue;
+    if (!full && used + t.offsetWidth + 2 <= room) { used += t.offsetWidth + 2; continue; }
+    full = true; t.hidden = true; if (t.classList.contains('tab')) hidden.push(t);
+  }
+  if (hidden.length) nav.insertAdjacentHTML('beforeend', `<button class="more-tab" aria-haspopup="menu" aria-expanded="false">+${hidden.length}${svg('chev', 13, 2.2)}</button>`);
+  document.getElementById('tabmenu').innerHTML = hidden.map(t => `<button role="menuitem" data-tab="${t.dataset.tab}">${t.firstChild.textContent}${t.querySelector('.n') ? `<span class="n num">${t.querySelector('.n').textContent}</span>` : ''}</button>`).join('');
+}
+addEventListener('resize', fitTabs);
+document.fonts?.ready.then(fitTabs);
+
+const toast = (t) => { const el = document.getElementById('toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('show'), 3200); };
+
+// Abas, fila de trabalho, carteira, modo de exibição e "Carregar mais"
+const tabmenu = document.getElementById('tabmenu');
+const openTabMenu = (btn, open) => { tabmenu.classList.toggle('open', open); btn?.setAttribute('aria-expanded', open); if (open) tabmenu.style.left = (btn.getBoundingClientRect().left - document.querySelector('.bar').getBoundingClientRect().left) + 'px'; };
+document.addEventListener('mousedown', (e) => { if (!tabmenu.contains(e.target) && !e.target.closest('.more-tab')) openTabMenu(document.querySelector('.more-tab'), false); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') openTabMenu(document.querySelector('.more-tab'), false); });
+tabmenu.onclick = (e) => { const b = e.target.closest('[data-tab]'); if (!b) return; openTabMenu(null, false); pickTab(b.dataset.tab); };
+function pickTab(key) {
+  if (!key) { toast('Neste mockup só Digital, Upgrade, Renovações e Vencidos têm dados.'); return; }
+  state.f = key; state.q = 'all'; state.lossMore = 0; document.getElementById('board').scrollLeft = 0; render();
+}
+document.getElementById('tabs').onclick = (e) => {
+  const m = e.target.closest('.more-tab'); if (m) { openTabMenu(m, !tabmenu.classList.contains('open')); return; }
+  const b = e.target.closest('[data-tab]'); if (!b) return; pickTab(b.dataset.tab); };
+document.getElementById('queue').onclick = (e) => { const b = e.target.closest('[data-q]'); if (!b) return; state.q = state.q === b.dataset.q ? 'all' : b.dataset.q; render(); };
+document.getElementById('board').addEventListener('click', (e) => {
+  const more = e.target.closest('[data-more]');
+  if (more) { state.more[more.dataset.more] = (state.more[more.dataset.more] || 0) + PAGE; render(); return; }
+  if (e.target.closest('[data-lossmore]')) { state.lossMore += LOSS_PAGE; render(); return; }
+  const add = e.target.closest('[data-add]');
+  if (add) { toast(`Abriria o Novo lead já no funil Digital, etapa ${add.dataset.add}.`); return; }
+  const link = e.target.closest('a[href^="#ficha-"]');
+  if (link && !link.target) { e.preventDefault(); toast(`Abriria a ficha de ${link.textContent.split(',')[0].trim()}.`); }
+});
+const pop = document.getElementById('pop'); const wb = document.getElementById('whoBtn');
+wb.onclick = () => { const o = !pop.classList.contains('open'); pop.style.left = wb.offsetLeft + 'px'; pop.classList.toggle('open', o); wb.setAttribute('aria-expanded', o); };
+document.addEventListener('mousedown', (e) => { if (!pop.contains(e.target) && !wb.contains(e.target)) { pop.classList.remove('open'); wb.setAttribute('aria-expanded', false); } });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { pop.classList.remove('open'); wb.setAttribute('aria-expanded', false); } });
+document.getElementById('respList').onclick = (e) => {
+  const b = e.target.closest('[data-resp]'); if (!b) return; const id = b.dataset.resp;
+  state.resp = !id ? [] : state.resp.includes(id) ? state.resp.filter(x => x !== id) : [...state.resp, id]; render();
+};
+const setView = (compact) => { state.compact = compact; document.getElementById('vCards').setAttribute('aria-pressed', !compact); document.getElementById('vList').setAttribute('aria-pressed', compact); render(); };
+document.getElementById('vCards').onclick = () => setView(false);
+document.getElementById('vList').onclick = () => setView(true);
+
+// Arrasto: card do quadro ou nome da Perda.
+let drag = null;
+const app = document.getElementById('app');
+document.addEventListener('dragstart', (e) => {
+  const c = e.target.closest?.('.card,[data-loss]'); if (!c) return;
+  drag = c.dataset.loss ? { from: 'loss', id: c.dataset.loss } : { from: 'card', id: c.dataset.id };
+  e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', drag.id);
+  setTimeout(() => { c.classList.add('dragging'); if (drag?.from === 'card') app.classList.add('dragging-card'); }, 0);
+});
+document.addEventListener('dragend', () => { drag = null; app.classList.remove('dragging-card'); document.querySelectorAll('.over,.dragging').forEach(x => x.classList.remove('over', 'dragging')); });
+const targetOf = (e) => {
+  const t = e.target.closest?.('[data-col],[data-drop]');
+  if (!t || !drag) return null;
+  if (drag.from === 'loss' && !t.dataset.col) return null; // nome da Perda só volta para o quadro
+  return t;
+};
+document.addEventListener('dragover', (e) => {
+  const t = targetOf(e); if (!t) return;
+  e.preventDefault(); document.querySelectorAll('.over').forEach(x => x !== t && x.classList.remove('over')); t.classList.add('over');
+});
+document.addEventListener('drop', (e) => {
+  const t = targetOf(e); if (!t) return;
+  e.preventDefault();
+  const f = F(); const list = ITEMS[state.f];
+  if (drag.from === 'loss') {
+    const losses = LOSSES[state.f]; const p = losses.find(x => x.id === drag.id);
+    losses.splice(losses.indexOf(p), 1);
+    if (state.f === 'renov') {
+      const it = { ...p, handled: false, last: 0 }; it.stage = renewalStageOf(it); list.push(it);
+      toast(`Desfeito: ${p.name} voltou para a coluna ${it.stage}.`);
+    } else {
+      list.push({ ...p, stage: t.dataset.col, type: 'Mensagem', fu: null, last: 0, expiredDays: p.expiredDays });
+      toast(state.f === 'venc' ? `Desfeito: ${p.name} voltou para ${t.dataset.col}.` : `${p.name} voltou para ${t.dataset.col}.`);
+    }
+    render(); return;
+  }
+  const it = list.find(x => x.id === drag.id);
+  if (t.dataset.drop === 'win') { toast(f.win.toast(it.name)); return; }
+  if (t.dataset.drop === 'loss') {
+    if (state.f === 'digital') { toast(`Abriria o motivo da perda de ${it.name}.`); return; }
+    list.splice(list.indexOf(it), 1);
+    if (state.f === 'upg') toast(`Abriria o motivo. ${it.name} sai do funil Upgrade.`);
+    else { LOSSES[state.f].unshift(it); toast(state.f === 'renov' ? `${it.name} não vai renovar. Para desfazer, arraste o nome de volta para o quadro.` : `${it.name} não volta. Para desfazer, arraste o nome de volta para uma etapa.`); }
+    render(); return;
+  }
+  const dest = t.dataset.col; if (dest === it.stage) return;
+  if (f.kind === 'renewal') { toast('As colunas de Renovações seguem o vencimento do contrato e não podem ser movidas à mão.'); return; }
+  it.stage = dest; render(); toast(`${it.name} foi para ${dest}.`);
+});
+
+const press = (id, on) => document.getElementById(id).setAttribute('aria-pressed', on);
+document.getElementById('mkTheme').onclick = () => { const on = !isDark(); document.documentElement.dataset.theme = on ? 'dark' : 'light'; press('mkTheme', on); render(); };
+document.getElementById('mkBanner').onclick = () => { const on = !app.classList.contains('has-banner'); app.classList.toggle('has-banner', on); press('mkBanner', on); };
+document.getElementById('mkNotes').onclick = () => { const n = document.getElementById('notes'); const on = !n.classList.contains('open'); n.classList.toggle('open', on); press('mkNotes', on); };
+press('mkTheme', isDark());
+render();
+</script>
+</body>
+</html>

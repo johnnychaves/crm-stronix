@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="pt-BR" translate="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pipeline A · Atual acertado</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Tokens do app (src/index.css): brand #2B59FF, accent #FF6A2B, paper, ink. */
+:root{
+  --paper:#F5F7FB;--surface:#fff;--lane:#EDF0F6;--lane-line:#E3E7F0;--line:#E6EAF2;--line-strong:#D5DCE8;
+  --ink:#0E1A40;--text:#1E293B;--muted:#64748B;--faint:#94A3B8;
+  --brand:#2B59FF;--brand-50:#EAF0FF;--brand-200:#B8CCFF;--brand-700:#1C3FC4;
+  --rose:#E11D48;--rose-bg:rgba(244,63,94,.09);--amber:#B45309;--amber-bg:rgba(245,158,11,.12);--amber-edge:#F59E0B;
+  --green:#0F9D6E;--green-bg:rgba(16,185,129,.1);--green-edge:#10B981;
+  --chip-line:#E3E7EF;--shadow:0 1px 2px rgba(14,26,64,.05);--shadow-hover:0 10px 24px -12px rgba(14,26,64,.28);
+  --sidebar:#fff;--scroll:#CBD3E1;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#080D22;--surface:#122142;--lane:#0C1533;--lane-line:#16244A;--line:#1B2A52;--line-strong:#263867;
+  --ink:#fff;--text:#E2E8F0;--muted:#94A3B8;--faint:#64748B;
+  --brand:#5A7FFF;--brand-50:rgba(90,127,255,.16);--brand-200:rgba(90,127,255,.4);--brand-700:#9FBCFF;
+  --rose:#FB7185;--rose-bg:rgba(244,63,94,.14);--amber:#FBBF24;--amber-bg:rgba(245,158,11,.14);
+  --green:#6EE7B7;--green-bg:rgba(16,185,129,.14);
+  --chip-line:#24365F;--shadow:none;--shadow-hover:0 10px 24px -12px rgba(0,0,0,.6);--sidebar:#0E1A40;--scroll:#2A3B66;color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --paper:#080D22;--surface:#122142;--lane:#0C1533;--lane-line:#16244A;--line:#1B2A52;--line-strong:#263867;
+  --ink:#fff;--text:#E2E8F0;--muted:#94A3B8;--faint:#64748B;
+  --brand:#5A7FFF;--brand-50:rgba(90,127,255,.16);--brand-200:rgba(90,127,255,.4);--brand-700:#9FBCFF;
+  --rose:#FB7185;--rose-bg:rgba(244,63,94,.14);--amber:#FBBF24;--amber-bg:rgba(245,158,11,.14);
+  --green:#6EE7B7;--green-bg:rgba(16,185,129,.14);
+  --chip-line:#24365F;--shadow:none;--shadow-hover:0 10px 24px -12px rgba(0,0,0,.6);--sidebar:#0E1A40;--scroll:#2A3B66;color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--text);font:14px/1.45 Geist,ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+a{color:inherit;text-decoration:none}
+svg{display:block;flex:none}
+:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.num{font-variant-numeric:tabular-nums}
+
+/* Casca do app: trilho do menu + cabeçalho global, só para dar contexto. */
+.app{height:100vh;display:flex}
+.rail{width:72px;flex:none;background:var(--sidebar);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:10px;padding-top:16px}
+.rail i{width:36px;height:36px;border-radius:11px;background:var(--lane)}
+.rail i.on{background:var(--brand-50);box-shadow:inset 0 0 0 1.5px var(--brand-200)}
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.banner{display:none;flex:none;height:38px;align-items:center;justify-content:center;gap:10px;font-size:12.5px;font-weight:500;background:var(--brand-50);color:var(--brand-700);border-bottom:1px solid var(--brand-200)}
+.has-banner .banner{display:flex}
+.topbar{height:64px;flex:none;display:flex;align-items:center;gap:16px;padding:0 32px;background:var(--surface);border-bottom:1px solid var(--line)}
+.topbar h1{margin:0;font:700 19px 'Space Grotesk';letter-spacing:-.01em;color:var(--ink)}
+.topbar .sp{flex:1}
+.topbar .fake{display:none}
+.topbar .av{width:34px;height:34px;border-radius:50%;background:var(--lane)}
+
+/* A tela do Pipeline ocupa o que sobra da casca, com flex. Antes era
+   h-[calc(100vh-4rem)], que estoura quando aparece uma faixa de aviso. */
+.screen{flex:1;min-height:0;display:flex;flex-direction:column}
+.bar{height:64px;flex:none;display:flex;align-items:center;gap:20px;padding:0 28px;background:var(--surface);border-bottom:1px solid var(--line);position:relative;z-index:5}
+.tabs{flex:1;min-width:0;height:100%;display:flex;align-items:stretch;gap:2px;overflow:hidden}
+.tab{padding:0 12px;display:inline-flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:var(--muted);white-space:nowrap;box-shadow:inset 0 -2px 0 transparent}
+.tab:hover{color:var(--text)}
+.tab.on{color:var(--brand-700);box-shadow:inset 0 -2px 0 var(--brand)}
+.tab .n{font-size:11px;font-weight:700;padding:1px 6px;border-radius:6px;background:var(--lane);color:var(--muted)}
+.tab.on .n{background:var(--brand-50);color:var(--brand-700)}
+.tab.zero{color:var(--faint)}
+.more-tab{align-self:center;flex:none;height:32px;padding:0 10px;border-radius:9px;border:1px dashed var(--brand-200);background:var(--brand-50);color:var(--brand-700);font-size:12.5px;font-weight:700;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.tabs .sep{width:1px;margin:20px 8px;background:var(--line-strong);flex:none}
+.active-filters{display:flex;gap:6px;align-items:center}
+.fchip{height:30px;display:inline-flex;align-items:center;gap:6px;padding:0 6px 0 10px;border-radius:999px;background:var(--brand-50);color:var(--brand-700);font-size:12.5px;font-weight:600;white-space:nowrap}
+.fchip button{width:20px;height:20px;border-radius:50%;display:grid;place-items:center}
+.fchip button:hover{background:var(--brand-200)}
+.fbtn{position:relative;width:38px;height:38px;border-radius:11px;border:1px solid var(--line-strong);display:grid;place-items:center;color:var(--muted);background:var(--paper)}
+.fbtn.on{background:var(--brand-50);border-color:var(--brand-200);color:var(--brand-700)}
+.fbtn .badge{position:absolute;top:-5px;right:-5px;min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:#FF6A2B;color:#fff;font-size:9.5px;font-weight:700;display:none;place-items:center;box-shadow:0 0 0 2px var(--surface)}
+.fbtn.on .badge{display:grid}
+.pop{position:absolute;right:28px;top:56px;width:272px;border-radius:14px;background:var(--surface);border:1px solid var(--line-strong);box-shadow:0 16px 40px -8px rgba(14,26,64,.25);display:none;overflow:hidden}
+.pop.open{display:block}
+.pop h4{margin:0;padding:12px 14px 10px;display:flex;justify-content:space-between;font-size:12.5px;color:var(--ink);border-bottom:1px solid var(--line)}
+.pop h4 button{color:var(--brand);font-weight:600;font-size:12px}
+.pop .sec{padding:10px 8px 6px}
+.pop .lbl{padding:0 6px 6px;font-size:12px;font-weight:600;color:var(--muted)}
+.opt{width:100%;display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:9px;text-align:left;font-size:12.5px;font-weight:500}
+.opt:hover{background:var(--lane)}
+.opt.on{background:var(--brand-50);font-weight:700}
+.opt .ck{margin-left:auto;color:var(--brand);visibility:hidden}.opt.on .ck{visibility:visible}
+.sw{display:flex;align-items:center;justify-content:space-between;width:100%;padding:10px 14px 14px;border-top:1px solid var(--line);font-size:12.5px;font-weight:600}
+.sw .tr{width:34px;height:20px;border-radius:99px;background:var(--line-strong);position:relative;transition:background .15s}
+.sw .tr::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:left .15s}
+.sw[aria-checked="true"] .tr{background:var(--brand)}.sw[aria-checked="true"] .tr::after{left:16px}
+
+/* Quadro */
+.board-wrap{flex:1;min-height:0;position:relative}
+.board{position:absolute;inset:0;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;padding:20px 28px 22px;display:flex;gap:16px;align-items:stretch}
+.board::-webkit-scrollbar{height:10px}.board::-webkit-scrollbar-thumb{background:var(--scroll);border-radius:99px;border:2px solid var(--paper)}
+.lane{width:280px;flex:none;display:flex;flex-direction:column;min-height:0;background:var(--lane);border:1px solid var(--lane-line);border-radius:14px;position:relative;transition:box-shadow .12s,background .12s}
+.lane::before{content:"";position:absolute;left:12px;right:12px;top:0;height:3px;border-radius:0 0 3px 3px;background:var(--c)}
+.lane.over{background:var(--brand-50);box-shadow:inset 0 0 0 2px var(--brand-200)}
+.lh{flex:none;display:flex;align-items:center;gap:8px;padding:14px 14px 10px}
+.lh h3{margin:0;font-size:13.5px;font-weight:650;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.lh .cnt{font-size:11.5px;font-weight:700;color:var(--muted);background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:0 6px;line-height:18px;flex:none}
+.lh .late{margin-left:auto;font-size:11.5px;font-weight:600;color:var(--rose);white-space:nowrap;flex:none}
+.lh .money{margin-left:auto;font-size:12px;font-weight:700;color:var(--green);white-space:nowrap;flex:none}
+.lh .month{font-size:11.5px;color:var(--muted);white-space:nowrap}
+/* scrollbar-gutter reserva o lugar da barra: todo card tem a mesma largura,
+   role a coluna ou não, e a barra não encosta na borda do card. */
+.list{flex:1;min-height:0;overflow-y:auto;scrollbar-gutter:stable;padding:2px 4px 12px 10px;display:flex;flex-direction:column;gap:8px;scrollbar-width:thin;scrollbar-color:var(--scroll) transparent}
+.list::-webkit-scrollbar{width:6px}.list::-webkit-scrollbar-thumb{background:var(--scroll);border-radius:99px}
+.empty{min-height:116px;border:1.5px dashed var(--line-strong);border-radius:11px;display:grid;place-items:center;text-align:center;padding:0 14px;font-size:12.5px;color:var(--muted)}
+.more{padding:8px 0;font-size:12px;font-weight:600;color:var(--brand)}
+
+/* Card: mesma anatomia de hoje, com o que se perdia de volta no lugar. */
+.card{flex:none;position:relative;background:var(--surface);border:1px solid var(--line);border-radius:11px;box-shadow:var(--shadow);cursor:grab;overflow:hidden;transition:border-color .12s,box-shadow .12s}
+.card:hover{border-color:var(--brand-200);box-shadow:var(--shadow-hover)}
+.card.dragging{opacity:.45}
+/* Urgência numa borda à esquerda, no lugar do rodapé pintado. */
+.card[data-s="overdue"]{box-shadow:inset 3px 0 0 var(--rose),var(--shadow)}
+.card[data-s="none"]{box-shadow:inset 3px 0 0 var(--amber-edge),var(--shadow)}
+.card[data-s="won"]{box-shadow:inset 3px 0 0 var(--green-edge),var(--shadow)}
+.card .body{display:block;padding:10px 12px 9px 13px;cursor:inherit}
+.r1{display:flex;align-items:center;gap:8px}
+.name{flex:1;min-width:0;font-size:14px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pill{flex:none;height:20px;padding:0 8px;border-radius:999px;font-size:11px;font-weight:650;display:inline-flex;align-items:center;white-space:nowrap}
+.pill.overdue{background:var(--rose-bg);color:var(--rose)}
+.pill.today{background:var(--brand-50);color:var(--brand-700)}
+.pill.none{background:var(--amber-bg);color:var(--amber)}
+.pill.won{background:var(--green-bg);color:var(--green)}
+.pill.lost{background:var(--lane);color:var(--muted)}
+.r2{margin-top:3px;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;min-width:0}
+.r2 .when{font-weight:500;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.r2.overdue{color:var(--rose)}.r2.overdue .when{color:var(--rose)}
+.r2.today{color:var(--brand-700)}.r2.today .when{color:var(--brand-700)}
+.r2.none{color:var(--amber)}.r2.won{color:var(--green)}.r2.won .when{color:var(--green)}
+.r2.normal{color:var(--text)}.r2.lost{color:var(--muted)}
+/* Chips: bloco com reticências (o inline-flex de antes cortava a palavra no
+   meio, "Condicionamento físic"). O primeiro não encolhe; o segundo cede. */
+.chips{margin-top:8px;display:flex;gap:4px;min-width:0}
+.chip{display:block;min-width:0;max-width:100%;height:20px;line-height:18px;padding:0 7px;border:1px solid var(--chip-line);border-radius:6px;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip:first-child{flex:none;max-width:48%}
+.foot{display:flex;align-items:center;gap:7px;height:32px;padding:0 10px 0 12px;border-top:1px solid var(--line);font-size:11.5px}
+.foot .who{flex:1;min-width:0;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.foot .sil{flex:none;font-weight:600;color:var(--faint)}
+.foot .sil.warn{color:var(--amber)}.foot .sil.cold{color:var(--muted)}.foot .sil.money{color:var(--green)}
+.acts{flex:none;display:none;gap:2px}
+.card:hover .acts,.card:focus-within .acts{display:flex}
+.card:hover .sil,.card:focus-within .sil{display:none}
+.acts button,.acts a{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;color:var(--faint)}
+.acts button:hover,.acts a:hover{background:var(--brand-50);color:var(--brand)}
+.avatar{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:8.5px;font-weight:700;flex:none}
+
+/* Faixa de saída: aparece só durante o arrasto, para Venda e Perda estarem
+   sempre ao alcance, mesmo com as colunas delas fora da tela. */
+.dock{position:absolute;left:50%;bottom:18px;transform:translate(-50%,24px);display:flex;gap:12px;padding:10px;border-radius:18px;background:var(--surface);border:1px solid var(--line-strong);box-shadow:0 20px 50px -14px rgba(14,26,64,.45);opacity:0;pointer-events:none;transition:opacity .15s,transform .15s;z-index:10}
+.dragging-on .dock{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+.drop{width:240px;height:64px;border-radius:12px;border:1.5px dashed;display:flex;align-items:center;gap:12px;padding:0 16px;transition:background .12s}
+.drop b{display:block;font-size:14px}.drop span{font-size:12px;opacity:.85}
+.drop.win{border-color:var(--green-edge);color:var(--green)}
+.drop.loss{border-color:var(--line-strong);color:var(--muted)}
+.drop.over.win{background:var(--green-bg)}.drop.over.loss{background:var(--lane)}
+
+.toast{position:fixed;left:50%;top:84px;transform:translateX(-50%);background:#0E1A40;color:#fff;padding:10px 16px;border-radius:12px;font-size:13px;font-weight:500;box-shadow:0 12px 30px -10px rgba(0,0,0,.5);opacity:0;transition:opacity .2s;z-index:50;pointer-events:none}
+.toast.show{opacity:1}
+
+/* Controles do mockup (fora do produto) */
+.mk{position:fixed;right:76px;top:14px;z-index:60;display:flex;gap:6px;align-items:center;background:#0E1A40;color:#fff;border-radius:999px;padding:5px 6px 5px 14px;font-size:12px;font-weight:600;box-shadow:0 8px 24px -8px rgba(0,0,0,.5)}
+.mk button{padding:5px 10px;border-radius:999px;background:rgba(255,255,255,.1);font-size:11.5px}
+.mk button[aria-pressed="true"]{background:#fff;color:#0E1A40}
+.notes{position:fixed;right:76px;top:58px;z-index:60;width:380px;max-height:70vh;overflow:auto;background:var(--surface);color:var(--text);border:1px solid var(--line-strong);border-radius:16px;padding:16px 18px;box-shadow:0 20px 50px -14px rgba(14,26,64,.45);display:none;font-size:13px}
+.notes.open{display:block}
+.notes h5{margin:0 0 8px;font:700 15px 'Space Grotesk';color:var(--ink)}
+.notes ol{margin:0;padding-left:18px;display:grid;gap:7px}
+.notes b{color:var(--ink)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+@media (max-width:760px){.rail{display:none}.topbar{padding:0 16px}.bar{padding:0 16px;gap:10px}.board{padding:16px}.drop{width:150px}.mk{top:auto;bottom:12px;right:12px;flex-wrap:wrap;border-radius:16px}.notes{top:auto;bottom:96px;right:12px;width:calc(100% - 24px)}}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <nav class="rail" aria-hidden="true"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></nav>
+  <div class="main">
+    <div class="banner" role="status">Seu teste acaba em 3 dias. <b>Ativar plano</b></div>
+    <header class="topbar"><h1>Pipeline</h1><span class="sp"></span><span class="fake"></span><span class="av"></span></header>
+    <section class="screen" aria-label="Pipeline">
+      <div class="bar">
+        <nav class="tabs" id="tabs" aria-label="Funis"></nav>
+        <div class="active-filters" id="activeFilters"></div>
+        <button class="fbtn" id="fbtn" aria-haspopup="dialog" aria-expanded="false" title="Filtros">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"/></svg>
+          <span class="badge num" id="fcount">1</span>
+        </button>
+        <div class="pop" id="pop" role="dialog" aria-label="Filtros">
+          <h4>Filtros <button id="clear">Limpar</button></h4>
+          <div class="sec"><div class="lbl">Responsável</div><div id="respList"></div></div>
+          <button class="sw" role="switch" aria-checked="false" id="overdueSw"><span>Somente em atraso</span><span class="tr"></span></button>
+        </div>
+      </div>
+      <div class="board-wrap">
+        <div class="board" id="board"></div>
+        <div class="dock" id="dock" aria-hidden="true">
+          <div class="drop win" data-drop="Venda"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg><div><b>Venda</b><span>Soltar para matricular</span></div></div>
+          <div class="drop loss" data-drop="Perda"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg><div><b>Perda</b><span>Soltar para marcar perda</span></div></div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<div class="notes" id="notes">
+  <h5>O que mudou em relação ao Pipeline de hoje</h5>
+  <ol>
+    <li><b>Chip sem corte seco.</b> "Condicionamento físico" ganha reticências, e o segundo chip encolhe antes do primeiro.</li>
+    <li><b>Todos os cards com a mesma largura.</b> Hoje a coluna que rola tem card de 253 px e a que não rola, de 264 px, e a barra de rolagem encosta no card. A barra agora tem lugar reservado.</li>
+    <li><b>O quadro cabe na tela com faixa de aviso.</b> Com a faixa do teste, da mensalidade ou do Acessar como, o quadro de hoje passa 40 px do fim da tela e a barra de rolagem lateral some. Ligue "Faixa de aviso" aqui embaixo para ver.</li>
+    <li><b>Venda e Perda sempre ao alcance.</b> Com 5 etapas, o quadro tem 2.048 px e Venda e Perda ficam fora da tela de 1.440. Ao arrastar um card, aparece uma faixa com as duas.</li>
+    <li><b>Texto maior e sem caixa alta.</b> A etiqueta tinha 9,5 px em maiúsculas; agora tem 11 px. O nome da etapa sai em letra normal.</li>
+    <li><b>A coluna diz quantos estão atrasados</b>, ao lado do total, e a Venda mostra o valor vendido no mês.</li>
+    <li><b>Funil vazio não mostra "0".</b> Os funis de clientes (Upgrade, Renovações e Vencidos) ficam depois de um traço.</li>
+    <li><b>O filtro ligado aparece na barra</b>, com o X para tirar, em vez de só um número no botão.</li>
+    <li><b>Rodapé sem fundo colorido.</b> O atraso e o "sem agenda" aparecem numa borda à esquerda do card, e o quadro deixa de parecer uma colcha.</li>
+  </ol>
+</div>
+<div class="mk" role="group" aria-label="Controles do mockup">
+  <span>A · Atual acertado</span>
+  <button id="mkTheme" aria-pressed="false">Tema escuro</button>
+  <button id="mkBanner" aria-pressed="false">Faixa de aviso</button>
+  <button id="mkNotes" aria-pressed="false">O que mudou</button>
+</div>
+
+<script>
+const NOW = new Date();
+const at = (days, h, m) => { const d = new Date(NOW); d.setDate(d.getDate() + days); d.setHours(h, m, 0, 0); return d; };
+const USERS = [
+  { id: 'ana', name: 'Ana Paula Ribeiro' }, { id: 'bruno', name: 'Bruno Carvalho' },
+  { id: 'carla', name: 'Carla Menezes' }, { id: 'johnny', name: 'Johnny Bittencourt', me: true },
+];
+const STAGES = [
+  { name: 'Novo', c: '#84cc16' }, { name: 'Aguardando contato', c: '#f97316' }, { name: 'Em conversa', c: '#ec4899' },
+  { name: 'Agendado', c: '#f59e0b' }, { name: 'Negociação', c: '#8b5cf6' },
+];
+const FUNNELS = [['Digital', null], ['Inativos', 112], ['Visitas presenciais', 0], ['Migrações e renovações', 3], ['Indicações', 14], '|', ['Upgrade', 9], ['Renovações', 41], ['Vencidos', 27]];
+const NAMES = ['Mariana Costa','Lucas Fernandes','Beatriz Almeida Santos','Rafael Moura','Juliana Prates','Thiago Nunes','Fernanda Lima','Gabriel Rocha','Camila Duarte','Pedro Henrique Batista','Larissa Teixeira','Rodrigo Saraiva','Aline Figueiredo','Diego Martins','Patrícia Gomes','Vinícius Araújo','Natália Freitas','Eduardo Pires','Bianca Monteiro','Felipe Cardoso','Isabela Correia','Marcelo Viana','Tatiane Rezende','André Luiz Siqueira','Renata Barros','Gustavo Peixoto','Carolina Assis','Leonardo Dias','Priscila Moraes','Matheus Cunha','Vanessa Lopes','Henrique Brandão','Débora Fontes','Caio Machado','Letícia Campos','Ricardo Amaral'];
+const SOURCES = ['Instagram','WhatsApp','Indicação','Google','Passante','Facebook Ads'];
+const MODS = ['Musculação','Condicionamento físico','Pilates','Funcional','Emagrecimento','Hipertrofia'];
+const TYPES = ['Mensagem','Ligação','Visita','Aula'];
+const STAGE_OF = [0,0,0,1,1,1,1,2,2,2,3,3,4,4];
+const FU = [[-3,9],[-1,10],[0,8],[0,18],[1,9],[2,15],null,[5,10],[-6,17],[0,20],[3,10],null,[-2,12],[9,9]];
+let LEADS = NAMES.map((name, i) => ({
+  id: 'l' + i, name, stage: STAGES[STAGE_OF[i % 14]].name, owner: USERS[i % 3].id,
+  source: SOURCES[i % 6], mod: MODS[(i * 5) % 6], type: TYPES[i % 4],
+  fu: FU[i % 14] ? at(FU[i % 14][0], FU[i % 14][1], (i * 7) % 60) : null,
+  last: (i * 3) % 14,
+}));
+const WON = [['Sabrina Teles',1188,0],['Otávio Prado',2988,1],['Yasmin Coutinho',699,3],['Murilo Bastos',1788,5],['Clara Valente',2388,8],['Igor Vasconcelos',149.9,11]]
+  .map(([name, v, d], i) => ({ id: 'w' + i, name, stage: 'Venda', owner: USERS[i % 3].id, source: SOURCES[(i + 2) % 6], mod: MODS[i % 6], value: v, closed: at(-d, 15, 20) }));
+const LOST = [['Sérgio Antunes','Preço'],['Lúcia Ramos','Sem retorno após 3 tentativas'],['Paulo Vitor','Mudou de cidade'],['Elaine Couto','Escolheu academia mais perto de casa'],['Fábio Torres','Preço'],['Simone Arruda','Sem retorno após 3 tentativas']]
+  .map(([name, reason], i) => ({ id: 'p' + i, name, stage: 'Perda', owner: USERS[i % 3].id, source: SOURCES[i % 6], mod: MODS[(i + 3) % 6], reason }));
+LEADS = LEADS.concat(WON, LOST);
+
+const state = { resp: [], overdue: false };
+const PALETTES = [['rgba(43,89,255,.14)','#1C3FC4','#9FBCFF'],['rgba(139,92,246,.16)','#6D28D9','#C4B5FD'],['rgba(255,106,43,.16)','#C2410C','#FDBA74'],['rgba(16,185,129,.16)','#047857','#6EE7B7'],['rgba(6,182,212,.16)','#0E7490','#67E8F9'],['rgba(236,72,153,.16)','#BE185D','#F9A8D4']];
+const isDark = () => document.documentElement.dataset.theme === 'dark' || (!document.documentElement.dataset.theme && matchMedia('(prefers-color-scheme: dark)').matches);
+function avatar(name, size = 20) {
+  let h = 0; for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const [bg, fg, fgd] = PALETTES[h % 6];
+  const ini = name.trim().split(/\s+/).slice(0, 2).map(p => p[0]).join('').toUpperCase();
+  return `<span class="avatar" style="width:${size}px;height:${size}px;background:${bg};color:${isDark() ? fgd : fg}">${ini}</span>`;
+}
+const userOf = (id) => USERS.find(u => u.id === id);
+const shortName = (n) => n.split(/\s+/).slice(0, 2).join(' ');
+const dayDiff = (d) => Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate())) / 864e5);
+const hhmm = (d) => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+function rel(d) {
+  const n = dayDiff(d);
+  if (n === 0) return 'hoje'; if (n === 1) return 'amanhã'; if (n === -1) return 'ontem';
+  if (n > 1 && n < 7) return `em ${n}d`; if (n < -1 && n > -7) return `${-n}d atrás`;
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+}
+function stateOf(l) {
+  if (l.stage === 'Venda') return 'won'; if (l.stage === 'Perda') return 'lost';
+  if (!l.fu) return 'none'; if (l.fu < NOW) return 'overdue';
+  if (dayDiff(l.fu) === 0) return 'today'; return 'normal';
+}
+const fmtBRL = (v) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: v % 1 ? 2 : 0 });
+const ICON = {
+  Mensagem: '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
+  Ligação: '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>',
+  Visita: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+  Aula: '<rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  alert: '<circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>',
+  won: '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/>',
+  ban: '<circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/>',
+  move: '<path d="m16 3 4 4-4 4M20 7H4M8 21l-4-4 4-4M4 17h16"/>',
+  open: '<path d="M7 7h10v10M7 17 17 7"/>',
+  x: '<path d="M18 6 6 18M6 6l12 12"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+};
+const svg = (k, s = 12, w = 2.2) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round">${ICON[k]}</svg>`;
+const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function cardHTML(l) {
+  const s = stateOf(l);
+  const pill = { overdue: 'Atrasado', today: 'Hoje', none: 'Sem agenda', won: 'Matriculado', lost: 'Perdido' }[s];
+  let r2;
+  if (s === 'won') r2 = `${svg('won')}<span>Fechou</span><span class="when num">${rel(l.closed)} às ${hhmm(l.closed)}</span>`;
+  else if (s === 'lost') r2 = `${svg('ban')}<span class="when" title="${esc(l.reason)}">${esc(l.reason)}</span>`;
+  else if (s === 'none') r2 = `${svg('alert')}<span>Sem agendamento</span>`;
+  else r2 = `${svg(l.type)}<span>${l.type}</span><span class="when num">${rel(l.fu)} às ${hhmm(l.fu)}</span>`;
+  const u = userOf(l.owner);
+  const silTone = l.last >= 7 ? 'cold' : l.last >= 4 ? 'warn' : '';
+  const sil = s === 'won' ? `<span class="sil money num">${fmtBRL(l.value)}</span>`
+    : `<span class="sil ${silTone} num">${l.last === 0 ? 'contato hoje' : l.last + 'd sem contato'}</span>`;
+  return `<article class="card" draggable="true" data-id="${l.id}" data-s="${s}">
+    <a class="body" href="#ficha-${l.id}" draggable="false">
+      <div class="r1"><span class="name" title="${esc(l.name)}">${esc(l.name)}</span>${pill ? `<span class="pill ${s}">${pill}</span>` : ''}</div>
+      <div class="r2 ${s}">${r2}</div>
+      <div class="chips"><span class="chip" title="${esc(l.source)}">${esc(l.source)}</span><span class="chip" title="${esc(l.mod)}">${esc(l.mod)}</span></div>
+    </a>
+    <div class="foot">${avatar(u.name, 18)}<span class="who" title="Consultor: ${esc(u.name)}">${esc(shortName(u.name))}</span>${sil}
+      <span class="acts"><button type="button" title="Mover para outra etapa" aria-label="Mover ${esc(l.name)} para outra etapa">${svg('move', 12, 2)}</button><a href="#ficha-${l.id}" target="_blank" title="Abrir ficha em outra guia" aria-label="Abrir ficha em outra guia" tabindex="-1">${svg('open', 12, 2)}</a></span>
+    </div>
+  </article>`;
+}
+
+const ORDER = { overdue: 1, today: 2, normal: 3, none: 4, won: 0, lost: 0 };
+function visible(l) {
+  if (state.resp.length && !state.resp.includes(l.owner)) return false;
+  if (state.overdue && stateOf(l) !== 'overdue') return false;
+  return true;
+}
+function laneHTML(name, color, items) {
+  const late = items.filter(l => stateOf(l) === 'overdue').length;
+  const right = name === 'Venda'
+    ? `<span class="month">${NOW.toLocaleDateString('pt-BR', { month: 'long' })}</span><span class="money num">${fmtBRL(items.reduce((a, l) => a + l.value, 0))}</span>`
+    : late ? `<span class="late num">${late} ${late === 1 ? 'atrasado' : 'atrasados'}</span>` : '';
+  const emptyText = name === 'Venda' ? 'Nenhuma venda no mês' : name === 'Perda' ? 'Arraste para marcar perda' : 'Nenhum lead nesta etapa';
+  const shown = items.slice(0, 10);
+  return `<div class="lane" style="--c:${color}" data-lane="${esc(name)}">
+    <header class="lh"><h3 title="${esc(name)}">${esc(name)}</h3><span class="cnt num">${items.length}</span>${right}</header>
+    <div class="list">${items.length ? shown.map(cardHTML).join('') + (items.length > 10 ? `<button class="more">Carregar mais (${items.length - 10})</button>` : '') : `<div class="empty">${emptyText}</div>`}</div>
+  </div>`;
+}
+function render() {
+  const board = document.getElementById('board');
+  const keep = board.scrollLeft;
+  const by = (n) => LEADS.filter(l => l.stage === n && visible(l)).sort((a, b) => ORDER[stateOf(a)] - ORDER[stateOf(b)] || (a.fu || 0) - (b.fu || 0));
+  board.innerHTML = STAGES.map(s => laneHTML(s.name, s.c, by(s.name))).join('')
+    + laneHTML('Venda', '#10b981', by('Venda')) + laneHTML('Perda', '#94a3b8', by('Perda'));
+  board.scrollLeft = keep;
+  const active = LEADS.filter(l => STAGES.some(s => s.name === l.stage)).length;
+  document.getElementById('tabs').innerHTML = FUNNELS.map((f, i) => f === '|' ? '<span class="sep" aria-hidden="true"></span>'
+    : `<button class="tab ${i === 0 ? 'on' : ''} ${f[1] === 0 ? 'zero' : ''}" ${i === 0 ? 'aria-current="true"' : ''}>${f[0]}${(i === 0 ? active : f[1]) ? `<span class="n num">${i === 0 ? active : f[1]}</span>` : ''}</button>`).join('');
+  requestAnimationFrame(fitTabs);
+  // Filtro ligado aparece na barra.
+  const chips = state.resp.map(id => `<span class="fchip">${esc(shortName(userOf(id).name))}<button aria-label="Tirar ${esc(userOf(id).name)} do filtro" data-rm="${id}">${svg('x', 11, 2.4)}</button></span>`);
+  if (state.overdue) chips.push(`<span class="fchip">Em atraso<button aria-label="Tirar filtro de atraso" data-rm="overdue">${svg('x', 11, 2.4)}</button></span>`);
+  document.getElementById('activeFilters').innerHTML = chips.join('');
+  const n = state.resp.length + (state.overdue ? 1 : 0);
+  const fb = document.getElementById('fbtn'); fb.classList.toggle('on', n > 0); document.getElementById('fcount').textContent = n;
+  document.getElementById('respList').innerHTML = `<button class="opt ${state.resp.length ? '' : 'on'}" data-resp=""><span class="avatar" style="width:24px;height:24px;background:var(--lane);color:var(--muted)">${svg('users', 13, 2)}</span>Toda a equipe<span class="ck">${svg('check', 14, 2.6)}</span></button>`
+    + USERS.filter(u => !u.me).map(u => `<button class="opt ${state.resp.includes(u.id) ? 'on' : ''}" data-resp="${u.id}">${avatar(u.name, 24)}${esc(u.name)}<span class="ck">${svg('check', 14, 2.6)}</span></button>`).join('');
+  document.getElementById('overdueSw').setAttribute('aria-checked', state.overdue);
+}
+
+// Filtros
+const pop = document.getElementById('pop'); const fbtn = document.getElementById('fbtn');
+fbtn.onclick = () => { const o = !pop.classList.contains('open'); pop.classList.toggle('open', o); fbtn.setAttribute('aria-expanded', o); };
+document.addEventListener('mousedown', (e) => { if (!pop.contains(e.target) && !fbtn.contains(e.target)) { pop.classList.remove('open'); fbtn.setAttribute('aria-expanded', false); } });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { pop.classList.remove('open'); fbtn.setAttribute('aria-expanded', false); } });
+document.getElementById('respList').onclick = (e) => {
+  const b = e.target.closest('[data-resp]'); if (!b) return;
+  const id = b.dataset.resp;
+  state.resp = !id ? [] : state.resp.includes(id) ? state.resp.filter(x => x !== id) : [...state.resp, id];
+  render();
+};
+document.getElementById('overdueSw').onclick = () => { state.overdue = !state.overdue; render(); };
+document.getElementById('clear').onclick = () => { state.resp = []; state.overdue = false; render(); };
+document.getElementById('activeFilters').onclick = (e) => {
+  const b = e.target.closest('[data-rm]'); if (!b) return;
+  if (b.dataset.rm === 'overdue') state.overdue = false; else state.resp = state.resp.filter(x => x !== b.dataset.rm);
+  render();
+};
+
+// Arrasto
+let dragId = null;
+const app = document.getElementById('app');
+const toast = (t) => { const el = document.getElementById('toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('show'), 2400); };
+document.addEventListener('dragstart', (e) => {
+  const c = e.target.closest?.('.card'); if (!c) return;
+  dragId = c.dataset.id; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', dragId);
+  setTimeout(() => { c.classList.add('dragging'); app.classList.add('dragging-on'); }, 0);
+});
+document.addEventListener('dragend', () => { dragId = null; app.classList.remove('dragging-on'); document.querySelectorAll('.over').forEach(x => x.classList.remove('over')); document.querySelectorAll('.dragging').forEach(x => x.classList.remove('dragging')); });
+document.addEventListener('dragover', (e) => {
+  const t = e.target.closest?.('[data-lane],[data-drop]'); if (!t || !dragId) return;
+  e.preventDefault();
+  document.querySelectorAll('.over').forEach(x => x !== t && x.classList.remove('over')); t.classList.add('over');
+});
+document.addEventListener('drop', (e) => {
+  const t = e.target.closest?.('[data-lane],[data-drop]'); if (!t || !dragId) return;
+  e.preventDefault();
+  const dest = t.dataset.lane || t.dataset.drop; const l = LEADS.find(x => x.id === dragId);
+  if (dest === 'Venda') toast(`Abriria a matrícula de ${l.name}.`);
+  else if (dest === 'Perda') toast(`Abriria o motivo da perda de ${l.name}.`);
+  else if (dest !== l.stage) { l.stage = dest; render(); toast(`${l.name} foi para ${dest}.`); }
+});
+
+// Controles do mockup
+const press = (id, on) => document.getElementById(id).setAttribute('aria-pressed', on);
+document.getElementById('mkTheme').onclick = () => { const on = !isDark(); document.documentElement.dataset.theme = on ? 'dark' : 'light'; press('mkTheme', on); render(); };
+document.getElementById('mkBanner').onclick = () => { const on = !app.classList.contains('has-banner'); app.classList.toggle('has-banner', on); press('mkBanner', on); };
+document.getElementById('mkNotes').onclick = () => { const n = document.getElementById('notes'); const on = !n.classList.contains('open'); n.classList.toggle('open', on); press('mkNotes', on); };
+press('mkTheme', isDark());
+// Abas que não cabem vão para o "+N", como o FunnelTabs do app.
+function fitTabs() {
+  const nav = document.getElementById('tabs');
+  nav.querySelector('.more-tab')?.remove();
+  const items = [...nav.children]; items.forEach(t => { t.hidden = false; });
+  const room = nav.clientWidth - 64; let used = 0; const hidden = [];
+  for (const t of items) { used += t.offsetWidth + 2; if (used > room && !t.classList.contains('on')) { t.hidden = true; if (t.classList.contains('tab')) hidden.push(t); } }
+  if (hidden.length) nav.insertAdjacentHTML('beforeend', `<button class="more-tab" title="${hidden.map(t => t.firstChild.textContent).join(', ')}">+${hidden.length}<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></button>`);
+}
+addEventListener('resize', fitTabs);
+document.fonts?.ready.then(fitTabs);
+render();
+</script>
+</body>
+</html>
