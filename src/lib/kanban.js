@@ -1,6 +1,7 @@
 import { isClientLead } from './leads.js';
 import { isGestor } from './acesso.js';
 import { calendarDaysBetween } from './dates.js';
+import { addMonthsToKey, monthLabel } from './operacional/month.js';
 
 // Carteira padrão do board por PAPEL.
 //
@@ -32,15 +33,40 @@ export function filterKanbanLeads(funnelLeads, { respFilter = [], onlyOverdue = 
   if (respFilter.length > 0) {
     filtered = filtered.filter(l => respFilter.includes(l.consultantId));
   }
-  if (onlyOverdue) {
-    filtered = filtered.filter(l =>
-      l.status !== 'Venda' && l.status !== 'Perda' &&
-      l.nextFollowUp instanceof Date && !isNaN(l.nextFollowUp.getTime()) &&
-      l.nextFollowUp < now
-    );
-  }
+  if (onlyOverdue) filtered = filtered.filter(l => isOverdueLead(l, now));
   return filtered;
 }
+
+// Lead com o próximo compromisso vencido. É a mesma conta da etiqueta
+// "Atrasado" do card, do filtro de atraso e do número de atrasados da coluna.
+export const isOverdueLead = (lead, now = new Date()) =>
+  lead?.status !== 'Venda' && lead?.status !== 'Perda' &&
+  lead?.nextFollowUp instanceof Date && !isNaN(lead.nextFollowUp.getTime()) &&
+  lead.nextFollowUp < now;
+
+// --- KANBAN: mês de cadastro (a safra) ---
+// O período do Pipeline: "Todos os meses" primeiro, que é o quadro de sempre,
+// e os últimos 12 meses, do atual para trás. A chave de "todos" não vai para o
+// endereço: lá, todos os meses é a falta do parâmetro (mesDoQuadro, em
+// screenParams.js).
+export const KANBAN_ALL_MONTHS = 'todos';
+export function kanbanMonthOptions(currentKey) {
+  const opts = [{ key: KANBAN_ALL_MONTHS, label: 'Todos os meses' }];
+  for (let i = 0; i < 12; i++) {
+    const key = addMonthsToKey(currentKey, -i);
+    opts.push({ key, label: monthLabel(key), note: i === 0 ? 'em andamento' : undefined, ruleBefore: i === 0 });
+  }
+  return opts;
+}
+
+// Lead cadastrado dentro da janela [startMs, endMs). Sem data de cadastro real
+// (createdAtMissing: a data é a da carga), fica de fora, para não cair no mês
+// em que a tela abriu.
+export const createdInWindow = (lead, startMs, endMs) => {
+  if (lead?.createdAtMissing) return false;
+  const t = lead?.createdAt instanceof Date ? lead.createdAt.getTime() : NaN;
+  return t >= startMs && t < endMs;
+};
 
 // --- KANBAN: particionamento por coluna, UMA passada p/ o board inteiro ---
 // Ordena cada coluna por prioridade de follow-up: 1 atrasado · 2 hoje ·
@@ -109,6 +135,26 @@ const KANBAN_COLUMN_ACCENT = {
   slate:   { dot: 'bg-slate-400',   border: '#94a3b8' }, // = gray
 };
 const getKanbanColumnAccent = (color) => KANBAN_COLUMN_ACCENT[color] || KANBAN_COLUMN_ACCENT.gray;
+
+// --- KANBAN: distribuição das etapas (a barrinha do seletor de funil) ---
+// Cada etapa na ordem do funil, com a cor da coluna e quantos tem. `countOf`
+// diz quantos há numa etapa pelo nome.
+const stageParts = (stages, countOf) =>
+  (stages || []).map((s) => ({ name: s.name, color: getKanbanColumnAccent(s.color).border, count: Number(countOf(s.name)) || 0 }));
+
+// A linha de apoio do título: o total e a etapa mais cheia ("36 leads em
+// aberto, mais em Aguardando contato"). No empate vale a primeira etapa.
+function funnelSummary(parts, unit = 'leads') {
+  const list = parts || [];
+  const total = list.reduce((sum, p) => sum + p.count, 0);
+  if (!total) return unit === 'clientes' ? 'Nenhum cliente aqui' : 'Nenhum lead em aberto';
+  const head = unit === 'clientes'
+    ? `${total} ${total === 1 ? 'cliente' : 'clientes'}`
+    : `${total} ${total === 1 ? 'lead em aberto' : 'leads em aberto'}`;
+  if (list.length < 2) return head;
+  const top = list.reduce((best, p) => (p.count > best.count ? p : best), list[0]);
+  return `${head}, mais em ${top.name}`;
+}
 
 // --- KANBAN: avatar com iniciais (cor estável por hash do nome) ---
 // Cores de categoria do app a ~15%, texto no tom 700 — mesma mecânica de hash
@@ -188,4 +234,4 @@ const monthWindow = (ref = new Date()) => {
   };
 };
 
-export { KANBAN_COLUMN_ACCENT, getKanbanColumnAccent, KANBAN_AVATAR_PALETTES, getKanbanAvatarPalette, getKanbanInitials, fmtKanbanRelDate, fmtKanbanRelDateTime, KANBAN_PAGE_SIZE, silenceDaysOf, kanbanSilence, monthWindow };
+export { KANBAN_COLUMN_ACCENT, getKanbanColumnAccent, stageParts, funnelSummary, KANBAN_AVATAR_PALETTES, getKanbanAvatarPalette, getKanbanInitials, fmtKanbanRelDate, fmtKanbanRelDateTime, KANBAN_PAGE_SIZE, silenceDaysOf, kanbanSilence, monthWindow };

@@ -11,6 +11,7 @@ const TAB_GAP = 4;
 // `count` ausente (null/undefined) NÃO é zero: é "ainda não sei". Funil de
 // sistema projeta clientes por query, então a contagem dele nem sempre está na
 // mão — e mostrar 0 ao lado de um board cheio é pior que não mostrar nada.
+// Zero de verdade também não leva número: a aba só fica mais apagada.
 function FunnelTab({ funnel, count, active, onClick, tabIndex }) {
   return (
     <button
@@ -22,11 +23,13 @@ function FunnelTab({ funnel, count, active, onClick, tabIndex }) {
         'h-full px-3 inline-flex items-center gap-2 text-[13.5px] font-semibold whitespace-nowrap transition-colors',
         active
           ? 'text-brand-700 dark:text-brand-300 shadow-[inset_0_-2px_0_var(--color-brand-600)]'
-          : 'text-gray-500 hover:text-gray-700 dark:text-neutral-400 dark:hover:text-neutral-200'
+          : count === 0
+            ? 'text-gray-400 hover:text-gray-600 dark:text-neutral-500 dark:hover:text-neutral-300'
+            : 'text-gray-500 hover:text-gray-700 dark:text-neutral-400 dark:hover:text-neutral-200'
       )}
     >
       {funnel.name}
-      {count != null && (
+      {count != null && count > 0 && (
         <span
           className={cn(
             'text-[11px] font-bold px-1.5 py-px rounded-md tabular-nums',
@@ -142,11 +145,24 @@ function FunnelTabs({ funnels, counts, selectedId, onSelect }) {
   const visibleFunnels = orderedFunnels.slice(0, visibleTabCount);
   const hiddenFunnels = orderedFunnels.slice(visibleTabCount);
 
+  // Os funis de clientes (Upgrade, Renovações, Vencidos) ficam depois de um
+  // traço. O traço mora junto da primeira aba deles, na linha visível e na
+  // fantasma, para a medida de cada funil já incluir a largura dele.
+  const firstSystemId = orderedFunnels.find((f, i) => f.systemKind && i > 0 && !orderedFunnels[i - 1].systemKind)?.id;
+  const tab = (f, props) => {
+    const el = <FunnelTab key={f.id} funnel={f} count={getCount(f.id)} {...props} />;
+    if (f.id !== firstSystemId) return el;
+    return (
+      <div key={f.id} className="flex items-stretch gap-1">
+        <span aria-hidden="true" className="mx-2 h-5 w-px self-center bg-slate-200 dark:bg-neutral-700" />
+        {el}
+      </div>
+    );
+  };
+
   return (
     <div ref={tabsAreaRef} className="relative flex-1 min-w-0 h-full flex items-stretch gap-1">
-      {visibleFunnels.map(f => (
-        <FunnelTab key={f.id} funnel={f} count={getCount(f.id)} active={f.id === selectedId} onClick={() => onSelect(f.id)} />
-      ))}
+      {visibleFunnels.map(f => tab(f, { active: f.id === selectedId, onClick: () => onSelect(f.id) }))}
 
       {hiddenFunnels.length > 0 && (
         <div ref={overflowWrapRef} className="relative flex items-center">
@@ -179,9 +195,11 @@ function FunnelTabs({ funnels, counts, selectedId, onSelect }) {
                     className="flex items-center gap-2 px-2.5 py-2 rounded-[9px] text-left text-[13px] font-semibold text-gray-900 dark:text-white hover:bg-paper-50 dark:hover:bg-white/5 transition-colors"
                   >
                     <span className="truncate">{f.name}</span>
-                    <span className="ml-auto text-[11px] font-bold px-1.5 py-px rounded-md bg-slate-100 text-slate-500 dark:bg-neutral-800 dark:text-neutral-400 tabular-nums shrink-0">
-                      {getCount(f.id)}
-                    </span>
+                    {getCount(f.id) > 0 && (
+                      <span className="ml-auto text-[11px] font-bold px-1.5 py-px rounded-md bg-slate-100 text-slate-500 dark:bg-neutral-800 dark:text-neutral-400 tabular-nums shrink-0">
+                        {getCount(f.id)}
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -196,9 +214,7 @@ function FunnelTabs({ funnels, counts, selectedId, onSelect }) {
         aria-hidden="true"
         className="absolute left-0 top-0 h-0 overflow-hidden invisible pointer-events-none flex items-stretch gap-1"
       >
-        {orderedFunnels.map(f => (
-          <FunnelTab key={f.id} funnel={f} count={getCount(f.id)} active={false} tabIndex={-1} />
-        ))}
+        {orderedFunnels.map(f => tab(f, { active: false, tabIndex: -1 }))}
         <div className="flex items-center">
           <span className="h-[34px] px-3 rounded-[9px] border border-dashed text-[12.5px] font-bold inline-flex items-center gap-[5px] whitespace-nowrap">
             +{Math.max(orderedFunnels.length - 1, 1)}

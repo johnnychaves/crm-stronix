@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect, useCallback, memo } from 'react';
+import { useState, useMemo, useRef, useCallback, memo } from 'react';
 import { serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 import { canEditLead, normalizeLeadDoc } from '../lib/leads.js';
 import { isSeller } from '../lib/acesso.js';
@@ -18,10 +18,12 @@ import { getRenewalFunnel, renewalColumnsFromCheckpoints, splitRenewalForBoard }
 import { renewalDecline, renewalDeclineStamp, renewalUndoDecline, daysToExpiryOf } from '../lib/renewalGoal.js';
 import { useFunnelCounts } from '../hooks/useFunnelCounts.js';
 import { useScreenParams } from '../hooks/useScreenParams.js';
-import { bucketByFunnelQuerySpec, wonInMonthQuerySpec, LIFECYCLE_BUCKETS, expiredClientsQuerySpec, upgradeClientsQuerySpec } from '../lib/leadQueries.js';
+import { bucketByFunnelQuerySpec, bucketByFunnelInMonthQuerySpec, wonInMonthQuerySpec, LIFECYCLE_BUCKETS, expiredClientsQuerySpec, upgradeClientsQuerySpec } from '../lib/leadQueries.js';
 import { LEADS_PATH, appId } from '../lib/firebase.js';
 import { fmtBRL } from '../lib/format.js';
-import { filterKanbanLeads, partitionLeadsByStatus, getKanbanColumnAccent, getKanbanAvatarPalette, getKanbanInitials, fmtKanbanRelDate, fmtKanbanRelDateTime, KANBAN_PAGE_SIZE, kanbanSilence, monthWindow, defaultRespFilterFor, isDefaultRespFilter } from '../lib/kanban.js';
+import { filterKanbanLeads, partitionLeadsByStatus, getKanbanColumnAccent, getKanbanAvatarPalette, getKanbanInitials, fmtKanbanRelDate, KANBAN_PAGE_SIZE, stageParts, funnelSummary, kanbanSilence, monthWindow, defaultRespFilterFor, isDefaultRespFilter, isOverdueLead, kanbanMonthOptions, createdInWindow, KANBAN_ALL_MONTHS } from '../lib/kanban.js';
+import { monthKeyOf, monthRange } from '../lib/operacional/month.js';
+import { isImportCreatedLead } from '../lib/operacional/routine.js';
 import { markConvertingAula } from '../lib/aulasWrites.js';
 import { cn } from '@/lib/utils';
 import { useToast } from '../contexts/ToastContext.jsx';
@@ -30,8 +32,12 @@ import { FollowUpIcon } from '../components/ui/Badges.jsx';
 import { LeadLink } from '../components/nav/AppLink.jsx';
 import { LossReasonModal } from '../modals/LossReasonModal.jsx';
 import { ContractModal } from '../modals/ContractModal.jsx';
-import { AlertCircle, ArrowRightLeft, ArrowUpRight, Ban, Check, CheckCircle, SlidersHorizontal, TrendingUp, Users } from 'lucide-react';
-import { FunnelTabs } from '../components/layout/FunnelTabs.jsx';
+import { AlertCircle, ArrowRightLeft, ArrowUpRight, Ban, Check, CheckCircle, SlidersHorizontal, TrendingUp } from 'lucide-react';
+import { FunnelSwitcher, StageBar } from '../components/layout/FunnelSwitcher.jsx';
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover.jsx';
+import { FOCUS_RING } from '../components/focusRing.js';
+import { FilterBar, FilterChip, PeriodControl } from './dashboard/DashFilterBar.jsx';
+import { ConsultoresControl } from './relatorios/RelatoriosToolbar.jsx';
 
 // Avatar de iniciais compacto (card 22px / bubble 24px). O KanbanAvatar
 // derivaria a fonte do tamanho; o protótipo fixa 9px/9.5px weight 700.
@@ -49,8 +55,9 @@ function InitialsAvatar({ name = '', size = 22, textSize = 9 }) {
 
 // --- Card do Kanban: leitura do lead → o que a ficha mostra -----------------
 
-// Etiqueta da linha 1. Só aparece quando informa algo: agendado para amanhã ou
-// semana que vem não é notícia, então não leva selo.
+// Etiqueta da linha 1, em letra normal e 11px (era 9,5px em caixa alta). Só
+// aparece quando informa algo: agendado para amanhã ou semana que vem não é
+// notícia, então não leva selo.
 function cardBadge({ isWon, isLost, isOverdue, isToday, hasFollowUp, renewalDaysLeft }) {
   // Card do funil Renovações: o que importa é o relógio do contrato, não o
   // follow-up. Quanto menos tempo sobra, mais quente a etiqueta.
@@ -74,10 +81,10 @@ function cardBadge({ isWon, isLost, isOverdue, isToday, hasFollowUp, renewalDays
   return null;
 }
 
-// "ontem 15:30" — o "·" da linha de compromisso separa o TIPO da data, então a
-// data em si não leva outro (fmtKanbanRelDateTime traria um no meio).
+// "ontem às 15:30". O tipo e a data ficam em pedaços separados da linha do
+// compromisso, então a data não leva o "·" que o fmtKanbanRelDateTime traria.
 const relWhen = (dt) =>
-  `${fmtKanbanRelDate(dt).toLowerCase()} ${dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+  `${fmtKanbanRelDate(dt).toLowerCase()} às ${dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
 
 // Rótulo curto do tipo de follow-up, casando com os ícones de FollowUpIcon.
 const followUpLabel = (type) => {
@@ -94,13 +101,14 @@ const COMMITMENT_TONE = {
   none: 'text-[#B45309] dark:text-amber-400',
   today: 'text-[#1C3FC4] dark:text-brand-300',
   won: 'text-[#0F9D6E] dark:text-emerald-300',
+  lost: 'text-slate-500 dark:text-neutral-400',
   normal: 'text-slate-700 dark:text-neutral-300'
 };
-const FOOTER_TONE = {
-  overdue: 'bg-rose-500/[0.07]',
-  none: 'bg-amber-500/10',
-  won: 'bg-emerald-500/[0.08]',
-  normal: 'bg-slate-50 dark:bg-white/[0.03]'
+// Borda de urgência à esquerda do card (no lugar do rodapé pintado).
+const EDGE_TONE = {
+  overdue: 'bg-rose-500',
+  none: 'bg-amber-500',
+  won: 'bg-emerald-500',
 };
 const SILENCE_TONE = {
   muted: 'text-slate-400 dark:text-neutral-500',
@@ -114,21 +122,79 @@ const EMPTY_LEADS = [];
 // Buckets contados pelo useFunnelCounts (identidade estável entre renders).
 const PERDA_BUCKETS = [LIFECYCLE_BUCKETS.PERDA];
 
+// Pílula Situação: o antigo "Somente em atraso" (parâmetro `atraso`).
+const SITUACAO_OPTIONS = [{ key: 'todos', label: 'Todos' }, { key: 'atraso', label: 'Em atraso' }];
+
+// O que soltar em Venda e em Perda faz em cada funil.
+const EXIT_LABELS = {
+  lead: { win: 'Soltar para matricular', loss: 'Soltar para marcar perda' },
+  renewal: { win: 'Soltar para renovar', loss: 'Soltar se não vai renovar' },
+  expired: { win: 'Soltar para matricular de novo', loss: 'Soltar se não volta' },
+  upgrade: { win: 'Soltar para fechar o upgrade', loss: 'Soltar e escolher o motivo' },
+};
+
+// Faixa de saída do arrasto: Venda e Perda no pé do quadro, só enquanto um
+// card é arrastado. Fica fora da leitura de tela de propósito: quem usa teclado
+// ou toque move pelo botão Mover do card, que já lista Venda e Perda.
+function ExitDock({ visible, labels, hovered, onColumnDragOver, onColumnDragLeave, onDropLead }) {
+  const target = (name, special, Icon, text) => {
+    const over = hovered === name;
+    const win = special === 'win';
+    return (
+      <div
+        onDragOver={(e) => { e.preventDefault(); onColumnDragOver(name); }}
+        onDragLeave={(e) => { if (e.currentTarget.contains(e.relatedTarget)) return; onColumnDragLeave(name); }}
+        onDrop={(e) => onDropLead(e, name, special)}
+        className={cn(
+          'flex h-16 w-[min(240px,40vw)] items-center gap-3 rounded-xl border-[1.5px] border-dashed px-4 transition-colors',
+          win
+            ? 'border-emerald-500 text-[#0F9D6E] dark:text-emerald-300'
+            : 'border-slate-300 text-slate-500 dark:border-neutral-600 dark:text-neutral-400',
+          over && (win ? 'bg-emerald-500/10' : 'bg-slate-100 dark:bg-white/5')
+        )}
+      >
+        <Icon className="size-[22px] shrink-0" strokeWidth={2} />
+        <span className="min-w-0">
+          <span className="block text-[14px] font-bold">{name}</span>
+          <span className="block truncate text-[12px] opacity-85">{text}</span>
+        </span>
+      </div>
+    );
+  };
+  return (
+    <div
+      aria-hidden="true"
+      data-no-pan="true"
+      className={cn(
+        'pointer-events-none absolute inset-x-0 bottom-5 z-30 flex justify-center transition-[opacity,transform] duration-150 motion-reduce:transition-none',
+        visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+      )}
+    >
+      <div className={cn(
+        'flex gap-3 rounded-[18px] border border-slate-200 bg-white p-2.5 shadow-[0_20px_50px_-14px_rgba(14,26,64,.45)] dark:border-neutral-700 dark:bg-neutral-900',
+        visible && 'pointer-events-auto'
+      )}>
+        {target('Venda', 'win', CheckCircle, labels.win)}
+        {target('Perda', 'loss', Ban, labels.loss)}
+      </div>
+    </div>
+  );
+}
+
 // Ficha de 115px: nome + etiqueta, compromisso, chips de contexto e um rodapé
 // que mede SILÊNCIO (dias sem contato). Anatomia uniforme — todo card tem as
 // mesmas linhas, o que muda é a cor.
 // React.memo: durante o drag só o card arrastado muda de prop (isDragging);
 // os demais não re-renderizam. Handlers vêm estáveis (useCallback) do pai.
 // Exportado para o teste em node conferir os links do card sem montar a tela.
-export const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDragging, lastDate, onDragStart, onDragEnd, onMoveRequest }) {
+export const KanbanCard = memo(function KanbanCard({ lead, isDragging, lastDate, onDragStart, onDragEnd, onMoveRequest }) {
   const isWon = lead.status === 'Venda';
   const isLost = lead.status === 'Perda';
   const hasFollowUp = lead.nextFollowUp instanceof Date && !isNaN(lead.nextFollowUp.getTime());
   const now = new Date();
-  const isOverdue = !isWon && !isLost && hasFollowUp && lead.nextFollowUp < now;
+  const isOverdue = isOverdueLead(lead, now);
   const isToday = !isWon && !isLost && hasFollowUp && !isOverdue &&
     lead.nextFollowUp.toDateString() === now.toDateString();
-  const accent = getKanbanColumnAccent(columnColor);
   const convertedAt = getSafeDateOrNull(lead.convertedAt);
 
   // Card projetado do funil Renovações: dias até vencer e se o marco daquela
@@ -143,8 +209,12 @@ export const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDraggi
   );
 
   const badge = cardBadge({ isWon, isLost, isOverdue, isToday, hasFollowUp, renewalDaysLeft });
-  const tone = isWon ? 'won' : isLost ? 'normal' : isOverdue ? 'overdue' : !hasFollowUp ? 'none' : isToday ? 'today' : 'normal';
-  const footerTone = isWon ? 'won' : isLost ? 'normal' : isOverdue ? 'overdue' : !hasFollowUp ? 'none' : 'normal';
+  const tone = isWon ? 'won' : isLost ? 'lost' : isOverdue ? 'overdue' : !hasFollowUp ? 'none' : isToday ? 'today' : 'normal';
+  // A urgência mora numa borda à esquerda do card, e não mais num rodapé
+  // pintado: a coluna cheia de atrasados continua aparecendo como bloco, sem
+  // o quadro virar uma colcha. O card do Renovações não leva borda: o relógio
+  // dele é a etiqueta "Vence em".
+  const edge = lead._renewalCard ? null : EDGE_TONE[tone];
   const silence = kanbanSilence(lastDate, now);
 
   // Chips de contexto: contorno e não preenchimento — são contexto, não status.
@@ -164,13 +234,14 @@ export const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDraggi
         // shrink-0: sem isto o card (filho flex do container flex-col da coluna)
         // encolhe verticalmente pra caber quando a lista cresce, em vez de a
         // coluna rolar — é o bug dos cards "espremidos".
-        'group relative shrink-0 rounded-[10px] bg-white dark:bg-neutral-900 border overflow-hidden cursor-grab active:cursor-grabbing transition-[border-color,box-shadow]',
+        'group relative shrink-0 rounded-[11px] bg-white dark:bg-neutral-900 border overflow-hidden cursor-grab active:cursor-grabbing transition-[border-color,box-shadow]',
         isDragging
           ? 'border-2 border-brand-600 shadow-[0_14px_30px_-12px_rgba(15,23,42,.35)] z-50'
-          : 'border-[#e8ecf3] dark:border-neutral-800 hover:border-[#C9D6FF] dark:hover:border-brand-500/45 hover:shadow-[0_10px_24px_-10px_rgba(15,23,42,.22)]',
+          : 'border-[#e6eaf2] shadow-[0_1px_2px_rgba(14,26,64,.05)] dark:border-neutral-800 dark:shadow-none hover:border-brand-200 dark:hover:border-brand-500/45 hover:shadow-[0_10px_24px_-12px_rgba(14,26,64,.28)]',
         isLost && !isDragging && 'opacity-[.72]'
       )}
     >
+      {edge && <span aria-hidden="true" className={cn('absolute inset-y-0 left-0 w-[3px]', edge)} />}
       {/* O link ENVOLVE o conteúdo em vez de esticar uma camada por cima: com
           uma camada, os tooltips dos chips, do motivo da perda e do consultor
           parariam de aparecer. draggable={false} deixa o arrasto com o
@@ -179,14 +250,13 @@ export const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDraggi
       <LeadLink
         leadId={lead.id}
         draggable={false}
-        className="block rounded-t-[10px] px-[11px] pt-2.5 pb-[9px] cursor-grab active:cursor-grabbing outline-none focus-visible:ring-inset focus-visible:anel-foco"
+        className="block rounded-t-[11px] pl-[13px] pr-3 pt-2.5 pb-[9px] cursor-grab active:cursor-grabbing outline-none focus-visible:ring-inset focus-visible:anel-foco"
       >
         <div className="flex items-center gap-2">
-          <span aria-hidden="true" className="size-1.5 rounded-full shrink-0" style={{ background: accent.border }} />
           {/* O nome NUNCA muda de cor: é identidade. Urgência é trabalho da
-              etiqueta e do rodapé. */}
+              etiqueta, da borda e da linha do compromisso. */}
           <span
-            className={cn('flex-1 min-w-0 truncate text-[13.5px] font-semibold leading-[1.3]',
+            className={cn('flex-1 min-w-0 truncate text-[14px] font-semibold leading-[1.3]',
               isLost ? 'text-slate-700 dark:text-neutral-300' : 'text-gray-900 dark:text-white')}
             title={lead.name}
           >
@@ -194,7 +264,7 @@ export const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDraggi
           </span>
           {badge && (
             <span className={cn(
-              'shrink-0 h-[17px] px-1.5 rounded-[5px] inline-flex items-center text-[9.5px] font-bold uppercase tracking-[.05em] whitespace-nowrap',
+              'shrink-0 h-5 px-2 rounded-full inline-flex items-center text-[11px] font-semibold whitespace-nowrap',
               badge.className
             )}>
               {badge.label}
@@ -202,53 +272,59 @@ export const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDraggi
           )}
         </div>
 
-        <div className={cn('mt-1 flex items-center gap-[5px] text-[11.5px] font-semibold', COMMITMENT_TONE[tone])}>
+        <div className={cn('mt-[3px] flex items-center gap-1.5 min-w-0 text-[12px] font-semibold', COMMITMENT_TONE[tone])}>
           {lead._renewalCard ? (
             marcoTratado ? (
               <>
-                <Check className="size-[11px] shrink-0" strokeWidth={2.2} />
+                <Check className="size-3 shrink-0" strokeWidth={2.2} />
                 <span className="truncate">Marco de {lead._renewalDays} dias tratado</span>
               </>
             ) : (
               <>
-                <AlertCircle className="size-[11px] shrink-0" strokeWidth={2.2} />
+                <AlertCircle className="size-3 shrink-0" strokeWidth={2.2} />
                 <span className="truncate">Aguardando contato</span>
               </>
             )
           ) : isWon ? (
             <>
-              <CheckCircle className="size-[11px] shrink-0" strokeWidth={2.2} />
-              <span className="truncate tabular-nums">
-                {convertedAt ? `Fechou ${fmtKanbanRelDateTime(convertedAt).toLowerCase()}` : 'Matriculado'}
-              </span>
+              <CheckCircle className="size-3 shrink-0" strokeWidth={2.2} />
+              <span className="shrink-0">{convertedAt ? 'Fechou' : 'Matriculado'}</span>
+              {convertedAt && <span className="truncate font-medium tabular-nums">{relWhen(convertedAt)}</span>}
             </>
           ) : isLost ? (
             <>
-              <Ban className="size-[11px] shrink-0" strokeWidth={2.2} />
-              <span className="truncate" title={lead.lossReason || 'Perdido'}>{lead.lossReason || 'Perdido'}</span>
+              <Ban className="size-3 shrink-0" strokeWidth={2.2} />
+              <span className="truncate font-medium" title={lead.lossReason || 'Perdido'}>{lead.lossReason || 'Perdido'}</span>
             </>
           ) : hasFollowUp ? (
             <>
-              <FollowUpIcon type={lead.nextFollowUpType} className="size-[11px] shrink-0" />
-              <span className="truncate tabular-nums">
-                {followUpLabel(lead.nextFollowUpType)} · {relWhen(lead.nextFollowUp)}
+              <FollowUpIcon type={lead.nextFollowUpType} className="size-3 shrink-0" />
+              <span className="shrink-0">{followUpLabel(lead.nextFollowUpType)}</span>
+              <span className={cn('truncate font-medium tabular-nums', tone === 'normal' && 'text-slate-500 dark:text-neutral-400')}>
+                {relWhen(lead.nextFollowUp)}
               </span>
             </>
           ) : (
             <>
-              <AlertCircle className="size-[11px] shrink-0" strokeWidth={2.2} />
+              <AlertCircle className="size-3 shrink-0" strokeWidth={2.2} />
               <span className="truncate">Sem agendamento</span>
             </>
           )}
         </div>
 
         {chips.length > 0 && (
-          <div className="mt-2 flex items-center gap-1">
-            {chips.map((c) => (
+          // Chip em bloco, com reticências: o inline-flex de antes cortava a
+          // palavra no meio ("Condicionamento físic"). Com dois chips, o
+          // segundo encolhe antes do primeiro.
+          <div className="mt-2 flex min-w-0 gap-1">
+            {chips.map((c, i) => (
               <span
                 key={c}
                 title={c}
-                className="h-[19px] px-[7px] inline-flex items-center rounded-md border border-[#e8ecf3] dark:border-neutral-800 text-[10.5px] text-slate-700 dark:text-neutral-300 max-w-[112px] truncate"
+                className={cn(
+                  'block h-5 min-w-0 max-w-full truncate rounded-md border border-[#e3e7ef] dark:border-neutral-800 px-[7px] text-[11px] leading-[18px] text-slate-600 dark:text-neutral-400',
+                  chips.length > 1 && i === 0 && 'shrink-0 max-w-[48%]'
+                )}
               >
                 {c}
               </span>
@@ -257,11 +333,8 @@ export const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDraggi
         )}
       </LeadLink>
 
-      <div className={cn(
-        'flex items-center gap-1.5 border-t border-[#e8ecf3] dark:border-neutral-800 px-[11px] py-1.5 text-[11px]',
-        FOOTER_TONE[footerTone]
-      )}>
-        {lead.consultantName && <InitialsAvatar name={lead.consultantName} size={17} textSize={8} />}
+      <div className="flex h-8 items-center gap-1.5 border-t border-[#e6eaf2] dark:border-neutral-800 pl-[13px] pr-2.5 text-[11.5px]">
+        {lead.consultantName && <InitialsAvatar name={lead.consultantName} size={18} textSize={8} />}
         {/* Segundo link do card, para o lado esquerdo do rodapé também abrir a
             ficha. Fora da ordem do Tab, como a setinha: os três links do card
             levam ao mesmo lugar, então o teclado para uma vez só, no link de
@@ -282,7 +355,7 @@ export const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDraggi
         </LeadLink>
 
         {/* Ações no rodapé — nunca sobrepostas ao conteúdo. No hover cedem o
-            espaço do nome; em telas de toque ficam sempre visíveis.
+            espaço do silêncio; em telas de toque ficam sempre visíveis.
             has-[:focus-visible] e não focus-within: depois de um clique de
             mouse no link o foco FICA no link, e com focus-within o card
             continuava mostrando as ações e escondendo o valor até a pessoa
@@ -295,7 +368,7 @@ export const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDraggi
             onClick={() => onMoveRequest(lead)}
             title="Mover para outra etapa"
             aria-label="Mover lead para outra etapa"
-            className="size-[25px] grid place-items-center rounded-[7px] text-slate-400 hover:bg-[#EAF0FF] hover:text-brand-600 dark:hover:bg-brand-500/15 dark:hover:text-brand-300 focus-visible:outline-none focus-visible:anel-foco transition-colors"
+            className="size-6 grid place-items-center rounded-[7px] text-slate-400 hover:bg-[#EAF0FF] hover:text-brand-600 dark:hover:bg-brand-500/15 dark:hover:text-brand-300 focus-visible:outline-none focus-visible:anel-foco transition-colors"
           >
             <ArrowRightLeft className="size-3" />
           </button>
@@ -323,7 +396,7 @@ export const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDraggi
             rel="noopener"
             title="Abrir ficha em outra guia"
             aria-label="Abrir ficha em outra guia"
-            className="size-[25px] pointer-coarse:hidden grid place-items-center rounded-[7px] text-slate-400 hover:bg-[#EAF0FF] hover:text-brand-600 dark:hover:bg-brand-500/15 dark:hover:text-brand-300 focus-visible:outline-none focus-visible:anel-foco transition-colors"
+            className="size-6 pointer-coarse:hidden grid place-items-center rounded-[7px] text-slate-400 hover:bg-[#EAF0FF] hover:text-brand-600 dark:hover:bg-brand-500/15 dark:hover:text-brand-300 focus-visible:outline-none focus-visible:anel-foco transition-colors"
           >
             <ArrowUpRight className="size-3" />
           </LeadLink>
@@ -340,11 +413,14 @@ export const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDraggi
   );
 });
 
-// Coluna densa: sem card de fundo — header com régua na cor da etapa,
-// cards em lista compacta com scroll interno. React.memo: o hover do drag
-// (draggedOverColumn) re-renderiza SÓ as 2 colunas afetadas via isHovered.
+// Coluna como faixa: fundo próprio, a régua da cor da etapa no alto, o nome em
+// letra normal, o total e quantos estão atrasados. A lista reserva o lugar da
+// barra de rolagem (scrollbar-gutter: stable), então o card tem a mesma
+// largura na coluna que rola e na que não rola, e a barra não encosta nele.
+// React.memo: o hover do drag (draggedOverColumn) re-renderiza SÓ as 2
+// colunas afetadas via isHovered.
 const KanbanColumn = memo(function KanbanColumn({
-  name, color, special, columnLeads, note = null, isHovered, totalCount = null,
+  name, color, special, columnLeads, note = null, isHovered, totalCount = null, showLate = true,
   draggingLeadId, interactionIndex, hasMore = false, onLoadMore = null, loadingMore = false,
   onColumnDragOver, onColumnDragLeave, onDropLead,
   onDragStart, onDragEnd, onMoveRequest,
@@ -353,20 +429,30 @@ const KanbanColumn = memo(function KanbanColumn({
   const isWinCol = special === 'win';
   const isLossCol = special === 'loss';
   // Paginação da coluna: 10 por vez. Renderizar a lista inteira enche uma
-  // coluna de 264px que ninguém rola até o fim — e, nas terminais, trava o
-  // board. "Carregar mais" revela os próximos 10 do que já está em memória;
-  // quando acaba, cede a vez ao onLoadMore (que busca a próxima página no
+  // coluna que ninguém rola até o fim — e, nas terminais, trava o board.
+  // "Carregar mais" revela os próximos 10 do que já está em memória; quando
+  // acaba, cede a vez ao onLoadMore (que busca a próxima página no
   // Firestore, hoje só na coluna Perda).
   const [visibleCount, setVisibleCount] = useState(KANBAN_PAGE_SIZE);
   const shownLeads = columnLeads.length > visibleCount ? columnLeads.slice(0, visibleCount) : columnLeads;
   const localHasMore = columnLeads.length > shownLeads.length;
-  const emptyText = isWinCol
-    ? (isHovered ? 'Soltar aqui' : 'Nenhuma venda no mês')
-    : isLossCol
-      ? 'Arraste para marcar perda'
-      : isHovered
-        ? 'Soltar aqui'
-        : 'Sem leads';
+  const now = new Date();
+  const late = !special && showLate ? columnLeads.filter((l) => isOverdueLead(l, now)).length : 0;
+  // A Venda soma o valor dos contratos que estão na coluna (contrato sem valor
+  // fica de fora, como no Gerencial).
+  const money = isWinCol
+    ? columnLeads.reduce((sum, l) => {
+      const v = Number(l.currentContractValue);
+      return l.currentContractValue != null && Number.isFinite(v) ? sum + v : sum;
+    }, 0)
+    : 0;
+  const emptyText = isHovered
+    ? 'Soltar aqui'
+    : isWinCol
+      ? 'Nenhuma venda aqui'
+      : isLossCol
+        ? 'Arraste para marcar perda'
+        : 'Nenhum lead nesta etapa';
 
   return (
     <section
@@ -380,40 +466,43 @@ const KanbanColumn = memo(function KanbanColumn({
       }}
       onDrop={(e) => onDropLead(e, name, special)}
       className={cn(
-        'w-[264px] shrink-0 flex flex-col max-h-full rounded-xl transition-colors',
-        isHovered && 'bg-brand-50/60 dark:bg-brand-500/[0.06] ring-2 ring-brand-100 dark:ring-brand-500/30'
+        'relative w-[280px] shrink-0 flex flex-col max-h-full rounded-[14px] border transition-colors',
+        isHovered
+          ? 'border-brand-200 bg-brand-50 ring-2 ring-brand-100 dark:border-brand-500/40 dark:bg-brand-500/[0.08] dark:ring-brand-500/30'
+          : 'border-paper-200 bg-paper-100/80 dark:border-white/[0.06] dark:bg-white/[0.03]'
       )}
     >
-      <header
-        className="px-0.5 pb-3 mb-3 flex items-center gap-2 border-b-2 shrink-0"
-        style={{ borderBottomColor: accent.border }}
-      >
-        <h3
-          className="text-[12px] font-bold uppercase tracking-[.05em] text-gray-700 dark:text-neutral-200 whitespace-nowrap truncate"
-          title={name}
-        >
+      <span aria-hidden="true" className="absolute inset-x-3 top-0 h-[3px] rounded-b-[3px]" style={{ background: accent.border }} />
+      <header className="flex shrink-0 items-center gap-2 px-3.5 pt-3.5 pb-2.5">
+        <h3 className="min-w-0 truncate text-[13.5px] font-semibold text-gray-900 dark:text-white" title={name}>
           {name}
         </h3>
-        <span className="text-[11px] font-semibold text-slate-400 dark:text-neutral-500 tabular-nums shrink-0">
+        <span className="shrink-0 rounded-[7px] border border-paper-200 bg-white px-1.5 text-[11.5px] font-bold leading-[18px] text-slate-500 tabular-nums dark:border-white/[0.08] dark:bg-neutral-900 dark:text-neutral-400">
           {totalCount != null ? totalCount : columnLeads.length}
         </span>
         {note && (
-          <span className="text-[10.5px] font-medium text-slate-400 dark:text-neutral-500 truncate normal-case" title={note}>
+          <span className="min-w-0 truncate text-[11.5px] text-slate-500 dark:text-neutral-400" title={note}>
             {note}
           </span>
         )}
-        {isWinCol && <TrendingUp className="ml-auto size-[13px] shrink-0 text-emerald-700 dark:text-emerald-400" />}
+        {money > 0 ? (
+          <span className="ml-auto shrink-0 text-[12px] font-bold text-[#0F9D6E] tabular-nums dark:text-emerald-300">{fmtBRL(money)}</span>
+        ) : late > 0 ? (
+          <span className="ml-auto shrink-0 text-[11.5px] font-semibold text-[#E11D48] tabular-nums dark:text-rose-400">
+            {late} {late === 1 ? 'atrasado' : 'atrasados'}
+          </span>
+        ) : null}
       </header>
 
-      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-1.5 pb-2 custom-scrollbar">
+      <div className="flex-1 min-h-0 overflow-y-auto [scrollbar-gutter:stable] flex flex-col gap-2 pl-2.5 pr-1 pt-0.5 pb-3 custom-scrollbar">
         {columnLeads.length === 0 ? (
           <div
             className={cn(
-              // 115px = a altura do card, pra não haver salto ao soltar.
-              'min-h-[115px] rounded-[10px] border-2 border-dashed grid place-items-center text-[10.5px] font-semibold uppercase tracking-[.06em] text-center px-3 transition-colors',
+              // A altura do card, pra não haver salto ao soltar.
+              'min-h-[116px] rounded-[11px] border-[1.5px] border-dashed grid place-items-center text-[12.5px] text-center px-3 transition-colors',
               isHovered
                 ? 'border-brand-300 text-brand-600 dark:border-brand-500/40 dark:text-brand-300'
-                : 'border-slate-300 text-slate-400 dark:border-neutral-700 dark:text-neutral-500'
+                : 'border-slate-300 text-slate-500 dark:border-neutral-700 dark:text-neutral-400'
             )}
           >
             {emptyText}
@@ -424,7 +513,6 @@ const KanbanColumn = memo(function KanbanColumn({
               <KanbanCard
                 key={lead.id}
                 lead={lead}
-                columnColor={color}
                 isDragging={draggingLeadId === lead.id}
                 lastDate={lastInteractionDateOf(lead, interactionIndex)}
                 onDragStart={onDragStart}
@@ -436,16 +524,16 @@ const KanbanColumn = memo(function KanbanColumn({
               <button
                 type="button"
                 onClick={() => setVisibleCount(v => v + KANBAN_PAGE_SIZE)}
-                className="mt-0.5 py-2 text-center text-[11px] font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300 transition-colors"
+                className="mt-0.5 py-2 text-center text-[12px] font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300 transition-colors"
               >
-                Carregar mais <span className="tabular-nums font-normal text-slate-400 dark:text-neutral-500">({columnLeads.length - shownLeads.length})</span>
+                Carregar mais <span className="tabular-nums font-normal text-slate-500 dark:text-neutral-400">({columnLeads.length - shownLeads.length})</span>
               </button>
             ) : onLoadMore && hasMore ? (
               <button
                 type="button"
                 onClick={onLoadMore}
                 disabled={loadingMore}
-                className="mt-0.5 py-2 text-center text-[11px] font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300 disabled:opacity-50 transition-colors"
+                className="mt-0.5 py-2 text-center text-[12px] font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300 disabled:opacity-50 transition-colors"
               >
                 {loadingMore ? 'Carregando…' : 'Carregar mais'}
               </button>
@@ -470,21 +558,24 @@ function KanbanView({ leads, interactions, appUser, statuses, usersList, lossRea
   // padrão do papel (a carteira do consultor, a equipe do gestor), regra em
   // lib/kanban.js. Aqui a seção Responsável é de todos, então o parâmetro vale
   // para qualquer papel.
+  // O mês de cadastro (a safra) também vem do endereço. Sem ele, todos os
+  // meses: o quadro de sempre (spec 2026-10-16-pipeline-acertado-e-mes).
+  const currentKey = monthKeyOf(new Date());
   const paramsCtx = useMemo(() => ({
     users: sellers,
     funis: funnels,
     funilPadrao: savedFunnelId,
     podeResp: true,
     respPadrao: defaultRespFilterFor(appUser),
-  }), [sellers, funnels, savedFunnelId, appUser]);
-  const [{ funnel, resp: respFilter, overdue: onlyOverdue }, setParams] = useScreenParams('kanban', paramsCtx);
+    currentKey,
+  }), [sellers, funnels, savedFunnelId, appUser, currentKey]);
+  const [{ funnel, monthKey, resp: respFilter, overdue: onlyOverdue }, setParams] = useScreenParams('kanban', paramsCtx);
   const selectedFunnelId = funnel;
   const [lossModalLeadId, setLossModalLeadId] = useState(null);
   // Lead aguardando matrícula no ContractModal (caminho de Venda do Kanban).
   const [matriculaLead, setMatriculaLead] = useState(null);
   const [draggingLeadId, setDraggingLeadId] = useState(null);
   const [draggedOverColumn, setDraggedOverColumn] = useState(null);
-  const [filterOpen, setFilterOpen] = useState(false);
 
   const kanbanScrollRef = useRef(null);
 const dragScrollRef = useRef({
@@ -496,9 +587,20 @@ const [isPanning, setIsPanning] = useState(false);
 
   const defaultFunnelId = useMemo(() => getDefaultFunnel(funnels)?.id || null, [funnels]);
 
+  // Os funis de clientes não têm mês de cadastro: neles o período some e o
+  // quadro é o de sempre, mesmo com `mes` no endereço.
+  const isClientFunnelView = Boolean((funnels || []).find((f) => f.id === selectedFunnelId)?.systemKind);
+  const safra = useMemo(() => {
+    if (!monthKey) return null;
+    const { start, end } = monthRange(monthKey);
+    return { startMs: start.getTime(), endMs: end.getTime() };
+  }, [monthKey]);
+  const boardSafra = isClientFunnelView ? null : safra;
+
   const funnelLeads = useMemo(
-    () => (leads || []).filter(l => isItemInFunnel(l, selectedFunnelId, defaultFunnelId)),
-    [leads, selectedFunnelId, defaultFunnelId]
+    () => (leads || []).filter(l => isItemInFunnel(l, selectedFunnelId, defaultFunnelId)
+      && (!boardSafra || createdInWindow(l, boardSafra.startMs, boardSafra.endMs))),
+    [leads, selectedFunnelId, defaultFunnelId, boardSafra]
   );
 
   // Recorte do board extraído p/ lib/kanban.js (clientes/convertidos saem;
@@ -619,15 +721,20 @@ const [isPanning, setIsPanning] = useState(false);
   // backfill não materializou lostAt, e orderBy lostAt derrubaria perdas legadas
   // sem o campo. Não é ao vivo — recarrega (lostReload) ao marcar/desfazer perda.
   const lostFunnelId = selectedFunnelId || defaultFunnelId;
+  // Com um mês escolhido, a Perda é a da safra: perdidos cadastrados no mês.
+  // Mesmo índice #2 (bucketByFunnelInMonthQuerySpec, em leadQueries.js).
+  const safraKey = boardSafra ? monthKey : '';
   const lostSpec = useMemo(
-    () => bucketByFunnelQuerySpec(LIFECYCLE_BUCKETS.PERDA, lostFunnelId, KANBAN_PAGE_SIZE),
-    [lostFunnelId]
+    () => (boardSafra
+      ? bucketByFunnelInMonthQuerySpec(LIFECYCLE_BUCKETS.PERDA, lostFunnelId, boardSafra.startMs, boardSafra.endMs, KANBAN_PAGE_SIZE)
+      : bucketByFunnelQuerySpec(LIFECYCLE_BUCKETS.PERDA, lostFunnelId, KANBAN_PAGE_SIZE)),
+    [lostFunnelId, boardSafra]
   );
   const {
     items: lostDocs, loading: lostLoading, hasMore: lostHasMore,
     loadMore: lostLoadMore, reload: lostReload,
   } = usePagedLeads({
-    db, path: LEADS_PATH, spec: lostSpec, specKey: `perda:${lostFunnelId || ''}`,
+    db, path: LEADS_PATH, spec: lostSpec, specKey: `perda:${lostFunnelId || ''}:${safraKey}`,
     enabled: !!db && !!lostFunnelId,
   });
   // Refino client-side sobre a página carregada, espelhando filterKanbanLeads
@@ -648,19 +755,31 @@ const [isPanning, setIsPanning] = useState(false);
   const monthYear = monthRef.getFullYear();
   const monthIndex = monthRef.getMonth();
   const month = useMemo(() => monthWindow(new Date(monthYear, monthIndex, 1)), [monthYear, monthIndex]);
-  const wonSpec = useMemo(() => wonInMonthQuerySpec(month.startMs, month.endMs), [month]);
+  // Com um mês escolhido, a Venda é a da safra: os leads do funil cadastrados
+  // no mês que viraram cliente, em qualquer data depois. Sem página: o mês vem
+  // inteiro, como o mês corrente.
+  const wonSpec = useMemo(
+    () => (boardSafra && lostFunnelId
+      ? bucketByFunnelInMonthQuerySpec(LIFECYCLE_BUCKETS.CLIENTE, lostFunnelId, boardSafra.startMs, boardSafra.endMs)
+      : wonInMonthQuerySpec(month.startMs, month.endMs)),
+    [boardSafra, lostFunnelId, month]
+  );
   const {
     items: wonDocs, loading: wonLoading, reload: wonReload,
   } = usePagedLeads({
-    db, path: LEADS_PATH, spec: wonSpec, specKey: `venda:${monthYear}-${monthIndex}`, enabled: !!db,
+    db, path: LEADS_PATH, spec: wonSpec,
+    specKey: boardSafra ? `venda-safra:${lostFunnelId || ''}:${safraKey}` : `venda:${monthYear}-${monthIndex}`,
+    enabled: !!db,
   });
-  // A query não escopa por funil (evita índice novo) — o refino acontece aqui,
-  // sobre o MÊS INTEIRO, então a contagem da coluna é exata.
+  // A query do mês corrente não escopa por funil (evita índice novo) — o
+  // refino acontece aqui, sobre o MÊS INTEIRO, então a contagem da coluna é
+  // exata. Na safra, quem a importação de clientes criou fica de fora, como
+  // nos painéis: a data de cadastro dele é a da planilha.
   const wonLeads = useMemo(() => {
     if (onlyOverdue) return [];
-    const base = (wonDocs || []).filter(l => !lostFunnelId || l.funnelId === lostFunnelId);
+    const base = (wonDocs || []).filter(l => (!lostFunnelId || l.funnelId === lostFunnelId) && !(boardSafra && isImportCreatedLead(l)));
     return respFilter.length === 0 ? base : base.filter(l => respFilter.includes(l.consultantId));
-  }, [wonDocs, respFilter, onlyOverdue, lostFunnelId]);
+  }, [wonDocs, respFilter, onlyOverdue, lostFunnelId, boardSafra]);
 
   // Lookup dos leads ARRASTÁVEIS por id: ativos (prop) + as páginas das colunas
   // terminais (Perda e Venda). Pós-flip o prop é só 'ativo', então sem incluir
@@ -708,6 +827,11 @@ const [isPanning, setIsPanning] = useState(false);
     db, path: LEADS_PATH, funnelId: lostFunnelId, buckets: PERDA_BUCKETS,
     enabled: !!db && !!lostFunnelId, reloadKey: countEpoch,
   });
+  // Na safra, o total da Perda é a contagem do servidor sobre a consulta do mês.
+  const safraLostCount = useLeadCount({
+    db, path: LEADS_PATH, spec: boardSafra ? lostSpec : null,
+    specKey: `perda-safra:${lostFunnelId || ''}:${safraKey}:${countEpoch}`, enabled: !!db && !!boardSafra && !!lostFunnelId,
+  });
   // Recarrega a página E reconta a coluna Perda juntas.
   const refreshLost = useCallback(() => {
     lostReload();
@@ -727,7 +851,7 @@ const [isPanning, setIsPanning] = useState(false);
   //     passar do total de cards carregáveis, é esse caso — aí rodar backfill de
   //     createdAt. Empiricamente 0 nos funis testados.
   const perdaHeaderCount = (respFilter.length === 0 && !onlyOverdue)
-    ? funnelBucketCounts[LIFECYCLE_BUCKETS.PERDA]
+    ? (boardSafra ? safraLostCount : funnelBucketCounts[LIFECYCLE_BUCKETS.PERDA])
     : undefined;
 
   // ── Abas de funil: contagem por funil (mesmo recorte de funnelLeads) ──
@@ -768,7 +892,8 @@ const [isPanning, setIsPanning] = useState(false);
   const funnelCounts = useMemo(() => {
     const map = new Map();
     (funnels || []).forEach(f => {
-      map.set(f.id, (leads || []).filter(l => isItemInFunnel(l, f.id, defaultFunnelId)).length);
+      map.set(f.id, (leads || []).filter(l => isItemInFunnel(l, f.id, defaultFunnelId)
+        && (!safra || createdInWindow(l, safra.startMs, safra.endMs))).length);
     });
     // Funil de SISTEMA projeta clientes: ninguém tem funnelId apontando para
     // ele, e o prop `leads` só traz o balde 'ativo' desde o flip da PR G. Contar
@@ -781,22 +906,25 @@ const [isPanning, setIsPanning] = useState(false);
     if (renewalFunnel) map.set(renewalFunnel.id, renewalTotal);
     if (upgradeFunnel) map.set(upgradeFunnel.id, upgradeCount);
     return map;
-  }, [funnels, leads, defaultFunnelId, expiredFunnel, expiredCount, renewalFunnel, renewalTotal, upgradeFunnel, upgradeCount]);
+  }, [funnels, leads, defaultFunnelId, safra, expiredFunnel, expiredCount, renewalFunnel, renewalTotal, upgradeFunnel, upgradeCount]);
 
-  // Bubble de filtros fecha em clique fora / Esc (o overflow "+N" das abas
-  // é tratado internamente pelo FunnelTabs).
-  const filterWrapRef = useRef(null);
-  useEffect(() => {
-    if (!filterOpen) return;
-    const onPointerDown = (e) => { if (!filterWrapRef.current?.contains(e.target)) setFilterOpen(false); };
-    const onKeyDown = (e) => { if (e.key === 'Escape') setFilterOpen(false); };
-    document.addEventListener('mousedown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [filterOpen]);
+  // Etapas de cada funil de leads, para a barrinha do menu de funis. Mesma base
+  // do número de cada funil: todos os leads em aberto dele, com a safra quando
+  // há mês escolhido.
+  const partsByFunnel = useMemo(() => {
+    const map = new Map();
+    (funnels || []).filter((f) => !f.systemKind).forEach((f) => {
+      const counts = new Map();
+      (leads || []).forEach((l) => {
+        if (!isItemInFunnel(l, f.id, defaultFunnelId)) return;
+        if (safra && !createdInWindow(l, safra.startMs, safra.endMs)) return;
+        counts.set(l.status, (counts.get(l.status) || 0) + 1);
+      });
+      const stages = (statuses || []).filter((st) => isItemInFunnel(st, f.id, defaultFunnelId));
+      map.set(f.id, stageParts(stages, (name) => counts.get(name)));
+    });
+    return map;
+  }, [funnels, leads, statuses, defaultFunnelId, safra]);
 
   const stopKanbanPan = () => {
   dragScrollRef.current.isDown = false;
@@ -1262,34 +1390,10 @@ const handleKanbanMouseMove = (e) => {
   const pipelineColumns = isRenewalView
     ? renewalColumns
     : (statuses || []).filter(s => isItemInFunnel(s, selectedFunnelId, defaultFunnelId));
-  const totalFunnelLeads = funnelLeads.length;
   // A carteira padrão do papel não conta como filtro: o consultor abre na
-  // própria e o botão fica apagado, como o do gestor na equipe inteira.
+  // própria e a pílula fica apagada, como a do gestor na equipe inteira.
   const respIsDefault = isDefaultRespFilter(appUser, respFilter);
-  const hasActiveFilters = !respIsDefault || onlyOverdue;
-  // Consultor vendo "toda a equipe" tem respFilter vazio e ainda assim saiu do
-  // padrão — o `|| 1` mantém isso visível no badge.
-  const activeFilterCount = (respIsDefault ? 0 : (respFilter.length || 1)) + (onlyOverdue ? 1 : 0);
-
-  // Resumo à esquerda do botão de filtro: sem recorte de responsável mostra
-  // "X de Y leads"; com recorte, de quem é a carteira ("Ana · 12 leads").
-  const filterSummary = useMemo(() => {
-    // Renovações não tem contagem de pipeline: os cards vêm das queries por
-    // coluna, então kanbanLeads e totalFunnelLeads dariam "0 de 0" num board
-    // cheio. Sem recorte ativo o resumo some; com recorte ele volta, porque aí
-    // descreve de quem é a carteira e não quantos são.
-    if ((isRenewalView || isUpgradeView) && !hasActiveFilters) return '';
-    const parts = [];
-    if (respFilter.length === 1) {
-      const user = (usersList || []).find(u => u.id === respFilter[0]);
-      parts.push(user?.name || '1 responsável');
-    } else if (respFilter.length > 1) {
-      parts.push(`${respFilter.length} responsáveis`);
-    }
-    if (onlyOverdue) parts.push('Em atraso');
-    parts.push(parts.length === 0 ? `${kanbanLeads.length} de ${totalFunnelLeads} leads` : `${kanbanLeads.length} leads`);
-    return parts.join(' · ');
-  }, [isRenewalView, isUpgradeView, hasActiveFilters, kanbanLeads.length, totalFunnelLeads, respFilter, onlyOverdue, usersList]);
+  const hasActiveFilters = !respIsDefault || onlyOverdue || Boolean(boardSafra);
 
   // Lista do filtro: o próprio usuário primeiro (é a carteira que ele mais
   // procura), o resto em ordem alfabética.
@@ -1302,13 +1406,66 @@ const handleKanbanMouseMove = (e) => {
     });
   }, [sellers, appUser]);
 
-  const toggleResp = (id) => {
-    setParams((v) => ({ resp: v.resp.includes(id) ? v.resp.filter(x => x !== id) : [...v.resp, id] }));
-  };
+  // Período: "Todos os meses" primeiro e os 12 últimos meses. A seta "mês
+  // anterior" desce a lista (de todos os meses para o mês atual, e dele para
+  // trás); a "próximo mês" sobe até o mês atual e para ali. Para voltar a todos
+  // os meses, a lista.
+  const monthOptions = useMemo(() => kanbanMonthOptions(currentKey), [currentKey]);
+  const monthValue = monthKey || KANBAN_ALL_MONTHS;
+  const monthIdx = Math.max(0, monthOptions.findIndex((o) => o.key === monthValue));
+  const pickMonth = (key) => setParams({ monthKey: key === KANBAN_ALL_MONTHS ? null : key });
 
-  // "Limpar" devolve a tela ao estado de abertura do papel — para o consultor
-  // isso é a própria carteira, não a equipe inteira.
-  const clearFilters = () => setParams({ resp: defaultRespFilterFor(appUser), overdue: false });
+  // Pílulas da barra, as mesmas dos painéis e dos Relatórios. `compact` é o
+  // balão do celular, onde cada controle ocupa a largura toda.
+  const filterControls = (compact) => (
+    <>
+      {!isClientFunnelView && (
+        <PeriodControl
+          label={monthOptions[monthIdx]?.label}
+          options={monthOptions}
+          value={monthValue}
+          onPick={pickMonth}
+          canPrev={monthIdx < monthOptions.length - 1}
+          onPrev={() => pickMonth(monthOptions[monthIdx + 1].key)}
+          canNext={monthIdx > 1}
+          onNext={() => pickMonth(monthOptions[monthIdx - 1].key)}
+          ariaLabel="Mês de cadastro dos leads"
+        />
+      )}
+      {!compact && !isClientFunnelView && <span aria-hidden="true" className="h-[22px] w-px shrink-0 bg-border" />}
+      {/* Carteira: aberta para a equipe inteira, gestor ou consultor. Quem
+          manda no que aparece é este filtro — a base que chega na tela é
+          sempre a academia toda (ver lib/kanban.js). */}
+      <ConsultoresControl
+        resp={respFilter}
+        people={respOptions}
+        onResp={(ids) => setParams({ resp: ids })}
+        active={!respIsDefault}
+        compact={compact}
+      />
+      <FilterChip
+        icon={AlertCircle}
+        label="Situação"
+        valueText={onlyOverdue ? 'Em atraso' : 'Todos'}
+        active={onlyOverdue}
+        options={SITUACAO_OPTIONS}
+        value={onlyOverdue ? 'atraso' : 'todos'}
+        onPick={(k) => setParams({ overdue: k === 'atraso' })}
+      />
+    </>
+  );
+
+  // Linha de apoio do título: o total e a etapa mais cheia do que está no
+  // quadro agora (com a carteira, a situação e o mês escolhidos).
+  const boardParts = stageParts(pipelineColumns, (name) => getLeadsByStatus(name).length);
+  const boardSummary = funnelSummary(boardParts, isClientFunnelView ? 'clientes' : 'leads');
+
+  // O que soltar em Venda e em Perda faz em cada funil (os handlers são os das
+  // colunas; só o texto muda).
+  const exitLabels = isRenewalView ? EXIT_LABELS.renewal
+    : isExpiredView ? EXIT_LABELS.expired
+      : isUpgradeView ? EXIT_LABELS.upgrade
+        : EXIT_LABELS.lead;
 
   // Trocar de funil guarda a escolha no navegador (é ela que vale quando o
   // link não traz funil) e escreve no endereço.
@@ -1316,143 +1473,61 @@ const handleKanbanMouseMove = (e) => {
 
   return (
     <>
-      {/* Full-bleed: cancela o padding do container p/ o header da página
-          colar no header global e o board correr de borda a borda. */}
-      <div className="-m-4 md:-m-8 h-[calc(100vh-4rem)] flex flex-col animate-fade-in">
-        {/* Linha de header da página: abas de funil + resumo + filtro único */}
-        <div className="h-16 shrink-0 relative z-20 bg-white dark:bg-neutral-900 border-b border-gray-200 dark:border-neutral-800 flex items-center gap-3 md:gap-5 px-4 md:px-7">
-          <FunnelTabs
-            funnels={funnels}
-            counts={funnelCounts}
-            selectedId={selectedFunnelId}
-            onSelect={pickFunnel}
-          />
-
-          {filterSummary && (
-            <div className="hidden md:block text-[11.5px] text-slate-500 dark:text-neutral-400 whitespace-nowrap tabular-nums shrink-0">
-              <span className="font-semibold text-gray-700 dark:text-neutral-200">{filterSummary}</span>
-            </div>
+      {/* Full-bleed: cancela o padding do container para o quadro correr de
+          borda a borda. A altura
+          é a da área de conteúdo mais o recuo dela (100% + 2rem / 4rem), e
+          não 100vh - 4rem: com a faixa do teste, da mensalidade ou do
+          "Acessar como", o 100vh passava do fim da tela e a barra de
+          rolagem do quadro sumia embaixo. */}
+      <div className="-m-4 md:-m-8 h-[calc(100%+2rem)] md:h-[calc(100%+4rem)] flex flex-col animate-fade-in">
+        {/* Cabeçalho no cartão dos painéis (FilterBar, o mesmo do Gerencial,
+            do CRM e do Operacional): o funil é o título, com o seletor, e a
+            linha de apoio diz o total e onde os leads estão; à direita, as
+            pílulas de filtro. */}
+        <FilterBar
+          className="shrink-0 md:px-7"
+          title={(
+            <FunnelSwitcher
+              funnels={funnels}
+              selectedId={selectedFunnelId}
+              counts={funnelCounts}
+              partsOf={(id) => partsByFunnel.get(id)}
+              onSelect={pickFunnel}
+            />
           )}
+          subline={(
+            <>
+              <span>{boardSummary}</span>
+              <StageBar parts={boardParts} className="ml-2.5 inline-flex w-[132px] align-middle" />
+            </>
+          )}
+        >
+          <div className="hidden md:flex items-center gap-2">{filterControls(false)}</div>
 
-          <div ref={filterWrapRef} className="relative shrink-0">
-            <button
-              type="button"
-              onClick={() => setFilterOpen(o => !o)}
-              title="Filtros"
-              aria-haspopup="dialog"
-              aria-expanded={filterOpen}
-              className={cn(
-                'relative size-[38px] rounded-[11px] border grid place-items-center transition-colors',
-                hasActiveFilters
-                  ? 'bg-brand-50 border-brand-200 text-brand-700 dark:bg-brand-500/15 dark:border-brand-500/30 dark:text-brand-300'
-                  : 'bg-paper-50 border-slate-200 text-gray-600 hover:border-brand-200 dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-300 dark:hover:border-brand-500/40'
-              )}
-            >
-              <SlidersHorizontal className="size-[17px]" />
-              {hasActiveFilters && (
-                <span className="absolute -top-[5px] -right-[5px] min-w-4 h-4 px-1 rounded-full bg-accent-500 text-white text-[9.5px] font-bold grid place-items-center ring-2 ring-white dark:ring-neutral-900 tabular-nums">
-                  {activeFilterCount}
-                </span>
-              )}
-            </button>
-
-            {filterOpen && (
-              <div className="absolute right-0 top-[46px] w-[264px] rounded-[14px] bg-white dark:bg-ink-800 border border-slate-200 dark:border-ink-700 shadow-[0_16px_40px_-8px_rgba(14,26,64,.22)] overflow-hidden z-30">
-                <div className="px-3.5 pt-3 pb-2.5 flex items-center justify-between border-b border-slate-100 dark:border-white/10">
-                  <span className="text-[12.5px] font-bold text-gray-900 dark:text-white">Filtros</span>
-                  <button
-                    type="button"
-                    onClick={clearFilters}
-                    className="text-[11.5px] font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300 transition-colors"
-                  >
-                    Limpar
-                  </button>
-                </div>
-
-                {/* Carteira: aberta para a equipe inteira, gestor ou consultor.
-                    Quem manda no que aparece é este filtro — a base que chega na
-                    tela é sempre a academia toda (ver lib/kanban.js). */}
-                <div className="pt-2.5 px-2 pb-1">
-                  <div className="px-1.5 pb-1.5 text-[10.5px] font-semibold uppercase tracking-[.07em] text-gray-400 dark:text-neutral-500">
-                    Responsável
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setParams({ resp: [] })}
-                    className={cn(
-                      'w-full flex items-center gap-[9px] px-2 py-[7px] rounded-[9px] text-left transition-colors',
-                      respFilter.length === 0 ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-paper-50 dark:hover:bg-white/5'
-                    )}
-                  >
-                    <span className="size-6 rounded-full grid place-items-center bg-paper-100 text-slate-500 dark:bg-neutral-800 dark:text-neutral-400 shrink-0">
-                      <Users className="size-[13px]" />
-                    </span>
-                    <span className={cn('flex-1 text-[12.5px] text-gray-900 dark:text-white truncate', respFilter.length === 0 ? 'font-bold' : 'font-medium')}>
-                      Toda a equipe
-                    </span>
-                    {respFilter.length === 0 && <Check className="size-3.5 text-brand-600 dark:text-brand-400 shrink-0" strokeWidth={2.6} />}
-                  </button>
-                  {respOptions.map(u => {
-                    const selected = respFilter.includes(u.id);
-                    const isSelf = u.id === appUser?.id;
-                    return (
-                      <button
-                        key={u.id}
-                        type="button"
-                        onClick={() => toggleResp(u.id)}
-                        className={cn(
-                          'w-full flex items-center gap-[9px] px-2 py-[7px] rounded-[9px] text-left transition-colors',
-                          selected ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-paper-50 dark:hover:bg-white/5'
-                        )}
-                      >
-                        <InitialsAvatar name={u.name} size={24} textSize={9.5} />
-                        <span className={cn('flex-1 text-[12.5px] text-gray-900 dark:text-white truncate', selected ? 'font-bold' : 'font-medium')}>
-                          {u.name}
-                        </span>
-                        {isSelf && (
-                          <span className="text-[10px] font-semibold uppercase tracking-[.06em] text-slate-400 dark:text-neutral-500 shrink-0">
-                            você
-                          </span>
-                        )}
-                        {selected && <Check className="size-3.5 text-brand-600 dark:text-brand-400 shrink-0" strokeWidth={2.6} />}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="mx-3.5 mt-1.5 border-t border-slate-100 dark:border-white/10" />
-
-                <div className="px-3.5 pt-2.5 pb-3.5">
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={onlyOverdue}
-                    onClick={() => setParams((v) => ({ overdue: !v.overdue }))}
-                    className="w-full flex items-center justify-between gap-2.5"
-                  >
-                    <span className="inline-flex items-center gap-2 text-[12.5px] font-semibold text-gray-900 dark:text-white">
-                      <AlertCircle className={cn('size-3.5', onlyOverdue ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400 dark:text-neutral-500')} />
-                      Somente em atraso
-                    </span>
-                    <span
-                      className={cn(
-                        'relative w-[34px] h-5 rounded-full transition-colors duration-150 shrink-0',
-                        onlyOverdue ? 'bg-brand-600' : 'bg-slate-300 dark:bg-neutral-700'
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          'absolute top-0.5 size-4 rounded-full bg-white shadow-[0_1px_3px_rgba(15,23,42,.3)] transition-[left] duration-150',
-                          onlyOverdue ? 'left-4' : 'left-0.5'
-                        )}
-                      />
-                    </span>
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+          {/* No celular os filtros entram num balão, como nos Relatórios: o
+              botão acende e ganha um ponto quando há filtro fora do padrão. */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                aria-label={hasActiveFilters ? 'Filtros do Pipeline, há filtro ativo' : 'Filtros do Pipeline'}
+                className={cn(
+                  'relative md:hidden size-[38px] shrink-0 rounded-[11px] border grid place-items-center transition-colors',
+                  FOCUS_RING,
+                  hasActiveFilters
+                    ? 'bg-brand-50 border-brand-200 text-brand-700 dark:bg-brand-500/15 dark:border-brand-500/30 dark:text-brand-300'
+                    : 'bg-card border-border text-muted-foreground'
+                )}
+              >
+                <SlidersHorizontal className="size-[17px]" aria-hidden="true" />
+                {hasActiveFilters && <span aria-hidden="true" className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-brand-600" />}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="start" aria-label="Filtros" className="flex w-[288px] max-h-(--radix-popover-content-available-height) flex-col gap-2.5 overflow-y-auto overscroll-y-contain rounded-[14px] border-border shadow-card-lg [&>*]:shrink-0">
+              {filterControls(true)}
+            </PopoverContent>
+          </Popover>
+        </FilterBar>
 
         {/* O board dos funis de sistema é alimentado por uma busca própria, e o
             número da aba vem de uma CONTAGEM separada. Quando a busca falha, o
@@ -1479,7 +1554,8 @@ const handleKanbanMouseMove = (e) => {
           </div>
         )}
 
-        {/* Board denso */}
+        {/* Board denso, num invólucro que segura a faixa de saída do arrasto */}
+        <div className="relative flex-1 min-h-0 flex flex-col">
         <div
           ref={kanbanScrollRef}
           onMouseDown={handleKanbanMouseDown}
@@ -1487,11 +1563,11 @@ const handleKanbanMouseMove = (e) => {
           onMouseUp={stopKanbanPan}
           onMouseLeave={stopKanbanPan}
           className={cn(
-            'flex-1 min-h-0 overflow-x-auto overscroll-x-contain overflow-y-hidden custom-scrollbar select-none px-4 md:px-7 pt-5 pb-6',
+            'flex-1 min-h-0 overflow-x-auto overscroll-x-contain overflow-y-hidden custom-scrollbar select-none px-4 md:px-7 pt-1 pb-5',
             isPanning ? 'cursor-grabbing' : 'cursor-grab'
           )}
         >
-          <div className="flex gap-6 min-w-max h-full">
+          <div className="flex gap-4 min-w-max h-full">
             {pipelineColumns.map((column) => (
               <KanbanColumn
                 key={column.id}
@@ -1502,6 +1578,8 @@ const handleKanbanMouseMove = (e) => {
                 // Vencidos: o volume mora na coluna de entrada, e é ela que
                 // pagina. Renovações não pagina no servidor — a coluna carrega a
                 // faixa inteira e o KanbanColumn revela de 10 em 10.
+                // Card do Renovações não tem "Atrasado": o relógio dele é o vencimento.
+                showLate={!isRenewalView}
                 hasMore={isExpiredView && column.isEntry ? expiredHasMore : false}
                 onLoadMore={isExpiredView && column.isEntry ? expiredLoadMore : null}
                 isHovered={draggedOverColumn === column.name}
@@ -1523,7 +1601,9 @@ const handleKanbanMouseMove = (e) => {
               special="win"
               columnLeads={wonLeads}
               loadingMore={wonLoading}
-              note={month.label}
+              // Na safra o quadro inteiro já é do mês escolhido. Sem ela, a
+              // Venda é a do mês corrente e diz qual.
+              note={boardSafra ? null : month.label}
               isHovered={draggedOverColumn === 'Venda'}
               draggingLeadId={draggingLeadId}
               interactionIndex={interactionIndex}
@@ -1562,6 +1642,20 @@ const handleKanbanMouseMove = (e) => {
               onMoveRequest={onMoveRequest}
             />
           </div>
+        </div>
+
+        {/* Faixa de saída: aparece só enquanto um card é arrastado, para Venda
+            e Perda estarem ao alcance mesmo com as colunas delas fora da tela
+            (com 5 etapas o quadro passa de 2.000 px). Solta pelos mesmos
+            handlers das colunas. */}
+        <ExitDock
+          visible={Boolean(draggingLeadId)}
+          labels={exitLabels}
+          hovered={draggedOverColumn}
+          onColumnDragOver={onColumnDragOver}
+          onColumnDragLeave={onColumnDragLeave}
+          onDropLead={onDropLead}
+        />
         </div>
       </div>
 

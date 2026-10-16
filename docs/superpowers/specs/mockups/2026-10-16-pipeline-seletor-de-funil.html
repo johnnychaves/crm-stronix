@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="pt-BR" translate="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pipeline · Seletor de funil</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Tokens do app (src/index.css), os mesmos do mockup A. */
+:root{
+  --paper:#F5F7FB;--surface:#fff;--lane:#EDF0F6;--lane-line:#E3E7F0;--line:#E6EAF2;--line-strong:#D5DCE8;
+  --ink:#0E1A40;--text:#1E293B;--muted:#64748B;--faint:#94A3B8;
+  --brand:#2B59FF;--brand-50:#EAF0FF;--brand-200:#B8CCFF;--brand-700:#1C3FC4;
+  --shadow:0 1px 2px rgba(14,26,64,.06);--pop:0 18px 44px -10px rgba(14,26,64,.28);--sidebar:#fff;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#080D22;--surface:#122142;--lane:#0C1533;--lane-line:#16244A;--line:#1B2A52;--line-strong:#263867;
+  --ink:#fff;--text:#E2E8F0;--muted:#94A3B8;--faint:#64748B;
+  --brand:#5A7FFF;--brand-50:rgba(90,127,255,.16);--brand-200:rgba(90,127,255,.4);--brand-700:#9FBCFF;
+  --shadow:none;--pop:0 18px 44px -10px rgba(0,0,0,.6);--sidebar:#0E1A40;color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --paper:#080D22;--surface:#122142;--lane:#0C1533;--lane-line:#16244A;--line:#1B2A52;--line-strong:#263867;
+  --ink:#fff;--text:#E2E8F0;--muted:#94A3B8;--faint:#64748B;
+  --brand:#5A7FFF;--brand-50:rgba(90,127,255,.16);--brand-200:rgba(90,127,255,.4);--brand-700:#9FBCFF;
+  --shadow:none;--pop:0 18px 44px -10px rgba(0,0,0,.6);--sidebar:#0E1A40;color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--text);font:14px/1.45 Geist,ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+svg{display:block;flex:none}
+:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.num{font-variant-numeric:tabular-nums}
+
+.app{height:100vh;display:flex}
+.rail{width:72px;flex:none;background:var(--sidebar);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:10px;padding-top:16px}
+.rail i{width:36px;height:36px;border-radius:11px;background:var(--lane)}
+.rail i.on{background:var(--brand-50);box-shadow:inset 0 0 0 1.5px var(--brand-200)}
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.topbar{height:64px;flex:none;display:flex;align-items:center;gap:16px;padding:0 32px;background:var(--surface);border-bottom:1px solid var(--line)}
+.topbar h1{margin:0;font:700 19px 'Space Grotesk';letter-spacing:-.01em;color:var(--ink)}
+.topbar .sp{flex:1}.topbar .av{width:34px;height:34px;border-radius:50%;background:var(--lane)}
+
+.bar{flex:none;display:flex;align-items:center;gap:16px;padding:0 28px;background:var(--surface);border-bottom:1px solid var(--line);position:relative;z-index:5}
+.bar.h64{height:64px}.bar.h76{height:80px}
+.right{margin-left:auto;display:flex;align-items:center;gap:8px;flex:none}
+/* As pílulas da barra implementada, só para dar o espaço real que sobra. */
+.period{display:flex;align-items:center;gap:2px;height:38px;padding:3px;border-radius:12px;border:1px solid var(--line-strong);background:var(--surface);box-shadow:var(--shadow)}
+.period i{width:30px;height:30px;display:grid;place-items:center;color:var(--muted);font-style:normal}
+.period span{padding:0 10px;font-size:13px;font-weight:600;white-space:nowrap}
+.vsep{width:1px;height:22px;background:var(--line-strong);margin:0 2px}
+.pill{height:36px;display:inline-flex;align-items:center;gap:7px;padding:0 12px;border-radius:999px;border:1px solid var(--line-strong);background:var(--surface);font-size:12.5px;white-space:nowrap}
+.pill em{font-style:normal;color:var(--muted)}
+
+/* Barrinha da distribuição: cada etapa do funil na cor dela, no tamanho do
+   que tem. É o que o funil diz antes de abrir: onde os leads estão parados. */
+.dist{display:flex;height:6px;border-radius:99px;overflow:hidden;background:var(--lane);gap:2px}
+.dist i{display:block;height:100%;border-radius:99px;min-width:4px}
+.dist.empty i{display:none}
+
+/* ---------- Opção 1: o funil como título da barra ---------- */
+.fsw{height:48px;display:flex;align-items:center;gap:12px;padding:0 12px 0 10px;margin-left:-10px;border-radius:14px;text-align:left}
+.fsw:hover,.fsw[aria-expanded="true"]{background:var(--lane)}
+.fsw .nm{font:700 20px/1 'Space Grotesk';letter-spacing:-.02em;color:var(--ink);white-space:nowrap}
+.fsw .meta{display:flex;flex-direction:column;gap:6px;min-width:150px}
+.fsw .meta small{font-size:12px;color:var(--muted);white-space:nowrap}
+.fsw .chev{color:var(--muted)}
+
+/* Menu de funis (opção 1 e o "Mais" da opção 2) */
+.menu{position:absolute;top:calc(100% + 6px);width:380px;max-height:calc(100vh - 160px);overflow:auto;border-radius:16px;background:var(--surface);border:1px solid var(--line-strong);box-shadow:var(--pop);padding:8px;display:none;z-index:10}
+.menu.open{display:block}
+.menu h5{margin:6px 10px 6px;font-size:12px;font-weight:600;color:var(--muted)}
+.menu .grp+.grp{margin-top:6px;padding-top:6px;border-top:1px solid var(--line)}
+.fopt{width:100%;display:grid;grid-template-columns:1fr auto;gap:6px 12px;align-items:center;padding:10px;border-radius:11px;text-align:left}
+.fopt:hover{background:var(--lane)}
+.fopt.on{background:var(--brand-50)}
+.fopt b{font-size:13.5px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fopt .c{font:700 13px 'Space Grotesk';color:var(--muted)}
+.fopt.on b,.fopt.on .c{color:var(--brand-700)}
+.fopt .dist{grid-column:1/-1}
+.fopt small{grid-column:1/-1;font-size:11.5px;color:var(--muted);margin-top:-2px}
+.fopt.zero b{color:var(--muted)}
+
+/* ---------- Opção 2: controle segmentado ---------- */
+.seg{display:flex;align-items:center;gap:2px;padding:3px;border-radius:13px;background:var(--lane);border:1px solid var(--lane-line);min-width:0;overflow:hidden}
+.seg button{height:34px;display:inline-flex;align-items:center;gap:7px;padding:0 12px;border-radius:10px;font-size:13px;font-weight:600;color:var(--muted);white-space:nowrap}
+.seg button:hover{color:var(--text)}
+.seg button.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(14,26,64,.08),0 0 0 1px var(--line)}
+.seg button .n{font:700 11.5px 'Space Grotesk';color:var(--faint)}
+.seg button.on .n{color:var(--brand)}
+.seg button.zero{color:var(--faint)}
+.seg .div{width:1px;height:18px;background:var(--line-strong);margin:0 4px;flex:none}
+.segwrap{position:relative;display:flex;align-items:center;gap:8px;min-width:0;flex:1}
+.more{height:34px;display:inline-flex;align-items:center;gap:5px;padding:0 10px;border-radius:10px;font-size:13px;font-weight:600;color:var(--brand-700);background:var(--brand-50);flex:none;white-space:nowrap}
+
+/* ---------- Opção 3: cartões de funil ---------- */
+.cards{display:flex;align-items:stretch;gap:8px;min-width:0;flex:1;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none;padding:2px;-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 40px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 40px),transparent)}
+.cards::-webkit-scrollbar{display:none}
+.fcard{width:auto;min-width:132px;max-width:220px;flex:none;display:flex;flex-direction:column;gap:7px;padding:9px 12px 10px;border-radius:13px;border:1px solid var(--line);background:var(--surface);text-align:left;transition:border-color .12s,background .12s}
+.fcard:hover{border-color:var(--brand-200)}
+.fcard .t{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.fcard b{font-size:12.5px;font-weight:600;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fcard .c{font:700 17px/1 'Space Grotesk';color:var(--ink)}
+.fcard.on{border-color:var(--brand);background:var(--brand-50);box-shadow:0 0 0 1px var(--brand)}
+.fcard.on b{color:var(--brand-700)}
+.fcard.zero .c{color:var(--faint)}
+.cards .gap{flex:none;display:flex;align-items:center;padding:0 2px 0 6px;font-size:11.5px;font-weight:600;color:var(--faint);writing-mode:vertical-rl;transform:rotate(180deg)}
+
+/* Quadro de fundo, só para dar contexto */
+.board{flex:1;min-height:0;overflow:hidden;padding:20px 28px;display:flex;gap:16px}
+.lane{width:280px;flex:none;border-radius:14px;background:var(--lane);border:1px solid var(--lane-line);position:relative;padding:14px 10px;display:flex;flex-direction:column;gap:8px}
+.lane::before{content:"";position:absolute;left:12px;right:12px;top:0;height:3px;border-radius:0 0 3px 3px;background:var(--c)}
+.lane h3{margin:0 4px 4px;font-size:13.5px;font-weight:650;color:var(--ink);display:flex;gap:8px;align-items:center}
+.lane h3 span{font-size:11.5px;font-weight:700;color:var(--muted);background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:0 6px}
+.ghost{height:112px;border-radius:11px;background:var(--surface);border:1px solid var(--line);opacity:.75}
+
+.mk{position:fixed;right:76px;top:14px;z-index:60;display:flex;gap:6px;align-items:center;background:#0E1A40;color:#fff;border-radius:999px;padding:5px 6px 5px 14px;font-size:12px;font-weight:600;box-shadow:0 8px 24px -8px rgba(0,0,0,.5)}
+.mk button{padding:5px 10px;border-radius:999px;background:rgba(255,255,255,.1);font-size:11.5px;color:#fff}
+.mk button[aria-pressed="true"]{background:#fff;color:#0E1A40}
+.why{position:fixed;right:16px;bottom:16px;z-index:60;max-width:460px;background:var(--surface);border:1px solid var(--line-strong);border-radius:14px;padding:12px 16px;box-shadow:var(--pop);font-size:13px;color:var(--text)}
+.why b{color:var(--ink)}
+@media (max-width:760px){.rail{display:none}.topbar,.bar{padding-left:16px;padding-right:16px}.right{display:none}.board{padding:16px}.mk{top:auto;bottom:12px;right:12px;flex-wrap:wrap;border-radius:16px}.why{display:none}.menu{width:calc(100vw - 32px)}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="rail" aria-hidden="true"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></nav>
+  <div class="main">
+    <header class="topbar"><h1>Pipeline</h1><span class="sp"></span><span class="av"></span></header>
+    <div class="bar h64" id="bar"></div>
+    <div class="board" id="board"></div>
+  </div>
+</div>
+<div class="why" id="why"></div>
+<div class="mk" role="group" aria-label="Controles do mockup">
+  <span>Seletor de funil</span>
+  <button data-opt="1" aria-pressed="true">1 · Título</button>
+  <button data-opt="2" aria-pressed="false">2 · Segmentado</button>
+  <button data-opt="3" aria-pressed="false">3 · Cartões</button>
+  <button id="mkTheme" aria-pressed="false">Escuro</button>
+</div>
+
+<script>
+// Funis e etapas reais da STRONIX (16/10/2026), com quantidades de exemplo.
+const FUNNELS = [
+  { id: 'digital', name: 'Digital', kind: 'lead', stages: [['Novo', '#84cc16', 9], ['Aguardando contato', '#f97316', 12], ['Em conversa', '#ec4899', 7], ['Agendado', '#f59e0b', 4], ['Negociação', '#8b5cf6', 4]] },
+  { id: 'inativos', name: 'Inativos', kind: 'lead', stages: [['Ligação', '#3b82f6', 60], ['Mensagem Whatsapp', '#10b981', 30], ['Freepass', '#f59e0b', 12], ['Negociação', '#8b5cf6', 10]] },
+  { id: 'visitas', name: 'Visitas presenciais', kind: 'lead', stages: [['Freepass', '#10b981', 0], ['Negociação', '#8b5cf6', 0]] },
+  { id: 'migr', name: 'Migrações e renovações', kind: 'lead', stages: [['Abordagem', '#3b82f6', 2], ['Negociação', '#8b5cf6', 1]] },
+  { id: 'ind', name: 'Indicações', kind: 'lead', stages: [['Aguardando ação', '#14b8a6', 5], ['Em contato', '#f59e0b', 4], ['Visita', '#3b82f6', 3], ['Freepass', '#ec4899', 1], ['Negociação', '#8b5cf6', 1]] },
+  { id: 'upg', name: 'Upgrade', kind: 'cliente', stages: [['Aguardando contato', '#94a3b8', 4], ['Abordagem', '#14b8a6', 3], ['Freepass', '#f59e0b', 2]] },
+  { id: 'ren', name: 'Renovações', kind: 'cliente', stages: [['90 dias', '#f59e0b', 12], ['60 dias', '#f97316', 15], ['30 dias', '#f43f5e', 14]] },
+  { id: 'venc', name: 'Vencidos', kind: 'cliente', stages: [['Aguardando contato', '#94a3b8', 15], ['Em contato', '#10b981', 6], ['Freepass', '#f59e0b', 3], ['Negociação', '#8b5cf6', 3]] },
+];
+const WHY = {
+  1: '<b>1 · O funil como título.</b> O nome do funil vira o título da barra, com o total e a barrinha que mostra onde os leads estão. O clique abre a lista dos 8 funis, separados em leads e clientes, cada um com a sua barrinha. Libera a barra para os filtros e cabe qualquer número de funis. Custa um clique a mais para trocar.',
+  2: '<b>2 · Segmentado.</b> As abas de hoje viram um controle de botões, com o funil aberto em destaque. É o mais parecido com o que a equipe já conhece e troca em um clique, mas com os filtros ao lado só cabem 4 ou 5 funis; o resto fica no "Mais".',
+  3: '<b>3 · Cartões.</b> Cada funil vira um cartão com o total e a barrinha das etapas, numa faixa que rola de lado. É o mais visual: dá para ver de longe qual funil está cheio. Ocupa 16 px a mais de altura e, com 8 funis, parte da faixa fica para a rolagem.',
+};
+let opt = 1, current = 'digital', open = false;
+const total = (f) => f.stages.reduce((a, s) => a + s[2], 0);
+const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const chev = (s = 14) => `<svg class="chev" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>`;
+const dist = (f) => `<span class="dist ${total(f) ? '' : 'empty'}" aria-hidden="true">${f.stages.map(([n, c, q]) => q ? `<i style="flex:${q};background:${c}" title="${esc(n)}: ${q}"></i>` : '').join('')}</span>`;
+const plural = (n, a, b) => `${n} ${n === 1 ? a : b}`;
+const right = `<div class="right"><div class="period"><i>‹</i><span>Todos os meses ▾</span><i>›</i></div><span class="vsep"></span><span class="pill"><em>Consultor</em><b>Equipe toda</b></span><span class="pill"><em>Situação</em><b>Todos</b></span></div>`;
+
+function menuHTML(only) {
+  const groups = [['lead', 'Funis de leads'], ['cliente', 'Funis de clientes']];
+  return groups.map(([k, t]) => {
+    const list = FUNNELS.filter(f => f.kind === k && (!only || only.includes(f.id)));
+    if (!list.length) return '';
+    return `<div class="grp"><h5>${t}</h5>${list.map(f => `<button class="fopt ${f.id === current ? 'on' : ''} ${total(f) ? '' : 'zero'}" role="menuitemradio" aria-checked="${f.id === current}" data-f="${f.id}"><b>${esc(f.name)}</b><span class="c num">${total(f) || ''}</span>${dist(f)}<small>${total(f) ? `${plural(f.stages.length, 'etapa', 'etapas')}, mais cheia: ${esc([...f.stages].sort((a, b) => b[2] - a[2])[0][0])}` : 'Sem leads em aberto'}</small></button>`).join('')}</div>`;
+  }).join('');
+}
+
+function render() {
+  const f = FUNNELS.find(x => x.id === current);
+  const bar = document.getElementById('bar');
+  bar.className = 'bar ' + (opt === 3 ? 'h76' : 'h64');
+  if (opt === 1) {
+    const top = [...f.stages].sort((a, b) => b[2] - a[2])[0];
+    bar.innerHTML = `<div style="position:relative"><button class="fsw" id="fsw" aria-haspopup="menu" aria-expanded="${open}">
+        <span class="nm">${esc(f.name)}</span>
+        <span class="meta"><small>${total(f) ? `${plural(total(f), 'lead em aberto', 'leads em aberto')}${top && top[2] ? `, mais em ${esc(top[0])}` : ''}` : 'Sem leads em aberto'}</small>${dist(f)}</span>
+        ${chev(16)}</button>
+        <div class="menu ${open ? 'open' : ''}" role="menu" aria-label="Funis" id="menu">${menuHTML()}</div></div>${right}`;
+  } else if (opt === 2) {
+    const visible = ['digital', 'inativos', 'ind', 'ren'];
+    const btn = (x) => `<button class="${x.id === current ? 'on' : ''} ${total(x) ? '' : 'zero'}" data-f="${x.id}">${esc(x.name)}${total(x) ? `<span class="n num">${total(x)}</span>` : ''}</button>`;
+    const shown = FUNNELS.filter(x => visible.includes(x.id) || x.id === current);
+    const leads = shown.filter(x => x.kind === 'lead'), clients = shown.filter(x => x.kind === 'cliente');
+    const hidden = FUNNELS.filter(x => !shown.includes(x)).map(x => x.id);
+    bar.innerHTML = `<div class="segwrap"><div class="seg">${leads.map(btn).join('')}${clients.length ? '<span class="div"></span>' : ''}${clients.map(btn).join('')}</div>
+      <div style="position:relative"><button class="more" id="more" aria-haspopup="menu" aria-expanded="${open}">Mais ${hidden.length}${chev(13)}</button><div class="menu ${open ? 'open' : ''}" role="menu" aria-label="Outros funis" style="right:auto;left:0">${menuHTML(hidden)}</div></div></div>${right}`;
+  } else {
+    const card = (x) => `<button class="fcard ${x.id === current ? 'on' : ''} ${total(x) ? '' : 'zero'}" data-f="${x.id}" aria-pressed="${x.id === current}"><span class="t"><b>${esc(x.name)}</b><span class="c num">${total(x)}</span></span>${dist(x)}</button>`;
+    bar.innerHTML = `<div class="cards">${FUNNELS.filter(x => x.kind === 'lead').map(card).join('')}<span class="gap">Clientes</span>${FUNNELS.filter(x => x.kind === 'cliente').map(card).join('')}</div>${right}`;
+  }
+  document.getElementById('board').innerHTML = f.stages.map(([n, c, q]) => `<div class="lane" style="--c:${c}"><h3>${esc(n)}<span class="num">${q}</span></h3>${'<div class="ghost"></div>'.repeat(Math.min(3, Math.max(1, Math.ceil(q / 4))))}</div>`).join('');
+  document.getElementById('why').innerHTML = WHY[opt];
+  document.querySelectorAll('[data-opt]').forEach(b => b.setAttribute('aria-pressed', String(Number(b.dataset.opt) === opt)));
+}
+
+document.addEventListener('click', (e) => {
+  const o = e.target.closest('[data-opt]'); if (o) { opt = Number(o.dataset.opt); open = false; render(); return; }
+  if (e.target.closest('#fsw,#more')) { open = !open; render(); return; }
+  const f = e.target.closest('[data-f]'); if (f) { current = f.dataset.f; open = false; render(); return; }
+  if (open && !e.target.closest('.menu')) { open = false; render(); }
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && open) { open = false; render(); } });
+const isDark = () => document.documentElement.dataset.theme === 'dark' || (!document.documentElement.dataset.theme && matchMedia('(prefers-color-scheme: dark)').matches);
+document.getElementById('mkTheme').onclick = () => { const on = !isDark(); document.documentElement.dataset.theme = on ? 'dark' : 'light'; document.getElementById('mkTheme').setAttribute('aria-pressed', on); };
+document.getElementById('mkTheme').setAttribute('aria-pressed', isDark());
+render();
+</script>
+</body>
+</html>
