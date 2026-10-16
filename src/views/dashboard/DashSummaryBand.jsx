@@ -1,6 +1,5 @@
-// Faixa de resumo: 5 números num card só, divididos por régua vertical (README
-// §2 do Operacional, "a divergência deliberada": não são 5 DashKpiCard
-// soltos). Abaixo de 768px vira grade de 2 colunas, cada célula como card
+// Faixa de resumo: os números num card só, divididos por régua vertical (README
+// §2 do Operacional, "a divergência deliberada": não são DashKpiCard soltos). Abaixo de 768px vira grade de 2 colunas, cada célula como card
 // próprio, sem tendência. Usada pelo Operacional e pelo CRM.
 //
 // Célula: key, label, help, value, sub, delta ({ up, flat, none, text }),

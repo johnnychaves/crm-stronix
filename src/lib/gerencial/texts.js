@@ -1,73 +1,24 @@
-// Frases do parágrafo 6 do handoff
-// (docs/superpowers/specs/handoff-gerencial/README.md), cada uma numa função
-// pura. Copiadas literais: para mudar uma frase, muda o handoff primeiro e
-// só depois este arquivo.
+// Frases da tela Gerencial (handoff v2, docs/superpowers/specs/handoff-gerencial/
+// README.md), cada uma numa função pura. Para mudar uma frase, muda o handoff
+// primeiro e só depois este arquivo.
 
 import { monthLabel } from '../operacional/month.js';
-import { fmtMoney as money } from '../format.js';
 
-// Barra e cabeçalho (§6). Sem mês comparado (nenhum mês anterior com venda),
-// o controle de comparação nem existe na barra: nada de pró-rata nem de mês
-// fechado faz sentido aqui.
+// Linha de apoio do cabeçalho (handoff v2, §4). Mês em andamento compara os
+// mesmos dias do mês comparado (pró-rata); mês fechado compara o mês inteiro.
 export function monthSubline({ running, elapsed, monthKey, compareOn, cmpKey }) {
-  if (!cmpKey) return 'Não há mês anterior com venda para comparar';
   const mes = monthLabel(monthKey, { capitalized: false, withYear: false });
-  const cmpMes = monthLabel(cmpKey, { capitalized: false, withYear: false });
+  const comparing = Boolean(compareOn && cmpKey);
+  const cmpMes = comparing ? monthLabel(cmpKey, { capitalized: false, withYear: false }) : '';
   if (running) {
-    return compareOn
-      ? `1 a ${elapsed} de ${mes} comparado com os ${elapsed} primeiros dias de ${cmpMes}. O mês está em andamento, então a comparação é pró-rata.`
-      : `1 a ${elapsed} de ${mes}. O mês está em andamento e ainda vai receber vendas.`;
+    const range = `1 a ${elapsed} de ${mes}`;
+    return comparing ? `${range} · vs. mesmos dias de ${cmpMes}` : `${range} · em andamento`;
   }
-  return compareOn
-    ? `${mes} inteiro comparado com ${cmpMes}. Mês fechado.`
-    : `${mes} inteiro. Mês fechado.`;
+  return comparing ? `${mes} inteiro · vs. ${cmpMes}` : `${mes} inteiro`;
 }
 
-// Notas de rodapé de card (§6). Cada uma some (null) quando a contagem é
-// zero: sem clawback, sem sobreposição, sem importado ou sem vencido não há
-// nada para a nota explicar.
-export function clawbackNote({ count, value }) {
-  if (!count) return null;
-  const venda = count === 1 ? 'venda' : 'vendas';
-  const foi = count === 1 ? 'já foi cancelada' : 'já foram canceladas';
-  return `${count} ${venda} deste mês ${foi}, somando ${money(value)}. O valor continua no total do mês, porque o contrato foi fechado aqui.`;
-}
-
-export function overlapNote({ count }) {
-  if (!count) return null;
-  const pessoa = count === 1 ? 'pessoa tem' : 'pessoas têm';
-  return `A carteira soma contrato, não pessoa: ${count} ${pessoa} dois contratos vigentes ao mesmo tempo, então o número de contratos é maior que o de gente.`;
-}
-
-export function blindNote({ count }) {
-  if (!count) return null;
-  const contrato = count === 1 ? 'contrato veio' : 'contratos vieram';
-  const entram = count === 1 ? 'Entra' : 'Entram';
-  const somam = count === 1 ? 'soma' : 'somam';
-  const dele = count === 1 ? 'dele' : 'deles';
-  return `${count} ${contrato} de um sistema antigo sem o valor. ${entram} na contagem de contratos e no risco, e nunca ${somam} no valor por mês. Preencher o valor ${dele} em Contratos corrige a carteira.`;
-}
-
-export function expiredNote({ count } = {}) {
-  if (!count) return null;
-  return 'Já saíram da carteira, então o valor por mês deles não aparece aqui. É a fila de recuperação.';
-}
-
-export function exitsNote() {
-  return 'Trancamento é reversível e continua contando na carteira. Cancelamento sai.';
-}
-
-export function plansNote() {
-  return "Combinação de modalidades é um grupo próprio, não a soma das partes: 'Musculação + Pilates' não entra em nenhum dos dois isolados.";
-}
-
-export function sourcesNote() {
-  return 'É a origem do lead que virou contrato, não o volume de leads do canal. Quanto cada canal gera em leads fica no painel CRM.';
-}
-
-// Vazios (§5). gymEmpty substitui a tela inteira; monthNoSales só o que
-// descreve a venda do mês; emptyRanking é a nota que troca a tabela de quem
-// vendeu.
+// Vazios (§4). gymEmpty substitui a tela inteira; monthNoSales só o que
+// descreve a venda do mês.
 export function emptyGym() {
   return {
     title: 'Ainda não há contratos',
@@ -83,9 +34,18 @@ export function emptyMonth() {
   };
 }
 
-export function emptyRanking() {
-  return {
-    title: 'Sem vendas no mês, não há ranking',
-    body: 'Consultor, plano e origem descrevem as vendas do mês escolhido. Troque o mês para ver o ranking.'
-  };
-}
+// Dicas do "?" de cada card. Em linguagem de quem usa a tela, sem termo
+// técnico: o que o número é, de onde vem e o que ele não é.
+export const HELP = {
+  sold: 'Soma do valor dos contratos fechados no mês: matrículas novas, renovações, upgrades e retornos. Conta no mês em que o contrato foi fechado, mesmo que comece depois. É valor de contrato, não dinheiro que já entrou no caixa.',
+  wallet: 'Quanto os contratos ativos hoje valem por mês. Cada contrato entra pelo valor dividido pelos meses do plano. Os trancados entram, porque voltam a valer. Não muda com o mês escolhido.',
+  ticket: 'Valor médio por mês de cada contrato ativo hoje: o valor por mês da carteira dividido pelos contratos. Não muda com o mês escolhido.',
+  lapsed: 'Contratos que já passaram do fim e não têm renovação nem outro contrato depois. Já saíram da carteira. É a lista de quem vale recuperar.',
+  mix: 'Cada contrato fechado no mês entra em um tipo só: matrícula nova, renovação, upgrade ou retorno de ex-cliente. O desconto é quanto os contratos saíram abaixo do preço de tabela. Com a comparação ligada, a seta mostra a variação contra o mês comparado.',
+  sellers: 'O consultor dono do lead na hora da venda. Vendas é a quantidade de contratos. Ticket/mês é o valor médio por mês de cada venda, e mostra quem vende planos mais longos ou mais caros, não só quem vende mais.',
+  expiry: 'Contratos ativos que terminam em 30, 60 e 90 dias e ainda não têm renovação, com o valor por mês de cada faixa. Contrato trancado não vence.',
+  churn: 'De cada 100 clientes ativos no começo do mês, quantos saíram de vez. Sai de vez quem cancelou e não ficou com outro contrato, ou cujo contrato venceu, passou da tolerância e não voltou. Trancado não conta como saída. Cancelamentos e trancamentos em valor estão em Saídas do mês.',
+  exits: 'Contratos cancelados e trancados no mês, com o valor por mês que cada um leva embora. Trancamento é reversível e o contrato continua na carteira. Cancelamento sai dela.',
+  plans: 'Planos vendidos no mês, por valor. Combinação de modalidades é um plano próprio: Musculação + Pilates não entra em Musculação nem em Pilates.',
+  sources: 'De onde veio o lead que virou contrato no mês. Não é o volume de leads de cada canal, que fica no painel CRM.'
+};

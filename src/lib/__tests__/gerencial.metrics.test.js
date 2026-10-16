@@ -142,3 +142,36 @@ describe('deltaOf', () => {
     expect(deltaOf(12, 10, { kind: 'pp' })).toMatchObject({ text: '+2 p.p.' });
   });
 });
+
+describe('churn no Gerencial', () => {
+  const now = D(2026, 9, 17);
+  // Dois clientes ativos em 1/9. Um cancela dia 10 e não tem outro contrato.
+  const contracts = [
+    c({ id: 'fica', personKey: 'p1', startsAt: D(2026, 1, 1), endsAt: D(2027, 1, 1) }),
+    c({ id: 'sai', personKey: 'p2', startsAt: D(2026, 1, 1), endsAt: D(2027, 1, 1), status: 'cancelado', cancelledAt: D(2026, 9, 10) })
+  ];
+  const ctx = { now, contracts, leadsById: new Map(), graceDays: 15 };
+
+  it('saídas definitivas do mês ÷ clientes ativos no início', () => {
+    const m = metricsOf(ctx, { monthKey: '2026-09' });
+    expect(m.churn).toMatchObject({ exits: 1, base: 2, pct: 50 });
+  });
+
+  it('mês sem ninguém ativo no início não tem taxa', () => {
+    const m = metricsOf({ ...ctx, contracts: [] }, { monthKey: '2026-09' });
+    expect(m.churn).toMatchObject({ exits: 0, base: 0, pct: null });
+  });
+
+  it('o mês comparado em pró-rata não conta a saída que veio depois do corte', () => {
+    const cut = comparisonCut('2026-10', '2026-09', D(2026, 10, 5));
+    const m = metricsOf({ ...ctx, now: D(2026, 10, 5) }, { monthKey: '2026-09', cutEnd: cut });
+    expect(m.churn.exits).toBe(0); // cancelou dia 10; o corte é dia 5
+  });
+
+  it('a tolerância de vencimento vem do ctx: contrato que acabou dia 5 sai quando ela termina', () => {
+    const venceu = [c({ id: 'v', personKey: 'p3', startsAt: D(2026, 1, 1), endsAt: D(2026, 9, 5) })];
+    const base = { now, contracts: venceu, leadsById: new Map() };
+    expect(metricsOf({ ...base, graceDays: 5 }, { monthKey: '2026-09' }).churn.exits).toBe(1); // saiu dia 10
+    expect(metricsOf({ ...base, graceDays: 15 }, { monthKey: '2026-09' }).churn.exits).toBe(0); // só sai dia 20
+  });
+});
