@@ -71,25 +71,39 @@ function deadlineMs(entry, now) {
 // 0 desfecho de visita ou aula que já passou do horário
 // 1 vence em até 90 minutos
 // 2 atrasado crítico (a partir do SLA da academia)
-// 3 o resto do que tem horário
+// 3 o resto do que tem horário (inclusive o que tem horário e perdeu a data)
 // 4 atrasado
 // 5 renovação
 // 6 vencido
-export function klassOf(entry, now, { sla = DEFAULT_SLA_OVERDUE_DAYS } = {}) {
-  const d = deadlineMs(entry, now);
-  if (isAppt(entry.slug) && d != null && d < 0) return 0;
-  if (d != null && d <= URGENT_WINDOW_MIN * MIN_MS) return 1;
-  if (entry.slug === C.ATRASADO && overdueDaysOf(entry.lead, now) >= sla) return 2;
-  if (d != null) return 3;
-  if (entry.slug === C.ATRASADO) return 4;
-  if (entry.slug === C.RENOVACAO) return 5;
-  return 6;
+const COM_HORARIO = [C.VISITA_HOJE, C.AULA_HOJE, C.CONTATO_HOJE, C.NOVO_24H];
+
+// O SLA vem da configuração da academia. O que não é um número positivo usa o
+// padrão: com null ou 0, todo atrasado viraria crítico.
+const slaValido = (sla) => (Number.isFinite(sla) && sla > 0 ? sla : DEFAULT_SLA_OVERDUE_DAYS);
+
+function classOf(slug, ms, days, sla) {
+  if (isAppt(slug) && ms != null && ms < 0) return 0;
+  if (ms != null && ms <= URGENT_WINDOW_MIN * MIN_MS) return 1;
+  if (slug === C.ATRASADO && days >= sla) return 2;
+  if (ms != null) return 3;
+  if (slug === C.ATRASADO) return 4;
+  if (slug === C.RENOVACAO) return 5;
+  return COM_HORARIO.includes(slug) ? 3 : 6;
 }
 
+// Mede a tarefa uma vez só: o prazo, os dias de atraso e a classe.
+function measure(entry, now, { sla } = {}) {
+  const ms = deadlineMs(entry, now);
+  const days = entry.slug === C.ATRASADO ? overdueDaysOf(entry.lead, now) : 0;
+  return { ms, days, klass: classOf(entry.slug, ms, days, slaValido(sla)) };
+}
+
+export const klassOf = (entry, now, opts) => measure(entry, now, opts).klass;
+
 // Desempate dentro da classe, do que vem primeiro para o que vem depois.
-function tieOf(entry, klass, now, ms) {
-  if (klass === 0 || klass === 1 || klass === 3) return ms;
-  if (klass === 2 || klass === 4) return -overdueDaysOf(entry.lead, now);
+function tieOf(entry, { ms, days, klass }, now) {
+  if (klass === 0 || klass === 1 || klass === 3) return ms ?? Infinity; // sem data, depois das que têm
+  if (klass === 2 || klass === 4) return -days;
   if (klass === 5) return daysToExpiryOf(entry.lead.currentContractEndsAt, now) ?? Infinity;
   return -expiredSortKey(entry.lead); // vencido: o vencimento mais recente primeiro
 }
@@ -99,9 +113,8 @@ function tieOf(entry, klass, now, ms) {
 export function rankFoco(entries, now, opts = {}) {
   return (entries || [])
     .map((e) => {
-      const ms = deadlineMs(e, now);
-      const klass = klassOf(e, now, opts);
-      return { item: { ...e, klass, minutes: ms == null ? null : Math.round(ms / MIN_MS) }, tie: tieOf(e, klass, now, ms) };
+      const m = measure(e, now, opts);
+      return { item: { ...e, klass: m.klass, minutes: m.ms == null ? null : Math.round(m.ms / MIN_MS) }, tie: tieOf(e, m, now) };
     })
     .sort((a, b) => a.item.klass - b.item.klass || a.tie - b.tie || (a.item.key < b.item.key ? -1 : a.item.key > b.item.key ? 1 : 0))
     .map((x) => x.item);
@@ -115,8 +128,8 @@ export function urgentCount(entries, now, opts = {}) {
 // Pular manda a tarefa para o fim, na ordem em que foi pulada. Só vale nesta
 // sessão e não grava nada. Chave que já saiu da lista é ignorada.
 export function withSkipped(ranked, skippedKeys) {
-  const pulou = new Set(skippedKeys || []);
-  const fim = (skippedKeys || []).map((k) => ranked.find((e) => e.key === k)).filter(Boolean);
+  const pulou = new Set(skippedKeys || []); // o Set tira a chave repetida, na ordem da primeira vez
+  const fim = [...pulou].map((k) => ranked.find((e) => e.key === k)).filter(Boolean);
   return [...ranked.filter((e) => !pulou.has(e.key)), ...fim];
 }
 

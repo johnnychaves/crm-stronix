@@ -70,6 +70,26 @@ describe('classes da fila', () => {
     expect(klassOf(novo('n', 21, 10), NOW)).toBe(3);
   });
 
+  it('tarefa com horário mas sem data utilizável fica na classe 3, e não na dos vencidos', () => {
+    const semData = (slug) => entry({ id: 'x' }, slug);
+    for (const slug of [C.CONTATO_HOJE, C.AULA_HOJE, C.VISITA_HOJE, C.NOVO_24H]) {
+      expect(klassOf(semData(slug), NOW), slug).toBe(3);
+    }
+    expect(klassOf(entry({ id: 'x', nextFollowUp: 'lixo' }, C.CONTATO_HOJE), NOW)).toBe(3);
+  });
+
+  it('sem data, a tarefa vem depois das que têm horário na mesma classe', () => {
+    const lista = [entry({ id: 'sem' }, C.CONTATO_HOJE), aula('a', 16, 30), contato('c', 17, 30)];
+    expect(ids(rank(lista))).toEqual(['a', 'c', 'sem']);
+  });
+
+  it('SLA que não é um número positivo usa o padrão da Meta, sem tornar todo atrasado crítico', () => {
+    for (const sla of [null, 0, -1, NaN, undefined, '3']) {
+      expect(klassOf(atrasado('a1', 1), NOW, { sla }), String(sla)).toBe(4);
+      expect(klassOf(atrasado('a3', 3), NOW, { sla }), String(sla)).toBe(2);
+    }
+  });
+
   it('renovação é a classe 5 e vencido é a 6', () => {
     expect(klassOf(renovacao('r', 50), NOW)).toBe(5);
     expect(klassOf(vencido('x', 16), NOW)).toBe(6);
@@ -162,6 +182,14 @@ describe('o Agora fica parado', () => {
     expect(ids(withSkipped(l, [t1]))).toEqual(['t2', 't12', 't7', 't1']);
     expect(ids(withSkipped(l, [t1, t2]))).toEqual(['t12', 't7', 't1', 't2']);
     expect(ids(withSkipped(l, ['nao-existe:aula_hoje']))).toEqual(ids(l));
+  });
+
+  it('a mesma chave pulada duas vezes aparece uma vez só, no lugar da primeira vez', () => {
+    const l = lista();
+    const t1 = taskKey({ id: 't1' }, C.AULA_HOJE);
+    const t2 = taskKey({ id: 't2' }, C.VISITA_HOJE);
+    expect(ids(withSkipped(l, [t1, t1]))).toEqual(['t2', 't12', 't7', 't1']);
+    expect(ids(withSkipped(l, [t1, t2, t1]))).toEqual(['t12', 't7', 't1', 't2']);
   });
 });
 

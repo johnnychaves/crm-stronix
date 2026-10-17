@@ -65,9 +65,7 @@ const CAT_FOCO_POR_CODIGO = Object.freeze({
     DAILY_GOAL_CATEGORIES.RENOVACAO, DAILY_GOAL_CATEGORIES.VENCIDO,
   ].map((s) => [s, s])),
 });
-const CODIGO_FOCO_POR_CAT = Object.freeze(Object.fromEntries(
-  Object.values(CAT_FOCO_POR_CODIGO).map((v) => [v, v]),
-));
+const FOCO_VALIDOS = new Set(Object.values(CAT_FOCO_POR_CODIGO));
 
 // Definição de um parâmetro: em que campo da tela ele cai, como se lê um valor
 // cru (null quando o nome não está no endereço) e como se escreve de volta
@@ -251,8 +249,8 @@ const cat = param(
     return own(tabela, raw) ? tabela[raw] : 'all';
   },
   (v, ctx) => {
-    const tabela = ctx.foco ? CODIGO_FOCO_POR_CAT : CODIGO_POR_CAT;
-    return v && v !== 'all' && own(tabela, v) ? tabela[v] : null;
+    if (ctx.foco) return FOCO_VALIDOS.has(v) ? v : null;
+    return v && v !== 'all' && own(CODIGO_POR_CAT, v) ? CODIGO_POR_CAT[v] : null;
   },
 );
 
