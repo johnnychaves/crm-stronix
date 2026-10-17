@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { AlertTriangle, Calendar, Check, Clock, GraduationCap, Link2, RefreshCw, Search, X } from 'lucide-react';
 import { buildMatriculaWrites, computeEndsAt, liveRenewalOf, renewalStartProblem } from '../lib/contracts.js';
@@ -77,8 +77,12 @@ const Chip = ({ tone = 'amber', children }) => (
 
 // Faixa embaixo das opções de início: a vigência, ou o aviso do encaixe. Reserva
 // três linhas, o máximo que os avisos de sobreposição e da regra dos dois dias
-// ocupam, então o modal não pula quando o texto muda. É uma região viva sempre
-// montada: o leitor de tela só anuncia a troca de texto de uma região que já existia.
+// ocupam, então o modal não pula quando o texto muda. A faixa visível atualiza na
+// hora, mas não é região viva: digitando a data, cada pedaço é uma data válida e o
+// texto muda a cada tecla. Quem anuncia é um elemento só para leitor de tela,
+// sempre montado (o leitor só anuncia a troca de texto de uma região que já
+// existia), que recebe o mesmo texto depois de uma pausa, então só o final é lido.
+const ANNOUNCE_DELAY_MS = 700;
 const STATUS_TONE = {
   ok: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300',
   warn: 'border border-amber-300/60 bg-amber-50 text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200',
@@ -86,15 +90,23 @@ const STATUS_TONE = {
 };
 function StartStatus({ tone, text }) {
   const Icon = tone === 'ok' ? Check : AlertTriangle;
+  // Começa com o texto de agora: o que já estava na tela ao abrir não é um anúncio novo.
+  const [announced, setAnnounced] = useState(text);
+  useEffect(() => {
+    const timer = setTimeout(() => setAnnounced(text), ANNOUNCE_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [text]);
   return (
-    <div
-      data-slot="start-status"
-      role="status"
-      className={cn('mt-2.5 flex min-h-[78px] items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-[13px] leading-[1.45]', STATUS_TONE[tone])}
-    >
-      <Icon size={16} className="flex-none" aria-hidden="true" />
-      <p className="min-w-0 text-pretty">{text}</p>
-    </div>
+    <>
+      <div
+        data-slot="start-status"
+        className={cn('mt-2.5 flex min-h-[78px] items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-[13px] leading-[1.45]', STATUS_TONE[tone])}
+      >
+        <Icon size={16} className="flex-none" aria-hidden="true" />
+        <p className="min-w-0 text-pretty">{text}</p>
+      </div>
+      <div data-slot="start-status-announcer" role="status" className="sr-only">{announced}</div>
+    </>
   );
 }
 

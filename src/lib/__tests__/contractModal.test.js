@@ -26,8 +26,8 @@ const planos = [
 ];
 
 let root = null;
-async function renderizar(arvore, agora) {
-  vi.useFakeTimers({ toFake: ['Date'] });
+async function renderizar(arvore, agora, falsos = ['Date']) {
+  vi.useFakeTimers({ toFake: falsos });
   vi.setSystemTime(agora);
   const container = document.createElement('div');
   document.body.appendChild(container);
@@ -37,9 +37,10 @@ async function renderizar(arvore, agora) {
   });
 }
 const modal = (props) => h(ContractModal, { appUser, db: {}, onClose: () => {}, onDone: () => {}, ...props });
-async function montar(props, contratos = [], agora = D(2026, 10, 16, 10, 20), catalogo = planos) {
-  await renderizar(h(GeneralConfigContext.Provider, { value: { planos: catalogo, contratos } }, modal(props)), agora);
+async function montar(props, contratos = [], agora = D(2026, 10, 16, 10, 20), catalogo = planos, falsos = ['Date']) {
+  await renderizar(h(GeneralConfigContext.Provider, { value: { planos: catalogo, contratos } }, modal(props)), agora, falsos);
 }
+const anunciador = () => document.body.querySelector('[data-slot="start-status-announcer"]');
 afterEach(async () => {
   await act(async () => { root?.unmount(); });
   root = null;
@@ -247,16 +248,54 @@ describe('ContractModal, matrícula', () => {
     expect(faixa.textContent).not.toContain('—');
   });
 
-  it('a faixa de vigência é uma região viva sempre montada e reserva três linhas', async () => {
+  it('a faixa de vigência reserva três linhas e troca de texto e de tom no mesmo nó', async () => {
     await montar({ lead: leadNovo, mode: 'matricula' });
     const faixa = document.body.querySelector('[data-slot="start-status"]');
-    expect(faixa.getAttribute('role')).toBe('status');
     expect(faixa.className).toContain('min-h-[78px]');
     await clicar(opcao('Outra data'));
     await digitar(document.body.querySelector('input[type="date"]'), '2026-10-20');
-    // O mesmo nó troca de texto e de tom, sem desmontar.
     expect(document.body.querySelector('[data-slot="start-status"]')).toBe(faixa);
-    expect(faixa.getAttribute('role')).toBe('status');
+  });
+
+  // Digitando a data, cada pedaço é uma data válida e a faixa muda a cada tecla; um
+  // leitor de tela leria "25/12/202, então 666134 dias". A faixa visível atualiza na
+  // hora e deixa de ser região viva; quem anuncia é um elemento só para leitor de
+  // tela, que recebe o mesmo texto depois de uma pausa.
+  it('a faixa visível não é região viva; o anunciador repete o texto só depois de uma pausa', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' }, [], D(2026, 10, 16, 10, 20), planos, ['Date', 'setTimeout', 'clearTimeout']);
+    const faixa = document.body.querySelector('[data-slot="start-status"]');
+    const voz = anunciador();
+    expect(faixa.getAttribute('role')).toBeNull();
+    expect(faixa.getAttribute('aria-live')).toBeNull();
+    expect(voz.getAttribute('role')).toBe('status');
+    expect(voz.className).toContain('sr-only');
+    const inicial = faixa.textContent;
+    expect(inicial).toContain('Vigência de 16/10/2026');
+    // Na abertura, o texto que já estava lá não é um anúncio novo.
+    expect(voz.textContent).toBe(inicial);
+
+    const ditos = new Set([voz.textContent]);
+    const passar = async (ms) => { await act(async () => { vi.advanceTimersByTime(ms); }); ditos.add(anunciador().textContent); };
+
+    await clicar(opcao('Outra data'));
+    await digitar(document.body.querySelector('input[type="date"]'), '2026-10-20');
+    expect(faixa.textContent).toContain('A vigência só começa em 20/10/2026');
+    await passar(400);
+    await digitar(document.body.querySelector('input[type="date"]'), '2026-10-14');
+    expect(faixa.textContent).toContain('Matrícula retroativa');
+    // A faixa já mostra o texto novo; o anunciador ainda tem o antigo.
+    expect(voz.textContent).toBe(inicial);
+    await passar(400);
+    expect(voz.textContent).toBe(inicial);
+    await passar(299);
+    expect(voz.textContent).toBe(inicial);
+    await passar(1);
+
+    expect(voz.textContent).toBe(faixa.textContent);
+    expect(voz.textContent).toContain('Matrícula retroativa');
+    // O texto do meio do caminho nunca foi anunciado, e o nó é o mesmo o tempo todo.
+    expect([...ditos].some((t) => t.includes('20/10/2026'))).toBe(false);
+    expect(anunciador()).toBe(voz);
   });
 });
 
@@ -679,7 +718,8 @@ describe('ContractModal, renovação', () => {
     await montar(props, [atual]);
     const faixa = document.body.querySelector('[data-slot="start-status"]');
     expect(faixa.textContent).toContain('Emenda perfeita, nenhum dia sem contrato.');
-    expect(faixa.getAttribute('role')).toBe('status');
+    expect(anunciador().getAttribute('role')).toBe('status');
+    expect(anunciador().textContent).toContain('Emenda perfeita, nenhum dia sem contrato.');
     expect(document.body.textContent).toContain('Renovar contrato');
     expect(botao('Confirmar renovação').disabled).toBe(false);
   });
