@@ -574,9 +574,10 @@ function ContractModal({
               </DialogTitle>
               {headerChip}
             </div>
-            <div className="mt-1 flex min-w-0 items-center gap-2 text-[13px] text-muted-foreground">
-              <span className="flex-none font-semibold text-foreground">{lead?.name || 'Cliente'}</span>
-              <span className="num truncate">{headerSub}</span>
+            {/* A linha quebra, como na main: o valor e o vencimento do contrato atual só aparecem aqui, então não podem ser cortados. */}
+            <div className="mt-1 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[13px] text-muted-foreground">
+              <span className="min-w-0 font-semibold text-foreground">{lead?.name || 'Cliente'}</span>
+              <span className="num min-w-0">{headerSub}</span>
             </div>
           </div>
           <button

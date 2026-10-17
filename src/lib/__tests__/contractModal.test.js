@@ -677,8 +677,30 @@ describe('ContractModal, lista de planos', () => {
   });
 });
 
+// Na main a linha do contrato atual quebrava (flex-wrap). Com o texto em `truncate`, a 768 px
+// sobrava "…vence em 12/12/2…" e o valor do contrato (R$ 897,00), que não aparece em outro
+// lugar do modal, ficava escondido.
+describe('ContractModal, subtítulo do cabeçalho', () => {
+  it('a linha do contrato atual quebra de linha em vez de cortar o valor e o vencimento', async () => {
+    const inicio = D(2026, 9, 12);
+    const fim = D(2026, 12, 12);
+    const atual = { id: 'c1abcdef', leadId: 'l2', planId: 'p3', planName: 'Pilates Trimestral', value: 897, durationMonths: 3, status: 'ativo', startsAt: inicio, endsAt: fim, createdAt: inicio };
+    const lead = { id: 'l2', name: 'Camila Rezende', lifecycleStage: 'cliente', currentContractId: 'c1abcdef', currentPlanName: 'Pilates Trimestral', currentContractValue: 897, currentContractStartsAt: inicio, currentContractEndsAt: fim, currentContractStatus: 'ativo' };
+    await montar({ lead, mode: 'renovacao', currentContract: atual, renewedFromId: 'c1abcdef' }, [atual]);
+    const sub = [...document.body.querySelectorAll('[role="dialog"] span')].find((el) => el.textContent.startsWith('Contrato atual'));
+    expect(sub.textContent).toContain('R$ 897,00');
+    expect(sub.textContent).toContain('vence em 12/12/2026');
+    expect(sub.className).not.toContain('truncate');
+    expect(sub.className).toContain('min-w-0');
+    expect(sub.parentElement.className).toContain('flex-wrap');
+    // O nome também pode quebrar se for longo, em vez de empurrar o resto para fora.
+    expect(sub.previousElementSibling.className).not.toContain('flex-none');
+    expect(sub.previousElementSibling.className).toContain('min-w-0');
+  });
+});
+
 describe('ContractModal, o que se grava sem desconto', () => {
-  const nenhum = { discountMode: 'nenhum', discountValue: 0, discountReason: null };
+  const nenhum ={ discountMode: 'nenhum', discountValue: 0, discountReason: null };
   const gravado = () => commitMatricula.mock.calls[0][0];
 
   it.each([['vazio', null], ['zero', '0']])('"%" com o campo %s grava como sem desconto', async (_nome, valor) => {
