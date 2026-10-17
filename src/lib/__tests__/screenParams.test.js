@@ -27,7 +27,7 @@ describe('tabela de parâmetros', () => {
     expect(SCREEN_PARAM_NAMES.dashGerencial).toEqual(['mes', 'comparar', 'comparar-com']);
     expect(SCREEN_PARAM_NAMES.kanban).toEqual(['funil', 'mes', 'resp', 'atraso']);
     expect(SCREEN_PARAM_NAMES.clientes).toEqual(['sit', 'resp']);
-    expect(SCREEN_PARAM_NAMES.leads).toEqual(['funil', 'fase', 'resp', 'atraso', 'quente']);
+    expect(SCREEN_PARAM_NAMES.leads).toEqual(['funil', 'fase', 'resp', 'origem', 'ordem']);
     expect(SCREEN_PARAM_NAMES.aulas).toEqual(['dia', 'de', 'ate', 'resp', 'prof']);
     expect(SCREEN_PARAM_NAMES.visitas).toEqual(['dia', 'de', 'ate', 'resp']);
     expect(SCREEN_PARAM_NAMES.dailyGoal).toEqual(['cat']);
@@ -191,9 +191,26 @@ describe('listas de valor fechado', () => {
   });
 
   it('booleano só é escrito ligado', () => {
-    expect(ler('leads', '?atraso=1&quente=1', lea).overdue).toBe(true);
-    expect(ler('leads', '?atraso=0', lea).overdue).toBe(false);
-    expect(montar('leads', { ...ler('leads', '', lea), overdue: true, hot: true }, lea)).toBe('?funil=f1&atraso=1&quente=1');
+    expect(ler('kanban', '?atraso=1', lea).overdue).toBe(true);
+    expect(ler('kanban', '?atraso=0', lea).overdue).toBe(false);
+    expect(montar('kanban', { ...ler('kanban', '', lea), overdue: true }, lea)).toBe('?funil=f1&atraso=1');
+  });
+
+  it('origem e ordem de Todos os leads', () => {
+    const com = { ...lea, origens: ['Instagram', 'Indicação'] };
+    expect(ler('leads', '?origem=Instagram&ordem=acao', com)).toMatchObject({ origem: 'Instagram', order: 'acao' });
+    // Origem que saiu do catálogo e ordem desconhecida caem no padrão.
+    expect(ler('leads', '?origem=Sumiu&ordem=banana', com)).toMatchObject({ origem: null, order: 'cadastro' });
+    // O padrão não é escrito.
+    expect(montar('leads', { ...ler('leads', '', com), order: 'cadastro' }, com)).toBe('?funil=f1');
+    expect(montar('leads', { ...ler('leads', '', com), origem: 'Instagram', order: 'contato' }, com))
+      .toBe('?funil=f1&origem=Instagram&ordem=contato');
+  });
+
+  it('Todos os leads não tem mais atraso, quente nem em aberto no endereço', () => {
+    expect(SCREEN_PARAM_NAMES.leads).not.toContain('atraso');
+    expect(SCREEN_PARAM_NAMES.leads).not.toContain('quente');
+    expect(SCREEN_PARAM_NAMES.leads).not.toContain('aberto');
   });
 });
 
@@ -220,7 +237,7 @@ describe('funil das telas de lista', () => {
   it('o funil da tela de lista é legível de fora, para o cadastro rápido não abrir no funil de antes', () => {
     const ctx = { funis, funilPadrao: 'f1' };
     expect(funnelFromSearch('kanban', '?funil=f2', ctx)).toBe('f2');
-    expect(funnelFromSearch('leads', '?funil=f2&atraso=1', ctx)).toBe('f2');
+    expect(funnelFromSearch('leads', '?funil=f2&ordem=acao', ctx)).toBe('f2');
     expect(funnelFromSearch('leads', '?funil=apagado', ctx)).toBe('f1');
     expect(funnelFromSearch('leads', '', ctx)).toBe('f1');
     // Tela sem funil de lista (o do CRM é recorte do dashboard, não é o mesmo
@@ -304,7 +321,7 @@ describe('ida e volta de tudo', () => {
       ['dashGerencial', '?mes=2026-08&comparar=0'],
       ['kanban', '?funil=f2&mes=2026-07&resp=u1&atraso=1'],
       ['clientes', '?sit=ativo&resp=u1,u2'],
-      ['leads', '?funil=f1&fase=s1&resp=u2&atraso=1&quente=1'],
+      ['leads', '?funil=f1&fase=s1&resp=u2&ordem=acao'],
       ['aulas', '?de=2026-09-01&ate=2026-09-10&resp=u1&prof=p1'],
       ['visitas', '?dia=ontem&resp=u1'],
       ['dailyGoal', '?cat=atrasado'],
@@ -486,17 +503,17 @@ describe('contrato do contexto de Todos os leads e da Meta', () => {
   });
 
   it('trocar de funil e limpar a fase cabem numa navegação só', () => {
-    const antes = ler('leads', '?funil=f1&fase=s1&atraso=1', lea);
-    expect(montar('leads', { ...antes, funnel: 'f2', stage: [] }, lea)).toBe('?funil=f2&atraso=1');
+    const antes = ler('leads', '?funil=f1&fase=s1&ordem=acao', lea);
+    expect(montar('leads', { ...antes, funnel: 'f2', stage: [] }, lea)).toBe('?funil=f2&ordem=acao');
   });
 
   it('fase de um funil que não é mais o escolhido some sozinha na montagem', () => {
     expect(montar('leads', { funnel: 'f2', stage: ['Novo'], resp: [], overdue: false, hot: false }, lea)).toBe('?funil=f2');
   });
 
-  it('quente e atraso convivem com a fase, na ordem da tabela', () => {
-    expect(montar('leads', { funnel: 'f1', stage: ['Novo'], resp: ['u1'], overdue: true, hot: true }, lea))
-      .toBe('?funil=f1&fase=s1&resp=u1&atraso=1&quente=1');
+  it('origem e ordem convivem com a fase, na ordem da tabela', () => {
+    expect(montar('leads', { funnel: 'f1', stage: ['Novo'], resp: ['u1'], origem: 'Instagram', order: 'acao' }, { ...lea, origens: ['Instagram'] }))
+      .toBe('?funil=f1&fase=s1&resp=u1&origem=Instagram&ordem=acao');
   });
 
   it('o responsável de Todos os leads também é de gestor', () => {

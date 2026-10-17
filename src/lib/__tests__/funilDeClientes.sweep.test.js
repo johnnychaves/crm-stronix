@@ -13,7 +13,7 @@ const read = (rel) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)),
 const TELAS = {
   'o Pipeline': '../../views/KanbanView.jsx',
   'o seletor de funil': '../../components/layout/FunnelSwitcher.jsx',
-  'as abas de funil': '../../components/layout/FunnelTabs.jsx',
+  'Todos os leads': '../../views/LeadsView.jsx',
 };
 
 describe('funil de clientes só pelo isClientFunnel', () => {

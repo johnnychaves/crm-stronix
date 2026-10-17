@@ -1,0 +1,59 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Leads A · Faixa do funil</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="2026-10-16-leads-base.css">
+<style>
+.cart{margin-top:16px;padding:22px 24px 14px}
+.cart-top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.cart h2{font-size:17px;font-weight:700;letter-spacing:-.01em}
+.lnk{border:0;background:none;padding:0;color:var(--blue700);font-weight:600;cursor:pointer}
+.strip{display:flex;gap:3px;height:16px}
+.seg{border:0;padding:0;min-width:8px;background:var(--pc);cursor:pointer;border-radius:4px;transition:opacity .15s}
+.seg:first-child{border-radius:8px 4px 4px 8px}.seg:last-child{border-radius:4px 8px 8px 4px}
+.legend{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;margin-top:12px}
+.lg{display:flex;flex-direction:column;align-items:flex-start;gap:1px;text-align:left;padding:10px 12px;border-radius:12px;border:0;background:transparent;cursor:pointer;transition:opacity .15s,background .15s}
+.lg:hover{background:#f4f7fd}
+.lg[aria-pressed=true]{background:color-mix(in srgb,var(--pc) 13%,#fff)}
+.lt{display:inline-flex;align-items:center;gap:7px;font-weight:500;color:var(--ink2);white-space:nowrap;font-size:12.5px}
+.lt i{width:9px;height:9px;border-radius:3px;background:var(--pc)}
+.lg b{font-size:27px;font-weight:700;letter-spacing:-.02em;line-height:1.15}
+.dim{opacity:.38}
+.tbl{margin-top:16px;overflow:hidden}
+.th,.tr{display:grid;grid-template-columns:minmax(0,1.7fr) 168px minmax(0,1.2fr) 120px;gap:16px;align-items:center;padding:0 24px}
+.th{height:44px;border-bottom:1px solid var(--rule);color:var(--muted);font-size:12.5px;font-weight:500}
+.r{text-align:right}
+.tr{min-height:64px;border-bottom:1px solid var(--rule)}
+.tr:last-of-type{border-bottom:0}
+.tr:hover{background:#f8faff}
+.tr:focus-visible{outline-offset:-2px}
+@media (max-width:980px){.legend{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media (max-width:760px){.th{display:none}.tr{grid-template-columns:1fr;gap:8px;padding:14px 20px}.cr{text-align:left}}
+</style></head><body><div class="wrap" id="app"></div>
+<div class="tag">Mockup A · Faixa do funil · dados de exemplo</div>
+<script src="2026-10-16-leads-dados.js"></script>
+<script>
+const {STAGES,BASE,TOTAL,leads,chip,person,nextCell,created,head,pF,pC,pS}=LD;
+const $=id=>document.getElementById(id);
+$('app').innerHTML=head(`${TOTAL} leads no funil Padrão, do cadastro mais novo ao mais antigo`,pF+pC+pS)+
+`<section class="card cart"><div class="cart-top"><h2 class="d">Fases do funil</h2><p class="mut" id="hint"></p></div>
+<div class="strip" id="strip" aria-hidden="true"></div><div class="legend" id="legend"></div></section>
+<section class="card tbl"><div class="th"><span>Lead</span><span>Fase</span><span>Próxima ação</span><span class="r">Cadastro</span></div><div id="rows"></div><div class="more"><button type="button" id="more"></button></div></section>`;
+const on=new Set();
+$('strip').innerHTML=STAGES.map(s=>`<span class="seg" data-s="${s.id}" style="--pc:${s.c};flex:${BASE[s.id]}"></span>`).join('');
+$('legend').innerHTML=STAGES.map(s=>`<button type="button" class="lg" data-s="${s.id}" style="--pc:${s.c}" aria-pressed="false"><span class="lt"><i></i>${s.name}</span><b class="d num">${BASE[s.id]}</b><span class="mut num" style="font-size:12px">${Math.round(BASE[s.id]/TOTAL*100)}%</span></button>`).join('');
+const row=l=>`<a class="tr" href="#">${person(l)}<span>${chip(l.stage)}</span>${nextCell(l)}${created(l)}</a>`;
+function render(){
+  document.querySelectorAll('[data-s]').forEach(b=>{const p=on.has(b.dataset.s);if(b.tagName==='BUTTON')b.setAttribute('aria-pressed',p);b.classList.toggle('dim',on.size>0&&!p)});
+  const list=leads.filter(l=>!on.size||on.has(l.stage));
+  const base=on.size?[...on].reduce((a,s)=>a+BASE[s],0):TOTAL;
+  $('hint').innerHTML=on.size?`Filtrando por ${[...on].map(s=>STAGES.find(x=>x.id===s).name).join(' e ')}. <button type="button" class="lnk" data-clear>Limpar filtro</button>`:'Clique numa fase para filtrar a lista.';
+  $('rows').innerHTML=list.map(row).join('');
+  $('more').textContent=`Carregar mais (${list.length} de ${base})`;
+}
+document.addEventListener('click',e=>{
+  const b=e.target.closest('[data-s]');
+  if(b){const s=b.dataset.s;on.has(s)?on.delete(s):on.add(s);render()}
+  else if(e.target.closest('[data-clear]')){on.clear();render()}
+});
+render();
+</script></body></html>

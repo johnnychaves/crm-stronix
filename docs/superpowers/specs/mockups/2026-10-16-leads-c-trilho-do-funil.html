@@ -1,0 +1,41 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Leads C · Trilho do funil</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="2026-10-16-leads-base.css">
+<style>
+.tbl{margin-top:16px;overflow:hidden}
+.th,.tr{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1.25fr) minmax(0,1.1fr) 120px;gap:20px;align-items:center;padding:0 24px}
+.th{height:44px;border-bottom:1px solid var(--rule);color:var(--muted);font-size:12.5px;font-weight:500}
+.th .key{display:flex;gap:4px;align-items:center}
+.r{text-align:right}
+.tr{min-height:68px;border-bottom:1px solid var(--rule)}
+.tr:last-of-type{border-bottom:0}
+.tr:hover{background:#f8faff}
+.tr:focus-visible{outline-offset:-2px}
+/* o trilho: cinco barras, uma por fase aberta do funil; as cheias vão até a fase do lead */
+.trail{display:flex;gap:4px;margin-bottom:7px}
+.trail i{flex:1;height:7px;border-radius:999px;background:#e6eaf3}
+.trail i.f{background:var(--pc)}
+.trail.perda i.f{background:#cbd5e1;background-image:repeating-linear-gradient(135deg,transparent 0 4px,rgba(255,255,255,.7) 4px 8px)}
+.tn{font-size:13px;font-weight:600;color:color-mix(in srgb,var(--pc) 62%,#0E1A40);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tn small{font-weight:500;color:var(--muted);margin-left:6px}
+.more{display:flex;justify-content:center;padding:18px}
+@media (max-width:760px){.th{display:none}.tr{grid-template-columns:1fr;gap:10px;padding:14px 20px}.cr{text-align:left}}
+</style></head><body><div class="wrap" id="app"></div>
+<div class="tag">Mockup C · Trilho do funil · dados de exemplo</div>
+<script src="2026-10-16-leads-dados.js"></script>
+<script>
+const {STAGES,STAGE,TOTAL,leads,person,nextCell,created,head,pF,pC,pFase,pS}=LD;
+const $=id=>document.getElementById(id);
+const OPEN=STAGES.filter(s=>s.id!=='venda'&&s.id!=='perda');
+const trail=l=>{
+  const st=STAGE[l.stage];
+  const filled=l.stage==='venda'||l.stage==='perda'?OPEN.length:st.i+1;
+  const bars=OPEN.map((s,i)=>`<i class="${i<filled?'f':''}" title="${s.name}"></i>`).join('');
+  const label=l.stage==='venda'?'Venda fechada':l.stage==='perda'?'Perdido':`${st.name}<small>${st.i+1} de ${OPEN.length}</small>`;
+  return `<div style="--pc:${st.c}"><div class="trail ${l.stage}">${bars}</div><div class="tn">${label}</div></div>`;
+};
+const row=l=>`<a class="tr" href="#">${person(l)}${trail(l)}${nextCell(l)}${created(l)}</a>`;
+$('app').innerHTML=head(`${TOTAL} leads no funil Padrão, do cadastro mais novo ao mais antigo`,pF+pC+pFase+pS)+
+`<section class="card tbl"><div class="th"><span>Lead</span><span>Fase no funil</span><span>Próxima ação</span><span class="r">Cadastro</span></div>${leads.map(row).join('')}<div class="more"><button type="button" style="height:38px;padding:0 18px;border-radius:11px;border:1px solid var(--line);background:#fff;font-weight:600;cursor:pointer">Carregar mais (${leads.length} de ${TOTAL})</button></div></section>`;
+</script></body></html>

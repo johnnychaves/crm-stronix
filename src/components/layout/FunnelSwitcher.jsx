@@ -2,7 +2,7 @@
 // clique abre a lista dos funis, separados em leads e clientes, cada um com o
 // total e a barrinha das etapas. Desenho escolhido pelo Johnny em 16/10/2026
 // (mockup 2026-10-16-pipeline-seletor-de-funil, opção 1). Todos os leads
-// continua com as abas (FunnelTabs).
+// escolhe o funil numa pílula da barra (FilterChip).
 import { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
