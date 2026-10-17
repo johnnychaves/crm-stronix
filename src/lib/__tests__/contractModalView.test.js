@@ -57,7 +57,7 @@ describe('confirmBlockOf', () => {
   it('diz o primeiro que falta, na ordem plano, data, regra do início, motivo', () => {
     expect(confirmBlockOf({ ...pronto, plan: null })).toBe('Escolha um plano.');
     expect(confirmBlockOf({ ...pronto, startsAt: null })).toBe('Escolha a data de início.');
-    expect(confirmBlockOf({ ...pronto, startProblem: 'x' })).toBe('Corrija o início da vigência.');
+    expect(confirmBlockOf({ ...pronto, startProblem: 'x' })).toBe('Veja o aviso da vigência.');
     expect(confirmBlockOf({ ...pronto, hasDiscount: true })).toBe('Escolha o motivo do desconto.');
   });
 
@@ -65,7 +65,7 @@ describe('confirmBlockOf', () => {
     expect(confirmBlockOf({ plan: null, startsAt: null, startProblem: 'x', hasDiscount: true })).toBe('Escolha um plano.');
     expect(confirmBlockOf({ plan, startsAt: null, startProblem: 'x', hasDiscount: true })).toBe('Escolha a data de início.');
     expect(confirmBlockOf({ plan, startsAt: D(2026, 10, 16), startProblem: 'x', hasDiscount: true, reason: null }))
-      .toBe('Corrija o início da vigência.');
+      .toBe('Veja o aviso da vigência.');
   });
 });
 

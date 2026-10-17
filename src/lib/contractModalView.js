@@ -24,7 +24,7 @@ export function startStatusOf({ problem = null, warning = null, severe = false, 
 export function confirmBlockOf({ plan = null, startsAt = null, startProblem = null, hasDiscount = false, reason = null } = {}) {
   if (!plan) return 'Escolha um plano.';
   if (!startsAt) return 'Escolha a data de início.';
-  if (startProblem) return 'Corrija o início da vigência.';
+  if (startProblem) return 'Veja o aviso da vigência.';
   if (hasDiscount && !reason) return 'Escolha o motivo do desconto.';
   return '';
 }

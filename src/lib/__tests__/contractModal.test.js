@@ -26,7 +26,7 @@ const planos = [
 ];
 
 let root = null;
-async function montar(props, contratos = [], agora = D(2026, 10, 16, 10, 20)) {
+async function montar(props, contratos = [], agora = D(2026, 10, 16, 10, 20), catalogo = planos) {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(agora);
   const container = document.createElement('div');
@@ -34,7 +34,7 @@ async function montar(props, contratos = [], agora = D(2026, 10, 16, 10, 20)) {
   root = createRoot(container);
   await act(async () => {
     root.render(h(ToastContext.Provider, { value: toast },
-      h(GeneralConfigContext.Provider, { value: { planos, contratos } },
+      h(GeneralConfigContext.Provider, { value: { planos: catalogo, contratos } },
         h(ContractModal, { appUser, db: {}, onClose: () => {}, onDone: () => {}, ...props }))));
   });
 }
@@ -206,6 +206,15 @@ describe('ContractModal, matrícula', () => {
     // O mesmo nó troca de texto e de tom, sem desmontar.
     expect(document.body.querySelector('[data-slot="start-status"]')).toBe(faixa);
     expect(faixa.getAttribute('role')).toBe('status');
+  });
+});
+
+describe('ContractModal, sem plano ativo no catálogo', () => {
+  it('o corpo avisa e o rodapé não pede um plano que não existe', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' }, [], D(2026, 10, 16, 10, 20), []);
+    expect(document.body.textContent).toContain('Nenhum plano ativo no catálogo.');
+    expect(rodape().textContent).not.toContain('Escolha um plano.');
+    expect(botao('Confirmar matrícula').disabled).toBe(true);
   });
 });
 

@@ -294,7 +294,7 @@ function ContractModal({
       || (liveRenewal ? renewedAlreadyText(liveRenewal) : null)
     : null;
 
-  // "Começar hoje": quantos dias do contrato atual ele toma, em dias do
+  // Cartão "Hoje": quantos dias do contrato atual ele toma, em dias do
   // calendário, e se a gravação encurtaria o atual com início hoje.
   const todaySeam = isRenewal && refEnd ? computeSeam(refEnd, today) : null;
   const todayOverlap = todaySeam?.kind === SEAM_KIND.SOBREPOSICAO ? todaySeam.overlapDays : 0;
@@ -327,7 +327,10 @@ function ContractModal({
   const startStatus = startStatusOf({
     problem: startProblem, warning, severe: warningIsSevere, startsAt, endsAt, seam, planMonths
   });
-  const blockText = confirmBlockOf({ plan, startsAt, startProblem, hasDiscount, reason });
+  // Sem plano ativo no catálogo o corpo já avisa, e o botão fica desligado pelo
+  // noPlans: o rodapé não pede um plano que não existe.
+  const noPlans = activePlans.length === 0;
+  const blockText = noPlans ? '' : confirmBlockOf({ plan, startsAt, startProblem, hasDiscount, reason });
   const reasonHint = reasonHintOf({ hasDiscount, reason });
 
   const pickPlan = (id) => {
@@ -376,8 +379,6 @@ function ContractModal({
       setSubmitting(false);
     }
   };
-
-  const noPlans = activePlans.length === 0;
 
   // Os cartões do início. O texto longo (quantos dias do atual a data toma) vai na
   // dica do mouse e, com a opção marcada, na faixa de vigência.
