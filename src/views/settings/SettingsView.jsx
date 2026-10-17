@@ -78,8 +78,10 @@ function SettingsView({
   const catalogTotal = (tags || []).length + (sources || []).length + (planos || []).length
     + (lossReasons || []).length + (dores || []).length;
 
-  // Quantas indicações antigas ainda estão sem quem indicou (badge do trilho).
-  const pendingOwnersCount = pendingReferralOwners(leads).length;
+  // Quantas indicações antigas ainda estão sem quem indicou (número do
+  // trilho). Memo pela lista: a varredura passa pela base inteira, e a tela
+  // renderiza de novo a cada troca de seção e a cada grupo aberto ou fechado.
+  const pendingOwnersCount = useMemo(() => pendingReferralOwners(leads).length, [leads]);
 
   // Importação de clientes: só na sessão assumida do super console (spec
   // 2026-09-03). Em dev local não existe "Entrar como" (a /api dá 404 no
@@ -147,7 +149,6 @@ function SettingsView({
             funnels={funnels}
             tags={tags}
             sources={sources}
-            slaOverdueDays={slaOverdueDays}
             onNavigate={goTo}
           />
         )}

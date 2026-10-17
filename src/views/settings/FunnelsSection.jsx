@@ -250,7 +250,7 @@ function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled 
         <div className="flex flex-col gap-2">
           {safeFunnels.length === 0 && (
             <div className="rounded-[14px] border border-dashed border-border px-4 py-8 text-center text-[12.5px] text-muted-foreground">
-              Nenhum funil ainda. Crie o primeiro — o Kanban precisa de um.
+              Nenhum funil ainda. Crie o primeiro, porque o Kanban precisa de um.
             </div>
           )}
           {safeFunnels.map((f, i) => {
@@ -286,8 +286,8 @@ function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled 
                   {isSystemFunnel(f) && (
                     <span
                       title={isRenewalFunnel(f)
-                        ? 'Funil do sistema — as colunas são os marcos de renovação, configurados em Metas & ritmo'
-                        : 'Funil do sistema — só as etapas do meio são configuráveis'}
+                        ? 'Funil do sistema: as colunas são os marcos de renovação, configurados em Metas & ritmo'
+                        : 'Funil do sistema: só as etapas do meio são configuráveis'}
                       className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 shrink-0"
                     >
                       Sistema
@@ -299,7 +299,7 @@ function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled 
                       lado acabou de dizer que não existe. */}
                   {stages.length < 2 && !isRenewalFunnel(f) && (
                     <span
-                      title="Funil com menos de duas etapas — o Kanban vira uma coluna só"
+                      title="Funil com menos de duas etapas: o Kanban vira uma coluna só"
                       className="size-[7px] rounded-full bg-amber-500 shrink-0"
                     />
                   )}
@@ -343,7 +343,7 @@ function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled 
                 <EmptyState>
                   {isRenewalFunnel(selected)
                     ? 'Este funil não tem etapas para configurar: as colunas do board são os marcos de renovação.'
-                    : 'Nenhuma etapa neste funil ainda — crie a primeira.'}
+                    : 'Nenhuma etapa neste funil ainda. Crie a primeira.'}
                 </EmptyState>
               ) : selectedStages.map((s, i) => {
                 const system = isSystemStage(s);
@@ -372,7 +372,7 @@ function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled 
                     <span className="text-[13.5px] flex-1 truncate">{s.name}</span>
                     {system && (
                       <span
-                        title="Fase fixa do sistema — não pode ser editada ou excluída"
+                        title="Fase fixa do sistema. Não pode ser editada nem excluída"
                         className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0"
                       >
                         Sistema
@@ -398,11 +398,11 @@ function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled 
         title={funnelDialog?.funnel ? `Editar ${funnelDialog.funnel.name}` : 'Novo funil'}
         description={funnelDialog?.funnel
           ? (isRenewalFunnel(funnelDialog.funnel)
-            ? 'Funil do sistema — o nome é fixo e não há etapa para configurar: as colunas do board são os marcos de renovação, configurados em Metas & ritmo.'
+            ? 'Funil do sistema: o nome é fixo e não há etapa para configurar, porque as colunas do board são os marcos de renovação, configurados em Metas & ritmo.'
             : isSystemFunnel(funnelDialog.funnel)
-              ? 'Funil do sistema — o nome é fixo; você configura as etapas do meio na lista ao lado.'
+              ? 'Funil do sistema: o nome é fixo, e você configura as etapas do meio na lista ao lado.'
               : 'Renomear o funil não muda as etapas nem os leads dentro dele.')
-          : 'O funil nasce com a etapa Negociação — as demais você desenha depois.'}
+          : 'O funil nasce com a etapa Negociação, e as demais você desenha depois.'}
         submitLabel={funnelDialog?.funnel ? 'Salvar' : 'Criar funil'}
         submitting={saving}
         onSubmit={saveFunnel}
@@ -444,7 +444,7 @@ function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled 
         open={Boolean(stageDialog)}
         onOpenChange={(v) => !v && setStageDialog(null)}
         title={stageDialog?.stage ? `Editar ${stageDialog.stage.name}` : 'Nova etapa'}
-        description={`Etapa do funil ${selected?.name || ''} — vira uma coluna no Kanban.`}
+        description={`Cada etapa do funil ${selected?.name || ''} vira uma coluna no Kanban.`}
         submitLabel={stageDialog?.stage ? 'Salvar' : 'Criar etapa'}
         submitting={saving}
         onSubmit={saveStage}

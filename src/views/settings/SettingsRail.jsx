@@ -1,25 +1,21 @@
 // Trilho das Configurações, no desenho do mockup A (17/10/2026): sete blocos,
 // cada grupo recolhível, resumo embaixo do nome do grupo e itens que são links
 // de verdade. No computador é uma lista ao lado; abaixo de lg vira um seletor
-// no topo, agrupado.
-//
-// O desenho do grupo é o dos Relatórios (src/views/relatorios/RelatoriosRail.jsx),
-// copiado de propósito: o RailGroup deles fixa o ícone e o resumo "N relatórios",
-// e extraí-lo mexeria numa tela que acabou de ir para produção e no teste que
-// cobra o anel de foco dentro do arquivo dela. Mudou o desenho de um, confira o
-// outro.
+// no topo, agrupado. O grupo recolhível é o dos Relatórios
+// (src/components/nav/RailGroup.jsx).
 //
 // Cada item é um AppLink, então Ctrl+clique, o botão do meio e "Abrir em nova
 // aba" funcionam. O clique simples troca de seção pela tela (onSection, que a
 // view liga ao goToSub do App, com replace). Item de outra tela (Rotinas, que
 // leva `screen`) não tem onNavigate: o clique simples troca de tela pelo
 // roteador. Abrir e fechar o grupo é estado da lista, não vai ao endereço.
-import { useId, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { ChevronDown } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { FOCUS_RING } from '../../components/focusRing.js';
 import { AppLink } from '../../components/nav/AppLink.jsx';
+import { RailGroup } from '../../components/nav/RailGroup.jsx';
+import { railItemClassName } from '../../components/nav/railItem.js';
 import {
   Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue,
 } from '../../components/ui/select.jsx';
@@ -41,15 +37,8 @@ function RailItem({ item, active, href, count, onSection }) {
       aria-current={active ? 'page' : undefined}
       // O clique simples troca de seção pela tela (replace); o resto fica com o navegador.
       onNavigate={item.screen ? undefined : (e) => { e.preventDefault(); onSection(item.id); }}
-      className={cn(
-        'relative flex w-full items-center gap-2 rounded-xl border py-[7px] pl-[7px] pr-2 text-left',
-        'transition-[border-color,background-color,box-shadow] duration-150 motion-reduce:transition-none',
-        FOCUS_RING,
-        active
-          // O before é o traço azul em cima da linha que liga os itens ao grupo: 13px é o pl-3 da lista mais a borda do item.
-          ? 'border-border bg-card shadow-[0_1px_0_rgba(15,23,42,.04),0_10px_24px_-12px_rgba(15,23,42,.22)] before:absolute before:inset-y-[9px] before:-left-[13px] before:w-0.5 before:rounded-full before:bg-brand-600 dark:shadow-[0_14px_30px_-14px_rgba(0,0,0,.7)]'
-          : 'border-transparent hover:bg-muted'
-      )}
+      // gap-2 e pr-2, e não os 2.5 dos Relatórios: com o número ao lado, "Indicações sem dono" cabe inteiro.
+      className={cn(railItemClassName(active), 'gap-2 pr-2')}
     >
       <span
         aria-hidden="true"
@@ -78,70 +67,32 @@ function RailItem({ item, active, href, count, onSection }) {
   );
 }
 
-// O grupo recolhível. Fechado, o conteúdo encolhe para 0fr e some (opacity), e
-// recebe inert, para sair da ordem do Tab e da leitura. As durações caem para
-// zero com prefers-reduced-motion. Fechado com o item aceso dentro, o resumo
-// diz qual está aberto, como nos Relatórios.
-function RailGroup({ group, open, onToggle, section, summary, counts, hrefOf, onSection }) {
-  const panelId = useId();
-  const GroupIcon = SETTINGS_GROUP_ICONS[group.id];
+// O grupo de uma seção. Fechado com o item aceso dentro, o resumo diz qual
+// está aberto, como nos Relatórios. O âmbar só vale para o resumo de sempre.
+function SettingsGroup({ group, open, onToggle, section, summary, counts, hrefOf, onSection }) {
   const current = group.items.find((it) => it.id === section);
   const text = open || !current ? summary.text : `Aberto: ${current.label}`;
   return (
-    <div className="flex flex-col">
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={panelId}
-        onClick={onToggle}
-        className={cn(
-          'flex w-full items-center gap-[11px] rounded-[14px] px-[11px] py-2.5 text-left transition-colors duration-150 hover:bg-muted motion-reduce:transition-none',
-          FOCUS_RING
-        )}
-      >
-        <span aria-hidden="true" className={cn('grid size-[34px] shrink-0 place-items-center rounded-[10px]', groupIconTone(Boolean(current)))}>
-          <GroupIcon size={17} strokeWidth={2} />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block font-display text-sm font-bold leading-tight text-foreground">{group.label}</span>
-          <span className={cn('mt-0.5 block text-[11.5px]', summary.pede && text === summary.text ? 'font-semibold text-amber-700 dark:text-amber-300' : 'text-muted-foreground')}>
-            {text}
-          </span>
-        </span>
-        <ChevronDown
-          size={15}
-          strokeWidth={2.2}
-          aria-hidden="true"
-          className={cn('shrink-0 text-muted-foreground transition-transform duration-[280ms] motion-reduce:transition-none', !open && '-rotate-90')}
+    <RailGroup
+      label={group.label}
+      icon={SETTINGS_GROUP_ICONS[group.id]}
+      iconClassName={groupIconTone(Boolean(current))}
+      summary={text}
+      summaryClassName={summary.pede && text === summary.text ? 'font-semibold text-amber-700 dark:text-amber-300' : 'text-muted-foreground'}
+      open={open}
+      onToggle={onToggle}
+    >
+      {group.items.map((it) => (
+        <RailItem
+          key={it.id}
+          item={it}
+          active={it.id === section}
+          href={hrefOf(it)}
+          count={counts[it.id] || 0}
+          onSection={onSection}
         />
-      </button>
-      <div
-        id={panelId}
-        className={cn(
-          'grid transition-[grid-template-rows,opacity] duration-[280ms,220ms] ease-[ease] motion-reduce:transition-none',
-          open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
-        )}
-      >
-        <div className="min-h-0 overflow-hidden">
-          {/* O before é a linha que liga os itens ao grupo. O pr e o pb deixam à vista o anel do foco, que o overflow cortaria. */}
-          <div
-            inert={!open}
-            className="relative mb-0.5 ml-[27px] mt-1.5 flex flex-col gap-[3px] pb-[3px] pl-3 pr-[3px] pt-0.5 before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-border"
-          >
-            {group.items.map((it) => (
-              <RailItem
-                key={it.id}
-                item={it}
-                active={it.id === section}
-                href={hrefOf(it)}
-                count={counts[it.id] || 0}
-                onSection={onSection}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
+      ))}
+    </RailGroup>
   );
 }
 
@@ -208,7 +159,7 @@ export function SettingsRail({ groups, section, summaries, counts, hrefOf, onSec
         {groups.map((g) => (g.label == null
           ? <OverviewLink key={g.id} item={g.items[0]} active={section === g.items[0].id} href={hrefOf(g.items[0])} onSection={onSection} />
           : (
-            <RailGroup
+            <SettingsGroup
               key={g.id}
               group={g}
               open={!closed.has(g.id)}

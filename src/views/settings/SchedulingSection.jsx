@@ -278,7 +278,7 @@ function SchedulingSection({ db, modalities, units, trialClassOptions, leads }) 
         >
           <div className="border-t border-border">
             {(modalities || []).length === 0 ? (
-              <EmptyState>Nenhuma modalidade ainda — o consultor não consegue dizer o que foi agendado.</EmptyState>
+              <EmptyState>Nenhuma modalidade ainda. Sem ela, o consultor não consegue dizer o que foi agendado.</EmptyState>
             ) : (modalities || []).map((m, i) => {
               const inUse = (leads || []).filter(l => l.appointmentModality === m.name).length;
               const tone = settingsColorTone(m.color || 'blue');
@@ -307,7 +307,7 @@ function SchedulingSection({ db, modalities, units, trialClassOptions, leads }) 
         >
           <div className="border-t border-border">
             {(units || []).length === 0 ? (
-              <EmptyState>Nenhuma unidade ainda — adicione o endereço onde as visitas acontecem.</EmptyState>
+              <EmptyState>Nenhuma unidade ainda. Adicione o endereço onde as visitas acontecem.</EmptyState>
             ) : (units || []).map((u, i) => {
               const inUse = (leads || []).filter(l => l.appointmentUnit === u.name).length;
               return (

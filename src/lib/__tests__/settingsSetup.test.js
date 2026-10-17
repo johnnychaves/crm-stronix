@@ -184,6 +184,49 @@ describe('buildSetupState — funis rasos', () => {
   });
 });
 
+describe('buildSetupState — passo aberto sem outra pendência', () => {
+  it('sem consultor, a prospecção vira "Nenhum consultor cadastrado" e leva ao cadastro', () => {
+    const s = buildSetupState(complete({
+      usersList: [{ id: 'u1', name: 'Marcelo', role: 'admin', authUid: 'uid-1' }],
+    }));
+    expect(s.doneCount).toBe(6);
+    const p = s.pendings.find(x => x.id === 'no-consultant');
+    expect(p.title).toBe('Nenhum consultor cadastrado');
+    expect([p.section, p.focusId]).toEqual(['team', 'new']);
+    expect(s.counts.team).toBe(1);
+    // Todo passo aberto aparece em alguma linha de "O que falta".
+    expect(s.pendings).toHaveLength(s.total - s.doneCount);
+  });
+
+  it('equipe vazia pede o cadastro uma vez só, sem a linha do consultor', () => {
+    const s = buildSetupState(complete({ usersList: [] }));
+    expect(s.pendings.map(x => x.id)).toEqual(['no-team']);
+    expect(s.pendings[0].title).toBe('Ninguém cadastrado na equipe');
+  });
+});
+
+describe('buildSetupState — funis de clientes', () => {
+  // O funil Renovações não guarda etapa no banco: as colunas saem dos marcos.
+  it('Renovações, Vencidos e Upgrade não contam como funil raso nem como funil criado', () => {
+    const sistema = [
+      { id: 'r', name: 'Renovações', systemKind: 'renewal' },
+      { id: 'v', name: 'Vencidos', systemKind: 'expired' },
+      { id: 'u', name: 'Upgrade', systemKind: 'upgrade' },
+    ];
+    const s = buildSetupState(complete({ funnels: [...complete().funnels, ...sistema] }));
+    expect(s.pendings).toEqual([]);
+    expect(s.counts).toEqual({});
+    const soSistema = buildSetupState(complete({ funnels: sistema }));
+    expect(soSistema.steps.find(x => x.id === 'funnel').done).toBe(false);
+    expect(soSistema.pendings.map(x => x.id)).toEqual(['funnel']);
+  });
+
+  it('o funil de Indicações é de lead e continua na conta', () => {
+    const s = buildSetupState(complete({ funnels: [...complete().funnels, { id: 'i', name: 'Indicações', systemKind: 'referral' }] }));
+    expect(s.pendings.find(x => x.id === 'thin-funnels').title).toBe('1 funil sem etapa');
+  });
+});
+
 describe('buildSetupState — catálogos vazios', () => {
   it('cada catálogo vazio vira pendência apontando pro destino certo', () => {
     const s = buildSetupState(complete({

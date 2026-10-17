@@ -15,6 +15,7 @@ import { SettingsBtn } from './settingsBits.jsx';
 
 const PENDING_ICONS = {
   'user-x': UserX,
+  'user-plus': UserPlus,
   'zap-off': ZapOff,
   kanban: Kanban,
   filter: Filter,
@@ -75,7 +76,7 @@ function ShortcutCard({ icon, title, hint, onClick }) {
 }
 
 function OverviewSection({
-  setup, leads, usersList, funnels, tags, sources, slaOverdueDays, onNavigate
+  setup, leads, usersList, funnels, tags, sources, onNavigate
 }) {
   const seats = useSeatLimits();
 
@@ -182,21 +183,15 @@ function OverviewSection({
         </div>
       </section>
 
-      {/* Atalhos */}
+      {/* Atalhos. O alerta de lead atrasado já está em Valores atuais, com o mesmo destino. */}
       <section>
         <h3 className="font-display text-[17px] font-bold tracking-tight mb-3">Atalhos</h3>
-        <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-2.5 sm:grid-cols-2">
           <ShortcutCard
             icon={<UserPlus size={17} />}
             title="Cadastrar consultor"
             hint={seatHint}
             onClick={() => onNavigate('team', 'new')}
-          />
-          <ShortcutCard
-            icon={<AlertCircle size={17} />}
-            title="Alerta de lead crítico"
-            hint={`Hoje: ${slaOverdueDays} ${slaOverdueDays === 1 ? 'dia' : 'dias'} de atraso`}
-            onClick={() => onNavigate('pace')}
           />
           <ShortcutCard
             icon={<Tag size={17} />}

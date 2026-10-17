@@ -16,6 +16,7 @@
 // o que mantém a regra testável sem montar componente.
 
 import { roleOf, ROLES } from './acesso.js';
+import { isClientFunnel } from './crm/scope.js';
 import { daysText } from './rotinas.js';
 import { SETTINGS_RAIL_GROUPS } from './settingsRail.js';
 
@@ -96,13 +97,19 @@ function buildSetupState({
   const usersWithoutAccess = users.filter(u => !String(u?.authUid || '').trim());
   const consultantsWithoutTarget = consultants.filter(u => !hasProspectTarget(u));
 
+  // Os funis de clientes (Renovações, Vencidos e Upgrade) são do sistema: o
+  // de Renovações nem guarda etapa no banco, porque as colunas saem dos marcos
+  // (src/lib/renewalFunnel.js). Contar com eles deixaria toda academia com uma
+  // pendência que o gestor não tem como resolver.
+  const leadFunnels = list(funnels).filter(f => !isClientFunnel(f));
+
   // Funil "raso": Kanban de uma coluna só não desenha caminho nenhum.
-  const thinFunnels = list(funnels)
+  const thinFunnels = leadFunnels
     .map(f => ({ id: f.id, name: f.name, stages: list(statuses).filter(s => s.funnelId === f.id).length }))
     .filter(f => f.stages < 2);
 
   const done = {
-    funnel: len(funnels) > 0,
+    funnel: leadFunnels.length > 0,
     sources: len(sources) > 0,
     modalities: len(modalities) > 0,
     plans: len(planos) > 0,
@@ -154,6 +161,36 @@ function buildSetupState({
       actionLabel: 'Definir alvos',
       actionKind: 'secondary',
       section: 'pace',
+    });
+  }
+
+  // Passo aberto que as pendências acima não cobrem: sem ninguém na equipe não
+  // há acesso a vincular, e sem consultor não há meta de prospecção a definir.
+  // Sem estas linhas o passo ficava fora de "O que falta" e a Visão geral dizia
+  // "6 de 7" sem dizer o que falta.
+  if (!done.access && users.length === 0) {
+    add({
+      id: 'no-team',
+      tone: 'amber',
+      icon: 'user-plus',
+      title: 'Ninguém cadastrado na equipe',
+      description: 'Cadastre quem vai usar o app para a equipe entrar e receber os leads.',
+      actionLabel: 'Cadastrar pessoa',
+      actionKind: 'primary',
+      section: 'team',
+      focusId: 'new',
+    });
+  } else if (!done.prospect && consultants.length === 0) {
+    add({
+      id: 'no-consultant',
+      tone: 'neutral',
+      icon: 'user-plus',
+      title: 'Nenhum consultor cadastrado',
+      description: 'A meta de prospecção é de cada consultor. Cadastre quem vende para definir as metas.',
+      actionLabel: 'Cadastrar consultor',
+      actionKind: 'secondary',
+      section: 'team',
+      focusId: 'new',
     });
   }
 
@@ -221,7 +258,7 @@ function buildSetupState({
       tone: 'neutral',
       icon: 'dollar-sign',
       title: 'Nenhum plano cadastrado',
-      description: 'Na matrícula não há o que escolher — o contrato do cliente fica sem plano.',
+      description: 'Na matrícula não há o que escolher, e o contrato do cliente fica sem plano.',
       actionLabel: 'Cadastrar plano',
       actionKind: 'secondary',
       section: 'catalogs',

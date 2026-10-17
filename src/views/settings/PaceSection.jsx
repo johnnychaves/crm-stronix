@@ -119,7 +119,10 @@ function PaceSection({ db, usersList, metaWeekdays }) {
   };
 
   // Alvo INDIVIDUAL de prospecção (doc do consultor): vazio ou 0 = desabilitado.
-  const saveUserTarget = async (u, raw) => {
+  // O campo não é controlado: se a gravação falha, ele volta ao valor gravado,
+  // para não parecer salvo. O valor que chega do banco remonta o campo (key).
+  const saveUserTarget = async (u, input) => {
+    const raw = input.value.trim();
     const cur = u.dailyVolumeTarget ?? null;
     const parsed = raw === '' ? 0 : Math.floor(Number(raw));
     if (raw !== '' && !Number.isFinite(parsed)) return;
@@ -133,6 +136,7 @@ function PaceSection({ db, usersList, metaWeekdays }) {
       toast.success(`Prospecção de ${u.name}: ${next === null ? 'desabilitada' : `${next} ações/dia`}.`);
     } catch (err) {
       console.error(err);
+      input.value = cur ?? '';
       toast.error('Não foi possível salvar o alvo individual.');
     }
   };
@@ -275,11 +279,12 @@ function PaceSection({ db, usersList, metaWeekdays }) {
               </span>
               <span className="text-[13.5px] flex-1 truncate">{u.name}{isGestor(u) ? ' (gestor)' : ''}</span>
               <input
+                key={u.dailyVolumeTarget ?? ''}
                 type="number" min="0" max="500"
                 defaultValue={u.dailyVolumeTarget ?? ''}
                 placeholder="off"
                 aria-label={`Meta de prospecção de ${u.name}`}
-                onBlur={(e) => saveUserTarget(u, e.target.value.trim())}
+                onBlur={(e) => saveUserTarget(u, e.currentTarget)}
                 onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
                 className="w-[88px] h-9 px-3 rounded-[10px] text-[12.5px] num text-center bg-muted/60 border border-border outline-none transition placeholder:text-slate-400 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20"
               />
@@ -287,7 +292,7 @@ function PaceSection({ db, usersList, metaWeekdays }) {
             </div>
           ))}
         </div>
-        <PanelNote>Salva ao sair do campo — Enter confirma.</PanelNote>
+        <PanelNote>Salva ao sair do campo. Enter confirma.</PanelNote>
       </SettingsPanel>
 
       <SettingsPanel

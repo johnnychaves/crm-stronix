@@ -140,7 +140,7 @@ function TransferSection({ db, usersList, appUser, leads }) {
         .map(d => d.id);
 
       if (movedIds.length === 0) {
-        toast.info('Nenhum lead corresponde à seleção — nada foi migrado.');
+        toast.info('Nenhum lead corresponde à seleção. Nada foi migrado.');
         return;
       }
 
@@ -182,7 +182,7 @@ function TransferSection({ db, usersList, appUser, leads }) {
     <div className="flex flex-col gap-5">
       <SettingsSectionHeader
         title="Migrar leads"
-        hint="Passe a carteira de um consultor para outro — sem perder histórico nem agendamentos."
+        hint="Passe a carteira de um consultor para outro, sem perder histórico nem agendamentos."
       />
 
       <section className="rounded-2xl border border-border bg-card shadow-card p-6">
@@ -241,7 +241,7 @@ function TransferSection({ db, usersList, appUser, leads }) {
           <div className="mt-5 flex items-center gap-3.5 flex-wrap px-[18px] py-4 rounded-xl bg-brand-50 dark:bg-brand-500/15">
             <Info size={16} className="text-brand-700 dark:text-brand-300 shrink-0" />
             <p className="text-[13px] text-brand-700 dark:text-brand-200 flex-1 min-w-[240px]">
-              <b className="num">{selectedCount} {selectedCount === 1 ? 'lead passa' : 'leads passam'}</b> de {fromObj.name} para {toObj.name}. O histórico e a timeline de cada lead ficam intactos — só o responsável muda.
+              <b className="num">{selectedCount} {selectedCount === 1 ? 'lead passa' : 'leads passam'}</b> de {fromObj.name} para {toObj.name}. O histórico e a timeline de cada lead ficam intactos. Só o responsável muda.
             </p>
             <SettingsBtn kind="primary" size={38} disabled={!ready || loading} onClick={migrate}>
               {loading ? 'Migrando…' : `Migrar ${selectedCount} ${selectedCount === 1 ? 'lead' : 'leads'}`}

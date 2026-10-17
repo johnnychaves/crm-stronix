@@ -51,7 +51,7 @@ const CATALOGS = {
   sources: {
     label: 'Origens', singular: 'origem', gender: 'f',
     icon: Filter, path: SOURCES_PATH,
-    title: 'Origens', description: 'De onde os leads chegam — a base do relatório de canais.',
+    title: 'Origens', description: 'De onde os leads chegam. É a base do relatório de canais.',
     col2Label: 'Canal', col2Field: 'channel', col2Placeholder: 'Ex: Orgânico, Pago, Offline',
     note: 'Toda origem em uso continua contando no Gerencial mesmo depois de renomeada.',
     countOf: (item, leads) => (leads || []).filter(l => l.source === item.name).length,
@@ -84,7 +84,7 @@ const CATALOGS = {
   dores: {
     label: 'Dores', singular: 'dor', gender: 'f',
     icon: HeartPulse, path: DORES_PATH,
-    title: 'Dores', description: 'O que o lead quer resolver — escolhida na ficha e usada como argumento.',
+    title: 'Dores', description: 'O que o lead quer resolver. É escolhida na ficha e usada como argumento.',
     col2Label: 'O que o lead procura', col2Field: 'description', col2Placeholder: 'Ex: Perda de peso e medidas',
     note: 'Escolhida na ficha do lead. Boas dores rendem melhores argumentos na negociação.',
     countOf: (item, leads) => (leads || []).filter(l => l.dor === item.name).length,
@@ -258,7 +258,7 @@ function CatalogsSection({ db, tags, sources, planos, lossReasons, dores, modali
   const togglePlanActive = async (p) => {
     await setDoc(doc(colRef(), p.id), { active: p.active === false, updatedAt: serverTimestamp() }, { merge: true });
     setPlanDialog(null);
-    toast.success(p.active === false ? 'Plano reativado.' : 'Plano desativado — some do seletor de matrícula, mas segue no histórico.');
+    toast.success(p.active === false ? 'Plano reativado.' : 'Plano desativado. Ele some do seletor de matrícula, mas segue no histórico.');
   };
 
   const togglePlanMod = (id) => setPlanForm(f => ({
@@ -320,7 +320,7 @@ function CatalogsSection({ db, tags, sources, planos, lossReasons, dores, modali
     <div className="flex flex-col gap-5">
       <SettingsSectionHeader
         title="Catálogos"
-        hint="As cinco listas que alimentam os campos do lead. Mesma tela, mesma mecânica — clique numa linha para editar."
+        hint="As cinco listas que alimentam os campos do lead. Clique numa linha para editar."
       />
 
       <div className="inline-flex w-fit p-1 gap-[3px] rounded-xl bg-muted" role="tablist">
@@ -368,7 +368,7 @@ function CatalogsSection({ db, tags, sources, planos, lossReasons, dores, modali
 
         {rows.length === 0 && !draft ? (
           <EmptyState>
-            {cfg.label} ainda sem nenhum item — crie o primeiro em “{newLabel(cfg)}”.
+            {cfg.label} ainda sem nenhum item. Crie o primeiro em “{newLabel(cfg)}”.
           </EmptyState>
         ) : rows.map((item, i) => {
           if (draft?.id === item.id) return <div key={item.id}>{draftRow}</div>;
@@ -444,7 +444,7 @@ function CatalogsSection({ db, tags, sources, planos, lossReasons, dores, modali
         </div>
         <DialogField label="Modalidades (opcional)">
           {(modalities || []).length === 0 ? (
-            <p className="text-[12px] text-muted-foreground">Nenhuma modalidade cadastrada — adicione em Agendamento.</p>
+            <p className="text-[12px] text-muted-foreground">Nenhuma modalidade cadastrada. Adicione em Agendamento.</p>
           ) : (
             <div className="flex flex-wrap gap-2">
               {(modalities || []).map(m => {

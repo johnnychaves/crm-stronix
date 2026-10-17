@@ -83,7 +83,7 @@ function ZapIntegrationSection({ db, appUser }) {
     try {
       const data = await callZap('generate');
       setNewKey(data.key);
-      toast.success('Chave gerada. Copie agora — ela não aparece de novo.', { duration: 8000 });
+      toast.success('Chave gerada. Copie agora, porque ela não aparece de novo.', { duration: 8000 });
     } catch (err) {
       console.error(err);
       toast.error(err.message || 'Não foi possível gerar a chave.');

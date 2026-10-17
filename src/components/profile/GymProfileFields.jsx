@@ -44,7 +44,7 @@ function GymProfileFields({ value, onChange, wrapInCards = true, onValidityChang
     const r = await lookupCnpj(value.cnpjCpf);
     setCnpjBusy(false);
     if (r) onChange({ legalName: r.legalName || value.legalName, tradeName: r.tradeName || value.tradeName });
-    else toast.warning('CNPJ não encontrado na Receita — confira o número.');
+    else toast.warning('CNPJ não encontrado na Receita. Confira o número.');
   };
   // CEP completo → rua/bairro/cidade/UF (ViaCEP). Não toca número/complemento.
   const onCepBlur = async () => {
@@ -53,7 +53,7 @@ function GymProfileFields({ value, onChange, wrapInCards = true, onValidityChang
     const r = await lookupCep(value.cep);
     setCepBusy(false);
     if (r) onChange({ street: r.street || value.street, neighborhood: r.neighborhood || value.neighborhood, city: r.city || value.city, state: r.state || value.state });
-    else toast.warning('CEP não encontrado — confira o número.');
+    else toast.warning('CEP não encontrado. Confira o número.');
   };
 
   const identity = (
@@ -81,8 +81,10 @@ function GymProfileFields({ value, onChange, wrapInCards = true, onValidityChang
     </div>
   );
 
+  // @container próprio: as colunas do endereço quebram pelo espaço do cartão,
+  // e não pela largura da janela nem da tela inteira.
   const address = (
-    <div className="grid grid-cols-1 @lg:grid-cols-12 gap-4">
+    <div className="@container"><div className="grid grid-cols-1 @lg:grid-cols-12 gap-4">
       <div className="@lg:col-span-3">
         <Field label="CEP" hint={cepBusy ? 'Buscando endereço…' : undefined}>
           <StyledInput value={value.cep} onChange={(e) => set('cep', e.target.value)} onBlur={onCepBlur} placeholder="00000-000" />
@@ -94,7 +96,7 @@ function GymProfileFields({ value, onChange, wrapInCards = true, onValidityChang
       <div className="@lg:col-span-7"><Field label="Bairro"><StyledInput value={value.neighborhood} onChange={(e) => set('neighborhood', e.target.value)} placeholder="Centro" /></Field></div>
       <div className="@lg:col-span-9"><Field label="Cidade"><StyledInput value={value.city} onChange={(e) => set('city', e.target.value)} placeholder="Cidade" /></Field></div>
       <div className="@lg:col-span-3"><Field label="UF"><StyledInput value={value.state} maxLength={2} onChange={(e) => set('state', e.target.value.toUpperCase())} placeholder="UF" /></Field></div>
-    </div>
+    </div></div>
   );
 
   if (wrapInCards) {
