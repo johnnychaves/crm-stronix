@@ -59,7 +59,7 @@ function ConsultantPicker({ label, value, onChange, options, counts, focused }) 
   );
 }
 
-function TransferSection({ db, usersList, appUser, leads }) {
+function TransferSection({ db, usersList, appUser, leads, onLeadsChanged }) {
   const toast = useToast();
   const [fromUser, setFromUser] = useState('');
   const [toUser, setToUser] = useState('');
@@ -167,6 +167,8 @@ function TransferSection({ db, usersList, appUser, leads }) {
       });
 
       toast.success(`${movedIds.length} lead(s) migrado(s) com sucesso.`);
+      // As carteiras da tela saem da lista da abertura: relê para as contagens baterem.
+      onLeadsChanged?.();
       setFromUser('');
       setToUser('');
       setScopes(['open']);

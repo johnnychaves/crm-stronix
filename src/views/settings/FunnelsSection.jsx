@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { ChevronRight, GripVertical, Pencil, Plus, Trophy } from 'lucide-react';
 import { collection, doc, addDoc, setDoc, deleteDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { appId, FUNNELS_PATH, LEADS_PATH, STATUSES_PATH } from '../../lib/firebase.js';
-import { commitOpsInChunks, isSystemStage, isSystemFunnel } from '../../lib/funnels.js';
+import { commitOpsInChunks, getDefaultFunnel, isItemInFunnel, isSystemStage, isSystemFunnel, stageNameProblem } from '../../lib/funnels.js';
+import { leadsWhere } from '../../lib/settingsLeads.js';
 import { pinEntryFirst } from '../../lib/referrals.js';
 import { isRenewalFunnel } from '../../lib/renewalFunnel.js';
 import { cn } from '../../lib/utils.js';
@@ -22,7 +23,7 @@ import {
 // bloqueados e a etapa de entrada pinada no topo — só o meio é configurável.
 // (isSystemStage foi promovida para lib/funnels.js quando esse funil nasceu.)
 
-function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled }) {
+function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled, onLeadsChanged }) {
   const toast = useToast();
   const safeFunnels = useMemo(() => (Array.isArray(funnels) ? funnels : []), [funnels]);
 
@@ -46,8 +47,16 @@ function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled 
     onFocusHandled?.();
   }, [focusId, onFocusHandled]);
 
-  const stagesOf = (funnelId) => (statuses || []).filter(s => s.funnelId === funnelId);
-  const leadsOf = (funnelId) => (leads || []).filter(l => l.funnelId === funnelId).length;
+  // Etapa e lead sem funnelId são do funil padrão, como no Kanban
+  // (isItemInFunnel). Sem isso, a etapa antiga some da lista do funil padrão e
+  // o renomear deixa os leads antigos com um nome que não existe mais.
+  const defaultFunnelId = getDefaultFunnel(safeFunnels)?.id || null;
+  const inFunnel = (item, funnelId) => isItemInFunnel(item, funnelId, defaultFunnelId);
+  const stagesOf = (funnelId) => (statuses || []).filter(s => inFunnel(s, funnelId));
+  const leadsOf = (funnelId) => (leads || []).filter(l => inFunnel(l, funnelId)).length;
+  // Os leads de uma etapa deste funil, lidos na hora (a lista da tela é uma foto da abertura).
+  const leadsInStage = async (funnelId, stageName) =>
+    (await leadsWhere(db, 'status', '==', stageName)).filter(l => inFunnel(l, funnelId));
   const selectedStages = selected ? stagesOf(selected.id) : [];
 
   // --- Funis ---------------------------------------------------------------
@@ -111,7 +120,13 @@ function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled 
       if (item.isDefault) batch.update(doc(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH, item.id), { isDefault: false });
     });
     batch.update(doc(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH, f.id), { isDefault: true });
-    await batch.commit();
+    try {
+      await batch.commit();
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível trocar o funil padrão.');
+      return;
+    }
     setFunnelDialog(null);
     toast.success(`"${f.name}" agora é o funil padrão.`);
   };
@@ -119,21 +134,35 @@ function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled 
   const deleteFunnel = async (f) => {
     if (isSystemFunnel(f)) { toast.warning('Este funil é do sistema e não pode ser excluído.'); return; }
     if (f.isDefault) { toast.warning('Não é possível excluir o funil padrão. Marque outro como padrão antes.'); return; }
-    const inFunnel = leadsOf(f.id);
-    if (inFunnel > 0) {
-      toast.warning(`O funil "${f.name}" tem ${inFunnel} ${inFunnel === 1 ? 'lead' : 'leads'}. Mova-os para outro funil antes de excluir.`);
+    // O funil padrão não chega aqui, então só conta quem tem o funnelId dele.
+    let count;
+    try {
+      count = (await leadsWhere(db, 'funnelId', '==', f.id)).length;
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível conferir os leads do funil. Tente de novo.');
+      return;
+    }
+    if (count > 0) {
+      toast.warning(`O funil "${f.name}" tem ${count} ${count === 1 ? 'lead' : 'leads'}. Mova-os para outro funil antes de excluir.`);
       return;
     }
     const stages = stagesOf(f.id);
-    if (stages.length > 0) {
-      if (!window.confirm(`Este funil tem ${stages.length} etapa(s) configurada(s). Excluir o funil também excluirá essas etapas. Confirma?`)) return;
-      const batch = writeBatch(db);
-      stages.forEach(s => batch.delete(doc(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH, s.id)));
-      batch.delete(doc(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH, f.id));
-      await batch.commit();
-    } else {
-      if (!window.confirm(`Excluir o funil "${f.name}"?`)) return;
-      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH, f.id));
+    try {
+      if (stages.length > 0) {
+        if (!window.confirm(`Este funil tem ${stages.length} etapa(s) configurada(s). Excluir o funil também excluirá essas etapas. Confirma?`)) return;
+        const batch = writeBatch(db);
+        stages.forEach(s => batch.delete(doc(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH, s.id)));
+        batch.delete(doc(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH, f.id));
+        await batch.commit();
+      } else {
+        if (!window.confirm(`Excluir o funil "${f.name}"?`)) return;
+        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH, f.id));
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível excluir o funil.');
+      return;
     }
     if (selectedId === f.id) setSelectedId(null);
     setFunnelDialog(null);
@@ -145,9 +174,14 @@ function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled 
     const arr = [...safeFunnels];
     const [item] = arr.splice(dragIdx, 1);
     arr.splice(dropIdx, 0, item);
-    await Promise.all(arr.map((f, i) =>
-      setDoc(doc(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH, f.id), { order: i }, { merge: true })
-    ));
+    try {
+      await Promise.all(arr.map((f, i) =>
+        setDoc(doc(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH, f.id), { order: i }, { merge: true })
+      ));
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível salvar a nova ordem dos funis.');
+    }
   };
 
   // --- Etapas --------------------------------------------------------------
@@ -163,6 +197,8 @@ function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled 
     const trimmed = stageName.trim();
     if (!trimmed) { toast.warning('Informe o nome da etapa.'); return; }
     const editing = stageDialog?.stage || null;
+    const nameProblem = stageNameProblem(selectedStages, trimmed, editing?.id);
+    if (nameProblem) { toast.warning(nameProblem); return; }
 
     setSaving(true);
     try {
@@ -180,20 +216,17 @@ function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled 
         // O status do lead guarda o NOME da etapa — a renomeação só vale para
         // os leads deste funil (outro funil pode ter etapa homônima).
         if (editing.name !== trimmed) {
-          const affected = (leads || []).filter(l => l.funnelId === selected.id && l.status === editing.name);
+          const affected = await leadsInStage(selected.id, editing.name);
           if (affected.length > 0) {
             await commitOpsInChunks(db, affected.map(l => ({
               ref: doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, l.id),
               data: { status: trimmed }
             })), 400);
+            onLeadsChanged?.(); // a contagem de leads da etapa sai da lista da tela
           }
         }
         toast.success('Etapa atualizada.');
       } else {
-        if (trimmed.toLowerCase() === 'negociação' && selectedStages.some(s => (s.name || '').trim().toLowerCase() === 'negociação')) {
-          toast.warning('A etapa "Negociação" já existe neste funil (etapa fixa do sistema).');
-          return;
-        }
         await addDoc(collection(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH), {
           name: trimmed, color: stageColor, order: selectedStages.length, funnelId: selected.id
         });
@@ -210,13 +243,27 @@ function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled 
 
   const deleteStage = async (s) => {
     if (isSystemStage(s)) { toast.warning(`A etapa "${s.name}" é uma fase fixa do sistema e não pode ser excluída.`); return; }
-    const inStage = (leads || []).filter(l => l.funnelId === selected?.id && l.status === s.name).length;
+    if (!selected) return;
+    let inStage;
+    try {
+      inStage = (await leadsInStage(selected.id, s.name)).length;
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível conferir os leads da etapa. Tente de novo.');
+      return;
+    }
     if (inStage > 0) {
       toast.warning(`A etapa "${s.name}" tem ${inStage} ${inStage === 1 ? 'lead' : 'leads'}. Transfira-os para outra etapa antes de excluir.`);
       return;
     }
     if (!window.confirm(`Excluir a etapa "${s.name}"?`)) return;
-    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH, s.id));
+    try {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH, s.id));
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível excluir a etapa.');
+      return;
+    }
     setStageDialog(null);
     toast.success('Etapa excluída.');
   };
@@ -230,9 +277,14 @@ function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled 
     // outra etapa "acima" dela reordena só o meio. Sem isso, o drop no topo
     // empurrava a etapa de sistema para order 1 mesmo com o drag dela travado.
     const pinned = pinEntryFirst(arr);
-    await Promise.all(pinned.map((s, i) =>
-      setDoc(doc(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH, s.id), { order: i }, { merge: true })
-    ));
+    try {
+      await Promise.all(pinned.map((s, i) =>
+        setDoc(doc(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH, s.id), { order: i }, { merge: true })
+      ));
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível salvar a nova ordem das etapas.');
+    }
   };
 
   return (

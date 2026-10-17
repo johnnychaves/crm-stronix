@@ -11,7 +11,7 @@ import { OverviewSection } from './OverviewSection.jsx';
 import { TeamAccessSection } from './TeamAccessSection.jsx';
 import { TransferSection } from './TransferLeadsTab.jsx';
 import { ReferralOwnersSection } from './ReferralOwnersSection.jsx';
-import { pendingReferralOwners } from '../../lib/referrals.js';
+import { getReferralFunnel, pendingReferralOwners } from '../../lib/referrals.js';
 import { PaceSection } from './PaceSection.jsx';
 import { SchedulingSection } from './SchedulingSection.jsx';
 import { FunnelsSection } from './FunnelsSection.jsx';
@@ -23,6 +23,7 @@ import { PlanInvoicesTab } from './PlanInvoicesTab.jsx';
 import { SettingsRail } from './SettingsRail.jsx';
 import { settingsRailGroups, settingsSection } from '../../lib/settingsRail.js';
 import { hrefFor, parseAppPath } from '../../lib/routes.js';
+import { leadFunnelsOf } from '../../lib/crm/scope.js';
 
 // ==========================================
 // CONFIGURAÇÕES — doze seções em sete blocos
@@ -49,7 +50,9 @@ function SettingsView({
   // também, então precisam da base COMPLETA — senão contagens (motivo de perda,
   // plano por cliente) zeram e a cascata deixa clientes/perdas com valor antigo.
   const settingsLeadsSpec = useMemo(() => allLeadsQuerySpec(), []);
-  const { items: leads } = usePagedLeads({
+  // reload relê a base depois de uma escrita em massa (migrar, trazer funil,
+  // renomear com cascata), para as contagens da tela não ficarem na foto velha.
+  const { items: leads, reload: reloadLeads } = usePagedLeads({
     db, path: LEADS_PATH, spec: settingsLeadsSpec, specKey: 'settings-all-leads',
     mapDoc: normalizeLeadDoc, enabled: !!db,
   });
@@ -78,10 +81,18 @@ function SettingsView({
   const catalogTotal = (tags || []).length + (sources || []).length + (planos || []).length
     + (lossReasons || []).length + (dores || []).length;
 
-  // Quantas indicações antigas ainda estão sem quem indicou (número do
-  // trilho). Memo pela lista: a varredura passa pela base inteira, e a tela
-  // renderiza de novo a cada troca de seção e a cada grupo aberto ou fechado.
-  const pendingOwnersCount = useMemo(() => pendingReferralOwners(leads).length, [leads]);
+  // Indicações antigas ainda sem quem indicou: a fila da seção e o número do
+  // trilho saem da MESMA lista, com o funil de Indicações e sem os resolvidos
+  // nesta sessão (o lead resolvido só some da base no próximo recarregar).
+  // Memo: a varredura passa pela base inteira.
+  const referralFunnelId = getReferralFunnel(funnels)?.id || null;
+  const [resolvedReferrals, setResolvedReferrals] = useState(() => new Set());
+  const markReferralResolved = useCallback((id) => setResolvedReferrals((prev) => new Set(prev).add(id)), []);
+  const pendingReferrals = useMemo(
+    () => pendingReferralOwners(leads, referralFunnelId).filter((l) => !resolvedReferrals.has(l.id)),
+    [leads, referralFunnelId, resolvedReferrals],
+  );
+  const pendingOwnersCount = pendingReferrals.length;
 
   // Importação de clientes: só na sessão assumida do super console (spec
   // 2026-09-03). Em dev local não existe "Entrar como" (a /api dá 404 no
@@ -99,7 +110,8 @@ function SettingsView({
   const counts = railCounts(setup, pendingOwnersCount);
   const summaries = railSummaries(setup, {
     teamSize: (usersList || []).length,
-    funnelCount: (funnels || []).length,
+    // Os funis de clientes (Renovações, Vencidos, Upgrade) são do sistema e ficam fora da conta, como no passo Funil criado.
+    funnelCount: leadFunnelsOf(funnels).length,
     catalogTotal,
     pendingOwners: pendingOwnersCount,
   });
@@ -155,14 +167,17 @@ function SettingsView({
         {secao === 'team' && (
           <TeamAccessSection
             db={db} appUser={appUser} usersList={usersList} leads={leads}
-            focusId={focus} onFocusHandled={clearFocus}
+            focusId={focus} onFocusHandled={clearFocus} onLeadsChanged={reloadLeads}
           />
         )}
         {secao === 'transfer' && (
-          <TransferSection db={db} usersList={usersList} appUser={appUser} leads={leads} />
+          <TransferSection db={db} usersList={usersList} appUser={appUser} leads={leads} onLeadsChanged={reloadLeads} />
         )}
         {secao === 'referral-owners' && (
-          <ReferralOwnersSection db={db} leads={leads} funnels={funnels} statuses={statuses} appUser={appUser} />
+          <ReferralOwnersSection
+            db={db} leads={leads} funnels={funnels} statuses={statuses} appUser={appUser}
+            pendentes={pendingReferrals} onResolved={markReferralResolved} onLeadsChanged={reloadLeads}
+          />
         )}
         {secao === 'import' && canImport && (
           <ImportClientsSection db={db} appUser={appUser} usersList={usersList} funnels={funnels} planos={planos} />
@@ -173,20 +188,20 @@ function SettingsView({
         {secao === 'sched' && (
           <SchedulingSection
             db={db} modalities={modalities} units={units}
-            trialClassOptions={trialClassOptions} leads={leads}
+            trialClassOptions={trialClassOptions} leads={leads} onLeadsChanged={reloadLeads}
           />
         )}
         {secao === 'funnels' && (
           <FunnelsSection
             db={db} funnels={funnels} statuses={statuses} leads={leads}
-            focusId={focus} onFocusHandled={clearFocus}
+            focusId={focus} onFocusHandled={clearFocus} onLeadsChanged={reloadLeads}
           />
         )}
         {secao === 'catalogs' && (
           <CatalogsSection
             db={db} tags={tags} sources={sources} planos={planos}
             lossReasons={lossReasons} dores={dores} modalities={modalities} leads={leads}
-            focusId={focus} onFocusHandled={clearFocus}
+            focusId={focus} onFocusHandled={clearFocus} onLeadsChanged={reloadLeads}
           />
         )}
         {secao === 'zap' && (

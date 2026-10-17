@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { roleOf, ROLES } from '../../lib/acesso.js';
+import { leadFunnelsOf } from '../../lib/crm/scope.js';
 import { useSeatLimits } from '../../hooks/useSeatLimits.js';
 import { SettingsSectionHeader } from '../../components/ui/SettingsCard.jsx';
 import { SettingsBtn } from './settingsBits.jsx';
@@ -123,7 +124,7 @@ function OverviewSection({
 
           <div className="grid grid-cols-3 gap-[22px] w-full @[730px]:w-[340px] shrink-0">
             <Stat value={(usersList || []).length} label="na equipe" />
-            <Stat value={(funnels || []).length} label="funis ativos" />
+            <Stat value={leadFunnelsOf(funnels).length} label="funis ativos" />
             <Stat value={(leads || []).length} label="leads na base" />
           </div>
         </div>

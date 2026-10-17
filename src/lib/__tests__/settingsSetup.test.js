@@ -221,6 +221,17 @@ describe('buildSetupState — funis de clientes', () => {
     expect(soSistema.pendings.map(x => x.id)).toEqual(['funnel']);
   });
 
+  it('etapa sem funnelId é do funil padrão, como no Kanban', () => {
+    const s = buildSetupState(complete({
+      funnels: [{ id: 'f1', name: 'Comercial', isDefault: true }, { id: 'f2', name: 'Outro' }],
+      statuses: [
+        { id: 's1', name: 'Novo' }, { id: 's2', name: 'Negociação' },
+        { id: 's3', funnelId: 'f2', name: 'Novo' }, { id: 's4', funnelId: 'f2', name: 'Negociação' },
+      ],
+    }));
+    expect(s.pendings).toEqual([]);
+  });
+
   it('o funil de Indicações é de lead e continua na conta', () => {
     const s = buildSetupState(complete({ funnels: [...complete().funnels, { id: 'i', name: 'Indicações', systemKind: 'referral' }] }));
     expect(s.pendings.find(x => x.id === 'thin-funnels').title).toBe('1 funil sem etapa');

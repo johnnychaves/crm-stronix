@@ -3,6 +3,7 @@ import { Copy, Dumbbell, Mail, Pencil, Plus, Shield, Trash2 } from 'lucide-react
 import { collection, doc, addDoc, getDocs, query, where, setDoc, updateDoc, deleteDoc, deleteField, serverTimestamp } from 'firebase/firestore';
 import { auth, appId, LEADS_PATH, PROFESSORS_PATH, USERS_PATH } from '../../lib/firebase.js';
 import { commitOpsInChunks } from '../../lib/funnels.js';
+import { leadsWhere } from '../../lib/settingsLeads.js';
 import { isClientLead } from '../../lib/leads.js';
 import { professorModalityNames, professorNameById } from '../../lib/professores.js';
 import { generateTemporaryPassword, passwordPolicyError, PASSWORD_RULE_TEXT } from '../../lib/passwordPolicy.js';
@@ -200,7 +201,7 @@ function ProfessorPicker({ value, options, onChange, disabled = false }) {
   );
 }
 
-function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHandled }) {
+function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHandled, onLeadsChanged }) {
   const toast = useToast();
   const { professores, modalities } = useGeneralConfig();
   const seats = useSeatLimits();
@@ -578,12 +579,14 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
         // Nome do professor é desnormalizado no lead (aparece na agenda e nos
         // relatórios de aula) — renomear tem que alcançar a base.
         if (old.nome !== trimmed) {
-          const affected = (leads || []).filter(l => l.appointmentProfessorId === editingId);
+          // Lidos na hora: a lista da tela é uma foto da abertura.
+          const affected = await leadsWhere(db, 'appointmentProfessorId', '==', editingId);
           if (affected.length > 0) {
             await commitOpsInChunks(db, affected.map(l => ({
               ref: doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, l.id),
               data: { appointmentProfessorName: trimmed }
             })), 400);
+            onLeadsChanged?.();
           }
         }
         toast.success('Professor atualizado.');
@@ -610,13 +613,26 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
       toast.warning(`"${p.nome}" tem acesso ao app (${login.name}). Exclua esse acesso na lista da equipe antes de excluir o professor.`);
       return;
     }
-    const inUse = (leads || []).filter(l => l.appointmentProfessorId === p.id).length;
+    let inUse;
+    try {
+      inUse = (await leadsWhere(db, 'appointmentProfessorId', '==', p.id)).length;
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível conferir as aulas do professor. Tente de novo.');
+      return;
+    }
     if (inUse > 0) {
       toast.warning(`"${p.nome}" está em ${inUse} ${inUse === 1 ? 'aula' : 'aulas'} já registradas. Não é possível excluí-lo.`);
       return;
     }
     if (!window.confirm(`Excluir o professor "${p.nome}"?`)) return;
-    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', PROFESSORS_PATH, p.id));
+    try {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', PROFESSORS_PATH, p.id));
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível excluir o professor.');
+      return;
+    }
     toast.success('Professor excluído.');
   };
 

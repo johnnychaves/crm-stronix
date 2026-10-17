@@ -16,7 +16,8 @@
 // o que mantém a regra testável sem montar componente.
 
 import { roleOf, ROLES } from './acesso.js';
-import { isClientFunnel } from './crm/scope.js';
+import { leadFunnelsOf } from './crm/scope.js';
+import { getDefaultFunnel, isItemInFunnel } from './funnels.js';
 import { daysText } from './rotinas.js';
 import { SETTINGS_RAIL_GROUPS } from './settingsRail.js';
 
@@ -101,11 +102,13 @@ function buildSetupState({
   // de Renovações nem guarda etapa no banco, porque as colunas saem dos marcos
   // (src/lib/renewalFunnel.js). Contar com eles deixaria toda academia com uma
   // pendência que o gestor não tem como resolver.
-  const leadFunnels = list(funnels).filter(f => !isClientFunnel(f));
+  const leadFunnels = leadFunnelsOf(funnels);
 
-  // Funil "raso": Kanban de uma coluna só não desenha caminho nenhum.
+  // Funil "raso": Kanban de uma coluna só não desenha caminho nenhum. Etapa
+  // sem funnelId é do funil padrão, como no Kanban (isItemInFunnel).
+  const defaultFunnelId = getDefaultFunnel(list(funnels))?.id || null;
   const thinFunnels = leadFunnels
-    .map(f => ({ id: f.id, name: f.name, stages: list(statuses).filter(s => s.funnelId === f.id).length }))
+    .map(f => ({ id: f.id, name: f.name, stages: list(statuses).filter(s => isItemInFunnel(s, f.id, defaultFunnelId)).length }))
     .filter(f => f.stages < 2);
 
   const done = {
