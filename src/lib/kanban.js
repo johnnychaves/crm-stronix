@@ -59,6 +59,14 @@ export function kanbanMonthOptions(currentKey) {
   return opts;
 }
 
+// Janela de vencimento do funil Vencidos: sem mês, tudo que venceu até o corte;
+// com mês, só o que venceu nele. O mês em andamento para no corte (o que ainda
+// não venceu não é Vencido). `afterMs` null quer dizer sem limite embaixo.
+export const expiredWindowOf = (safra, cutoffMs) => ({
+  afterMs: safra ? safra.startMs : null,
+  beforeMs: safra ? Math.min(safra.endMs, cutoffMs) : cutoffMs,
+});
+
 // Lead cadastrado dentro da janela [startMs, endMs). Sem data de cadastro real
 // (createdAtMissing: a data é a da carga), fica de fora, para não cair no mês
 // em que a tela abriu.

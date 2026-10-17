@@ -5,7 +5,7 @@
 // `now` é injetado onde a função aceita, e fake timers onde ela lê o relógio.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { filterKanbanLeads, partitionLeadsByStatus, stageParts, funnelSummary, isOverdueLead, kanbanMonthOptions, createdInWindow, KANBAN_ALL_MONTHS, getKanbanInitials, fmtKanbanRelDate, kanbanSilence, silenceDaysOf, monthWindow, defaultRespFilterFor, isDefaultRespFilter, KANBAN_COLUMN_ACCENT } from '../kanban.js';
+import { expiredWindowOf, filterKanbanLeads, partitionLeadsByStatus, stageParts, funnelSummary, isOverdueLead, kanbanMonthOptions, createdInWindow, KANBAN_ALL_MONTHS, getKanbanInitials, fmtKanbanRelDate, kanbanSilence, silenceDaysOf, monthWindow, defaultRespFilterFor, isDefaultRespFilter, KANBAN_COLUMN_ACCENT } from '../kanban.js';
 import { SETTINGS_COLOR_OPTIONS } from '../../components/ui/ColorPicker.jsx';
 
 // 15 de julho de 2026, 10:00 local — "agora" de referência dos testes.
@@ -425,5 +425,24 @@ describe('cores do seletor x paleta do board', () => {
     pares.forEach(([apelido, semantico]) => {
       expect(KANBAN_COLUMN_ACCENT[apelido]).toEqual(KANBAN_COLUMN_ACCENT[semantico]);
     });
+  });
+});
+
+describe('expiredWindowOf — mês de vencimento do funil Vencidos', () => {
+  const CORTE = new Date(2026, 9, 16, 16, 0, 0).getTime();
+  const mes = (y, m) => ({ startMs: new Date(y, m, 1).getTime(), endMs: new Date(y, m + 1, 1).getTime() });
+
+  it('sem mês: tudo que venceu até o corte, sem limite embaixo', () => {
+    expect(expiredWindowOf(null, CORTE)).toEqual({ afterMs: null, beforeMs: CORTE });
+  });
+
+  it('mês fechado: o mês inteiro', () => {
+    const set = mes(2026, 8);
+    expect(expiredWindowOf(set, CORTE)).toEqual({ afterMs: set.startMs, beforeMs: set.endMs });
+  });
+
+  it('mês em andamento: para no corte, porque o que ainda não venceu não é Vencido', () => {
+    const out = mes(2026, 9);
+    expect(expiredWindowOf(out, CORTE)).toEqual({ afterMs: out.startMs, beforeMs: CORTE });
   });
 });

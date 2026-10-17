@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { isClientFunnel } from '../../lib/crm/scope.js';
 
 // Espaço (px) entre as abas — precisa bater com o gap-1 do container real E
 // da linha fantasma de medição, senão o cálculo de overflow erra.
@@ -148,7 +149,7 @@ function FunnelTabs({ funnels, counts, selectedId, onSelect }) {
   // Os funis de clientes (Upgrade, Renovações, Vencidos) ficam depois de um
   // traço. O traço mora junto da primeira aba deles, na linha visível e na
   // fantasma, para a medida de cada funil já incluir a largura dele.
-  const firstSystemId = orderedFunnels.find((f, i) => f.systemKind && i > 0 && !orderedFunnels[i - 1].systemKind)?.id;
+  const firstSystemId = orderedFunnels.find((f, i) => isClientFunnel(f) && i > 0 && !isClientFunnel(orderedFunnels[i - 1]))?.id;
   const tab = (f, props) => {
     const el = <FunnelTab key={f.id} funnel={f} count={getCount(f.id)} {...props} />;
     if (f.id !== firstSystemId) return el;
