@@ -239,14 +239,23 @@ const dataDoPeriodo = (campo) => param(
   (v) => (DIA_RE.test(v || '') ? v : null),
 );
 
+// A tela nova da Meta (Foco agora) fica atrás de ?meta=nova até a virada (PR 5
+// do plano da Meta). Vem antes do `cat` na tabela, porque o `cat` da tela nova
+// aceita os grupos do Foco em, e a tela de hoje continua igual sem ele.
+const metaNova = param(
+  'metaNova',
+  (raw) => raw === 'nova',
+  (v) => (v ? 'nova' : null),
+);
+
 const cat = param(
   'cat',
-  (raw, ctx) => {
-    const tabela = ctx.foco ? CAT_FOCO_POR_CODIGO : CAT_POR_CODIGO;
+  (raw, ctx, lidos) => {
+    const tabela = ctx.foco || lidos?.metaNova ? CAT_FOCO_POR_CODIGO : CAT_POR_CODIGO;
     return own(tabela, raw) ? tabela[raw] : 'all';
   },
-  (v, ctx) => {
-    if (ctx.foco) return FOCO_VALIDOS.has(v) ? v : null;
+  (v, ctx, valores) => {
+    if (ctx.foco || valores?.metaNova) return FOCO_VALIDOS.has(v) ? v : null;
     return v && v !== 'all' && own(CODIGO_POR_CAT, v) ? CODIGO_POR_CAT[v] : null;
   },
 );
@@ -395,7 +404,7 @@ const TABELA = {
   leads: { funil: funilDaTela, fase, resp, origem, ordem: ordemDosLeads },
   aulas: { dia, de: dataDoPeriodo('de'), ate: dataDoPeriodo('ate'), resp, prof },
   visitas: { dia, de: dataDoPeriodo('de'), ate: dataDoPeriodo('ate'), resp },
-  dailyGoal: { cat },
+  dailyGoal: { meta: metaNova, cat },
   relatorios: {
     mes: soNoModoMes(mes),
     periodo: periodoDoPainel,
