@@ -1,11 +1,11 @@
 import { useId } from 'react';
 import { cn } from '../../../lib/utils.js';
-import { onRadioKeyDown, radioTabIndex } from './popupKit.js';
+import { RadioGroup, RadioGroupOption } from '../../ui/radio-group.jsx';
 import { PopupLabel } from './PopupShell.jsx';
 
-// Os desfechos como cartões, cada um com uma linha que diz o que acontece. É um
-// grupo de rádio: as setas trocam o desfecho, e o pop-up abre com o foco no
-// escolhido. `tone`: ok (verde), no (vermelho) e later (âmbar).
+// Os desfechos como cartões, cada um com uma linha que diz o que acontece. É o
+// RadioGroup do shadcn: as setas trocam o desfecho, e o pop-up abre com o foco
+// no escolhido. `tone`: ok (verde), no (vermelho) e later (âmbar).
 const TONE = {
   ok: { card: 'border-emerald-500 bg-emerald-50 dark:bg-emerald-500/15', icon: 'bg-emerald-500 text-white' },
   no: { card: 'border-rose-500 bg-rose-50 dark:bg-rose-500/15', icon: 'bg-rose-500 text-white' },
@@ -14,25 +14,19 @@ const TONE = {
 
 export function OutcomeCards({ question, options, value, onChange }) {
   const labelId = useId();
-  const ids = options.map((o) => o.id);
   return (
     <div>
       <PopupLabel id={labelId}>{question}</PopupLabel>
-      <div role="radiogroup" aria-labelledby={labelId} className={cn('grid gap-2', options.length > 2 ? 'grid-cols-3' : 'grid-cols-2')}>
+      <RadioGroup value={value} onValueChange={onChange} aria-labelledby={labelId} className={cn('grid gap-2', options.length > 2 ? 'grid-cols-3' : 'grid-cols-2')}>
         {options.map(({ id, label, desc, Icon, tone }) => {
           const on = id === value;
           return (
-            <button
+            <RadioGroupOption
               key={id}
-              type="button"
-              role="radio"
-              aria-checked={on}
-              tabIndex={radioTabIndex(id, ids, value)}
+              value={id}
               data-autofocus={on ? '' : undefined}
-              onClick={() => onChange(id)}
-              onKeyDown={(e) => onRadioKeyDown(e, ids, value, onChange)}
               className={cn(
-                'flex flex-col items-start gap-[7px] rounded-[14px] border-[1.5px] p-3 text-left transition outline-none focus-visible:anel-foco',
+                'flex flex-col items-start gap-[7px] rounded-[14px] border-[1.5px] p-3 text-left transition',
                 on ? TONE[tone].card : 'border-border bg-card hover:border-brand-200 dark:hover:border-brand-500/45'
               )}
             >
@@ -41,10 +35,10 @@ export function OutcomeCards({ question, options, value, onChange }) {
               </span>
               <span className="text-[13.5px] font-semibold leading-tight text-foreground">{label}</span>
               <span className="text-[12px] leading-snug text-muted-foreground">{desc}</span>
-            </button>
+            </RadioGroupOption>
           );
         })}
-      </div>
+      </RadioGroup>
     </div>
   );
 }

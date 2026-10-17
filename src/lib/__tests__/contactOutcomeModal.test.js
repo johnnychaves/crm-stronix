@@ -260,7 +260,11 @@ describe('ContactOutcomeModal na família de pop-ups', () => {
   it('as setas trocam o desfecho', async () => {
     await montar({ lead: delegado });
     const feito = document.activeElement;
-    await act(async () => { feito.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })); });
+    // O RadioGroup do Radix move o foco num setTimeout, depois da tecla.
+    await act(async () => {
+      feito.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+      await new Promise((r) => setTimeout(r, 0));
+    });
     expect(document.activeElement.textContent.startsWith('Reagendar')).toBe(true);
     expect(document.activeElement.getAttribute('aria-checked')).toBe('true');
     expect(document.querySelector('textarea')).toBeTruthy();

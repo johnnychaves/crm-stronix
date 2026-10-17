@@ -83,10 +83,26 @@ describe('RescheduleModal', () => {
     await digitarHora('14:05');
     expect(botao('Remarcar').disabled).toBe(false);
     vi.setSystemTime(new Date(2026, 9, 16, 14, 10));
+    try {
+      await clicar('Remarcar');
+      expect(onConfirm).not.toHaveBeenCalled();
+      expect(toast.warning).toHaveBeenCalledWith('Escolha uma data e hora futuras.');
+    } finally {
+      vi.setSystemTime(new Date(2026, 9, 16, 14, 0));
+    }
+  });
+
+  // O campo de hora aceita o vazio enquanto a pessoa apaga e digita. Antes o
+  // pop-up devolvia a hora antiga a cada Backspace, e apagar não funcionava.
+  it('apagar a hora deixa o campo vazio, trava o botão e digitar de novo grava', async () => {
+    const { onConfirm } = await montar(new Date(2026, 9, 16, 16, 30));
+    await digitarHora('');
+    expect(document.querySelector('input[type="time"]').value).toBe('');
+    expect(document.body.textContent).toContain('Escolha o dia e o horário.');
+    expect(botao('Remarcar').disabled).toBe(true);
+    await digitarHora('10:00');
     await clicar('Remarcar');
-    expect(onConfirm).not.toHaveBeenCalled();
-    expect(toast.warning).toHaveBeenCalledWith('Escolha uma data e hora futuras.');
-    vi.setSystemTime(new Date(2026, 9, 16, 14, 0));
+    expect(onConfirm.mock.calls[0][0]).toEqual(new Date(2026, 9, 17, 10, 0));
   });
 
   it('depois do Não compareceu, é o "Agendar próxima tentativa", com o Agora não', async () => {

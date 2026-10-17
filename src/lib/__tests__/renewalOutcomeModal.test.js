@@ -93,6 +93,21 @@ describe('RenewalOutcomeModal', () => {
     expect(onDone).toHaveBeenCalledWith('nao_renova');
   });
 
+  // A observação da perda continua à vista quando o consultor troca de desfecho
+  // e volta. Antes ela sumia atrás do "+ Adicionar observação" e era gravada
+  // mesmo assim, sem estar na tela.
+  it('a observação escrita continua à vista depois de trocar de desfecho e voltar', async () => {
+    await montar();
+    await escolher('Não vai renovar');
+    await clicar('+ Adicionar observação');
+    await escrever(document.querySelector('textarea'), 'Vai pensar até sexta.');
+    await escolher('Reagendar contato');
+    await escolher('Não vai renovar');
+    expect(botao('+ Adicionar observação')).toBeUndefined();
+    const campo = [...document.querySelectorAll('textarea')].find((t) => t.value === 'Vai pensar até sexta.');
+    expect(campo).toBeTruthy();
+  });
+
   it('o Reagendar exige o motivo e grava o contato de amanhã às 09:00', async () => {
     await montar();
     await escolher('Reagendar contato');

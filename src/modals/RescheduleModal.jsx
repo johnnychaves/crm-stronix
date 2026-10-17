@@ -5,11 +5,13 @@ import { getSafeDateOrNull } from '../lib/dates.js';
 import { dayRefText, hourOf, whenFromPreset, whenInstant, whenIsFuture } from '../lib/whenPicker.js';
 import { SOLO_TRAINING, SOLO_TRAINING_LABEL, professorsForModality, professorNameById } from '../lib/professores.js';
 import { cn } from '../lib/utils.js';
+import { firstName } from '../lib/guardian.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { NoteToggle, PopupButton, PopupLabel, PopupShell } from '../components/dailygoal/popup/PopupShell.jsx';
 import { WhenPicker } from '../components/dailygoal/popup/WhenPicker.jsx';
-import { onRadioKeyDown, radioTabIndex, POPUP_FIELD } from '../components/dailygoal/popup/popupKit.js';
+import { POPUP_FIELD } from '../components/dailygoal/popup/popupKit.js';
+import { RadioGroup, RadioGroupOption } from '../components/ui/radio-group.jsx';
 
 // Remarcar visita ou aula experimental, e o "Agendar próxima tentativa" que a
 // Meta abre depois do Não compareceu (flow 'after_no_show'). Na família de
@@ -22,8 +24,6 @@ const TYPES = [
   { id: 'visita', label: 'Visita' },
   { id: 'aula_experimental', label: 'Aula experimental' },
 ];
-const TYPE_IDS = TYPES.map((t) => t.id);
-const firstName = (name) => (name || '').trim().split(/\s+/)[0] || 'O lead';
 
 export function RescheduleModal({ lead, categorySlug, currentDate, currentType, flow = 'manual', onConfirm, onClose }) {
   const isAfterNoShow = flow === 'after_no_show';
@@ -132,28 +132,20 @@ export function RescheduleModal({ lead, categorySlug, currentDate, currentType, 
         <div className="grid gap-3">
           <div>
             <PopupLabel id={typeLabelId}>Tipo</PopupLabel>
-            <div role="radiogroup" aria-labelledby={typeLabelId} className="flex gap-1 rounded-xl bg-muted p-[3px]">
-              {TYPES.map((t) => {
-                const on = t.id === apptType;
-                return (
-                  <button
-                    key={t.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={on}
-                    tabIndex={radioTabIndex(t.id, TYPE_IDS, apptType)}
-                    onClick={() => setApptType(t.id)}
-                    onKeyDown={(e) => onRadioKeyDown(e, TYPE_IDS, apptType, setApptType)}
-                    className={cn(
-                      'h-[34px] flex-1 rounded-[9px] text-[13px] transition outline-none focus-visible:anel-foco',
-                      on ? 'bg-card font-semibold text-foreground shadow-sm' : 'font-medium text-muted-foreground hover:text-foreground'
-                    )}
-                  >
-                    {t.label}
-                  </button>
-                );
-              })}
-            </div>
+            <RadioGroup value={apptType} onValueChange={setApptType} aria-labelledby={typeLabelId} className="flex gap-1 rounded-xl bg-muted p-[3px]">
+              {TYPES.map((t) => (
+                <RadioGroupOption
+                  key={t.id}
+                  value={t.id}
+                  className={cn(
+                    'h-[34px] flex-1 rounded-[9px] text-[13px] transition',
+                    t.id === apptType ? 'bg-card font-semibold text-foreground shadow-sm' : 'font-medium text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  {t.label}
+                </RadioGroupOption>
+              ))}
+            </RadioGroup>
           </div>
           {isAula && (
             <div className="grid grid-cols-2 gap-2.5">
@@ -188,7 +180,7 @@ export function RescheduleModal({ lead, categorySlug, currentDate, currentType, 
         </div>
       )}
 
-      <WhenPicker value={when} onChange={setWhen} who={firstName(lead?.name)} nowMs={nowMs} autoFocus />
+      <WhenPicker value={when} onChange={setWhen} who={firstName(lead?.name) || 'O lead'} nowMs={nowMs} autoFocus />
       <NoteToggle
         placeholder={isAfterNoShow ? 'Ex: combinar pela manhã, ligar antes' : 'Ex: lead pediu para remarcar por motivo de trabalho'}
         value={note}

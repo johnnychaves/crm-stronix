@@ -2,8 +2,9 @@ import { useId, useRef, useState } from 'react';
 import { Info } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../ui/dialog.jsx';
 import { Avatar } from '../../ui/Avatar.jsx';
+import { RadioGroup, RadioGroupOption } from '../../ui/radio-group.jsx';
 import { cn } from '../../../lib/utils.js';
-import { onRadioKeyDown, radioTabIndex, POPUP_FIELD } from './popupKit.js';
+import { POPUP_FIELD } from './popupKit.js';
 
 // A família dos pop-ups da Meta Diária (mockup B, 16/10/2026): título, quem é o
 // lead com o contexto, corpo e o rodapé que diz o que falta. É o Dialog do
@@ -41,7 +42,7 @@ export function PopupShell({ title, lead, context, chip = null, busy = false, on
             <span className={cn(
               'shrink-0 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[12px] font-semibold',
               chip.muted
-                ? 'bg-slate-100 text-slate-700 dark:bg-white/[0.06] dark:text-slate-200'
+                ? 'bg-muted text-foreground'
                 : 'bg-brand-50 text-brand-700 dark:bg-brand-600/20 dark:text-[#9FBCFF]'
             )}>
               {chip.text}
@@ -99,54 +100,51 @@ export function PopupLabel({ htmlFor, id, children }) {
     : <span id={id} className={LABEL}>{children}</span>;
 }
 
-// Escolha única em pílulas (os atalhos de dia e o motivo da perda).
+// Escolha única em pílulas (os atalhos de dia e o motivo da perda), sobre o
+// RadioGroup do shadcn: as setas trocam a escolha e só a escolhida fica no Tab.
 export function ChoiceChips({ options, value, onChange, labelledBy, autoFocusSelected = false }) {
-  const ids = options.map((o) => o.id);
   return (
-    <div role="radiogroup" aria-labelledby={labelledBy} className="flex flex-wrap gap-2">
+    <RadioGroup value={value} onValueChange={onChange} aria-labelledby={labelledBy} className="flex flex-wrap gap-2">
       {options.map((o) => {
         const on = o.id === value;
         return (
-          <button
+          <RadioGroupOption
             key={o.id}
-            type="button"
-            role="radio"
-            aria-checked={on}
-            tabIndex={radioTabIndex(o.id, ids, value)}
+            value={o.id}
             data-autofocus={autoFocusSelected && on ? '' : undefined}
-            onClick={() => onChange(o.id)}
-            onKeyDown={(e) => onRadioKeyDown(e, ids, value, onChange)}
             className={cn(
-              'h-[34px] rounded-full border px-[13px] text-[13px] transition outline-none focus-visible:anel-foco',
+              'h-[34px] rounded-full border px-[13px] text-[13px] transition',
               on
                 ? 'border-brand-200 bg-brand-50 font-semibold text-brand-700 dark:border-brand-500/45 dark:bg-brand-600/20 dark:text-[#9FBCFF]'
                 : 'border-border bg-card font-medium text-foreground hover:border-brand-200 dark:hover:border-brand-500/45'
             )}
           >
             {o.label}
-          </button>
+          </RadioGroupOption>
         );
       })}
-    </div>
+    </RadioGroup>
   );
 }
 
 const LINK = 'justify-self-start rounded-md text-[13px] font-semibold text-brand-700 hover:underline outline-none focus-visible:anel-foco dark:text-[#9FBCFF]';
 
 // A observação opcional fica escondida atrás de "+ Adicionar observação", para
-// o pop-up nascer curto. Abrir leva o foco ao campo.
+// o pop-up nascer curto. Abrir pelo clique leva o foco ao campo. Quem chega com
+// texto (o desfecho foi trocado e voltou) já vê o campo aberto, para nada ser
+// gravado sem estar na tela.
 export function NoteToggle({ placeholder, value, onChange }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(() => (value ? 'kept' : ''));
   const id = useId();
   if (!open) {
-    return <button type="button" className={LINK} onClick={() => setOpen(true)}>+ Adicionar observação</button>;
+    return <button type="button" className={LINK} onClick={() => setOpen('clicked')}>+ Adicionar observação</button>;
   }
   return (
     <div>
       <PopupLabel htmlFor={id}>Observação <span className="font-medium text-muted-foreground">(opcional)</span></PopupLabel>
       <textarea
         id={id}
-        autoFocus
+        autoFocus={open === 'clicked'}
         rows={2}
         value={value}
         onChange={(e) => onChange(e.target.value)}

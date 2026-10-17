@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { whenFromPreset, whenInstant, whenIsFuture } from '../lib/whenPicker.js';
+import { firstName } from '../lib/guardian.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { NoteToggle, PopupButton, PopupShell } from '../components/dailygoal/popup/PopupShell.jsx';
 import { WhenPicker } from '../components/dailygoal/popup/WhenPicker.jsx';
@@ -9,8 +10,6 @@ import { WhenPicker } from '../components/dailygoal/popup/WhenPicker.jsx';
 // próximo contato no futuro ou sem nenhum, nunca com a data parada no passado,
 // que o trazia de volta como Atrasado no dia seguinte. Quem grava é a Meta, pelo
 // onPick(data, observação) e pelo onSkip(observação).
-
-const firstName = (name) => (name || '').trim().split(/\s+/)[0] || 'o lead';
 
 export function NextContactModal({ lead, contextLabel = 'Tarefa concluída', onPick, onSkip, onClose }) {
   const toast = useToast();
@@ -39,7 +38,7 @@ export function NextContactModal({ lead, contextLabel = 'Tarefa concluída', onP
 
   return (
     <PopupShell
-      title={`Quando voltar a falar com ${firstName(lead?.name)}?`}
+      title={`Quando voltar a falar com ${firstName(lead?.name) || 'o lead'}?`}
       lead={lead}
       context={contextLabel}
       busy={submitting}

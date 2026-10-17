@@ -2,6 +2,9 @@
 // o dia e o horário em campos separados e a frase que confirma o resultado.
 // Puro, testado em node. O instante que sai daqui é o que o pop-up grava.
 
+import { addDays, calendarDaysBetween, fromDateInputValue, startOfLocalDay, toDateInputValue } from './dates.js';
+import { formatHourLabel } from './format.js';
+
 const pad = (n) => String(n).padStart(2, '0');
 const WEEKDAYS = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
 
@@ -13,26 +16,21 @@ export const WHEN_PRESETS = Object.freeze([
   Object.freeze({ id: 'outro', label: 'Outro dia', days: null }),
 ]);
 
-const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
-
-// 'AAAA-MM-DD' no fuso local, o valor de <input type="date">.
-export const isoDay = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-const parseDay = (s) => {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || '');
-  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
-};
+// 'AAAA-MM-DD' no fuso local, o valor de <input type="date">, e a volta para a
+// meia-noite local (os dois de lib/dates.js). Só aceita o dia completo.
+export const isoDay = toDateInputValue;
+const parseDay = (s) => (/^\d{4}-\d{2}-\d{2}$/.test(s || '') ? fromDateInputValue(s) : null);
 
 // 'HH:MM' de uma data, para começar o horário no do agendamento.
-export const hourOf = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+export const hourOf = formatHourLabel;
 
 // O "Quando" num atalho. O "Outro dia" mantém o dia que estava escolhido, e sem
 // ele começa amanhã.
 export function whenFromPreset(presetId, time, today = new Date(), current = null) {
   const preset = WHEN_PRESETS.find((p) => p.id === presetId) || WHEN_PRESETS[1];
   const date = preset.days == null
-    ? (parseDay(current?.date) ? current.date : isoDay(addDays(today, 1)))
-    : isoDay(addDays(today, preset.days));
+    ? (parseDay(current?.date) ? current.date : isoDay(addDays(startOfLocalDay(today), 1)))
+    : isoDay(addDays(startOfLocalDay(today), preset.days));
   return { preset: preset.id, date, time };
 }
 
@@ -52,7 +50,7 @@ export const whenIsFuture = (when, nowMs = Date.now()) => {
 
 // "hoje às 16:30", "ontem às 16:30", "amanhã às 16:30" ou "em 14/10 às 16:30".
 export function dayRefText(date, now = new Date()) {
-  const diff = Math.round((startOfDay(date) - startOfDay(now)) / 86400000);
+  const diff = calendarDaysBetween(now, date);
   const at = `às ${hourOf(date)}`;
   if (diff === 0) return `hoje ${at}`;
   if (diff === -1) return `ontem ${at}`;
@@ -64,7 +62,7 @@ export function dayRefText(date, now = new Date()) {
 export function whenText(when, now = new Date()) {
   const at = whenInstant(when);
   if (!at) return '';
-  if (startOfDay(at).getTime() === startOfDay(now).getTime()) return `hoje, às ${when.time}`;
+  if (calendarDaysBetween(now, at) === 0) return `hoje, às ${when.time}`;
   const wd = at.getDay();
   const article = wd === 0 || wd === 6 ? 'no' : 'na';
   return `${article} ${WEEKDAYS[wd]}, ${pad(at.getDate())}/${pad(at.getMonth() + 1)}, às ${when.time}`;

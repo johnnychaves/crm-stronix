@@ -1,6 +1,6 @@
 import { useId } from 'react';
 import { AlertCircle, Calendar } from 'lucide-react';
-import { WHEN_PRESETS, whenFromPreset, whenIsFuture, whenText, dayLabel, isoDay } from '../../../lib/whenPicker.js';
+import { WHEN_PRESETS, whenFromPreset, whenInstant, whenIsFuture, whenText, dayLabel, isoDay } from '../../../lib/whenPicker.js';
 import { cn } from '../../../lib/utils.js';
 import { POPUP_FIELD } from './popupKit.js';
 import { ChoiceChips, PopupLabel, PopupNote } from './PopupShell.jsx';
@@ -9,7 +9,9 @@ import { ChoiceChips, PopupLabel, PopupNote } from './PopupShell.jsx';
 // separados e a frase que confirma o resultado. A regra mora em
 // lib/whenPicker.js; `nowMs` é o instante fixado na montagem do pop-up, e o
 // envio confere de novo no relógio. `who` abre a frase ("Mateus volta à sua
-// Meta…"). Com `autoFocus`, o pop-up abre com o foco no atalho escolhido.
+// Meta…"). Com `autoFocus`, o pop-up abre com o foco no atalho escolhido. O
+// dia e o horário aceitam o vazio enquanto a pessoa apaga e digita: devolver o
+// valor antigo no meio da digitação fazia o Backspace não apagar nada.
 export function WhenPicker({ value, onChange, who, nowMs, autoFocus = false }) {
   const labelId = useId();
   const today = new Date(nowMs);
@@ -32,7 +34,7 @@ export function WhenPicker({ value, onChange, who, nowMs, autoFocus = false }) {
               aria-label="Dia"
               value={value.date}
               min={isoDay(today)}
-              onChange={(e) => onChange({ ...value, date: e.target.value || value.date })}
+              onChange={(e) => onChange({ ...value, date: e.target.value })}
               className={cn(POPUP_FIELD, 'num')}
             />
           ) : (
@@ -44,13 +46,15 @@ export function WhenPicker({ value, onChange, who, nowMs, autoFocus = false }) {
               type="time"
               aria-label="Horário"
               value={value.time}
-              onChange={(e) => onChange({ ...value, time: e.target.value || value.time })}
+              onChange={(e) => onChange({ ...value, time: e.target.value })}
               className={cn(POPUP_FIELD, 'num')}
             />
           </label>
         </div>
       </div>
-      {whenIsFuture(value, nowMs) ? (
+      {!whenInstant(value) ? (
+        <PopupNote tone="bad" icon={AlertCircle}>Escolha o dia e o horário.</PopupNote>
+      ) : whenIsFuture(value, nowMs) ? (
         <PopupNote icon={Calendar}>{who} volta à sua Meta <b className="font-semibold">{whenText(value, today)}</b>.</PopupNote>
       ) : (
         <PopupNote tone="bad" icon={AlertCircle}>Esse horário já passou. Escolha um dia ou horário futuros.</PopupNote>
