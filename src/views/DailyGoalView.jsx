@@ -11,6 +11,7 @@ import { withBucket } from '../lib/leadDerived.js';
 import { stageChangeFields } from '../lib/stageMove.js';
 import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, computeVolumeInRange, countMetaDaysInMonth, volumeTargetFor, volumeBreakdownLabel, tomorrowAppointmentsOf, slotTotals } from '../lib/dailyGoal.js';
 import { followUpChannelOf } from '../lib/contactGoal.js';
+import { futureInstant } from '../lib/dates.js';
 import { computeDayAgenda } from '../lib/dayAgenda.js';
 import { useDayAgenda } from '../hooks/useDayAgenda.js';
 import { useScreenParams } from '../hooks/useScreenParams.js';
@@ -382,7 +383,7 @@ export function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE
   const enteredAtLabel = (isNovo && task.createdAt) ? formatHourLabel(task.createdAt) : null;
   const age = isNovo ? humanizeAge(task.createdAt, now) : null;
   // A régua da lib (overdueDaysOf), a mesma da ordem da lista e dos Relatórios.
-  // Conta também o lead novo que ninguém tocou, que entra aqui sem próximo
+  // Conta também o lead novo sem próximo passo, que entra aqui sem próximo
   // contato: para ele o card diz por que está atrasado.
   const overdueDays = isOverdue ? overdueDaysOf(task, now) : 0;
   const untouchedNewLead = isOverdue && !task.nextFollowUp;
@@ -438,7 +439,7 @@ export function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE
               </TimePill>
             )}
             {untouchedNewLead && (
-              <TimePill icon={<AlertCircle size={11} />} tone="rose">Sem contato desde o cadastro</TimePill>
+              <TimePill icon={<AlertCircle size={11} />} tone="rose">Sem próximo passo desde o cadastro</TimePill>
             )}
             {isOverdue && overdueDays > 0 && (
               overdueDays >= slaOverdueDays ? (
@@ -678,18 +679,16 @@ export function RescheduleModal({ lead, categorySlug, currentDate, currentType, 
   // Só data e hora futuras. Antes o campo aceitava o passado: um dia digitado
   // errado virava Atrasado e ainda fechava a tarefa de hoje. O instante fica
   // fixo na montagem para o render seguir puro, e o envio confere de novo no
-  // relógio, como no ContactOutcomeModal.
+  // relógio (futureInstant, em lib/dates.js), como nos outros pop-ups.
   const toast = useToast();
   const [nowMs] = useState(() => Date.now());
-  const parsedDate = dateValue ? new Date(dateValue) : null;
-  const isFuture = Boolean(parsedDate) && !isNaN(parsedDate.getTime()) && parsedDate.getTime() > nowMs;
+  const isFuture = Boolean(futureInstant(dateValue, nowMs));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!dateValue || submitting) return;
-    const newDate = new Date(dateValue);
-    if (isNaN(newDate.getTime())) return;
-    if (newDate.getTime() <= Date.now()) {
+    const newDate = futureInstant(dateValue);
+    if (!newDate) {
       toast.warning('Escolha uma data e hora futuras.');
       return;
     }
@@ -1058,9 +1057,12 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
   // só Venda/Perda hoje ou daily_goal_done marcam tarefa).
   // Com o relógio da tela (`now`, por minuto): a janela de 24h do lead novo
   // fecha na hora certa, e não só quando chega dado novo.
+  // O índice das interações só muda quando chegam interações, e não a cada
+  // minuto do relógio.
+  const interactionsByLead = useMemo(() => buildInteractionsByLead(interactions), [interactions]);
   const processedLeads = useMemo(
-    () => computeDailyGoalSlots(leads, buildInteractionsByLead(interactions), appUser.id, renewalCheckpoints, renewalGraceDays, now),
-    [leads, appUser, interactions, now, renewalCheckpoints, renewalGraceDays]
+    () => computeDailyGoalSlots(leads, interactionsByLead, appUser.id, renewalCheckpoints, renewalGraceDays, now),
+    [leads, appUser, interactionsByLead, now, renewalCheckpoints, renewalGraceDays]
   );
 
   // Agenda do dia (painel compartilhado): todas as visitas e aulas de HOJE na
@@ -1098,11 +1100,10 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
     setSavingAgendaId(row.id);
     try {
       // CLIENTE é caso à parte: ele está na agenda só para upsell de modalidade,
-      // não para prospecção. A presença dele registra o desfecho e a timeline e
-      // para por aí — não mexe em etapa do funil (promote) e não consome o
-      // compromisso (consumeAppointment), que zeraria o próximo contato dele.
-      // Sem isso, confirmar a presença de um aluno apagava um contato agendado
-      // e podia empurrá-lo de volta para o funil de vendas.
+      // não para prospecção. A presença dele não mexe em etapa do funil
+      // (promote), senão podia empurrá-lo de volta para o funil de vendas. O
+      // próximo contato segue a regra de todos (consumedFields): sai só o eco do
+      // agendamento, e o contato de renovação marcado à parte fica.
       const quem = row.isMine ? '' : ` (meta de ${row.ownerName})`;
       const isCliente = row.isClient;
 
@@ -1141,7 +1142,6 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
       await writeAppointmentOutcome({
         db, lead: row, outcome: choice, categorySlug: row.categorySlug, appUser, statuses,
         promote: !isCliente,
-        consumeAppointment: !isCliente,
         writeGoalDone: !jaTemMarcaHoje,
         sourceLabel: 'Agenda do dia',
       });
@@ -1261,8 +1261,6 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
 
   const handleOutcome = async (lead, outcome, categorySlug) => {
     if (!APPOINTMENT_OUTCOMES.includes(outcome)) return;
-    const taskKey = `${lead.id}:${categorySlug}`;
-    if (!claimTask(taskKey)) return;
     const meta = getAppointmentOutcomeMeta(outcome);
     // Auto-move "Compareceu" em visita/aula → Negociação no mesmo funil. A
     // regra e o registro de onde o lead saiu (para a correção poder voltar)
@@ -1273,6 +1271,10 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
       lead, outcome, categorySlug, statuses, promote: !isClientLead(lead),
     });
 
+    // A trava vem colada ao try: o finally sempre a solta, e nada antes dele
+    // pode deixá-la presa e o card mudo.
+    const taskKey = `${lead.id}:${categorySlug}`;
+    if (!claimTask(taskKey)) return;
     try {
       const leadUpdate = {
         appointmentOutcome: outcome,
@@ -1285,8 +1287,8 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
         leadUpdate.statusEnteredAt = serverTimestamp();
       }
       // O que o desfecho tira do lead, na mesma regra da Agenda de hoje
-      // (consumedFields): o cliente não perde o próximo contato.
-      Object.assign(leadUpdate, consumedFields(outcome, { client: isClientLead(lead) }));
+      // (consumedFields): o eco do agendamento e, no Cancelou, o agendamento.
+      Object.assign(leadUpdate, consumedFields(outcome, lead));
       // Marca a tarefa da Meta como concluída para essa categoria
       // específica. Type='daily_goal_done' é a fonte ÚNICA de verdade
       // para "tarefa cumprida" no fluxo da Meta Diária. O leadUpdate acompanha
@@ -1380,10 +1382,12 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
     if (openOutcomePopup(lead, categorySlug)) return;
     const categoryLabel = DAILY_GOAL_CATEGORY_LABEL[categorySlug] || categorySlug;
     if (!window.confirm(`Concluir a tarefa "${categoryLabel}" deste lead?`)) return;
+    const noteText = (note || '').trim();
     const taskKey = `${lead.id}:${categorySlug}`;
     if (!claimTask(taskKey)) return;
-    const noteText = (note || '').trim();
     try {
+      // O Concluir do Novo lead é o primeiro contato feito: o contactDoneAt
+      // impede que ele vire Atrasado quando a janela de 24h fechar.
       await logInteraction(db, lead, appUser, {
         text: noteText
           ? `✅ ${categoryLabel} — Meta Diária. Obs: ${noteText}`
@@ -1391,7 +1395,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
         type: 'daily_goal_done',
         dailyGoalCategory: categorySlug,
         ...goalOwnerFields(lead, categorySlug)
-      });
+      }, categorySlug === DAILY_GOAL_CATEGORIES.NOVO_24H ? { contactDoneAt: new Date() } : null);
       toast.success(`Tarefa "${categoryLabel}" concluída.`);
     } catch (err) {
       console.error(err);

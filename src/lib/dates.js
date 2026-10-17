@@ -80,6 +80,14 @@ export const fromDateTimeInputValue = (str) => {
   return isNaN(d.getTime()) ? null : d;
 };
 
+// O instante do campo de data e hora quando ele é depois de `nowMs`, senão null.
+// É a trava de "só data e hora futuras" dos pop-ups da Meta: o render passa o
+// instante fixado na montagem e o envio confere de novo no relógio.
+export const futureInstant = (str, nowMs = Date.now()) => {
+  const d = fromDateTimeInputValue(str);
+  return d && d.getTime() > nowMs ? d : null;
+};
+
 // Dias inteiros entre duas datas (b - a). Arredonda para absorver o pulo de
 // 1h do horário de verão. null se qualquer uma for inválida.
 export const daysBetween = (a, b) => {

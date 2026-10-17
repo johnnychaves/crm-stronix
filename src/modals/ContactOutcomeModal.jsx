@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Calendar, CheckCircle2, MessageSquare } from 'lucide-react';
-import { fromDateTimeInputValue, toDateTimeInputValue } from '../lib/dates.js';
+import { fromDateTimeInputValue, futureInstant, toDateTimeInputValue } from '../lib/dates.js';
 import { logInteraction, logInteractions } from '../lib/interactions.js';
 import { formatHourLabel } from '../lib/format.js';
 import { contactDone, contactReschedule, followUpChannelOf } from '../lib/contactGoal.js';
@@ -64,7 +64,7 @@ function ContactOutcomeModal({ open = true, onClose, lead, categorySlug = DAILY_
   const nowMs = useMemo(() => Date.now(), []);
   const minRescheduleStr = useMemo(() => toDateTimeInputValue(new Date(nowMs)), [nowMs]);
   const parsedReschedule = fromDateTimeInputValue(rescheduleStr);
-  const isRescheduleFuture = Boolean(parsedReschedule) && parsedReschedule.getTime() > nowMs;
+  const isRescheduleFuture = Boolean(futureInstant(rescheduleStr, nowMs));
   const motivoTrimmed = motivo.trim();
   const categoryLabel = DAILY_GOAL_CATEGORY_LABEL[categorySlug] || 'Contato';
 
@@ -81,7 +81,7 @@ function ContactOutcomeModal({ open = true, onClose, lead, categorySlug = DAILY_
     if (!canSubmit) return;
     // O nowMs do render envelhece se o popup ficar aberto; confere no relógio
     // antes de gravar para nunca agendar um contato no passado.
-    if (outcome === OUTCOMES.REAGENDAR && (!parsedReschedule || parsedReschedule.getTime() <= Date.now())) {
+    if (outcome === OUTCOMES.REAGENDAR && !futureInstant(rescheduleStr)) {
       toast.warning('Escolha uma data e hora futuras.');
       return;
     }

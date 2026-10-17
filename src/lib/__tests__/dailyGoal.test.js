@@ -1231,6 +1231,17 @@ describe('tomorrowAppointmentsOf', () => {
     expect(ids(tomorrowAppointmentsOf([hoje, depois, tarde, cedo], 'u1'))).toEqual([cedo.id, tarde.id]);
   });
 
+  // Atrasado de uma visita perdida ontem: o Reagendar do card marcou uma
+  // mensagem para amanhã e o agendamento vencido continuou no lead. O
+  // agendamento de um dia que já passou escondia o contato da prévia.
+  it('a visita perdida reagendada como contato aparece pelo contato', () => {
+    const l = lead({
+      appointmentType: 'visita', appointmentScheduledFor: new Date(2026, 6, 14, 16, 0),
+      nextFollowUp: amanha16, nextFollowUpType: 'Mensagem',
+    });
+    expect(tomorrowAppointmentsOf([l], 'u1')).toEqual([{ lead: l, when: amanha16 }]);
+  });
+
   it('aceita a data de referência', () => {
     const l = visitaDeAmanha({ appointmentScheduledFor: new Date(2026, 6, 20, 10, 0) });
     expect(ids(tomorrowAppointmentsOf([l], 'u1', new Date(2026, 6, 19, 23, 0)))).toEqual([l.id]);
@@ -1264,9 +1275,10 @@ describe('dia do vencimento: o cliente fica só em Vencidos', () => {
   });
 });
 
-// O lead novo nasce sem próximo contato. Passada a janela de 24h sem ninguém
-// mexer nele, ele vira Atrasado, em vez de sair de toda categoria da Meta.
-describe('lead novo que ninguém tocou vira Atrasado', () => {
+// O lead novo nasce sem próximo contato. Passada a janela de 24h, ele vira
+// Atrasado até alguém concluir o contato pela Meta ou marcar o próximo passo,
+// em vez de sair de toda categoria da Meta.
+describe('lead novo sem próximo passo vira Atrasado', () => {
   const AGORA = new Date(2026, 9, 20, 10, 0); // terça, 20/10/2026, 10:00
   const novo = (over = {}) => lead({ createdAt: new Date(2026, 9, 19, 8, 0), lastInteractionAt: null, ...over });
   const slugsDe = (l, now) => byId(computeDailyGoalSlots([l], new Map(), 'u1', undefined, undefined, now), l.id)?.categorySlugs || [];
@@ -1287,13 +1299,13 @@ describe('lead novo que ninguém tocou vira Atrasado', () => {
     expect(slugsDe(l, new Date(2026, 9, 20, 8, 1))).toEqual([DAILY_GOAL_CATEGORIES.ATRASADO]);
   });
 
-  it('o registro do próprio cadastro não conta como contato', () => {
-    const l = novo({ lastInteractionAt: new Date(2026, 9, 19, 8, 0, 30) });
-    expect(slugsDe(l)).toEqual([DAILY_GOAL_CATEGORIES.ATRASADO]);
+  it('mexer no lead sem concluir não tira: ele continua sem próximo passo', () => {
+    // Mudou de fase no Pipeline ou ganhou uma anotação na ficha.
+    expect(slugsDe(novo({ lastInteractionAt: new Date(2026, 9, 19, 9, 0) }))).toEqual([DAILY_GOAL_CATEGORIES.ATRASADO]);
   });
 
-  it('o lead que alguém tocou depois do cadastro fica fora', () => {
-    expect(slugsDe(novo({ lastInteractionAt: new Date(2026, 9, 19, 9, 0) }))).toEqual([]);
+  it('o contato concluído pela Meta tira (o contactDoneAt do "Contato feito" e do Concluir)', () => {
+    expect(slugsDe(novo({ ...contactDone(new Date(2026, 9, 19, 9, 0)) }))).toEqual([]);
   });
 
   it('lead com próximo contato ou com agendamento segue a regra de sempre', () => {

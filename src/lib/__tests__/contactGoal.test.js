@@ -24,12 +24,16 @@ describe('contactDone', () => {
   // contato que nascer por um caminho que não escolhe dono (o "Próximo
   // contato?" depois do Compareceu, o Adiar, o Reagendar da Renovação) fica com
   // o dono do lead, e não com quem recebeu este.
-  it('limpa o próximo contato e o dono dele, com null explícito (conclui sem próximo contato)', () => {
-    expect(contactDone()).toEqual({
+  // contactDoneAt guarda que o contato foi concluído: é o que tira da Meta o
+  // lead novo sem próximo contato (newLeadDueOf).
+  it('limpa o próximo contato e o dono dele, com null explícito, e marca o contato como feito', () => {
+    const at = new Date(2026, 9, 17, 10, 0);
+    expect(contactDone(at)).toEqual({
       nextFollowUp: null,
       nextFollowUpType: null,
       nextFollowUpOwnerId: null,
-      nextFollowUpOwnerName: null
+      nextFollowUpOwnerName: null,
+      contactDoneAt: at
     });
   });
 

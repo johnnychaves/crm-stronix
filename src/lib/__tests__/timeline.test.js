@@ -569,6 +569,16 @@ describe('originLastOnTies: o marco de início embaixo de quem tem o mesmo horá
     expect(originLastOnTies([DEPOIS, MARCO, NOTA, ANTES]).map((i) => i.id)).toEqual(['d1', 'n1', 'z1', 'a1']);
   });
 
+  // A nota do motivo e a marca do dia saem do mesmo batch (logInteractions),
+  // com a mesma hora do servidor. O batchSeq mantém a ordem em que foram
+  // gravadas: a marca, que veio depois, fica acima da nota.
+  it('o lote gravado junto sai na ordem em que foi gravado', () => {
+    const NOTA_MOTIVO = { id: 'm1', _kind: 'note', createdAt: as(16, 0), batchSeq: 0 };
+    const MARCA = { id: 'g1', _kind: 'goal', createdAt: as(16, 0), batchSeq: 1 };
+    expect(originLastOnTies([NOTA_MOTIVO, MARCA]).map((i) => i.id)).toEqual(['g1', 'm1']);
+    expect(originLastOnTies([MARCA, NOTA_MOTIVO]).map((i) => i.id)).toEqual(['g1', 'm1']);
+  });
+
   it('sem data não se junta a ninguém, e a lista original não muda', () => {
     const semData = { id: 's1', _kind: 'note', createdAt: null };
     const lista = [MARCO, semData, NOTA];

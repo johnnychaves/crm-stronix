@@ -160,37 +160,33 @@ export function volumeTargetFor(user) {
   return Number.isFinite(own) && own > 0 ? Math.min(own, 500) : 0;
 }
 
-// ── Lead novo que ninguém tocou ────────────────────────────────────────────
+// ── Lead novo sem próximo passo ────────────────────────────────────────────
 // O lead novo nasce sem próximo contato (newLead.js), e o Atrasado só olhava o
 // nextFollowUp: quem passava da janela de 24h do Novo lead sem ser tratado saía
 // de toda categoria da Meta para sempre. Decisão do Johnny, 17/10/2026: passada
-// a janela, ele vira Atrasado até alguém mexer nele ou marcar o próximo passo.
-// Vale só para lead cadastrado a partir dessa data, para não encher a Meta com
-// os leads antigos sem próximo passo.
+// a janela, ele vira Atrasado até alguém concluir o contato pela Meta ou marcar
+// o próximo passo. Mexer nele (mudar de fase, anotar na ficha) não basta: ele
+// continua sem próximo passo. Vale só para lead cadastrado a partir dessa data,
+// para não encher a Meta com os leads antigos sem próximo passo.
 export const NEW_LEAD_OVERDUE_SINCE = new Date(2026, 9, 17);
 const NEW_LEAD_WINDOW_MS = 24 * 60 * 60 * 1000;
-// "Ninguém mexeu" é o lastInteractionAt (toda interação do logInteraction o
-// atualiza) parado no cadastro. A folga cobre o registro do próprio cadastro,
-// que grava logo depois do lead: a observação do Novo lead, o marco do
-// Stronizap e a indicação pela página pública.
-const REGISTRATION_SLACK_MS = 2 * 60 * 1000;
 
-// Quando vence o primeiro contato do lead novo que ninguém tocou: o fim da
-// janela de 24h. null para todo o resto (lead com próximo contato ou com
-// agendamento, já tocado, cliente, importado, Venda, Perda ou de antes da data).
+// Quando vence o primeiro contato do lead novo sem próximo passo: o fim da
+// janela de 24h. null para todo o resto: lead com próximo contato ou com
+// agendamento, com o contato concluído pela Meta (contactDoneAt, gravado pelo
+// "Contato feito" e pelo Concluir do Novo lead), cliente, importado, Venda,
+// Perda ou de antes da data.
 export function newLeadDueOf(lead) {
-  if (!lead || lead.nextFollowUp || lead.createdAtMissing) return null;
+  if (!lead || lead.nextFollowUp || lead.contactDoneAt || lead.createdAtMissing) return null;
   if (lead.status === 'Venda' || lead.status === 'Perda' || isClientLead(lead)) return null;
   if (lead.importBatchId || lead.importSource) return null;
   const created = getSafeDateOrNull(lead.createdAt);
   if (!created || created < NEW_LEAD_OVERDUE_SINCE) return null;
   if (getLeadAppointmentDate(lead)) return null;
-  const last = getSafeDateOrNull(lead.lastInteractionAt);
-  if (last && last.getTime() - created.getTime() > REGISTRATION_SLACK_MS) return null;
   return new Date(created.getTime() + NEW_LEAD_WINDOW_MS);
 }
 
-// O prazo do próximo contato: o nextFollowUp, ou o do lead novo que ninguém tocou.
+// O prazo do próximo contato: o nextFollowUp, ou o do lead novo sem próximo passo.
 export const followUpDueOf = (lead) => lead?.nextFollowUp || newLeadDueOf(lead);
 
 // Dias de atraso de um lead (follow-up vencido antes de hoje). 0 = em dia.
@@ -446,16 +442,23 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
 export function tomorrowAppointmentsOf(leads, consultantId, refDate = new Date()) {
   const tStart = new Date(refDate); tStart.setHours(0, 0, 0, 0); tStart.setDate(tStart.getDate() + 1);
   const tEnd = new Date(tStart); tEnd.setHours(23, 59, 59, 999);
+  const isTomorrow = (d) => d instanceof Date && !isNaN(d.getTime()) && d >= tStart && d <= tEnd;
   return (leads || [])
     .filter(l => l.status !== 'Venda' && l.status !== 'Perda')
     .map(l => {
+      // O agendamento só vale quando cai amanhã. O de um dia que já passou (a
+      // visita perdida que virou Atrasado e foi reagendada como contato) não
+      // pode esconder o contato marcado para amanhã.
+      // O próximo contato com tipo de compromisso é eco de agendamento, e não
+      // contato: fica de fora, como no Contato Hoje da Meta.
       const appointmentAt = getLeadAppointmentDate(l);
-      const when = appointmentAt ||
-        (l.nextFollowUp instanceof Date && !isNaN(l.nextFollowUp.getTime()) ? l.nextFollowUp : null);
-      const owner = appointmentAt ? appointmentTaskOwnerId(l) : contactOwnerId(l);
-      return { lead: l, when, owner };
+      if (isTomorrow(appointmentAt)) return { lead: l, when: appointmentAt, owner: appointmentTaskOwnerId(l) };
+      if (isTomorrow(l.nextFollowUp) && !normalizeAppointmentType(l.nextFollowUpType)) {
+        return { lead: l, when: l.nextFollowUp, owner: contactOwnerId(l) };
+      }
+      return { lead: l, when: null, owner: null };
     })
-    .filter(x => x.owner === consultantId && x.when && x.when >= tStart && x.when <= tEnd)
+    .filter(x => x.owner === consultantId && x.when)
     .sort((a, b) => a.when - b.when)
     .map(({ lead, when }) => ({ lead, when }));
 }

@@ -35,9 +35,15 @@ export async function logInteraction(db, lead, appUser, interactionPayload, lead
 export async function logInteractions(db, lead, appUser, interactionPayloads, leadPatch = null) {
   const batch = writeBatch(db);
 
-  const ids = interactionPayloads.map((interactionPayload) => {
+  // Todas saem com a mesma hora do servidor. Com mais de uma, batchSeq guarda a
+  // ordem em que foram passadas, e a linha do tempo da ficha desempata por ele
+  // (originLastOnTies, em timeline.js): a nota do motivo fica antes da marca.
+  // A interação sozinha não leva o campo.
+  const many = interactionPayloads.length > 1;
+  const ids = interactionPayloads.map((interactionPayload, index) => {
     const iRef = doc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH));
     batch.set(iRef, {
+      ...(many ? { batchSeq: index } : {}),
       leadId: lead.id,
       // Nome no momento da ação, para a interação se explicar sozinha mesmo
       // quando o lead não está na base carregada, que só tem os ATIVOS (cliente

@@ -120,6 +120,7 @@ describe('ContactOutcomeModal: o dono do contato no lead', () => {
     expect(logInteraction).toHaveBeenCalledTimes(1);
     expect(patchDaChamada(0)).toEqual({
       nextFollowUp: null, nextFollowUpType: null, nextFollowUpOwnerId: null, nextFollowUpOwnerName: null,
+      contactDoneAt: new Date(2026, 6, 15, 10, 0),
     });
   });
 

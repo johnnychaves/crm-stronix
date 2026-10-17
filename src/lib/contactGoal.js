@@ -30,8 +30,11 @@ export function followUpChannelOf(lead) {
 // não com quem recebeu este. Quem agenda pela ficha escolhe o dono no passo
 // "Quem vai fazer esse contato?". A marca de feito guarda quem tinha o contato
 // (goalOwnerId) antes de o patch limpar o dono. Não toca status/funil.
-export function contactDone() {
-  return { nextFollowUp: null, nextFollowUpType: null, nextFollowUpOwnerId: null, nextFollowUpOwnerName: null };
+// contactDoneAt guarda que o contato foi concluído: é o que tira da Meta o lead
+// novo sem próximo contato (newLeadDueOf, em dailyGoal.js), já que o patch
+// limpa o próximo contato e a marca do dia pode não estar carregada depois.
+export function contactDone(at = new Date()) {
+  return { nextFollowUp: null, nextFollowUpType: null, nextFollowUpOwnerId: null, nextFollowUpOwnerName: null, contactDoneAt: at };
 }
 
 // Patch do desfecho "Reagendar": agenda o próximo contato na data escolhida,

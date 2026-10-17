@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Ban, Calendar, CheckCircle2, Info, RefreshCw } from 'lucide-react';
-import { fromDateTimeInputValue, toDateTimeInputValue } from '../lib/dates.js';
+import { fromDateTimeInputValue, futureInstant, toDateTimeInputValue } from '../lib/dates.js';
 import { fmtBRL, formatHourLabel } from '../lib/format.js';
 import { logInteractions } from '../lib/interactions.js';
 import { CONTRACT_CANCEL_REASONS } from '../lib/contracts.js';
@@ -100,7 +100,7 @@ function RenewalOutcomeModal({ open = true, onClose, lead, appUser, db, activeCh
   const nowMs = useMemo(() => Date.now(), []);
   const minRescheduleStr = useMemo(() => toDateTimeInputValue(new Date(nowMs)), [nowMs]);
   const parsedReschedule = fromDateTimeInputValue(rescheduleStr);
-  const isRescheduleFuture = Boolean(parsedReschedule) && parsedReschedule.getTime() > nowMs;
+  const isRescheduleFuture = Boolean(futureInstant(rescheduleStr, nowMs));
   const motivoTrimmed = motivo.trim();
 
   // Vencidos troca "Marco de N dias" pelo selo de vencimento — calculado aqui
@@ -135,7 +135,7 @@ function RenewalOutcomeModal({ open = true, onClose, lead, appUser, db, activeCh
     if (!canSubmit) return;
     // O nowMs do render envelhece se o popup ficar aberto; confere no relógio
     // antes de gravar para nunca agendar um contato no passado.
-    if (outcome === OUTCOMES.REAGENDAR && (!parsedReschedule || parsedReschedule.getTime() <= Date.now())) {
+    if (outcome === OUTCOMES.REAGENDAR && !futureInstant(rescheduleStr)) {
       toast.warning('Escolha uma data e hora futuras.');
       return;
     }

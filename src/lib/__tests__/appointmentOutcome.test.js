@@ -150,7 +150,9 @@ describe('correctAppointmentOutcome', () => {
     expect(m.aula).toEqual([['apply', 'no_show']]);
   });
 
-  it('cliente: troca o desfecho sem mexer em etapa nem em próximo contato', async () => {
+  // O Compareceu tirou o eco do cliente como o de qualquer lead, então a troca
+  // para Não compareceu o devolve. A etapa não mexe.
+  it('cliente: troca o desfecho sem mexer em etapa, e o eco do agendamento volta', async () => {
     const r = await correctAppointmentOutcome({
       db: {}, lead: { ...PROMOVIDO, status: 'Venda' }, from: 'attended', to: 'no_show', categorySlug: VISITA,
       appUser: USER, isClient: true,
@@ -158,18 +160,18 @@ describe('correctAppointmentOutcome', () => {
     expect(r.revertedTo).toBeNull();
     expect(m.logs).toEqual([]);
     expect(m.updates[0].data.status).toBeUndefined();
-    expect(m.updates[0].data.nextFollowUp).toBeUndefined();
+    expect(m.updates[0].data.nextFollowUp).toEqual(agendado);
     expect(m.adds[0].data.outcomeCorrection).toBe(true);
   });
 
-  it('cliente: corrigir para Compareceu não promove nem consome o próximo contato', async () => {
+  it('cliente: corrigir para Compareceu não promove e tira só o eco do agendamento', async () => {
     const faltou = { ...NOVO, status: 'Venda', appointmentOutcome: 'no_show' };
     await correctAppointmentOutcome({
       db: {}, lead: faltou, from: 'no_show', to: 'attended', categorySlug: VISITA, appUser: USER,
       statuses: STATUSES, isClient: true,
     });
     expect(m.updates[0].data.status).toBeUndefined();
-    expect(m.updates[0].data.nextFollowUp).toBeUndefined();
+    expect(m.updates[0].data.nextFollowUp).toBeNull();
     expect(m.updates[0].data.appointmentPromotedFrom).toBeNull();
     expect(m.adds).toHaveLength(1);
     expect(m.adds[0].data.outcomeCorrection).toBe(true);
@@ -212,5 +214,28 @@ describe('correctAppointmentOutcome', () => {
     expect(m.updates).toEqual([]);
     expect(m.adds).toEqual([]);
     expect(m.logs).toEqual([]);
+  });
+});
+
+// O Compareceu e o Cancelou tiram o eco do agendamento (consumedFields), para
+// lead e cliente. Até 17/10/2026 o cliente não perdia nada, e um contato de
+// verdade marcado à parte se perdia no Compareceu de qualquer lead.
+describe('writeAppointmentOutcome: o eco do agendamento', () => {
+  it('Cancelou de cliente tira o agendamento e o eco', async () => {
+    await writeAppointmentOutcome({
+      db: {}, lead: { ...NOVO, status: 'Venda', lifecycleStage: 'cliente' }, outcome: 'cancelled',
+      categorySlug: AULA, appUser: USER, statuses: STATUSES, promote: false,
+    });
+    expect(m.updates[0].data).toMatchObject({ appointmentScheduledFor: null, appointmentType: null, nextFollowUp: null });
+  });
+
+  it('Compareceu deixa um contato de verdade marcado à parte', async () => {
+    const contato = new Date(2026, 9, 1, 9);
+    await writeAppointmentOutcome({
+      db: {}, lead: { ...NOVO, nextFollowUp: contato, nextFollowUpType: 'Mensagem' }, outcome: 'attended',
+      categorySlug: VISITA, appUser: USER, statuses: STATUSES,
+    });
+    expect(m.updates[0].data.nextFollowUp).toBeUndefined();
+    expect(m.updates[0].data.appointmentScheduledFor).toBeUndefined();
   });
 });

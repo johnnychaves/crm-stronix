@@ -8,7 +8,7 @@
 // desfecho atual, e nunca de um agendamento antigo.
 
 import { DAILY_GOAL_CATEGORIES, getAppointmentOutcomeMeta, getLeadAppointmentDate } from './leads.js';
-import { getSafeDateOrNull } from './dates.js';
+import { getSafeDateOrNull, normalizeAppointmentType } from './dates.js';
 
 const isApptCategory = (slug) =>
   slug === DAILY_GOAL_CATEGORIES.VISITA_HOJE || slug === DAILY_GOAL_CATEGORIES.AULA_HOJE;
@@ -40,17 +40,31 @@ export function planPromotion({ lead, outcome, categorySlug, statuses, promote =
   };
 }
 
-// O que o desfecho tira do lead. O Compareceu e o Cancelou limpam o próximo
-// contato, o que tira o lead de Atrasado e de Contato Hoje, e o Cancelou apaga
-// também o agendamento. O Compareceu o preserva, para a pessoa não sumir de
-// Visitas e Aulas. O cliente não perde nada: ele está na agenda para upsell, e
-// limpar o próximo contato apagava o contato de renovação dele. Regra única do
-// card da Meta (handleOutcome) e da Agenda de hoje (writeAppointmentOutcome).
-export function consumedFields(outcome, { client = false } = {}) {
-  if (client || (outcome !== 'attended' && outcome !== 'cancelled')) return {};
-  return outcome === 'cancelled'
-    ? { nextFollowUp: null, appointmentScheduledFor: null, appointmentType: null }
-    : { nextFollowUp: null };
+// O próximo contato é o eco do agendamento: quem agenda visita ou aula grava o
+// nextFollowUp junto, no horário dela e com o tipo do compromisso
+// (buildSchedulePatch, o Remarcar da Meta). Um contato marcado depois, por
+// mensagem ou ligação, é outra tarefa e não é eco.
+export const isAppointmentEcho = (lead) => {
+  if (normalizeAppointmentType(lead?.nextFollowUpType)) return true;
+  const next = getSafeDateOrNull(lead?.nextFollowUp);
+  const appt = getSafeDateOrNull(lead?.appointmentScheduledFor);
+  return Boolean(next && appt && next.getTime() === appt.getTime());
+};
+
+// O que o desfecho tira do lead. O Compareceu e o Cancelou tiram o eco do
+// agendamento, senão o lead amanhecia em Atrasados pelo compromisso que já
+// aconteceu, e o Cancelou apaga também o agendamento. O Compareceu preserva o
+// agendamento, para a pessoa não sumir de Visitas e Aulas. Um contato de
+// verdade marcado à parte (o de renovação do aluno, por exemplo) fica. Vale
+// para lead e cliente: até 17/10/2026 o cliente era uma exceção, que deixava o
+// eco (e o lead em Atrasados no dia seguinte) e a aula cancelada na agenda.
+// Regra única do card da Meta (handleOutcome) e da Agenda de hoje
+// (writeAppointmentOutcome).
+export function consumedFields(outcome, lead) {
+  if (outcome !== 'attended' && outcome !== 'cancelled') return {};
+  const patch = isAppointmentEcho(lead) ? { nextFollowUp: null } : {};
+  if (outcome === 'cancelled') Object.assign(patch, { appointmentScheduledFor: null, appointmentType: null });
+  return patch;
 }
 
 // Etapa para onde a correção devolve o lead, ou null. Só devolve quando o lead
@@ -67,8 +81,9 @@ export function stageToRevert(lead) {
 // O que tirar do lead ao trocar para Não compareceu ou ao desfazer a marca.
 // `patch` vai junto da gravação e `revertedTo` é a etapa devolvida, ou null.
 // O próximo contato volta ao horário do agendamento quando o desfeito é um
-// Compareceu de quem não é cliente e ninguém agendou outro contato depois,
-// porque o Compareceu o tinha limpado.
+// Compareceu e ninguém agendou outro contato depois, porque o Compareceu tinha
+// tirado o eco (consumedFields). Vale também para o cliente, que perde o eco
+// como qualquer lead. A etapa só volta para quem não é cliente.
 export function planAttendedUndo({ lead, fromOutcome, isClient = false }) {
   const patch = { appointmentPromotedFrom: null };
   const from = isClient ? null : stageToRevert(lead);
@@ -76,7 +91,7 @@ export function planAttendedUndo({ lead, fromOutcome, isClient = false }) {
     patch.status = from.status;
     if (from.statusEnteredAt) patch.statusEnteredAt = from.statusEnteredAt;
   }
-  if (fromOutcome === 'attended' && !isClient && !lead?.nextFollowUp && lead?.appointmentScheduledFor) {
+  if (fromOutcome === 'attended' && !lead?.nextFollowUp && lead?.appointmentScheduledFor) {
     patch.nextFollowUp = lead.appointmentScheduledFor;
   }
   return { patch, revertedTo: from ? from.status : null };

@@ -69,6 +69,25 @@ describe('a marca do dia não repete no clique duplo', () => {
     expect(corpo).toContain('claimTask(taskKey)');
     expect(corpo).toContain('releaseTask(taskKey)');
   });
+
+  // Colada ao try: o finally sempre a solta. Antes dele, uma conta que falhasse
+  // deixava a tarefa presa e o card sem responder.
+  it.each(['handleOutcome', 'handleGoalDone'])('%s pega a trava logo antes do try', (nome) => {
+    expect(corpoDe(nome)).toMatch(/if \(!claimTask\(taskKey\)\) return;\n {4}try \{/);
+  });
+});
+
+// O card da Meta tira do lead o que a Agenda de hoje tira: o eco do
+// agendamento (consumedFields). A exceção de cliente saiu em 17/10/2026.
+describe('o desfecho do card segue a regra do eco do agendamento', () => {
+  it('handleOutcome usa o consumedFields com o lead', () => {
+    expect(corpoDe('handleOutcome')).toContain('consumedFields(outcome, lead)');
+  });
+
+  it('não sobrou a exceção de cliente nem a flag antiga', () => {
+    expect(META).not.toContain('consumeAppointment');
+    expect(META).not.toMatch(/consumedFields\([^)]*client/);
+  });
 });
 
 // O botão de reagendar do card (o antigo "Adiar p/ amanhã") só abre o pop-up de

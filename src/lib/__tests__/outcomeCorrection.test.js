@@ -10,6 +10,7 @@ import {
   correctionText,
   revertStageText,
   consumedFields,
+  isAppointmentEcho,
 } from '../outcomeCorrection.js';
 import { DAILY_GOAL_CATEGORIES } from '../leads.js';
 
@@ -108,9 +109,11 @@ describe('planAttendedUndo', () => {
     });
   });
 
-  it('cliente: nada de etapa nem de próximo contato', () => {
+  // O Compareceu tira o eco do cliente como o de qualquer lead
+  // (consumedFields), então o desfazer o devolve. A etapa não volta.
+  it('cliente: a etapa fica, e o eco que o Compareceu tirou volta', () => {
     expect(planAttendedUndo({ lead, fromOutcome: 'attended', isClient: true }))
-      .toEqual({ patch: { appointmentPromotedFrom: null }, revertedTo: null });
+      .toEqual({ patch: { appointmentPromotedFrom: null, nextFollowUp: agendado }, revertedTo: null });
   });
 
   it('Não compareceu desfeito não mexe no próximo contato', () => {
@@ -158,24 +161,50 @@ describe('textos', () => {
 });
 
 // O que o desfecho tira do lead, regra única do card da Meta e da Agenda de
-// hoje. O card limpava o próximo contato também de cliente, e o aluno com
-// etapa de matrícula própria ("Matriculado") perdia o contato de renovação.
-describe('consumedFields', () => {
-  it('Compareceu limpa só o próximo contato e preserva o agendamento', () => {
-    expect(consumedFields('attended')).toEqual({ nextFollowUp: null });
+// hoje: o eco do agendamento no próximo contato e, no Cancelou, o agendamento.
+// Até 17/10/2026 o cliente era uma exceção que não perdia nada: a aula
+// cancelada ficava na agenda e o eco deixava o lead em Atrasados no dia
+// seguinte.
+describe('consumedFields: o desfecho tira o eco do agendamento', () => {
+  const agendado = new Date(2026, 9, 17, 18, 0);
+  const comEco = { appointmentType: 'visita', appointmentScheduledFor: agendado, nextFollowUp: agendado, nextFollowUpType: 'Visita' };
+  const comContato = { ...comEco, nextFollowUp: new Date(2026, 9, 20, 9, 0), nextFollowUpType: 'Mensagem' };
+  const cliente = { ...comEco, lifecycleStage: 'cliente', status: 'Matriculado' };
+
+  it('Compareceu tira o eco e preserva o agendamento', () => {
+    expect(consumedFields('attended', comEco)).toEqual({ nextFollowUp: null });
   });
 
-  it('Cancelou limpa o próximo contato e o agendamento', () => {
-    expect(consumedFields('cancelled')).toEqual({ nextFollowUp: null, appointmentScheduledFor: null, appointmentType: null });
+  it('Cancelou tira o eco e o agendamento', () => {
+    expect(consumedFields('cancelled', comEco)).toEqual({ nextFollowUp: null, appointmentScheduledFor: null, appointmentType: null });
+  });
+
+  it('um contato de verdade marcado à parte fica', () => {
+    expect(consumedFields('attended', comContato)).toEqual({});
+    expect(consumedFields('cancelled', comContato)).toEqual({ appointmentScheduledFor: null, appointmentType: null });
+  });
+
+  it('cliente segue a mesma regra: a aula cancelada sai e o eco não vira Atrasado', () => {
+    expect(consumedFields('cancelled', cliente)).toEqual({ nextFollowUp: null, appointmentScheduledFor: null, appointmentType: null });
+    expect(consumedFields('attended', cliente)).toEqual({ nextFollowUp: null });
   });
 
   it('Não compareceu e Remarcou não tiram nada', () => {
-    expect(consumedFields('no_show')).toEqual({});
-    expect(consumedFields('rescheduled')).toEqual({});
+    expect(consumedFields('no_show', comEco)).toEqual({});
+    expect(consumedFields('rescheduled', comEco)).toEqual({});
   });
+});
 
-  it('cliente não perde nada, em nenhum desfecho', () => {
-    expect(consumedFields('attended', { client: true })).toEqual({});
-    expect(consumedFields('cancelled', { client: true })).toEqual({});
+describe('isAppointmentEcho', () => {
+  const agendado = new Date(2026, 9, 17, 18, 0);
+  it('o tipo de compromisso no próximo contato é eco', () => {
+    expect(isAppointmentEcho({ nextFollowUp: agendado, nextFollowUpType: 'Aula Experimental' })).toBe(true);
+  });
+  it('sem o tipo, o eco se reconhece pelo mesmo horário do agendamento', () => {
+    expect(isAppointmentEcho({ appointmentScheduledFor: agendado, nextFollowUp: new Date(agendado) })).toBe(true);
+  });
+  it('mensagem ou ligação em outro horário não é eco', () => {
+    expect(isAppointmentEcho({ appointmentScheduledFor: agendado, nextFollowUp: new Date(2026, 9, 20, 9, 0), nextFollowUpType: 'Ligação' })).toBe(false);
+    expect(isAppointmentEcho({})).toBe(false);
   });
 });
