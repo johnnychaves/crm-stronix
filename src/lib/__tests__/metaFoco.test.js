@@ -4,7 +4,7 @@
 // ordem aqui mudar, o mockup aprovado pelo Johnny deixou de valer. Datas sempre
 // em horário local, como o app faz.
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import {
   FOCO_ORDER,
   URGENT_WINDOW_MIN,
@@ -90,6 +90,13 @@ describe('classes da fila', () => {
     }
   });
 
+  it('opts nulo vale como sem opções, e não derruba a ordem nem a contagem', () => {
+    const a = atrasado('a1', 1);
+    expect(klassOf(a, NOW, null)).toBe(4);
+    expect(ids(rank([a, visita('v', 15, 0)], null))).toEqual(['v', 'a1']);
+    expect(urgentCount([a, visita('v', 15, 0)], NOW, null)).toBe(1);
+  });
+
   it('renovação é a classe 5 e vencido é a 6', () => {
     expect(klassOf(renovacao('r', 50), NOW)).toBe(5);
     expect(klassOf(vencido('x', 16), NOW)).toBe(6);
@@ -136,9 +143,17 @@ describe('ordem da fila', () => {
     expect(rank([renovacao('r', 50)])[0].minutes).toBeNull();
   });
 
-  it('a mesma tarefa fica na mesma posição com o relógio parado (sem depender do Date de agora)', () => {
-    const lista = [contato('c', 15, 30), visita('v', 15, 0)];
-    expect(ids(rank(lista))).toEqual(ids(rank(lista)));
+  afterEach(() => vi.useRealTimers());
+
+  it('a ordem só depende do `now` recebido: mexer no relógio do sistema não muda nada', () => {
+    const lista = [contato('c', 15, 30), visita('v', 15, 0), atrasado('a', 5), renovacao('r', 50), vencido('x', 16), novo('n', 15, 20)];
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 9, 1, 8, 0));
+    const antes = rank(lista, { sla: 3 });
+    vi.setSystemTime(new Date(2027, 2, 20, 23, 59));
+    const depois = rank(lista, { sla: 3 });
+    expect(depois).toEqual(antes);
+    expect(urgentCount(lista, NOW, { sla: 3 })).toBe(3);
   });
 });
 
@@ -251,6 +266,12 @@ describe('grupos do Foco em', () => {
     expect(inFoco(C.ATRASADO, 'all')).toBe(true);
     expect(inFoco(C.ATRASADO, C.ATRASADO)).toBe(true);
     expect(inFoco(C.ATRASADO, C.VENCIDO)).toBe(false);
+  });
+
+  it('um foco que não existe, mesmo com nome de chave de objeto, não derruba e não aceita nada', () => {
+    for (const foco of ['constructor', 'toString', '__proto__', 'banana']) {
+      expect(inFoco(C.ATRASADO, foco), foco).toBe(false);
+    }
   });
 });
 

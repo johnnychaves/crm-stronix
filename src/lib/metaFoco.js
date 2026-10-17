@@ -3,13 +3,29 @@ import { overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS } from './dailyGoal.js';
 import { daysToExpiryOf } from './renewalGoal.js';
 import { expiredSortKey } from './expiredGoal.js';
 import { getSafeDateOrNull } from './dates.js';
+import { FOCO_COMPROMISSOS, FOCO_ORDER, FOCO_GRUPOS } from './metaFocoCodes.js';
 
 // ============================================================================
 // Lógica do "Foco agora" da Meta Diária. Pura: recebe as tarefas pendentes e o
 // relógio e devolve a ordem da fila, o que é urgente e o que a tela deve
 // avisar. A regra da conta de "tarefa feita" continua em dailyGoal.js; aqui só
-// se decide o que fazer primeiro. Spec e desenho: .claude/plan/meta-diaria-foco-agora.md
-// e o mockup B (docs/superpowers/specs/mockups/2026-10-16-meta-diaria-b-foco-agora.html).
+// se decide o que fazer primeiro.
+//
+// A ordem da fila, do que vem primeiro para o que vem depois:
+//   1. visita ou aula que já passou do horário e está sem desfecho
+//   2. o que vence em até 90 minutos: visita, aula, contato marcado ou o fim da
+//      janela de 24h de um lead novo
+//   3. atrasado crítico, a partir do SLA da academia
+//   4. o resto do que tem horário, pela hora
+//   5. atrasado, do mais antigo
+//   6. renovação, do vencimento mais próximo
+//   7. vencido, do vencimento mais recente
+// Dentro de cada classe vale o critério dela; empate resolve pela chave.
+//
+// O Agora (a tarefa em destaque) não muda sozinho com o relógio: só a ação do
+// consultor o troca. Quando algo fica mais urgente, a tela mostra uma faixa de
+// aviso (faixaFor) e quem decide é ele. As classes 1 e 2 acima, que o código
+// chama de 0 e 1, são as "urgentes" que o título da aba conta.
 //
 // Uma "entrada" é uma tarefa pendente: { key, slug, lead }. Um lead com duas
 // categorias pendentes vira duas entradas, como na tela de hoje.
@@ -20,21 +36,16 @@ const MIN_MS = 60 * 1000;
 // Até quantos minutos antes do prazo uma tarefa já conta como urgente.
 export const URGENT_WINDOW_MIN = 90;
 
-// Os grupos da barra "Foco em", na ordem em que aparecem. 'all' é a barra
-// inteira. Os valores são os mesmos do `cat` do endereço (screenParams.js).
-export const FOCO_COMPROMISSOS = 'compromissos';
-export const FOCO_ORDER = Object.freeze([
-  'all', FOCO_COMPROMISSOS, C.CONTATO_HOJE, C.NOVO_24H, C.ATRASADO, C.RENOVACAO, C.VENCIDO,
-]);
+// Os grupos da barra "Foco em" moram em metaFocoCodes.js, que o screenParams.js
+// também lê. Aqui só se usa e se reexporta.
+export { FOCO_COMPROMISSOS, FOCO_ORDER };
 
-const GRUPOS = Object.freeze({
-  [FOCO_COMPROMISSOS]: [C.VISITA_HOJE, C.AULA_HOJE],
-});
-
-// A categoria entra no foco escolhido? 'all' aceita tudo.
+// A categoria entra no foco escolhido? 'all' aceita tudo, e foco desconhecido
+// não aceita nada (a busca é pela própria chave, não pela herança do objeto).
 export function inFoco(slug, foco) {
   if (!foco || foco === 'all') return true;
-  return GRUPOS[foco] ? GRUPOS[foco].includes(slug) : slug === foco;
+  const grupo = Object.hasOwn(FOCO_GRUPOS, foco) ? FOCO_GRUPOS[foco] : null;
+  return grupo ? grupo.includes(slug) : slug === foco;
 }
 
 export const taskKey = (lead, slug) => `${lead.id}:${slug}`;
@@ -68,6 +79,13 @@ function deadlineMs(entry, now) {
   return at ? at.getTime() - now.getTime() : null;
 }
 
+const COM_HORARIO = [C.VISITA_HOJE, C.AULA_HOJE, C.CONTATO_HOJE, C.NOVO_24H];
+
+// O SLA vem da configuração da academia. O que não é um número positivo usa o
+// padrão: com null ou 0, todo atrasado viraria crítico.
+const slaValido = (sla) => (Number.isFinite(sla) && sla > 0 ? sla : DEFAULT_SLA_OVERDUE_DAYS);
+
+// As classes, de 0 a 6, na ordem da lista do topo do arquivo:
 // 0 desfecho de visita ou aula que já passou do horário
 // 1 vence em até 90 minutos
 // 2 atrasado crítico (a partir do SLA da academia)
@@ -75,12 +93,6 @@ function deadlineMs(entry, now) {
 // 4 atrasado
 // 5 renovação
 // 6 vencido
-const COM_HORARIO = [C.VISITA_HOJE, C.AULA_HOJE, C.CONTATO_HOJE, C.NOVO_24H];
-
-// O SLA vem da configuração da academia. O que não é um número positivo usa o
-// padrão: com null ou 0, todo atrasado viraria crítico.
-const slaValido = (sla) => (Number.isFinite(sla) && sla > 0 ? sla : DEFAULT_SLA_OVERDUE_DAYS);
-
 function classOf(slug, ms, days, sla) {
   if (isAppt(slug) && ms != null && ms < 0) return 0;
   if (ms != null && ms <= URGENT_WINDOW_MIN * MIN_MS) return 1;
@@ -92,10 +104,10 @@ function classOf(slug, ms, days, sla) {
 }
 
 // Mede a tarefa uma vez só: o prazo, os dias de atraso e a classe.
-function measure(entry, now, { sla } = {}) {
+function measure(entry, now, opts) {
   const ms = deadlineMs(entry, now);
   const days = entry.slug === C.ATRASADO ? overdueDaysOf(entry.lead, now) : 0;
-  return { ms, days, klass: classOf(entry.slug, ms, days, slaValido(sla)) };
+  return { ms, days, klass: classOf(entry.slug, ms, days, slaValido(opts?.sla)) };
 }
 
 export const klassOf = (entry, now, opts) => measure(entry, now, opts).klass;

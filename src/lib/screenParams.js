@@ -18,6 +18,7 @@
 
 import { CONTRACT_STATUS } from './contracts.js';
 import { DAILY_GOAL_CATEGORIES } from './leads.js';
+import { FOCO_ORDER, FOCO_GRUPOS } from './metaFocoCodes.js';
 import { SOLO_TRAINING } from './professores.js';
 import { addMonthsToKey, compareOptions } from './operacional/month.js';
 import { PERIOD_SHORTCUTS, intervalRefusal } from './period.js';
@@ -56,14 +57,10 @@ const CODIGO_POR_CAT = Object.freeze(Object.fromEntries(Object.entries(CAT_POR_C
 // segue as categorias do dia. Os links de antes continuam valendo (visita_hoje
 // e aula_hoje caem em compromissos) e `amanha`, que deixou de ser filtro, cai em
 // "tudo". A tela de hoje não passa o `foco` e segue com as tabelas de cima.
+// Os códigos vêm de metaFocoCodes.js, o único lugar que lista os grupos.
 const CAT_FOCO_POR_CODIGO = Object.freeze({
-  compromissos: 'compromissos',
-  [DAILY_GOAL_CATEGORIES.VISITA_HOJE]: 'compromissos',
-  [DAILY_GOAL_CATEGORIES.AULA_HOJE]: 'compromissos',
-  ...Object.fromEntries([
-    DAILY_GOAL_CATEGORIES.NOVO_24H, DAILY_GOAL_CATEGORIES.CONTATO_HOJE, DAILY_GOAL_CATEGORIES.ATRASADO,
-    DAILY_GOAL_CATEGORIES.RENOVACAO, DAILY_GOAL_CATEGORIES.VENCIDO,
-  ].map((s) => [s, s])),
+  ...Object.fromEntries(FOCO_ORDER.filter((v) => v !== 'all').map((v) => [v, v])),
+  ...Object.fromEntries(Object.entries(FOCO_GRUPOS).flatMap(([grupo, slugs]) => slugs.map((s) => [s, grupo]))),
 });
 const FOCO_VALIDOS = new Set(Object.values(CAT_FOCO_POR_CODIGO));
 
