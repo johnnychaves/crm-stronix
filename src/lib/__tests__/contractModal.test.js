@@ -625,6 +625,58 @@ describe('ContractModal, nomes e leitura', () => {
   });
 });
 
+// Medido no Chromium com a Geist: a linha do plano media 55,25 px (58 com o chip, que tem 24 px
+// e deixava o nome com a altura de linha herdada), e a lista reservava 156 a 208 px pensando
+// em linhas de 52. A 4ª linha ("Buscado") saía cortada, com rolagem por dentro. Agora toda
+// linha tem 56 px, com ou sem chip, e a lista reserva 3 linhas (170 px) a 4 (226 px).
+describe('ContractModal, lista de planos', () => {
+  const lista = () => document.body.querySelector('[role="radiogroup"][aria-label="Plano"]');
+
+  it('toda linha tem a mesma altura fixa, com ou sem chip, e a lista reserva 3 a 4 linhas sem rolar por dentro', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    expect(lista().className).toContain('min-h-[170px]');
+    expect(lista().className).toContain('max-h-[226px]');
+    for (const linha of radios('Plano')) {
+      expect(linha.className).toContain('h-14');
+      // O nome tem altura de linha explícita (20 px) numa faixa de 24 px, a mesma do chip.
+      expect(linha.querySelector('span.truncate').className).toContain('leading-5');
+      expect(linha.querySelector('span.truncate').parentElement.className).toContain('h-6');
+    }
+    // Buscando e escolhendo um plano fora dos 3 mais vendidos: a 4ª linha ("Buscado") tem o mesmo tamanho.
+    await digitar(document.body.querySelector('input[placeholder="Buscar outro plano"]'), 'mensal');
+    await clicar(radios('Plano')[0]);
+    const linhas = radios('Plano');
+    expect(linhas.length).toBe(4);
+    expect(document.body.textContent).toContain('Buscado');
+    for (const linha of linhas) expect(linha.className).toContain('h-14');
+  });
+
+  it('o nome do plano leva o nome inteiro no title, para o corte com reticências não esconder qual é', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    for (const linha of radios('Plano')) {
+      const nome = linha.querySelector('span.truncate');
+      expect(nome.getAttribute('title')).toBe(nome.textContent);
+    }
+  });
+
+  // Entre 768 e cerca de 845 px a seção tem uns 370 a 445 px: o chip dividia o nome com 130 px
+  // e a busca por "musc" mostrava "Mu…" duas vezes. Na seção estreita (menos de 32rem) o chip
+  // sai e o "3 meses" desce para a linha do valor mensal, devolvendo ao nome a largura de uma coluna.
+  it('na seção estreita o chip sai e os meses descem para a linha do valor mensal', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    expect(lista().closest('section').className).toContain('@container');
+    await digitar(document.body.querySelector('input[placeholder="Buscar outro plano"]'), 'musc');
+    const linha = radios('Plano')[0];
+    const chip = [...linha.querySelectorAll('span')].find((el) => el.textContent === 'Mais vendido');
+    expect(chip.className).toContain('@max-lg:hidden');
+    expect(linha.className).toContain('@max-lg:grid-cols-[18px_minmax(0,1fr)_88px]');
+    const colunaMeses = [...linha.children].find((el) => el.className.includes('@max-lg:hidden'));
+    expect(colunaMeses.textContent).toBe('3 meses');
+    const sublinha = linha.querySelector('span.num.block');
+    expect(sublinha.querySelector('.\\@lg\\:hidden').textContent).toContain('3 meses');
+  });
+});
+
 describe('ContractModal, o que se grava sem desconto', () => {
   const nenhum = { discountMode: 'nenhum', discountValue: 0, discountReason: null };
   const gravado = () => commitMatricula.mock.calls[0][0];

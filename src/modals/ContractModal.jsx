@@ -65,9 +65,10 @@ const SectionHead = ({ title, hint, hintLive = false, children }) => (
 );
 
 // Etiqueta em pílula, minúscula. Texto no passo 700 no claro e 300/400 no escuro.
-const Chip = ({ tone = 'amber', children }) => (
+const Chip = ({ tone = 'amber', className, children }) => (
   <span className={cn(
     'inline-flex h-6 items-center rounded-full px-2.5 text-[12px] font-semibold whitespace-nowrap',
+    className,
     tone === 'amber' && 'bg-amber-500/12 text-amber-800 dark:bg-amber-500/16 dark:text-amber-400',
     tone === 'success' && 'bg-emerald-500/10 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-400',
     tone === 'brand' && 'bg-brand-50 text-brand-700 dark:bg-brand-500/18 dark:text-brand-300',
@@ -147,7 +148,11 @@ const radioKeyDown = (ids, pick) => (e) => {
 const tabStopId = (ids, selectedId) => (ids.includes(selectedId) ? selectedId : ids[0] ?? null);
 
 // Uma linha da lista de planos. O seletor redondo é só desenho: a linha inteira
-// é o botão, com role="radio" para o leitor de tela.
+// é o botão, com role="radio" para o leitor de tela. A altura é fixa (56 px, com a
+// altura de linha do nome e do valor mensal explícitas), igual com ou sem chip: a
+// lista reserva exatamente 3 a 4 linhas. Na seção estreita (menos de 32rem, as duas
+// colunas entre 768 e cerca de 910 px de tela) o chip sai, os meses descem para a
+// linha do valor mensal e o nome ganha a largura de uma coluna.
 function PlanRow({ plan, on, tabStop, tag, onPick, onFocus }) {
   return (
     <button
@@ -158,7 +163,7 @@ function PlanRow({ plan, on, tabStop, tag, onPick, onFocus }) {
       onFocus={() => onFocus(plan.id)}
       onClick={() => onPick(plan.id)}
       className={cn(
-        'grid min-h-[52px] w-full grid-cols-[18px_minmax(0,1fr)_62px_88px] items-center gap-3 px-3.5 py-2 text-left transition',
+        'grid h-14 w-full grid-cols-[18px_minmax(0,1fr)_62px_88px] items-center gap-3 px-3.5 py-1.5 text-left transition @max-lg:grid-cols-[18px_minmax(0,1fr)_88px]',
         'focus-visible:outline-none focus-visible:anel-foco focus-visible:ring-inset',
         on ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-slate-50 dark:hover:bg-white/[0.04]'
       )}
@@ -167,13 +172,16 @@ function PlanRow({ plan, on, tabStop, tag, onPick, onFocus }) {
         {on && <span className="absolute inset-[3px] rounded-full bg-brand-600 dark:bg-brand-400" />}
       </span>
       <span className="min-w-0">
-        <span className="flex items-center gap-2">
-          <span className={cn('truncate text-[13.5px] font-semibold', on && 'text-brand-700 dark:text-brand-300')}>{plan.name}</span>
-          {tag && <Chip tone={tag.tone}>{tag.label}</Chip>}
+        <span className="flex h-6 items-center gap-2">
+          <span title={plan.name} className={cn('truncate text-[13.5px] font-semibold leading-5', on && 'text-brand-700 dark:text-brand-300')}>{plan.name}</span>
+          {tag && <Chip tone={tag.tone} className="@max-lg:hidden">{tag.label}</Chip>}
         </span>
-        <span className={cn('num block text-[12px]', on ? SUPPORT_ON : 'text-muted-foreground')}>{monthlyLabel(plan.value, plan.durationMonths)}</span>
+        <span className={cn('num block text-[12px] leading-4', on ? SUPPORT_ON : 'text-muted-foreground')}>
+          {monthlyLabel(plan.value, plan.durationMonths)}
+          <span className="@lg:hidden"> · {monthsLabel(plan.durationMonths)}</span>
+        </span>
       </span>
-      <span className={cn('num text-right text-[12.5px]', on ? SUPPORT_ON : 'text-muted-foreground')}>{monthsLabel(plan.durationMonths)}</span>
+      <span className={cn('num text-right text-[12.5px] @max-lg:hidden', on ? SUPPORT_ON : 'text-muted-foreground')}>{monthsLabel(plan.durationMonths)}</span>
       <span className={cn('num text-right font-display text-[15px] font-bold', on && 'text-brand-700 dark:text-brand-300')}>{fmtBRL(plan.value)}</span>
     </button>
   );
@@ -595,7 +603,7 @@ function ContractModal({
             {/* Durante o envio a coluna fica inert: o que a pessoa mexer agora mudaria o recibo e o anúncio, mas não o que está sendo gravado. O Confirmar fica fora dela e mantém o foco. */}
             <div inert={submitting} className="flex min-w-0 flex-col gap-[22px] px-6 py-[22px]">
               {/* Plano */}
-              <section>
+              <section className="@container">
                 <SectionHead
                   title="Plano"
                   hintLive
@@ -631,7 +639,7 @@ function ContractModal({
                   // então a seta só move o foco e Enter, Espaço ou o clique escolhem.
                   onKeyDown={radioKeyDown(planIds)}
                   onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget)) setFocusedPlanId(null); }}
-                  className="max-h-[208px] min-h-[156px] divide-y divide-border overflow-y-auto rounded-xl border border-border"
+                  className="max-h-[226px] min-h-[170px] divide-y divide-border overflow-y-auto rounded-xl border border-border"
                 >
                   {searchOpen && results.length === 0 ? (
                     <div className="px-3.5 py-4 text-[13px] text-muted-foreground">
