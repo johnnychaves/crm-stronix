@@ -155,6 +155,40 @@ describe('ContractModal, matrícula', () => {
     expect(document.body.textContent).not.toContain('− R$');
     expect(motivos().every((b) => b.disabled)).toBe(true);
     expect(botao('Confirmar matrícula').disabled).toBe(false);
+
+    // Ligando o desconto de novo, o motivo de antes não volta marcado.
+    await clicar(botao('%'));
+    await digitar(document.body.querySelector('input[aria-label="Valor do desconto"]'), '10');
+    expect(botao('Campanha').getAttribute('aria-pressed')).toBe('false');
+    expect(rodape().textContent).toContain('Escolha o motivo do desconto.');
+  });
+
+  it('clicar no plano que já está marcado mantém o desconto e o motivo', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    await clicar(botao('%'));
+    await digitar(document.body.querySelector('input[aria-label="Valor do desconto"]'), '10');
+    await clicar(botao('Campanha'));
+
+    await clicar(opcao('Musculação Trimestral'));
+
+    expect(document.body.textContent).toContain('R$ 51,00 (10%)');
+    expect(botao('Campanha').getAttribute('aria-pressed')).toBe('true');
+    expect(botao('Confirmar matrícula').disabled).toBe(false);
+  });
+
+  it('apagar o valor do desconto solta o motivo, e outro valor pede o motivo de novo', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    await clicar(botao('%'));
+    const campo = document.body.querySelector('input[aria-label="Valor do desconto"]');
+    await digitar(campo, '10');
+    await clicar(botao('Campanha'));
+
+    await digitar(campo, '');
+    await digitar(campo, '20');
+
+    expect(motivos().every((b) => b.getAttribute('aria-pressed') === 'false')).toBe(true);
+    expect(rodape().textContent).toContain('Escolha o motivo do desconto.');
+    expect(botao('Confirmar matrícula').disabled).toBe(true);
   });
 
   it('a busca troca a lista pelos planos achados, e escolher um limpa a busca', async () => {
@@ -249,6 +283,35 @@ describe('ContractModal, renovação', () => {
     expect(faixa.getAttribute('role')).toBe('status');
     expect(document.body.textContent).toContain('Renovar contrato');
     expect(botao('Confirmar renovação').disabled).toBe(false);
+  });
+
+  it('contrato atual trancado: a faixa mostra a trava, o rodapé manda ver o aviso e o botão fica desligado', async () => {
+    const trancado = { ...atual, status: 'trancado' };
+    await montar({ ...props, lead: { ...leadCliente, currentContractStatus: 'trancado' }, currentContract: trancado }, [trancado]);
+    const faixa = document.body.querySelector('[data-slot="start-status"]');
+    expect(faixa.textContent).toContain('Este contrato está trancado');
+    expect(faixa.className).toContain('rose');
+    expect(rodape().textContent).toContain('Veja o aviso da vigência.');
+    expect(botao('Confirmar renovação').disabled).toBe(true);
+  });
+
+  it('trancado com "Outra data" vazia: o rodapé manda ver o aviso, e não pedir uma data que não libera nada', async () => {
+    const trancado = { ...atual, status: 'trancado' };
+    await montar({ ...props, lead: { ...leadCliente, currentContractStatus: 'trancado' }, currentContract: trancado }, [trancado]);
+    await clicar(opcao('Outra data'));
+    await digitar(document.body.querySelector('input[type="date"]'), '');
+    expect(document.body.querySelector('[data-slot="start-status"]').textContent).toContain('Este contrato está trancado');
+    expect(rodape().textContent).toContain('Veja o aviso da vigência.');
+    expect(rodape().textContent).not.toContain('Escolha a data de início.');
+  });
+
+  it('contrato que já tem renovação de pé: a faixa avisa e o botão fica desligado', async () => {
+    const renovacao = { id: 'c2xyz', leadId: 'l2', renewedFromId: 'c1abcdef', planName: 'Pilates Semestral', status: 'ativo', startsAt: D(2026, 12, 13), endsAt: D(2027, 6, 13) };
+    await montar(props, [atual, renovacao]);
+    const faixa = document.body.querySelector('[data-slot="start-status"]');
+    expect(faixa.textContent).toContain('Este contrato já foi renovado');
+    expect(faixa.className).toContain('rose');
+    expect(botao('Confirmar renovação').disabled).toBe(true);
   });
 
   it('começar hoje, com o atual ainda vigente, avisa que o atual passa a terminar antes', async () => {

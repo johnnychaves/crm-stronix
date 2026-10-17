@@ -19,12 +19,15 @@ export function startStatusOf({ problem = null, warning = null, severe = false, 
   return { tone: 'ok', text: `Vigência de ${fmtDate(startsAt)} a ${fmtDate(endsAt)}, ${monthsLabel(planMonths)}.` };
 }
 
-// O que falta para confirmar, ou texto vazio. É a mesma lista de travas do
-// handleConfirm do modal, na mesma ordem, dita em frase curta para o rodapé.
+// O que falta para confirmar, ou texto vazio, dito em frase curta para o rodapé.
+// A ordem é: plano, trava do contrato, data, motivo. A trava do contrato vem
+// antes da data porque escolher a data não a resolve (contrato trancado, por
+// exemplo). O botão fica desligado de qualquer jeito, então a ordem dos avisos
+// do handleConfirm não importa.
 export function confirmBlockOf({ plan = null, startsAt = null, startProblem = null, hasDiscount = false, reason = null } = {}) {
   if (!plan) return 'Escolha um plano.';
-  if (!startsAt) return 'Escolha a data de início.';
   if (startProblem) return 'Veja o aviso da vigência.';
+  if (!startsAt) return 'Escolha a data de início.';
   if (hasDiscount && !reason) return 'Escolha o motivo do desconto.';
   return '';
 }

@@ -334,6 +334,9 @@ function ContractModal({
   const reasonHint = reasonHintOf({ hasDiscount, reason });
 
   const pickPlan = (id) => {
+    // O plano que já está marcado só limpa a busca: o valor de tabela é o mesmo,
+    // então o desconto e o motivo continuam valendo.
+    if (id === planId) { setPlanSearch(''); return; }
     setPlanId(id);
     setPlanSearch('');
     // Trocar de plano zera o desconto: 10% de outro valor não é o mesmo desconto.
@@ -573,7 +576,7 @@ function ContractModal({
                     </span>
                   )}
                 </SectionHead>
-                <div className="flex h-10 items-center gap-2.5">
+                <div className="flex min-h-10 flex-wrap items-center gap-2.5">
                   <div className="flex gap-0.5 rounded-full bg-slate-100 p-[3px] dark:bg-white/[0.06]" role="group" aria-label="Tipo de desconto">
                     {[
                       { id: DISCOUNT_MODES.NENHUM, label: 'Sem desconto' },
@@ -607,7 +610,12 @@ function ContractModal({
                         inputMode="decimal"
                         value={discountInput}
                         aria-label="Valor do desconto"
-                        onChange={e => setDiscountInput(e.target.value)}
+                        onChange={e => {
+                          const next = e.target.value;
+                          setDiscountInput(next);
+                          // Sem desconto, o motivo de antes sai: não volta marcado sozinho quando a pessoa digita outro valor.
+                          if (!computeDiscount({ listValue, mode: discountMode, input: next }).hasDiscount) setReason(null);
+                        }}
                         placeholder={discountMode === DISCOUNT_MODES.PERCENT ? '10' : discountMode === DISCOUNT_MODES.REAIS ? '150' : '1.240'}
                         className={cn(
                           'num h-10 w-[128px] rounded-[11px] border-[1.5px] border-brand-200 bg-card pr-3 text-[14.5px] font-semibold outline-none transition focus-visible:anel-foco dark:border-brand-500/45 focus:border-brand-600 dark:focus:border-brand-400',
