@@ -1139,6 +1139,42 @@ describe('ContractModal, renovação', () => {
   // Medido no Chromium: entre 768 e cerca de 845 px (duas colunas) a regra dos dois dias e o
   // aviso de sobreposição quebram em quatro linhas (97,4 px), e os tons de aviso tinham uma
   // borda de 1 px que o tom ok não tinha (79 px contra 78). Todos os tons têm a mesma caixa.
+  // Medido no Chromium: a 768 px cada cartão tem cerca de 115 px e, com o ícone de 30 px,
+  // sobram 51 px de texto, que cortava "Emendar", "Outra data" e a data ("13/12/…").
+  // Na seção estreita (a mesma consulta da faixa) o ícone sai e o texto completo cabe.
+  it('os cartões do início escondem o ícone quando a seção fica estreita, para o texto e a data caberem', async () => {
+    await montar(props, [atual]);
+    const grupo = document.body.querySelector('[role="radiogroup"][aria-label="Início da vigência"]');
+    expect(grupo.parentElement.className).toContain('@container');
+    for (const cartao of radios('Início da vigência')) {
+      const icone = cartao.firstElementChild;
+      expect(icone.className).toContain('@max-md:hidden');
+      // O texto continua truncável (largura grande demais continua com reticências, não vaza)
+      // e o nome, o papel e a dica do cartão não mudam.
+      expect(cartao.getAttribute('role')).toBe('radio');
+      expect(cartao.querySelectorAll('span.truncate').length).toBe(2);
+    }
+    expect(opcao('Emendar').textContent).toContain('13/12/2026');
+    expect(opcao('Hoje').getAttribute('title')).toContain('Começa hoje');
+  });
+
+  it('com só dois cartões (matrícula) há largura de sobra, e o ícone fica mesmo na seção estreita', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    expect(radios('Início da vigência').length).toBe(2);
+    for (const cartao of radios('Início da vigência')) {
+      expect(cartao.firstElementChild.className).not.toContain('@max-md:hidden');
+    }
+  });
+
+  // A 768 px a linha de apoio do cabeçalho de Início dividia a largura com o campo de data
+  // de "Outra data" e quebrava em duas linhas: o diálogo crescia 18,7 px ao trocar de
+  // opção. A frase mais curta cabe na mesma linha.
+  it('a linha de apoio do início cabe ao lado do campo de data, sem quebrar a 768 px', async () => {
+    await montar(props, [atual]);
+    expect(document.body.textContent).toContain('Quando o contrato começa a valer?');
+    expect(document.body.textContent).not.toContain('Quando o contrato novo começa a valer?');
+  });
+
   it('os três tons da faixa têm a mesma caixa: borda (transparente no ok) e as mesmas alturas reservadas', async () => {
     await montar(props, [atual]);
     const faixa = () => document.body.querySelector('[data-slot="start-status"]');

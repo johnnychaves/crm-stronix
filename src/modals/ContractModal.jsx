@@ -179,8 +179,11 @@ function PlanRow({ plan, on, tabStop, tag, onPick, onFocus }) {
   );
 }
 
-// Um cartão das opções de início.
-function StartCard({ option, on, tabStop, onPick }) {
+// Um cartão das opções de início. Com três cartões (`tight`) e a seção estreita (a mesma
+// consulta `@max-md` da faixa de vigência) o ícone sai: a 768 px o cartão tem uns 115 px,
+// e com o ícone só sobravam 51 px de texto, que cortava o rótulo e a data. Com dois cartões
+// (matrícula) há largura de sobra e o ícone fica. O nome, o papel e a dica não mudam.
+function StartCard({ option, on, tabStop, tight, onPick }) {
   const { Icon } = option;
   return (
     <button
@@ -198,7 +201,7 @@ function StartCard({ option, on, tabStop, onPick }) {
           : 'border-border bg-card hover:border-brand-200 dark:hover:border-brand-500/45'
       )}
     >
-      <span className={cn('grid size-[30px] flex-none place-items-center rounded-[9px]', on ? 'bg-brand-600 text-white' : 'bg-slate-100 text-muted-foreground dark:bg-white/[0.06]')}>
+      <span className={cn('grid size-[30px] flex-none place-items-center rounded-[9px]', tight && '@max-md:hidden', on ? 'bg-brand-600 text-white' : 'bg-slate-100 text-muted-foreground dark:bg-white/[0.06]')}>
         <Icon size={15} />
       </span>
       <span className="min-w-0">
@@ -646,7 +649,7 @@ function ContractModal({
 
               {/* Início da vigência */}
               <section className="@container">
-                <SectionHead title="Início da vigência" hint="Quando o contrato novo começa a valer?">
+                <SectionHead title="Início da vigência" hint="Quando o contrato começa a valer?">
                   {startMode === 'outra' && (
                     <input
                       type="date"
@@ -665,7 +668,7 @@ function ContractModal({
                   className={cn('grid gap-2.5', startOptions.length === 3 ? 'grid-cols-3' : 'grid-cols-2')}
                 >
                   {startOptions.map(o => (
-                    <StartCard key={o.id} option={o} on={o.id === startMode} tabStop={o.id === startTabStop} onPick={pickStart} />
+                    <StartCard key={o.id} option={o} on={o.id === startMode} tabStop={o.id === startTabStop} tight={startOptions.length === 3} onPick={pickStart} />
                   ))}
                 </div>
                 <StartStatus tone={startStatus.tone} text={startStatus.text} />
