@@ -99,9 +99,14 @@ export const renewalClientsQuerySpec = (startMs, endMs, pageSize = null) => ({
 // entre os dois boards. O teste que trava isso mora no describe do OUTRO
 // ('renewalColumnQuerySpec', em leadQueries.test.js) — se ele quebrar depois de
 // você mexer aqui, é este par que está falando.
-export const expiredClientsQuerySpec = (beforeMs, pageSize = null) => ({
+//
+// `afterMs` (opcional) é o início do mês de vencimento escolhido na tela: o
+// intervalo [afterMs, beforeMs) fica no mesmo campo do orderBy, então o mesmo
+// índice serve.
+export const expiredClientsQuerySpec = (beforeMs, pageSize = null, afterMs = null) => ({
   wheres: [
     { field: 'lifecycleBucket', op: '==', value: LIFECYCLE_BUCKETS.CLIENTE },
+    ...(afterMs != null ? [{ field: 'currentContractEndsAt', op: '>=', value: new Date(afterMs) }] : []),
     { field: 'currentContractEndsAt', op: '<', value: new Date(beforeMs) },
   ],
   orderBy: { field: 'currentContractEndsAt', dir: 'desc' },

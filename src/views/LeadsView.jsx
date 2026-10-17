@@ -8,7 +8,8 @@ import { useScreenParams } from '../hooks/useScreenParams.js';
 import { ORDENS_DE_LEADS } from '../lib/screenParams.js';
 import { allLeadsQuerySpec } from '../lib/leadQueries.js';
 import { LEADS_PATH } from '../lib/firebase.js';
-import { getDefaultFunnel, isItemInFunnel, isSystemFunnel } from '../lib/funnels.js';
+import { getDefaultFunnel, isItemInFunnel } from '../lib/funnels.js';
+import { isClientFunnel } from '../lib/crm/scope.js';
 import { getKanbanColumnAccent } from '../lib/kanban.js';
 import { nextActionOf, createdAgoOf, trailOf, sortLeads } from '../lib/leadsList.js';
 import { cn } from '@/lib/utils';
@@ -79,10 +80,11 @@ function FaseTrail({ status, stageNames, hex }) {
 }
 
 function LeadsView({ interactions, statuses, usersList, funnels: allFunnels, sources, selectedFunnelId: savedFunnelId, setSelectedFunnelId: rememberFunnel, db }) {
-  // Funil de sistema (Renovações, Vencidos, Upgrade) não guarda lead: o Pipeline
+  // Funil de clientes (Renovações, Vencidos, Upgrade) não guarda lead: o Pipeline
   // projeta os clientes dele por consulta. Aqui ele só daria lista vazia, então
-  // fica fora do seletor e do endereço.
-  const funnels = useMemo(() => (allFunnels || []).filter(f => !isSystemFunnel(f)), [allFunnels]);
+  // fica fora do seletor e do endereço. O de Indicações também é de sistema,
+  // mas é funil de lead e fica: quem decide é o isClientFunnel, nunca um atalho solto.
+  const funnels = useMemo(() => (allFunnels || []).filter(f => !isClientFunnel(f)), [allFunnels]);
   // Responsável é quem vende: o professor não é dono de lead e fica fora do
   // filtro e do endereço (isSeller, em src/lib/acesso.js).
   const sellers = useMemo(() => (usersList || []).filter(isSeller), [usersList]);

@@ -61,8 +61,8 @@ export function ReferralsSection({ items, loading, onAdd = null, canRefer = true
           {!canRefer ? 'Quando este cliente indicar alguém, a pessoa aparece aqui com o andamento dela.' : (
             <>
               {onAdd
-                ? 'Use o botão Indicar, no topo da ficha, para cadastrar as indicações do cliente ou mandar o link para ele convidar os amigos. Também dá para cadastrar um lead novo com o interruptor “É uma indicação?”.'
-                : 'Use o botão Indicar, no topo da ficha, para mandar o link para o cliente convidar os amigos, ou cadastre um lead novo com o interruptor “É uma indicação?”.'}
+                ? 'Use o botão Indicar, no topo da ficha, para cadastrar as indicações do cliente ou mandar o link para ele convidar os amigos. Também dá para cadastrar um lead novo escolhendo a origem Indicação.'
+                : 'Use o botão Indicar, no topo da ficha, para mandar o link para o cliente convidar os amigos, ou cadastre um lead novo escolhendo a origem Indicação.'}
               {' '}Os indicados aparecem aqui com o andamento de cada um.
             </>
           )}

@@ -94,6 +94,12 @@ describe('Todos os leads: a barra e o trilho', () => {
     expect(render('/acad/leads?funil=f9', { funnels: comSistema })).toContain('no funil Padrão');
   });
 
+  it('o funil de Indicações tem systemKind, mas é de lead: continua valendo', () => {
+    h.items = QUATRO();
+    const comIndicacoes = [...FUNIS, { id: 'f8', name: 'Indicações', systemKind: 'referral' }];
+    expect(render('/acad/leads', { funnels: comIndicacoes, selectedFunnelId: 'f8' })).toContain('no funil Indicações');
+  });
+
   it('a origem do endereço recorta a lista', () => {
     h.items = QUATRO();
     const html = render('/acad/leads?origem=Instagram');

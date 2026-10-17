@@ -8,6 +8,7 @@ import { planStageMove, planLoss, planUpgradeMove, planUpgradeDecline, stageMove
 import { getSafeDateOrNull } from '../lib/dates.js';
 import { hasLiveContract } from '../lib/contracts.js';
 import { getDefaultFunnel, isItemInFunnel } from '../lib/funnels.js';
+import { isClientFunnel } from '../lib/crm/scope.js';
 import { buildInteractionIndex, lastInteractionDateOf } from '../lib/leadStatus.js';
 import { usePagedLeads } from '../hooks/usePagedLeads.js';
 import { useRenewalBoard } from '../hooks/useRenewalBoard.js';
@@ -21,7 +22,7 @@ import { useScreenParams } from '../hooks/useScreenParams.js';
 import { bucketByFunnelQuerySpec, bucketByFunnelInMonthQuerySpec, wonInMonthQuerySpec, LIFECYCLE_BUCKETS, expiredClientsQuerySpec, upgradeClientsQuerySpec } from '../lib/leadQueries.js';
 import { LEADS_PATH, appId } from '../lib/firebase.js';
 import { fmtBRL } from '../lib/format.js';
-import { filterKanbanLeads, partitionLeadsByStatus, getKanbanColumnAccent, getKanbanAvatarPalette, getKanbanInitials, fmtKanbanRelDate, KANBAN_PAGE_SIZE, stageParts, funnelSummary, kanbanSilence, monthWindow, defaultRespFilterFor, isDefaultRespFilter, isOverdueLead, kanbanMonthOptions, createdInWindow, KANBAN_ALL_MONTHS } from '../lib/kanban.js';
+import { filterKanbanLeads, partitionLeadsByStatus, getKanbanColumnAccent, getKanbanAvatarPalette, getKanbanInitials, fmtKanbanRelDate, KANBAN_PAGE_SIZE, stageParts, funnelSummary, kanbanSilence, monthWindow, defaultRespFilterFor, isDefaultRespFilter, isOverdueLead, kanbanMonthOptions, createdInWindow, expiredWindowOf, KANBAN_ALL_MONTHS } from '../lib/kanban.js';
 import { monthKeyOf, monthRange } from '../lib/operacional/month.js';
 import { isImportCreatedLead } from '../lib/operacional/routine.js';
 import { markConvertingAula } from '../lib/aulasWrites.js';
@@ -610,7 +611,7 @@ const [isPanning, setIsPanning] = useState(false);
 
   // Os funis de clientes não têm mês de cadastro: neles o período some e o
   // quadro é o de sempre, mesmo com `mes` no endereço.
-  const isClientFunnelView = Boolean((funnels || []).find((f) => f.id === selectedFunnelId)?.systemKind);
+  const isClientFunnelView = isClientFunnel((funnels || []).find((f) => f.id === selectedFunnelId));
   const safra = useMemo(() => {
     if (!monthKey) return null;
     const { start, end } = monthRange(monthKey);
@@ -635,15 +636,18 @@ const [isPanning, setIsPanning] = useState(false);
   // roda fora do render, então não fere a pureza — e um contrato que vence no
   // meio da sessão é caso de borda que o próximo carregamento resolve.
   const [expiredCutoffMs] = useState(() => Date.now());
+  // Neste funil o mês do endereço é o de VENCIMENTO do contrato (nos funis de
+  // leads é o de cadastro). Sem mês, é o funil de sempre: todos que venceram.
+  const expiredWindow = useMemo(() => expiredWindowOf(safra, expiredCutoffMs), [safra, expiredCutoffMs]);
   const expiredSpec = useMemo(
-    () => (isExpiredView ? expiredClientsQuerySpec(expiredCutoffMs, KANBAN_PAGE_SIZE) : null),
-    [isExpiredView, expiredCutoffMs]
+    () => (isExpiredView ? expiredClientsQuerySpec(expiredWindow.beforeMs, KANBAN_PAGE_SIZE, expiredWindow.afterMs) : null),
+    [isExpiredView, expiredWindow]
   );
   const {
     items: expiredDocs, hasMore: expiredHasMore, loadMore: expiredLoadMore, patchItem: expiredPatchLead,
     error: expiredError,
   } = usePagedLeads({
-    db, path: LEADS_PATH, spec: expiredSpec, specKey: `vencidos:${isExpiredView ? '1' : '0'}`,
+    db, path: LEADS_PATH, spec: expiredSpec, specKey: `vencidos:${isExpiredView ? '1' : '0'}:${monthKey || ''}`,
     enabled: !!db && isExpiredView,
   });
   // O status EXIBIDO vira o nome da etapa derivada (o real continua 'Venda').
@@ -880,12 +884,12 @@ const [isPanning, setIsPanning] = useState(false);
   // leitura. O board dele não exclui ninguém no cliente (só separa quem recusou
   // numa coluna), então o número do servidor é exatamente o da tela.
   const expiredCountSpec = useMemo(
-    () => (expiredFunnel ? expiredClientsQuerySpec(expiredCutoffMs) : null),
-    [expiredFunnel, expiredCutoffMs]
+    () => (expiredFunnel ? expiredClientsQuerySpec(expiredWindow.beforeMs, null, expiredWindow.afterMs) : null),
+    [expiredFunnel, expiredWindow]
   );
   const expiredCount = useLeadCount({
     db, path: LEADS_PATH, spec: expiredCountSpec,
-    specKey: `vencidos:${expiredCutoffMs}`, enabled: !!db && !!expiredFunnel,
+    specKey: `vencidos:${expiredCutoffMs}:${monthKey || ''}`, enabled: !!db && !!expiredFunnel,
   });
 
   // Total do funil UPGRADE para o badge da aba: agregação no servidor, 1
@@ -934,7 +938,7 @@ const [isPanning, setIsPanning] = useState(false);
   // há mês escolhido.
   const partsByFunnel = useMemo(() => {
     const map = new Map();
-    (funnels || []).filter((f) => !f.systemKind).forEach((f) => {
+    (funnels || []).filter((f) => !isClientFunnel(f)).forEach((f) => {
       const counts = new Map();
       (leads || []).forEach((l) => {
         if (!isItemInFunnel(l, f.id, defaultFunnelId)) return;
@@ -1414,7 +1418,10 @@ const handleKanbanMouseMove = (e) => {
   // A carteira padrão do papel não conta como filtro: o consultor abre na
   // própria e a pílula fica apagada, como a do gestor na equipe inteira.
   const respIsDefault = isDefaultRespFilter(appUser, respFilter);
-  const hasActiveFilters = !respIsDefault || onlyOverdue || Boolean(boardSafra);
+  // O período vale nos funis de leads (mês de cadastro) e em Vencidos (mês de
+  // vencimento); Renovações e Upgrade não têm mês.
+  const showPeriod = !isClientFunnelView || isExpiredView;
+  const hasActiveFilters = !respIsDefault || onlyOverdue || (showPeriod && Boolean(safra));
 
   // Lista do filtro: o próprio usuário primeiro (é a carteira que ele mais
   // procura), o resto em ordem alfabética.
@@ -1440,9 +1447,9 @@ const handleKanbanMouseMove = (e) => {
   // balão do celular, onde cada controle ocupa a largura toda.
   const filterControls = (compact) => (
     <>
-      {!isClientFunnelView && (
+      {showPeriod && (
         <PeriodControl
-          label={monthOptions[monthIdx]?.label}
+          label={isExpiredView && monthKey ? `Venceram em ${monthOptions[monthIdx]?.label.toLowerCase()}` : monthOptions[monthIdx]?.label}
           options={monthOptions}
           value={monthValue}
           onPick={pickMonth}
@@ -1450,10 +1457,10 @@ const handleKanbanMouseMove = (e) => {
           onPrev={() => pickMonth(monthOptions[monthIdx + 1].key)}
           canNext={monthIdx > 1}
           onNext={() => pickMonth(monthOptions[monthIdx - 1].key)}
-          ariaLabel="Mês de cadastro dos leads"
+          ariaLabel={isExpiredView ? 'Mês de vencimento dos contratos' : 'Mês de cadastro dos leads'}
         />
       )}
-      {!compact && !isClientFunnelView && <span aria-hidden="true" className="h-[22px] w-px shrink-0 bg-border" />}
+      {!compact && showPeriod && <span aria-hidden="true" className="h-[22px] w-px shrink-0 bg-border" />}
       {/* Carteira: aberta para a equipe inteira, gestor ou consultor. Quem
           manda no que aparece é este filtro — a base que chega na tela é
           sempre a academia toda (ver lib/kanban.js). */}

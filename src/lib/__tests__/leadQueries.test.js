@@ -398,6 +398,18 @@ describe('expiredClientsQuerySpec', () => {
   it('roda num índice declarado — sem ele o board vem vazio com o badge cheio', () => {
     expect(coveredByLeadsIndex(expiredClientsQuerySpec(ANTES, 10))).toBe(true);
   });
+
+  // Mês de vencimento escolhido na tela: um intervalo no mesmo campo do orderBy.
+  it('com o início do mês, acrescenta o limite de baixo e continua no mesmo índice', () => {
+    const DEPOIS = new Date(2026, 6, 1, 0, 0, 0).getTime();
+    const spec = expiredClientsQuerySpec(ANTES, 10, DEPOIS);
+    expect(spec.wheres).toEqual([
+      { field: 'lifecycleBucket', op: '==', value: 'cliente' },
+      { field: 'currentContractEndsAt', op: '>=', value: new Date(DEPOIS) },
+      { field: 'currentContractEndsAt', op: '<', value: new Date(ANTES) },
+    ]);
+    expect(coveredByLeadsIndex(spec)).toBe(true);
+  });
 });
 
 describe('renewalColumnQuerySpec', () => {

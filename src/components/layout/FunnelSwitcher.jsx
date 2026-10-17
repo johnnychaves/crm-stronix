@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { isClientFunnel } from '../../lib/crm/scope.js';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover.jsx';
 
 // Os funis de clientes não têm etapa contada no navegador (cada um carrega o
@@ -43,8 +44,8 @@ export function FunnelSwitcher({ funnels, selectedId, counts, partsOf, onSelect 
   const current = list.find((f) => f.id === selectedId) || list[0];
   const countOf = (id) => (counts && typeof counts.get === 'function' ? counts.get(id) : counts?.[id]);
   const groups = [
-    ['Funis de leads', list.filter((f) => !f.systemKind)],
-    ['Funis de clientes', list.filter((f) => f.systemKind)],
+    ['Funis de leads', list.filter((f) => !isClientFunnel(f))],
+    ['Funis de clientes', list.filter(isClientFunnel)],
   ].filter(([, items]) => items.length > 0);
 
   return (
@@ -72,9 +73,10 @@ export function FunnelSwitcher({ funnels, selectedId, counts, partsOf, onSelect 
               {items.map((f) => {
                 const on = f.id === current?.id;
                 const n = countOf(f.id);
-                const parts = f.systemKind ? null : (partsOf?.(f.id) || []);
+                const client = isClientFunnel(f);
+                const parts = client ? null : (partsOf?.(f.id) || []);
                 const top = parts?.reduce((best, p) => (p.count > best.count ? p : best), parts[0]);
-                const note = f.systemKind
+                const note = client
                   ? CLIENT_NOTES[f.systemKind] || 'Clientes'
                   : n > 0 && top?.count > 0
                     ? `${parts.length} ${parts.length === 1 ? 'etapa' : 'etapas'}, mais cheia: ${top.name}`
