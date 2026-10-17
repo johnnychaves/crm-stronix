@@ -44,7 +44,10 @@ const anunciador = () => document.body.querySelector('[data-slot="contract-annou
 const FALSOS = ['Date', 'setTimeout', 'clearTimeout'];
 // Toda região viva do diálogo. Só valem o anunciador, a linha de apoio do Plano e,
 // depois de uma falha ao gravar, o alerta do rodapé.
-const regioesVivas = () => [...document.body.querySelectorAll('[role="dialog"] [aria-live], [role="dialog"] [role="status"], [role="dialog"] [role="alert"]')];
+// Inclui o que é vivo por padrão: role log, marquee, timer e status (e o <output>).
+const SELETOR_VIVAS = ['[aria-live]', '[role="status"]', '[role="alert"]', '[role="log"]', '[role="marquee"]', '[role="timer"]', 'output']
+  .map((q) => `[role="dialog"] ${q}`).join(', ');
+const regioesVivas = () => [...document.body.querySelectorAll(SELETOR_VIVAS)];
 const regioesVivasAlemDasPermitidas = () => {
   const apoioDoPlano = [...document.body.querySelectorAll('[role="dialog"] p[aria-live="polite"]')]
     .find((el) => /mais vendidos|no catálogo ativo/.test(el.textContent));
@@ -141,6 +144,19 @@ describe('ContractModal, matrícula', () => {
     expect(regioesVivasAlemDasPermitidas()).toEqual([pilula]);
   });
 
+  it('um role="log" (vivo por padrão) no "Valor do contrato" também reprova o guarda', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    const valor = [...document.querySelectorAll('aside[aria-label="Recibo"] span')].find((el) => el.textContent === 'Valor do contrato').nextElementSibling;
+    expect(valor).toBeTruthy();
+    expect(regioesVivasAlemDasPermitidas()).toEqual([]);
+    for (const papel of ['log', 'marquee', 'timer']) {
+      valor.setAttribute('role', papel);
+      expect(regioesVivasAlemDasPermitidas()).toEqual([valor]);
+    }
+    valor.removeAttribute('role');
+    expect(regioesVivasAlemDasPermitidas()).toEqual([]);
+  });
+
   it('o alerta da falha ao gravar é a única região viva a mais, e só depois da falha', async () => {
     const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
     commitMatricula.mockRejectedValueOnce(new Error('sem rede'));
@@ -222,6 +238,21 @@ describe('ContractModal, matrícula', () => {
     await digitar(document.body.querySelector('input[aria-label="Valor do desconto"]'), '10');
     expect(botao('Campanha').getAttribute('aria-pressed')).toBe('false');
     expect(rodape().textContent).toContain('Escolha o motivo do desconto.');
+  });
+
+  it('trocar o tipo de desconto solta o motivo: ele não volta marcado quando o novo valor é digitado', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    await clicar(botao('%'));
+    await digitar(document.body.querySelector('input[aria-label="Valor do desconto"]'), '10');
+    await clicar(botao('Campanha'));
+    expect(botao('Campanha').getAttribute('aria-pressed')).toBe('true');
+
+    await clicar(botao('R$'));
+    await digitar(document.body.querySelector('input[aria-label="Valor do desconto"]'), '50');
+
+    expect(motivos().every((b) => b.getAttribute('aria-pressed') === 'false')).toBe(true);
+    expect(rodape().textContent).toContain('Escolha o motivo do desconto.');
+    expect(botao('Confirmar matrícula').disabled).toBe(true);
   });
 
   it('clicar no plano que já está marcado mantém o desconto e o motivo', async () => {
@@ -630,6 +661,8 @@ describe('ContractModal, o que se grava sem desconto', () => {
 
     await act(async () => { mudarCatalogo(planos.map((p) => (p.id === 'p1' ? { ...p, value: 300 } : p))); });
     expect(botao('Campanha').disabled).toBe(true);
+    // O motivo ficou no estado, mas sem desconto nenhum chip aparece como marcado.
+    expect(motivos().every((b) => b.getAttribute('aria-pressed') === 'false')).toBe(true);
     await clicar(botao('Confirmar matrícula'));
 
     expect(gravado().contractExtra).toEqual(nenhum);
@@ -978,6 +1011,35 @@ describe('ContractModal, sem plano ativo no catálogo', () => {
   });
 });
 
+describe('ContractModal, matrícula de quem já foi cliente', () => {
+  const inicio = D(2026, 3, 1);
+  const fim = D(2026, 4, 1);
+  const vencido = { id: 'c0velho', leadId: 'l3', planId: 'p4', planName: 'Pilates Mensal', value: 349, durationMonths: 1, status: 'vencido', startsAt: inicio, endsAt: fim, createdAt: inicio };
+  const leadVolta = {
+    id: 'l3', name: 'Paulo Antunes', lifecycleStage: 'cliente', currentContractId: 'c0velho', currentPlanName: 'Pilates Mensal',
+    currentContractValue: 349, currentContractStartsAt: inicio, currentContractEndsAt: fim, currentContractStatus: 'vencido'
+  };
+
+  it('grava como matrícula nova, sem ligar ao contrato vencido', async () => {
+    await montar({ lead: leadVolta, mode: 'matricula' }, [vencido]);
+    // O cabeçalho mostra o contrato que se encerrou, como contexto de quem volta.
+    expect(document.body.textContent).toContain('Último contrato');
+    await clicar(botao('Confirmar matrícula'));
+    expect(commitMatricula).toHaveBeenCalledTimes(1);
+    const arg = commitMatricula.mock.calls[0][0];
+    expect(arg.mode).toBe('matricula');
+    expect(arg.renewedFromId).toBeNull();
+    expect(arg.previousContract).toBeNull();
+  });
+
+  it('com "Hoje", o início é o instante de agora, com a hora', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    await clicar(opcao('Hoje'));
+    await clicar(botao('Confirmar matrícula'));
+    expect(commitMatricula.mock.calls[0][0].startsAt.getTime()).toBe(D(2026, 10, 16, 10, 20).getTime());
+  });
+});
+
 describe('ContractModal, início "Hoje"', () => {
   // O modal pôs `startsAt = new Date()` com a hora, e contava os dias de desvio
   // com daysBetween, que arredonda: depois do meio-dia "hoje" virava 1 dia à
@@ -1074,6 +1136,8 @@ describe('ContractModal, renovação', () => {
       const arg = commitMatricula.mock.calls[0][0];
       expect(arg).toMatchObject({ mode: 'renovacao', renewedFromId: 'c1abcdef', previousContract: atual });
       expect(dia(arg.startsAt)).toBe('16/10/2026');
+      // "Hoje" grava o instante de agora, com a hora, e não a meia-noite.
+      expect(arg.startsAt.getTime()).toBe(D(2026, 10, 16, 10, 20).getTime());
     });
 
     it('como o Kanban monta (só lead e contratos, sem renewedFromId nem currentContract): o contrato atual vem da lista', async () => {
