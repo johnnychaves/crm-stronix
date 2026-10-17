@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Ban, Calendar, CheckCircle2, Info, RefreshCw } from 'lucide-react';
-import { fromDateTimeInputValue, toDateTimeInputValue } from '../lib/dates.js';
+import { fromDateTimeInputValue, futureInstant, toDateTimeInputValue } from '../lib/dates.js';
 import { fmtBRL, formatHourLabel } from '../lib/format.js';
-import { logInteraction } from '../lib/interactions.js';
+import { logInteractions } from '../lib/interactions.js';
 import { CONTRACT_CANCEL_REASONS } from '../lib/contracts.js';
 import { renewalDecline, renewalReschedule } from '../lib/renewalGoal.js';
 import { expiredLabel } from '../lib/expiredGoal.js';
@@ -70,10 +70,12 @@ const VARIANTS = {
   }
 };
 
-function RenewalOutcomeModal({ open = true, onClose, lead, appUser, db, activeCheckpoint, variant = 'renovacao', onDone }) {
+// initialOutcome: o desfecho que abre escolhido. O Reagendar do card abre com
+// 'reagendar'; sem ele, abre em "Renovou" (ou "Reativou").
+function RenewalOutcomeModal({ open = true, onClose, lead, appUser, db, activeCheckpoint, variant = 'renovacao', initialOutcome = null, onDone }) {
   const v = VARIANTS[variant] || VARIANTS.renovacao;
   const toast = useToast();
-  const [outcome, setOutcome] = useState(OUTCOMES.RENOVOU);
+  const [outcome, setOutcome] = useState(Object.values(OUTCOMES).includes(initialOutcome) ? initialOutcome : OUTCOMES.RENOVOU);
   const [motivo, setMotivo] = useState('');
   // Motivo de "não vai renovar": lista fixa (mesmo vocabulário do cancelamento
   // de contrato, CONTRACT_CANCEL_REASONS). `motivo` continua sendo o texto
@@ -98,7 +100,7 @@ function RenewalOutcomeModal({ open = true, onClose, lead, appUser, db, activeCh
   const nowMs = useMemo(() => Date.now(), []);
   const minRescheduleStr = useMemo(() => toDateTimeInputValue(new Date(nowMs)), [nowMs]);
   const parsedReschedule = fromDateTimeInputValue(rescheduleStr);
-  const isRescheduleFuture = Boolean(parsedReschedule) && parsedReschedule.getTime() > nowMs;
+  const isRescheduleFuture = Boolean(futureInstant(rescheduleStr, nowMs));
   const motivoTrimmed = motivo.trim();
 
   // Vencidos troca "Marco de N dias" pelo selo de vencimento — calculado aqui
@@ -133,7 +135,7 @@ function RenewalOutcomeModal({ open = true, onClose, lead, appUser, db, activeCh
     if (!canSubmit) return;
     // O nowMs do render envelhece se o popup ficar aberto; confere no relógio
     // antes de gravar para nunca agendar um contato no passado.
-    if (outcome === OUTCOMES.REAGENDAR && (!parsedReschedule || parsedReschedule.getTime() <= Date.now())) {
+    if (outcome === OUTCOMES.REAGENDAR && !futureInstant(rescheduleStr)) {
       toast.warning('Escolha uma data e hora futuras.');
       return;
     }
@@ -149,17 +151,17 @@ function RenewalOutcomeModal({ open = true, onClose, lead, appUser, db, activeCh
     try {
       if (outcome === OUTCOMES.NAO_RENOVA) {
         const patch = renewalDecline(lead, activeCheckpoint, { reason: motivoLista });
-        await logInteraction(db, lead, appUser, {
+        // A nota do motivo, a marca e o patch num batch só (logInteractions).
+        await logInteractions(db, lead, appUser, [{
           text: `Motivo da perda de renovação: ${motivoLista}.${motivoTrimmed ? ` ${motivoTrimmed}` : ''}`,
           type: 'note',
           renewalOutcome: 'declined',
           renewalDeclineReason: motivoLista
-        }, patch);
-        await logInteraction(db, lead, appUser, {
+        }, {
           text: v.noDoneText,
           type: 'daily_goal_done',
           dailyGoalCategory: v.category
-        });
+        }], patch);
         toast.success(v.noToast);
       } else if (outcome === OUTCOMES.REAGENDAR) {
         // Reagendar: o marco atual conta como resolvido (handled) e o contato
@@ -167,15 +169,14 @@ function RenewalOutcomeModal({ open = true, onClose, lead, appUser, db, activeCh
         // Volta a Renovações só no próximo marco — ver src/lib/renewalGoal.js.
         const patch = renewalReschedule(lead, parsedReschedule, activeCheckpoint);
         const dateFmt = `${parsedReschedule.toLocaleDateString('pt-BR')} às ${formatHourLabel(parsedReschedule)}`;
-        await logInteraction(db, lead, appUser, {
+        await logInteractions(db, lead, appUser, [{
           text: `Motivo do reagendamento: ${motivoTrimmed} — próximo contato em ${dateFmt}.`,
           type: 'note'
-        }, patch);
-        await logInteraction(db, lead, appUser, {
+        }, {
           text: `✅ ${v.categoryLabel} — Meta Diária concluída (contato reagendado para ${dateFmt}).`,
           type: 'daily_goal_done',
           dailyGoalCategory: v.category
-        });
+        }], patch);
         toast.success(`Contato reagendado para ${dateFmt} — agora aparece em Contatos.`);
       }
       onDone && onDone(outcome);

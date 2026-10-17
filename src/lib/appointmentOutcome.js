@@ -12,11 +12,14 @@
 // aula no lead dele, e o crédito fica com essa pessoa mesmo que o próximo
 // agendamento passe a tarefa do lead para outra.
 //
+// O que o Compareceu e o Cancelou mudam no lead é o consumedFields
+// (outcomeCorrection.js): tira o eco do agendamento no próximo contato e, no
+// Cancelou, o agendamento, e o Cancelou grava o newLeadHandledAt, que tira o
+// lead novo da regra de Atrasados (newLeadDueOf). Mesma regra para lead e
+// cliente. Caminho novo que cancele um agendamento passa pelo consumedFields,
+// senão o lead novo volta a Atrasados contado do cadastro.
+//
 // Flags:
-//   consumeAppointment — tira o lead de "Atrasado"/"Contato Hoje" limpando o
-//     nextFollowUp. Comparecimento PRESERVA appointmentScheduledFor+appointmentType
-//     (a pessoa nunca some da tela Visitas/Aulas — o desfecho reflete lá e na
-//     Meta); só o cancelamento zera o agendamento de vez.
 //   promote — em comparecimento de visita/aula, empurra o lead para a etapa
 //     "Negociação" do funil e guarda de onde ele saiu (appointmentPromotedFrom).
 //   writeGoalDone — grava a interaction daily_goal_done (crédito da Meta).
@@ -43,7 +46,7 @@ import {
 import { applyOutcomeToAula, clearAulaOutcome } from './aulasWrites.js';
 import { logInteraction } from './interactions.js';
 import { withBucket } from './leadDerived.js';
-import { planPromotion, planAttendedUndo, correctionText, revertStageText } from './outcomeCorrection.js';
+import { planPromotion, planAttendedUndo, correctionText, revertStageText, consumedFields } from './outcomeCorrection.js';
 
 const leadRef = (db, id) => doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, id);
 
@@ -73,7 +76,6 @@ export async function writeAppointmentOutcome({
   categorySlug,
   appUser,
   statuses = null,
-  consumeAppointment = true,
   promote = true,
   writeGoalDone = true,
   sourceLabel = 'Meta Diária',
@@ -100,15 +102,9 @@ export async function writeAppointmentOutcome({
   }
   // Comparecimento PRESERVA o agendamento (appointmentScheduledFor+appointmentType)
   // para a pessoa NUNCA sumir da tela Visitas/Aulas e o desfecho refletir lá e na
-  // Meta (regra do Johnny). Limpa só o nextFollowUp — o que já tira de "Atrasado"/
-  // "Contato Hoje". Cancelamento remove o compromisso de vez.
-  if (consumeAppointment && (outcome === 'attended' || outcome === 'cancelled')) {
-    leadUpdate.nextFollowUp = null;
-    if (outcome === 'cancelled') {
-      leadUpdate.appointmentScheduledFor = null;
-      leadUpdate.appointmentType = null;
-    }
-  }
+  // Meta (regra do Johnny). Tira só o eco do agendamento no próximo contato.
+  // Cancelamento remove o compromisso de vez.
+  Object.assign(leadUpdate, consumedFields(outcome, lead));
   await updateDoc(leadRef(db, lead.id), leadUpdate);
   // Dual-write best-effort: SÓ desfecho de aula toca o histórico de aulas
   // (guarda #1 — desfecho de visita não pode mexer numa aula antiga do lead).
@@ -176,7 +172,7 @@ export async function correctAppointmentOutcome({
   if (to === 'attended') {
     const { negStatusName } = await writeAppointmentOutcome({
       db, lead, outcome: 'attended', categorySlug, appUser, statuses,
-      promote: !isClient, consumeAppointment: !isClient, writeGoalDone: true, sourceLabel, correction: true
+      promote: !isClient, writeGoalDone: true, sourceLabel, correction: true
     });
     return { revertedTo: null, promotedTo: negStatusName };
   }
@@ -189,7 +185,7 @@ export async function correctAppointmentOutcome({
   if (to === 'no_show') {
     await writeAppointmentOutcome({
       db, lead, outcome: 'no_show', categorySlug, appUser, statuses,
-      promote: false, consumeAppointment: false, writeGoalDone: true, sourceLabel, correction: true,
+      promote: false, writeGoalDone: true, sourceLabel, correction: true,
       extraPatch: bucketed(patch)
     });
   } else {

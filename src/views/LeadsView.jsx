@@ -11,7 +11,7 @@ import { LEADS_PATH } from '../lib/firebase.js';
 import { getDefaultFunnel, isItemInFunnel } from '../lib/funnels.js';
 import { isClientFunnel } from '../lib/crm/scope.js';
 import { getKanbanColumnAccent } from '../lib/kanban.js';
-import { nextActionOf, createdAgoOf, trailOf, sortLeads } from '../lib/leadsList.js';
+import { nextActionOf, createdAgoOf, trailOf, sortLeads, isLeadOverdue } from '../lib/leadsList.js';
 import { cn } from '@/lib/utils';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { Btn } from '../components/ui/Btn.jsx';
@@ -272,7 +272,7 @@ function LeadsView({ interactions, statuses, usersList, funnels: allFunnels, sou
               </div>
             ) : (
               visibleLeads.map(l => {
-                const isOverdue = l.status !== 'Venda' && l.status !== 'Perda' && l.nextFollowUp && l.nextFollowUp < now;
+                const isOverdue = isLeadOverdue(l, now);
                 const isHot = isHotLeadFromDate(l, lastInteractionDateOf(l, interactionIndex));
                 const consultantFirst = (l.consultantName || '').trim().split(/\s+/)[0] || '';
                 const next = nextActionOf(l, now, Boolean(isOverdue));

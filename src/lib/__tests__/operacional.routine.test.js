@@ -194,3 +194,22 @@ describe('responsável fora da equipe', () => {
     expect(tasksByType({ interactions, users: USERS, ...range }).total).toBe(3);
   });
 });
+
+// O lead novo sem próximo passo entra em Atrasados na Meta quando fecha a
+// janela de 24h (newLeadDueOf). O "Atrasados agora" promete a mesma condição,
+// e até a quarta revisão do PR 279 o deixava de fora.
+describe('atrasados agora: o lead novo sem próximo passo', () => {
+  const AGORA = new Date(2026, 9, 20, 10, 0);
+  const novo = (over = {}) => ({ consultantId: 'ana', status: 'Novo', createdAt: new Date(2026, 9, 19, 8, 0), nextFollowUp: null, ...over });
+
+  it('conta quando a janela fechou, e não conta com a janela aberta nem depois de tratado', () => {
+    const liveLeads = [
+      novo(),
+      novo({ createdAt: new Date(2026, 9, 19, 15, 0) }),
+      novo({ newLeadHandledAt: new Date(2026, 9, 19, 9, 0) }),
+    ];
+    const r = overdueNow({ liveLeads, users: USERS, now: AGORA });
+    expect(r.total).toBe(1);
+    expect(Object.fromEntries(r.byUser)).toEqual({ ana: 1, marcos: 0 });
+  });
+});

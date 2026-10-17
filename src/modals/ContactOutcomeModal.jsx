@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Calendar, CheckCircle2, MessageSquare } from 'lucide-react';
-import { fromDateTimeInputValue, toDateTimeInputValue } from '../lib/dates.js';
-import { logInteraction } from '../lib/interactions.js';
+import { fromDateTimeInputValue, futureInstant, toDateTimeInputValue } from '../lib/dates.js';
+import { logInteraction, logInteractions } from '../lib/interactions.js';
 import { formatHourLabel } from '../lib/format.js';
 import { contactDone, contactReschedule, followUpChannelOf } from '../lib/contactGoal.js';
 import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, goalOwnerFields } from '../lib/leads.js';
@@ -39,9 +39,11 @@ const FOOTER_LABEL = {
   [OUTCOMES.REAGENDAR]: 'Reagendar'
 };
 
-function ContactOutcomeModal({ open = true, onClose, lead, categorySlug = DAILY_GOAL_CATEGORIES.CONTATO_HOJE, appUser, db, onDone }) {
+// initialOutcome: o desfecho que abre escolhido. O Reagendar do card abre com
+// 'reagendar'; sem ele, abre em "Contato feito".
+function ContactOutcomeModal({ open = true, onClose, lead, categorySlug = DAILY_GOAL_CATEGORIES.CONTATO_HOJE, initialOutcome = null, appUser, db, onDone }) {
   const toast = useToast();
-  const [outcome, setOutcome] = useState(OUTCOMES.FEITO);
+  const [outcome, setOutcome] = useState(Object.values(OUTCOMES).includes(initialOutcome) ? initialOutcome : OUTCOMES.FEITO);
   const [motivo, setMotivo] = useState('');
   // Amanhã às 09:00, o mesmo horário que o wizard de agendamento sugere para
   // dias futuros. Dia e hora saem do mesmo campo.
@@ -62,7 +64,7 @@ function ContactOutcomeModal({ open = true, onClose, lead, categorySlug = DAILY_
   const nowMs = useMemo(() => Date.now(), []);
   const minRescheduleStr = useMemo(() => toDateTimeInputValue(new Date(nowMs)), [nowMs]);
   const parsedReschedule = fromDateTimeInputValue(rescheduleStr);
-  const isRescheduleFuture = Boolean(parsedReschedule) && parsedReschedule.getTime() > nowMs;
+  const isRescheduleFuture = Boolean(futureInstant(rescheduleStr, nowMs));
   const motivoTrimmed = motivo.trim();
   const categoryLabel = DAILY_GOAL_CATEGORY_LABEL[categorySlug] || 'Contato';
 
@@ -79,7 +81,7 @@ function ContactOutcomeModal({ open = true, onClose, lead, categorySlug = DAILY_
     if (!canSubmit) return;
     // O nowMs do render envelhece se o popup ficar aberto; confere no relógio
     // antes de gravar para nunca agendar um contato no passado.
-    if (outcome === OUTCOMES.REAGENDAR && (!parsedReschedule || parsedReschedule.getTime() <= Date.now())) {
+    if (outcome === OUTCOMES.REAGENDAR && !futureInstant(rescheduleStr)) {
       toast.warning('Escolha uma data e hora futuras.');
       return;
     }
@@ -104,18 +106,18 @@ function ContactOutcomeModal({ open = true, onClose, lead, categorySlug = DAILY_
         const patch = contactReschedule(lead, parsedReschedule);
         const { volumeKind } = followUpChannelOf(lead);
         const dateFmt = `${parsedReschedule.toLocaleDateString('pt-BR')} às ${formatHourLabel(parsedReschedule)}`;
-        await logInteraction(db, lead, appUser, {
+        // A nota do motivo, a marca e o patch num batch só (logInteractions).
+        await logInteractions(db, lead, appUser, [{
           text: `Motivo do reagendamento: ${motivoTrimmed} — próximo contato em ${dateFmt}.`,
           type: 'note'
-        }, patch);
-        await logInteraction(db, lead, appUser, {
+        }, {
           text: `✅ ${categoryLabel} — Meta Diária concluída (contato reagendado para ${dateFmt}).`,
           type: 'daily_goal_done',
           dailyGoalCategory: categorySlug,
           ...goalOwnerFields(lead, categorySlug),
           volumeKind,
           rescheduledFor: parsedReschedule
-        });
+        }], patch);
         toast.success(`Contato reagendado para ${dateFmt}.`);
       }
       onDone && onDone(outcome);
