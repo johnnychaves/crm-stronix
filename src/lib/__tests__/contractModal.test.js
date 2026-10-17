@@ -40,7 +40,7 @@ const modal = (props) => h(ContractModal, { appUser, db: {}, onClose: () => {}, 
 async function montar(props, contratos = [], agora = D(2026, 10, 16, 10, 20), catalogo = planos, falsos = ['Date']) {
   await renderizar(h(GeneralConfigContext.Provider, { value: { planos: catalogo, contratos } }, modal(props)), agora, falsos);
 }
-const anunciador = () => document.body.querySelector('[data-slot="start-status-announcer"]');
+const anunciador = () => document.body.querySelector('[data-slot="contract-announcer"]');
 afterEach(async () => {
   await act(async () => { root?.unmount(); });
   root = null;
@@ -91,15 +91,21 @@ describe('ContractModal, matrícula', () => {
     expect(motivos().every((b) => b.getAttribute('aria-pressed') === 'false')).toBe(true);
   });
 
-  it('a região viva do rodapé existe mesmo quando não falta nada, para o leitor de tela anunciar o que entra', async () => {
+  // O leitor de tela lê a cópia do anunciador, uma vez só: o texto visível da faixa
+  // e do rodapé fica escondido dele e não é região viva.
+  it('a faixa e o texto do rodapé visíveis ficam escondidos do leitor de tela, e só há uma região viva', async () => {
     await montar({ lead: leadNovo, mode: 'matricula' });
-    const regiao = rodape().querySelector('[role="status"]');
-    expect(regiao).not.toBeNull();
-    expect(regiao.textContent.trim()).toBe('');
     await clicar(botao('%'));
     await digitar(document.body.querySelector('input[aria-label="Valor do desconto"]'), '10');
-    expect(rodape().querySelector('[role="status"]')).toBe(regiao);
-    expect(regiao.textContent).toContain('Escolha o motivo do desconto.');
+    expect(rodape().textContent).toContain('Escolha o motivo do desconto.');
+
+    expect(document.body.querySelector('[data-slot="start-status"]').getAttribute('aria-hidden')).toBe('true');
+    const visivel = rodape().querySelector('span[aria-hidden="true"]');
+    expect(visivel.textContent).toContain('Escolha o motivo do desconto.');
+    expect(visivel.getAttribute('role')).toBeNull();
+    const vivas = document.body.querySelectorAll('[role="status"]');
+    expect(vivas.length).toBe(1);
+    expect(vivas[0]).toBe(anunciador());
   });
 
   // WCAG 2.5.3: o nome acessível começa pelo texto visível, para o comando de voz.
@@ -267,6 +273,7 @@ describe('ContractModal, matrícula', () => {
     const voz = anunciador();
     expect(faixa.getAttribute('role')).toBeNull();
     expect(faixa.getAttribute('aria-live')).toBeNull();
+    expect(faixa.getAttribute('aria-hidden')).toBe('true');
     expect(voz.getAttribute('role')).toBe('status');
     expect(voz.className).toContain('sr-only');
     const inicial = faixa.textContent;
@@ -557,6 +564,79 @@ describe('ContractModal, durante o envio', () => {
     const confirmar = botao('Confirmar matrícula');
     expect(confirmar.disabled).toBe(true);
     expect(confirmar.getAttribute('aria-disabled')).toBeNull();
+  });
+});
+
+describe('ContractModal, anunciador único', () => {
+  const FALSOS = ['Date', 'setTimeout', 'clearTimeout'];
+  const passar = async (ms) => { await act(async () => { vi.advanceTimersByTime(ms); }); };
+  const vezes = (texto, trecho) => texto.split(trecho).length - 1;
+
+  it('com a data apagada, "Escolha a data de início." é anunciada uma vez só', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' }, [], D(2026, 10, 16, 10, 20), planos, FALSOS);
+    await clicar(opcao('Outra data'));
+    await digitar(document.body.querySelector('input[type="date"]'), '');
+    expect(document.body.querySelector('[data-slot="start-status"]').textContent).toContain('Escolha a data de início.');
+    expect(rodape().textContent).toContain('Escolha a data de início.');
+
+    await passar(700);
+
+    expect(vezes(anunciador().textContent, 'Escolha a data de início.')).toBe(1);
+  });
+
+  it('com a trava e o motivo diferentes, o anunciador traz a frase da faixa e a do rodapé', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' }, [], D(2026, 10, 16, 10, 20), planos, FALSOS);
+    await clicar(botao('%'));
+    await digitar(document.body.querySelector('input[aria-label="Valor do desconto"]'), '10');
+    const faixa = document.body.querySelector('[data-slot="start-status"]').textContent;
+    expect(faixa).toContain('Vigência de 16/10/2026');
+    // Na hora, o anunciador ainda tem só a faixa de antes; depois da pausa, as duas frases.
+    expect(anunciador().textContent).not.toContain('Escolha o motivo do desconto.');
+
+    await passar(700);
+
+    expect(anunciador().textContent).toBe(`${faixa} Escolha o motivo do desconto.`);
+  });
+
+  it('sem plano ativo no catálogo, o anunciador fica em silêncio', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' }, [], D(2026, 10, 16, 10, 20), [], FALSOS);
+    await passar(700);
+    expect(anunciador().textContent).toBe('');
+  });
+
+  // Numa renovação, as datas parciais do ano (0002, 0020, 0202) caem na regra dos dois
+  // dias e o rodapé diz "Veja o aviso da vigência." no meio da digitação. Isso não vale
+  // para a data final e não pode ser lido.
+  it('digitar o ano da "Outra data" numa renovação anuncia só o resultado final', async () => {
+    const inicio = D(2026, 9, 12);
+    const fim = D(2026, 12, 12);
+    const atual = { id: 'c1abcdef', leadId: 'l2', planId: 'p3', planName: 'Pilates Trimestral', value: 897, durationMonths: 3, status: 'ativo', startsAt: inicio, endsAt: fim, createdAt: inicio };
+    const lead = { id: 'l2', name: 'Camila Rezende', lifecycleStage: 'cliente', currentContractId: 'c1abcdef', currentPlanName: 'Pilates Trimestral', currentContractValue: 897, currentContractStartsAt: inicio, currentContractEndsAt: fim, currentContractStatus: 'ativo' };
+    await montar({ lead, mode: 'renovacao', currentContract: atual, renewedFromId: 'c1abcdef' }, [atual], D(2026, 10, 16, 10, 20), planos, FALSOS);
+    const inicial = anunciador().textContent;
+    expect(inicial).toContain('Emenda perfeita');
+
+    await clicar(opcao('Outra data'));
+    const ditos = new Set([anunciador().textContent]);
+    const campo = () => document.body.querySelector('input[type="date"]');
+    for (const parcial of ['0002-12-20', '0020-12-20', '0202-12-20']) {
+      await digitar(campo(), parcial);
+      await passar(100);
+      ditos.add(anunciador().textContent);
+    }
+    // No meio da digitação o rodapé visível já manda ver o aviso...
+    expect(rodape().textContent).toContain('Veja o aviso da vigência.');
+    await digitar(campo(), '2026-12-20');
+    await passar(100);
+    ditos.add(anunciador().textContent);
+    expect(rodape().textContent).not.toContain('Veja o aviso da vigência.');
+
+    await passar(700);
+
+    // ...mas o anunciador nunca o disse, e o final é o aviso da data certa (7 dias de lacuna).
+    expect([...ditos].every((t) => !t.includes('Veja o aviso da vigência.') && !t.includes('precisa começar a partir de'))).toBe(true);
+    expect(anunciador().textContent).toContain('Ficam 7 dias sem contrato ativo');
+    expect(anunciador().textContent).toBe(document.body.querySelector('[data-slot="start-status"]').textContent);
   });
 });
 

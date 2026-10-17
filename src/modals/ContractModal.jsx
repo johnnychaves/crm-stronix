@@ -77,11 +77,12 @@ const Chip = ({ tone = 'amber', children }) => (
 
 // Faixa embaixo das opções de início: a vigência, ou o aviso do encaixe. Reserva
 // três linhas, o máximo que os avisos de sobreposição e da regra dos dois dias
-// ocupam, então o modal não pula quando o texto muda. A faixa visível atualiza na
-// hora, mas não é região viva: digitando a data, cada pedaço é uma data válida e o
-// texto muda a cada tecla. Quem anuncia é um elemento só para leitor de tela,
-// sempre montado (o leitor só anuncia a troca de texto de uma região que já
-// existia), que recebe o mesmo texto depois de uma pausa, então só o final é lido.
+// ocupam, então o modal não pula quando o texto muda. A faixa visível e o texto do
+// rodapé atualizam na hora, mas ficam escondidos do leitor de tela (aria-hidden) e
+// não são regiões vivas: digitando a data, cada pedaço é uma data válida e o texto
+// muda a cada tecla. Quem fala é um anunciador só, sr-only e sempre montado (o
+// leitor só anuncia a troca de texto de uma região que já existia), que recebe o
+// texto da faixa e o do rodapé, sem repetir, depois de uma pausa: só o final é lido.
 const ANNOUNCE_DELAY_MS = 700;
 const STATUS_TONE = {
   ok: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300',
@@ -90,24 +91,27 @@ const STATUS_TONE = {
 };
 function StartStatus({ tone, text }) {
   const Icon = tone === 'ok' ? Check : AlertTriangle;
-  // Começa com o texto de agora: o que já estava na tela ao abrir não é um anúncio novo.
+  return (
+    <div
+      data-slot="start-status"
+      aria-hidden="true"
+      className={cn('mt-2.5 flex min-h-[78px] items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-[13px] leading-[1.45]', STATUS_TONE[tone])}
+    >
+      <Icon size={16} className="flex-none" />
+      <p className="min-w-0 text-pretty">{text}</p>
+    </div>
+  );
+}
+
+// O anunciador do modal. Começa com o texto de agora: o que já estava na tela ao
+// abrir não é um anúncio novo.
+function Announcer({ text }) {
   const [announced, setAnnounced] = useState(text);
   useEffect(() => {
     const timer = setTimeout(() => setAnnounced(text), ANNOUNCE_DELAY_MS);
     return () => clearTimeout(timer);
   }, [text]);
-  return (
-    <>
-      <div
-        data-slot="start-status"
-        className={cn('mt-2.5 flex min-h-[78px] items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-[13px] leading-[1.45]', STATUS_TONE[tone])}
-      >
-        <Icon size={16} className="flex-none" aria-hidden="true" />
-        <p className="min-w-0 text-pretty">{text}</p>
-      </div>
-      <div data-slot="start-status-announcer" role="status" className="sr-only">{announced}</div>
-    </>
-  );
+  return <div data-slot="contract-announcer" role="status" className="sr-only">{announced}</div>;
 }
 
 // Texto de apoio sobre o fundo brand-50 do item marcado: text-muted-foreground
@@ -392,6 +396,11 @@ function ContractModal({
   const noPlans = activePlans.length === 0;
   const blockText = noPlans ? '' : confirmBlockOf({ plan, startsAt, startProblem, hasDiscount, reason });
   const reasonHint = reasonHintOf({ hasDiscount, reason });
+  // O que o leitor de tela ouve: a faixa e, se for outra frase, o rodapé. Sem plano
+  // ativo, o corpo do modal já avisa e não há faixa para ler.
+  const announcement = noPlans
+    ? ''
+    : [startStatus.text, blockText && blockText !== startStatus.text ? blockText : ''].filter(Boolean).join(' ');
 
   const pickPlan = (id) => {
     setFocusedPlanId(null);
@@ -877,10 +886,13 @@ function ContractModal({
 
         {/* Rodapé: o que falta, à esquerda; as ações, à direita */}
         <div data-slot="contract-footer" className="flex min-h-[62px] items-center gap-2.5 border-t border-border px-6 py-3.5">
-          <span role="status" className="inline-flex items-center gap-1.5 text-[13px] font-medium text-amber-700 dark:text-amber-300">
-            {blockText && <AlertTriangle size={15} aria-hidden="true" />}
-            {blockText}
-          </span>
+          <Announcer text={announcement} />
+          {blockText && (
+            <span aria-hidden="true" className="inline-flex items-center gap-1.5 text-[13px] font-medium text-amber-700 dark:text-amber-300">
+              <AlertTriangle size={15} />
+              {blockText}
+            </span>
+          )}
           {saveError && (
             <span role="alert" className="inline-flex items-center gap-1.5 text-[13px] font-medium text-rose-700 dark:text-rose-300">
               <AlertTriangle size={15} aria-hidden="true" />
