@@ -906,6 +906,44 @@ describe('ContractModal, anunciador único', () => {
   });
 });
 
+describe('ContractModal, gravação bem-sucedida', () => {
+  // Sem o onDone o modal não fecha e um segundo clique grava de novo.
+  it('na matrícula, o commit resolve, o onDone é chamado uma vez e o toast diz "Matrícula realizada!"', async () => {
+    const onDone = vi.fn();
+    await montar({ lead: leadNovo, mode: 'matricula', onDone });
+    await clicar(botao('Confirmar matrícula'));
+    expect(commitMatricula).toHaveBeenCalledTimes(1);
+    expect(onDone).toHaveBeenCalledTimes(1);
+    expect(toast.success).toHaveBeenCalledTimes(1);
+    expect(toast.success).toHaveBeenCalledWith('Matrícula realizada!');
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it('na renovação, o commit resolve, o onDone é chamado uma vez e o toast diz "Renovação registrada!"', async () => {
+    const inicio = D(2026, 9, 12);
+    const fim = D(2026, 12, 12);
+    const atual = { id: 'c1abcdef', leadId: 'l2', planId: 'p3', planName: 'Pilates Trimestral', value: 897, durationMonths: 3, status: 'ativo', startsAt: inicio, endsAt: fim, createdAt: inicio };
+    const lead = { id: 'l2', name: 'Camila Rezende', lifecycleStage: 'cliente', currentContractId: 'c1abcdef', currentPlanName: 'Pilates Trimestral', currentContractValue: 897, currentContractStartsAt: inicio, currentContractEndsAt: fim, currentContractStatus: 'ativo' };
+    const onDone = vi.fn();
+    await montar({ lead, mode: 'renovacao', currentContract: atual, renewedFromId: 'c1abcdef', onDone }, [atual]);
+    await clicar(botao('Confirmar renovação'));
+    expect(commitMatricula).toHaveBeenCalledTimes(1);
+    expect(onDone).toHaveBeenCalledTimes(1);
+    expect(toast.success).toHaveBeenCalledWith('Renovação registrada!');
+  });
+
+  it('se a gravação falha, o onDone não é chamado e não há toast de sucesso', async () => {
+    const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
+    commitMatricula.mockRejectedValueOnce(new Error('sem rede'));
+    const onDone = vi.fn();
+    await montar({ lead: leadNovo, mode: 'matricula', onDone });
+    await clicar(botao('Confirmar matrícula'));
+    expect(onDone).not.toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalled();
+    erro.mockRestore();
+  });
+});
+
 describe('ContractModal, falha ao gravar', () => {
   // Com o modal aberto o Radix põe aria-hidden no #root, e o toast fica fora do que o leitor de tela ouve.
   it('mostra o aviso dentro do modal, num alerta, além do toast', async () => {
