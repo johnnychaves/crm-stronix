@@ -3,6 +3,7 @@ import { BookOpen, Building2, Dumbbell, MapPin, Pencil, Plus, X } from 'lucide-r
 import { collection, doc, addDoc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, CONFIG_PATH, CONFIG_GENERAL_ID, MODALITIES_PATH, UNITS_PATH } from '../../lib/firebase.js';
 import { commitOpsInChunks } from '../../lib/funnels.js';
+import { leadsWhere } from '../../lib/settingsLeads.js';
 import { getLeadAppointmentDate } from '../../lib/leads.js';
 import { normalizeTrialClassOptions } from '../../lib/leadStatus.js';
 import { cn } from '../../lib/utils.js';
@@ -84,7 +85,7 @@ function TrialPackageCard({ pack, onRemove }) {
   );
 }
 
-function SchedulingSection({ db, modalities, units, trialClassOptions, leads }) {
+function SchedulingSection({ db, modalities, units, trialClassOptions, leads, onLeadsChanged }) {
   const toast = useToast();
   const [saving, setSaving] = useState(false);
 
@@ -132,12 +133,14 @@ function SchedulingSection({ db, modalities, units, trialClassOptions, leads }) 
         // A modalidade fica gravada por NOME no lead — renomear sem cascata
         // deixaria os agendamentos antigos apontando pra um nome que sumiu.
         if (old.name !== trimmed) {
-          const affected = (leads || []).filter(l => l.appointmentModality === old.name);
+          // Lidos na hora: a lista da tela é uma foto da abertura.
+          const affected = await leadsWhere(db, 'appointmentModality', '==', old.name);
           if (affected.length > 0) {
             await commitOpsInChunks(db, affected.map(l => ({
               ref: doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, l.id),
               data: { appointmentModality: trimmed }
             })), 400);
+            onLeadsChanged?.(); // a contagem "N leads" sai da lista da tela
           }
         }
         toast.success('Modalidade atualizada.');
@@ -158,13 +161,26 @@ function SchedulingSection({ db, modalities, units, trialClassOptions, leads }) 
   };
 
   const deleteModality = async (m) => {
-    const inUse = (leads || []).filter(l => l.appointmentModality === m.name).length;
+    let inUse;
+    try {
+      inUse = (await leadsWhere(db, 'appointmentModality', '==', m.name)).length;
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível conferir se a modalidade está em uso. Tente de novo.');
+      return;
+    }
     if (inUse > 0) {
       toast.warning(`A modalidade "${m.name}" está em uso por ${inUse} ${inUse === 1 ? 'lead' : 'leads'}. Não é possível excluí-la.`);
       return;
     }
     if (!window.confirm(`Excluir a modalidade "${m.name}"?`)) return;
-    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', MODALITIES_PATH, m.id));
+    try {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', MODALITIES_PATH, m.id));
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível excluir a modalidade.');
+      return;
+    }
     setModalityDialog(null);
     toast.success('Modalidade excluída.');
   };
@@ -194,12 +210,13 @@ function SchedulingSection({ db, modalities, units, trialClassOptions, leads }) 
           { merge: true }
         );
         if (old.name !== trimmed) {
-          const affected = (leads || []).filter(l => l.appointmentUnit === old.name);
+          const affected = await leadsWhere(db, 'appointmentUnit', '==', old.name);
           if (affected.length > 0) {
             await commitOpsInChunks(db, affected.map(l => ({
               ref: doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, l.id),
               data: { appointmentUnit: trimmed }
             })), 400);
+            onLeadsChanged?.();
           }
         }
         toast.success('Unidade atualizada.');
@@ -220,13 +237,26 @@ function SchedulingSection({ db, modalities, units, trialClassOptions, leads }) 
   };
 
   const deleteUnit = async (u) => {
-    const inUse = (leads || []).filter(l => l.appointmentUnit === u.name).length;
+    let inUse;
+    try {
+      inUse = (await leadsWhere(db, 'appointmentUnit', '==', u.name)).length;
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível conferir se a unidade está em uso. Tente de novo.');
+      return;
+    }
     if (inUse > 0) {
       toast.warning(`A unidade "${u.name}" está em uso por ${inUse} ${inUse === 1 ? 'lead' : 'leads'}. Não é possível excluí-la.`);
       return;
     }
     if (!window.confirm(`Excluir a unidade "${u.name}"?`)) return;
-    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', UNITS_PATH, u.id));
+    try {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', UNITS_PATH, u.id));
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível excluir a unidade.');
+      return;
+    }
     setUnitDialog(null);
     toast.success('Unidade excluída.');
   };
@@ -278,7 +308,7 @@ function SchedulingSection({ db, modalities, units, trialClassOptions, leads }) 
         >
           <div className="border-t border-border">
             {(modalities || []).length === 0 ? (
-              <EmptyState>Nenhuma modalidade ainda — o consultor não consegue dizer o que foi agendado.</EmptyState>
+              <EmptyState>Nenhuma modalidade ainda. Sem ela, o consultor não consegue dizer o que foi agendado.</EmptyState>
             ) : (modalities || []).map((m, i) => {
               const inUse = (leads || []).filter(l => l.appointmentModality === m.name).length;
               const tone = settingsColorTone(m.color || 'blue');
@@ -307,7 +337,7 @@ function SchedulingSection({ db, modalities, units, trialClassOptions, leads }) 
         >
           <div className="border-t border-border">
             {(units || []).length === 0 ? (
-              <EmptyState>Nenhuma unidade ainda — adicione o endereço onde as visitas acontecem.</EmptyState>
+              <EmptyState>Nenhuma unidade ainda. Adicione o endereço onde as visitas acontecem.</EmptyState>
             ) : (units || []).map((u, i) => {
               const inUse = (leads || []).filter(l => l.appointmentUnit === u.name).length;
               return (

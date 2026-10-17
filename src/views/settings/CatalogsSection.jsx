@@ -5,6 +5,7 @@ import {
   appId, DORES_PATH, LEADS_PATH, LOSS_REASONS_PATH, PLANS_PATH, SOURCES_PATH, TAGS_PATH
 } from '../../lib/firebase.js';
 import { commitOpsInChunks } from '../../lib/funnels.js';
+import { leadsWhere } from '../../lib/settingsLeads.js';
 import { fmtBRL, parseValorBRL, valorToInput } from '../../lib/format.js';
 import { planModalityIds, planModalityNames } from '../../lib/planos.js';
 import { cn } from '../../lib/utils.js';
@@ -39,7 +40,7 @@ const colorFor = (item, fallbackSeed) => {
 const CATALOGS = {
   tags: {
     label: 'Etiquetas', singular: 'etiqueta', gender: 'f',
-    icon: Tag, path: TAGS_PATH, colorful: true,
+    icon: Tag, path: TAGS_PATH, colorful: true, leadField: 'tags', leadOp: 'array-contains',
     title: 'Etiquetas', description: 'Marcadores rápidos para segmentar e filtrar leads no Pipeline.',
     col2Label: 'Usada para', col2Field: 'description', col2Placeholder: 'Ex: Quem quer contrato longo',
     note: 'Renomear uma etiqueta atualiza todos os leads que a carregam. Excluir só é possível se nenhum lead a usar.',
@@ -50,8 +51,8 @@ const CATALOGS = {
   },
   sources: {
     label: 'Origens', singular: 'origem', gender: 'f',
-    icon: Filter, path: SOURCES_PATH,
-    title: 'Origens', description: 'De onde os leads chegam — a base do relatório de canais.',
+    icon: Filter, path: SOURCES_PATH, leadField: 'source', leadOp: '==',
+    title: 'Origens', description: 'De onde os leads chegam. É a base do relatório de canais.',
     col2Label: 'Canal', col2Field: 'channel', col2Placeholder: 'Ex: Orgânico, Pago, Offline',
     note: 'Toda origem em uso continua contando no Gerencial mesmo depois de renomeada.',
     countOf: (item, leads) => (leads || []).filter(l => l.source === item.name).length,
@@ -61,7 +62,7 @@ const CATALOGS = {
   },
   plans: {
     label: 'Planos', singular: 'plano', gender: 'm',
-    icon: DollarSign, path: PLANS_PATH, dialogOnly: true,
+    icon: DollarSign, path: PLANS_PATH, dialogOnly: true, leadField: 'currentPlanName', leadOp: '==',
     title: 'Planos', description: 'Catálogo de planos e serviços oferecidos na matrícula.',
     col2Label: 'Valor · modalidade',
     note: 'O plano fica gravado no cliente. Alterar o valor aqui não muda contratos já fechados.',
@@ -72,7 +73,7 @@ const CATALOGS = {
   },
   loss: {
     label: 'Motivos de perda', singular: 'motivo', gender: 'm',
-    icon: ThumbsDown, path: LOSS_REASONS_PATH,
+    icon: ThumbsDown, path: LOSS_REASONS_PATH, leadField: 'lossReason', leadOp: '==',
     title: 'Motivos de perda', description: 'Justificativas padronizadas para a análise de perdas.',
     col2Label: 'Observação', col2Field: 'note', col2Placeholder: 'Ex: Achou caro / sem orçamento',
     note: 'Sem motivos cadastrados, os descartes ficam sem justificativa e o relatório de perdas fica cego.',
@@ -83,8 +84,8 @@ const CATALOGS = {
   },
   dores: {
     label: 'Dores', singular: 'dor', gender: 'f',
-    icon: HeartPulse, path: DORES_PATH,
-    title: 'Dores', description: 'O que o lead quer resolver — escolhida na ficha e usada como argumento.',
+    icon: HeartPulse, path: DORES_PATH, leadField: 'dor', leadOp: '==',
+    title: 'Dores', description: 'O que o lead quer resolver. É escolhida na ficha e usada como argumento.',
     col2Label: 'O que o lead procura', col2Field: 'description', col2Placeholder: 'Ex: Perda de peso e medidas',
     note: 'Escolhida na ficha do lead. Boas dores rendem melhores argumentos na negociação.',
     countOf: (item, leads) => (leads || []).filter(l => l.dor === item.name).length,
@@ -98,7 +99,7 @@ const CATALOG_KEYS = ['tags', 'sources', 'plans', 'loss', 'dores'];
 
 const newLabel = (cfg) => `${cfg.gender === 'f' ? 'Nova' : 'Novo'} ${cfg.singular}`;
 
-function CatalogsSection({ db, tags, sources, planos, lossReasons, dores, modalities, leads, focusId, onFocusHandled }) {
+function CatalogsSection({ db, tags, sources, planos, lossReasons, dores, modalities, leads, focusId, onFocusHandled, onLeadsChanged }) {
   const toast = useToast();
   const { contratos } = useGeneralConfig();
 
@@ -125,6 +126,8 @@ function CatalogsSection({ db, tags, sources, planos, lossReasons, dores, modali
 
   // Montada sob demanda (render não toca no SDK do Firestore).
   const colRef = () => collection(db, 'artifacts', appId, 'public', 'data', cfg.path);
+  // Os leads que usam um nome, lidos na hora (a lista da tela é uma foto da abertura).
+  const leadsUsing = (catalog, name) => leadsWhere(db, catalog.leadField, catalog.leadOp, name);
 
   const startCreate = () => setDraft({ id: null, name: '', col2: '', color: 'blue' });
   const startEdit = (item) => setDraft({
@@ -135,6 +138,7 @@ function CatalogsSection({ db, tags, sources, planos, lossReasons, dores, modali
   });
 
   const saveDraft = async () => {
+    if (saving) return;
     const trimmed = (draft?.name || '').trim();
     if (!trimmed) { toast.warning(`Informe o nome ${cfg.gender === 'f' ? 'da' : 'do'} ${cfg.singular}.`); return; }
     const dup = rows.find(r => r.id !== draft.id && (r.name || '').trim().toLowerCase() === trimmed.toLowerCase());
@@ -152,12 +156,13 @@ function CatalogsSection({ db, tags, sources, planos, lossReasons, dores, modali
         // O lead guarda o NOME, não o id — renomear sem cascata deixaria a base
         // apontando para um valor que não existe mais no catálogo.
         if (old && old.name !== trimmed) {
-          const ops = cfg.cascade(leads, old.name, trimmed);
+          const ops = cfg.cascade(await leadsUsing(cfg, old.name), old.name, trimmed);
           if (ops.length > 0) {
             await commitOpsInChunks(db, ops.map(o => ({
               ref: doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, o.id),
               data: o.data
             })), 400);
+            onLeadsChanged?.(); // a coluna "Em uso" conta pela lista da tela
           }
         }
         toast.success('Item atualizado.');
@@ -175,7 +180,14 @@ function CatalogsSection({ db, tags, sources, planos, lossReasons, dores, modali
   };
 
   const removeItem = async (item) => {
-    const inUse = cfg.countOf(item, leads);
+    let inUse;
+    try {
+      inUse = cfg.countOf(item, await leadsUsing(cfg, item.name));
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível conferir se o item está em uso. Tente de novo.');
+      return;
+    }
     if (inUse > 0) {
       toast.warning(`"${item.name}" está em uso por ${inUse} ${inUse === 1 ? 'lead' : 'leads'}. Não é possível excluir.`);
       return;
@@ -190,7 +202,13 @@ function CatalogsSection({ db, tags, sources, planos, lossReasons, dores, modali
       }
     }
     if (!window.confirm(`Excluir "${item.name}"?`)) return;
-    await deleteDoc(doc(colRef(), item.id));
+    try {
+      await deleteDoc(doc(colRef(), item.id));
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível excluir o item.');
+      return;
+    }
     if (draft?.id === item.id) setDraft(null);
     toast.success('Item excluído.');
   };
@@ -208,6 +226,7 @@ function CatalogsSection({ db, tags, sources, planos, lossReasons, dores, modali
   };
 
   const savePlan = async () => {
+    if (saving) return;
     const trimmed = planForm.name.trim();
     if (!trimmed) { toast.warning('Informe o nome do plano.'); return; }
     // Aceita vírgula/ponto decimal e centavos; barra valor inválido em vez de
@@ -232,12 +251,13 @@ function CatalogsSection({ db, tags, sources, planos, lossReasons, dores, modali
         const old = planDialog.plan;
         await setDoc(doc(colRef(), editingId), payload, { merge: true });
         if (old.name !== trimmed) {
-          const ops = CATALOGS.plans.cascade(leads, old.name, trimmed);
+          const ops = CATALOGS.plans.cascade(await leadsUsing(CATALOGS.plans, old.name), old.name, trimmed);
           if (ops.length > 0) {
             await commitOpsInChunks(db, ops.map(o => ({
               ref: doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, o.id),
               data: o.data
             })), 400);
+            onLeadsChanged?.();
           }
         }
         toast.success('Plano atualizado.');
@@ -256,9 +276,15 @@ function CatalogsSection({ db, tags, sources, planos, lossReasons, dores, modali
   };
 
   const togglePlanActive = async (p) => {
-    await setDoc(doc(colRef(), p.id), { active: p.active === false, updatedAt: serverTimestamp() }, { merge: true });
+    try {
+      await setDoc(doc(colRef(), p.id), { active: p.active === false, updatedAt: serverTimestamp() }, { merge: true });
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível mudar o plano.');
+      return;
+    }
     setPlanDialog(null);
-    toast.success(p.active === false ? 'Plano reativado.' : 'Plano desativado — some do seletor de matrícula, mas segue no histórico.');
+    toast.success(p.active === false ? 'Plano reativado.' : 'Plano desativado. Ele some do seletor de matrícula, mas segue no histórico.');
   };
 
   const togglePlanMod = (id) => setPlanForm(f => ({
@@ -290,7 +316,7 @@ function CatalogsSection({ db, tags, sources, planos, lossReasons, dores, modali
           autoFocus
           value={draft?.name || ''}
           onChange={e => setDraft({ ...draft, name: e.target.value })}
-          onKeyDown={e => { if (e.key === 'Escape') setDraft(null); if (e.key === 'Enter') saveDraft(); }}
+          onKeyDown={e => { if (e.key === 'Escape') setDraft(null); if (e.key === 'Enter' && !e.repeat) saveDraft(); }}
           placeholder={`Nome ${cfg.gender === 'f' ? 'da' : 'do'} ${cfg.singular}`}
           className="w-full h-9 px-2.5 rounded-lg bg-card border border-brand-600 text-[13px] outline-none focus:ring-2 focus:ring-brand-500/20"
         />
@@ -298,7 +324,7 @@ function CatalogsSection({ db, tags, sources, planos, lossReasons, dores, modali
       <input
         value={draft?.col2 || ''}
         onChange={e => setDraft({ ...draft, col2: e.target.value })}
-        onKeyDown={e => { if (e.key === 'Escape') setDraft(null); if (e.key === 'Enter') saveDraft(); }}
+        onKeyDown={e => { if (e.key === 'Escape') setDraft(null); if (e.key === 'Enter' && !e.repeat) saveDraft(); }}
         placeholder={cfg.col2Placeholder}
         className="w-full h-9 px-2.5 rounded-lg bg-card border border-border text-[13px] outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20"
       />
@@ -320,7 +346,7 @@ function CatalogsSection({ db, tags, sources, planos, lossReasons, dores, modali
     <div className="flex flex-col gap-5">
       <SettingsSectionHeader
         title="Catálogos"
-        hint="As cinco listas que alimentam os campos do lead. Mesma tela, mesma mecânica — clique numa linha para editar."
+        hint="As cinco listas que alimentam os campos do lead. Clique numa linha para editar."
       />
 
       <div className="inline-flex w-fit p-1 gap-[3px] rounded-xl bg-muted" role="tablist">
@@ -368,7 +394,7 @@ function CatalogsSection({ db, tags, sources, planos, lossReasons, dores, modali
 
         {rows.length === 0 && !draft ? (
           <EmptyState>
-            {cfg.label} ainda sem nenhum item — crie o primeiro em “{newLabel(cfg)}”.
+            {cfg.label} ainda sem nenhum item. Crie o primeiro em “{newLabel(cfg)}”.
           </EmptyState>
         ) : rows.map((item, i) => {
           if (draft?.id === item.id) return <div key={item.id}>{draftRow}</div>;
@@ -444,7 +470,7 @@ function CatalogsSection({ db, tags, sources, planos, lossReasons, dores, modali
         </div>
         <DialogField label="Modalidades (opcional)">
           {(modalities || []).length === 0 ? (
-            <p className="text-[12px] text-muted-foreground">Nenhuma modalidade cadastrada — adicione em Agendamento.</p>
+            <p className="text-[12px] text-muted-foreground">Nenhuma modalidade cadastrada. Adicione em Agendamento.</p>
           ) : (
             <div className="flex flex-wrap gap-2">
               {(modalities || []).map(m => {

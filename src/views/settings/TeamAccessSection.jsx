@@ -3,6 +3,7 @@ import { Copy, Dumbbell, Mail, Pencil, Plus, Shield, Trash2 } from 'lucide-react
 import { collection, doc, addDoc, getDocs, query, where, setDoc, updateDoc, deleteDoc, deleteField, serverTimestamp } from 'firebase/firestore';
 import { auth, appId, LEADS_PATH, PROFESSORS_PATH, USERS_PATH } from '../../lib/firebase.js';
 import { commitOpsInChunks } from '../../lib/funnels.js';
+import { leadsWhere } from '../../lib/settingsLeads.js';
 import { isClientLead } from '../../lib/leads.js';
 import { professorModalityNames, professorNameById } from '../../lib/professores.js';
 import { generateTemporaryPassword, passwordPolicyError, PASSWORD_RULE_TEXT } from '../../lib/passwordPolicy.js';
@@ -200,7 +201,7 @@ function ProfessorPicker({ value, options, onChange, disabled = false }) {
   );
 }
 
-function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHandled }) {
+function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHandled, onLeadsChanged }) {
   const toast = useToast();
   const { professores, modalities } = useGeneralConfig();
   const seats = useSeatLimits();
@@ -323,7 +324,7 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
         ? `Acesso de professor criado para ${form.name.trim()}. Senha temporária: ${form.password}`
         : `Consultor ${form.name.trim()} cadastrado. Senha temporária: ${form.password}`;
       toast.success(created, { duration: 8000, title: 'Cadastrado com sucesso' });
-      if (data.isExtra) toast.info('Este consultor entrou como extra — a mensalidade foi ajustada a partir da próxima fatura.', { duration: 8000 });
+      if (data.isExtra) toast.info('Este consultor entrou como extra. A mensalidade foi ajustada a partir da próxima fatura.', { duration: 8000 });
       setMemberDialog(null);
     } catch (err) {
       console.error(err);
@@ -578,12 +579,14 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
         // Nome do professor é desnormalizado no lead (aparece na agenda e nos
         // relatórios de aula) — renomear tem que alcançar a base.
         if (old.nome !== trimmed) {
-          const affected = (leads || []).filter(l => l.appointmentProfessorId === editingId);
+          // Lidos na hora: a lista da tela é uma foto da abertura.
+          const affected = await leadsWhere(db, 'appointmentProfessorId', '==', editingId);
           if (affected.length > 0) {
             await commitOpsInChunks(db, affected.map(l => ({
               ref: doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, l.id),
               data: { appointmentProfessorName: trimmed }
             })), 400);
+            onLeadsChanged?.();
           }
         }
         toast.success('Professor atualizado.');
@@ -610,13 +613,26 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
       toast.warning(`"${p.nome}" tem acesso ao app (${login.name}). Exclua esse acesso na lista da equipe antes de excluir o professor.`);
       return;
     }
-    const inUse = (leads || []).filter(l => l.appointmentProfessorId === p.id).length;
+    let inUse;
+    try {
+      inUse = (await leadsWhere(db, 'appointmentProfessorId', '==', p.id)).length;
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível conferir as aulas do professor. Tente de novo.');
+      return;
+    }
     if (inUse > 0) {
       toast.warning(`"${p.nome}" está em ${inUse} ${inUse === 1 ? 'aula' : 'aulas'} já registradas. Não é possível excluí-lo.`);
       return;
     }
     if (!window.confirm(`Excluir o professor "${p.nome}"?`)) return;
-    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', PROFESSORS_PATH, p.id));
+    try {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', PROFESSORS_PATH, p.id));
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível excluir o professor.');
+      return;
+    }
     toast.success('Professor excluído.');
   };
 
@@ -641,7 +657,7 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
       <section className="rounded-2xl border border-border bg-card shadow-card overflow-hidden">
         <TableHeadRow columns={MEMBERS_COLUMNS} template={MEMBERS_GRID} />
         {users.length === 0 ? (
-          <EmptyState>Nenhum membro cadastrado ainda — comece pelo botão “Cadastrar consultor”.</EmptyState>
+          <EmptyState>Nenhum membro cadastrado ainda. Comece pelo botão “Cadastrar consultor”.</EmptyState>
         ) : users.map((u, i) => {
           const linked = Boolean(normalizeUid(u.authUid));
           const target = Number(u.dailyVolumeTarget) > 0 ? u.dailyVolumeTarget : null;
@@ -708,7 +724,7 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
         title="Professores"
         hint={professorEnabled
           ? 'Quem conduz aulas experimentais. Com o papel Professor, na lista da equipe, ganha acesso ao app.'
-          : 'Quem conduz aulas experimentais — não têm login no app.'}
+          : 'Quem conduz aulas experimentais. Eles não têm login no app.'}
         action={
           <SettingsBtn kind="primary" size={38} icon={<Plus size={14} />} onClick={() => openProfessor(null)}>
             Cadastrar professor
@@ -717,7 +733,7 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
       >
         <TableHeadRow columns={PROFESSORS_COLUMNS} template={PROFESSORS_GRID} />
         {professorStats.length === 0 ? (
-          <EmptyState>Nenhum professor cadastrado — quem conduzir a aula experimental aparece aqui.</EmptyState>
+          <EmptyState>Nenhum professor cadastrado. Quem conduzir a aula experimental aparece aqui.</EmptyState>
         ) : professorStats.map(({ professor, aulas, share, conversion }, i) => (
           <ProfessorRow
             key={professor.id}
@@ -822,7 +838,7 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
         open={inviteOpen}
         onOpenChange={(v) => { setInviteOpen(v); if (!v) { setInviteEmail(''); setInviteLink(''); setInviteProfessorId(''); } }}
         title="Convidar por e-mail"
-        description="O convidado define a própria senha pelo link. Envie o link gerado por e-mail ou WhatsApp — validade de 7 dias."
+        description="O convidado define a própria senha pelo link. Envie o link gerado por e-mail ou WhatsApp. O link vale 7 dias."
         submitLabel={inviting ? 'Gerando…' : 'Gerar convite'}
         submitting={inviting}
         onSubmit={() => createInvite()}
@@ -863,7 +879,7 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
         </DialogField>
         <DialogField label="Modalidades em que atua">
           {(modalities || []).length === 0 ? (
-            <p className="text-[12px] text-muted-foreground">Nenhuma modalidade cadastrada — adicione em Agendamento.</p>
+            <p className="text-[12px] text-muted-foreground">Nenhuma modalidade cadastrada. Adicione em Agendamento.</p>
           ) : (
             <div className="flex flex-wrap gap-2">
               {(modalities || []).map(m => {

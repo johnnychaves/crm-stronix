@@ -37,71 +37,19 @@ function SettingsPanel({ icon, iconTone = 'neutral', title, hint, action, childr
   );
 }
 
-// Cabeçalho da seção ativa: título grande + subtítulo, com um slot à direita
-// alinhado à base (ações da seção ou nota discreta).
+// Cabeçalho da seção ativa: um cartão como o dos painéis (Pipeline, Clientes,
+// Relatórios), com título, linha de apoio embaixo e um slot à direita para as
+// ações da seção ou uma nota discreta.
 function SettingsSectionHeader({ title, hint, children }) {
   return (
-    <div className="flex items-end justify-between gap-4 flex-wrap pb-4 border-b border-border">
-      <div className="min-w-0">
-        <h2 className="font-display text-[21px] font-bold tracking-tight leading-tight">{title}</h2>
-        {hint && <p className="text-[13px] text-muted-foreground mt-1">{hint}</p>}
+    <div className="flex items-center justify-between gap-4 flex-wrap rounded-2xl border border-border bg-card px-6 py-[18px] shadow-card">
+      {/* O texto encolhe (e a linha de apoio quebra) antes de as ações descerem para outra linha. */}
+      <div className="min-w-[240px] flex-1">
+        <h2 className="font-display text-2xl font-bold tracking-tight leading-tight">{title}</h2>
+        {hint && <p className="text-[13.5px] text-muted-foreground mt-[3px]">{hint}</p>}
       </div>
       {children && <div className="flex items-center gap-2 shrink-0">{children}</div>}
     </div>
-  );
-}
-
-// Grupo do trilho de configurações ("PESSOAS", "COMO A OPERAÇÃO RODA"…).
-function SettingsRailGroup({ label, children }) {
-  return (
-    <div>
-      <div className="px-3 pt-4 pb-1.5 text-[10.5px] font-bold uppercase tracking-[0.09em] text-slate-400 dark:text-slate-500">
-        {label}
-      </div>
-      <div className="flex flex-col gap-0.5">{children}</div>
-    </div>
-  );
-}
-
-// Item do trilho: ícone em quadrado, rótulo, contador e ponto âmbar quando a
-// seção pede ação. Ativo = azul sólido, mesmo idioma do menu principal do app.
-function SettingsRailItem({ icon, label, count, attention, active, onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-current={active ? 'page' : undefined}
-      className={cn(
-        'w-full flex items-center gap-[11px] px-[11px] py-[9px] rounded-xl text-left text-[13.5px] font-semibold transition-[background-color] duration-150',
-        'focus-visible:outline-none focus-visible:anel-foco focus-visible:ring-offset-2 focus-visible:ring-offset-background',
-        active
-          ? 'bg-brand-600 text-white shadow-[0_6px_16px_-6px_rgba(43,89,255,.55)]'
-          : 'text-foreground hover:bg-slate-100 dark:hover:bg-white/[0.06]'
-      )}
-    >
-      <span className={cn(
-        'size-7 rounded-lg grid place-items-center shrink-0',
-        active ? 'bg-white/[0.18] text-white' : 'bg-muted text-muted-foreground'
-      )}>
-        {icon}
-      </span>
-      <span className="flex-1 truncate">{label}</span>
-      {count != null && (
-        <span className={cn(
-          'num text-[11px] font-bold shrink-0',
-          active ? 'bg-white/[0.22] text-white px-1.5 py-px rounded-md' : 'text-slate-400 dark:text-slate-500'
-        )}>
-          {count}
-        </span>
-      )}
-      {attention && (
-        <span
-          title={attention}
-          aria-label={attention}
-          className={cn('size-[7px] rounded-full shrink-0', active ? 'bg-white' : 'bg-amber-500')}
-        />
-      )}
-    </button>
   );
 }
 
@@ -181,5 +129,5 @@ function SettingsRow({ label, value }) {
 }
 export {
   SettingsCard, SettingsTabItem, SettingsRow,
-  SettingsPanel, SettingsSectionHeader, SettingsRailGroup, SettingsRailItem
+  SettingsPanel, SettingsSectionHeader
 };

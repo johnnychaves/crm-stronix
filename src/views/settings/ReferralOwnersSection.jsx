@@ -3,8 +3,9 @@ import { collection, doc, addDoc, setDoc, serverTimestamp } from 'firebase/fires
 import { ArrowRightLeft, Handshake } from 'lucide-react';
 import { appId, LEADS_PATH, INTERACTIONS_PATH } from '../../lib/firebase.js';
 import { commitOpsInChunks } from '../../lib/funnels.js';
+import { leadsWhere } from '../../lib/settingsLeads.js';
+import { isClientFunnel } from '../../lib/crm/scope.js';
 import {
-  pendingReferralOwners,
   planReferralFunnelMerge,
   getReferralFunnel,
   isReferralFunnel
@@ -101,7 +102,9 @@ function MergeFunnelBox({ db, leads, funnels, statuses, appUser, onDone }) {
   const [running, setRunning] = useState(false);
 
   const referralFunnel = getReferralFunnel(funnels);
-  const candidatos = (funnels || []).filter((f) => !isReferralFunnel(f) && !f.isDefault);
+  // Os funis de clientes (Renovações, Vencidos, Upgrade) não são origem: são do
+  // sistema e levariam clientes para o funil de Indicações.
+  const candidatos = (funnels || []).filter((f) => !isReferralFunnel(f) && !f.isDefault && !isClientFunnel(f));
   const plan = useMemo(
     () => planReferralFunnelMerge({ leads, statuses, fromFunnelId: fromId, referralFunnelId: referralFunnel?.id }),
     [leads, statuses, fromId, referralFunnel]
@@ -128,9 +131,20 @@ function MergeFunnelBox({ db, leads, funnels, statuses, appUser, onDone }) {
 
     setRunning(true);
     try {
+      // O plano mostrado saiu da lista da abertura da tela. Na hora de mover,
+      // relê os leads do funil, para não deixar para trás quem entrou depois.
+      const now = planReferralFunnelMerge({
+        leads: await leadsWhere(db, 'funnelId', '==', fromId), statuses, fromFunnelId: fromId, referralFunnelId: referralFunnel.id,
+      });
+      if (!now.total) {
+        toast.info('Esse funil já está vazio. Nada foi movido.');
+        setFromId('');
+        onDone?.();
+        return;
+      }
       await commitOpsInChunks(
         db,
-        plan.moves.map((m) => ({
+        now.moves.map((m) => ({
           ref: doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, m.id),
           data: { funnelId: m.funnelId, status: m.status }
         })),
@@ -143,12 +157,12 @@ function MergeFunnelBox({ db, leads, funnels, statuses, appUser, onDone }) {
         consultantName: appUser?.name || null,
         actorId: appUser?.id || null,
         actorAuthUid: appUser?.authUid || null,
-        text: `MIGRAÇÃO: ${plan.total} pessoa(s) do funil "${origem.name}" para "${referralFunnel.name}".`,
+        text: `MIGRAÇÃO: ${now.total} pessoa(s) do funil "${origem.name}" para "${referralFunnel.name}".`,
         type: 'note',
         createdAt: serverTimestamp()
       }).catch(() => { /* o log não pode derrubar a migração */ });
 
-      toast.success(`${plan.total} ${plan.total === 1 ? 'pessoa movida' : 'pessoas movidas'} para ${referralFunnel.name}.`);
+      toast.success(`${now.total} ${now.total === 1 ? 'pessoa movida' : 'pessoas movidas'} para ${referralFunnel.name}.`);
       setFromId('');
       onDone?.();
     } catch (e) {
@@ -208,21 +222,10 @@ function MergeFunnelBox({ db, leads, funnels, statuses, appUser, onDone }) {
   );
 }
 
-function ReferralOwnersSection({ db, leads, funnels, statuses, appUser }) {
-  // Resolvidos nesta sessão saem da lista na hora (o prop `leads` só atualiza
-  // no próximo carregamento da tela).
-  const [resolvidos, setResolvidos] = useState(() => new Set());
-  // Recontagem depois de uma transferência: o prop `leads` só volta atualizado
-  // no próximo carregamento da tela, então este contador força o recálculo.
-  const [epoch, setEpoch] = useState(0);
-  const referralFunnelId = getReferralFunnel(funnels)?.id || null;
-  const pendentes = useMemo(
-    () => pendingReferralOwners(leads, referralFunnelId).filter((l) => !resolvidos.has(l.id)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `epoch` só existe para reavaliar após a transferência.
-    [leads, referralFunnelId, resolvidos, epoch]
-  );
-
-  const marcarResolvido = (id) => setResolvidos((s) => new Set(s).add(id));
+// `pendentes` vem da SettingsView, que monta a mesma lista do número do trilho
+// e tira os resolvidos nesta sessão (onResolved). Depois de trazer um funil, a
+// view relê a base (onLeadsChanged), e quem chegou sem indicador entra na fila.
+function ReferralOwnersSection({ db, leads, funnels, statuses, appUser, pendentes, onResolved, onLeadsChanged }) {
 
   return (
     <div className="flex flex-col gap-5">
@@ -237,7 +240,7 @@ function ReferralOwnersSection({ db, leads, funnels, statuses, appUser }) {
         funnels={funnels}
         statuses={statuses}
         appUser={appUser}
-        onDone={() => setEpoch((n) => n + 1)}
+        onDone={onLeadsChanged}
       />
 
       <SettingsPanel
@@ -251,7 +254,7 @@ function ReferralOwnersSection({ db, leads, funnels, statuses, appUser }) {
             </EmptyState>
           ) : (
             pendentes.map((lead) => (
-              <Row key={lead.id} lead={lead} db={db} appUser={appUser} onDone={marcarResolvido} />
+              <Row key={lead.id} lead={lead} db={db} appUser={appUser} onDone={onResolved} />
             ))
           )}
         </div>
