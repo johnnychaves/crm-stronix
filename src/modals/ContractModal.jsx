@@ -576,8 +576,8 @@ function ContractModal({
                   <div className="flex gap-0.5 rounded-full bg-slate-100 p-[3px] dark:bg-white/[0.06]" role="group" aria-label="Tipo de desconto">
                     {[
                       { id: DISCOUNT_MODES.NENHUM, label: 'Sem desconto' },
-                      { id: DISCOUNT_MODES.PERCENT, label: '%', name: 'Desconto em porcentagem' },
-                      { id: DISCOUNT_MODES.REAIS, label: 'R$', name: 'Desconto em reais' },
+                      { id: DISCOUNT_MODES.PERCENT, label: '%', name: '% de desconto' },
+                      { id: DISCOUNT_MODES.REAIS, label: 'R$', name: 'R$ de desconto' },
                       { id: DISCOUNT_MODES.FINAL, label: 'Valor final' }
                     ].map(d => (
                       <button
@@ -637,7 +637,7 @@ function ContractModal({
                         className={cn(
                           'h-[34px] rounded-full border px-3.5 text-[13px] font-medium whitespace-nowrap transition focus-visible:outline-none focus-visible:anel-foco',
                           'disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-45 dark:disabled:bg-white/[0.03]',
-                          r === reason
+                          hasDiscount && r === reason
                             ? 'border-brand-600 bg-brand-50 font-semibold text-brand-700 dark:border-brand-500 dark:bg-brand-500/15 dark:text-brand-300'
                             : 'border-border bg-card enabled:hover:border-brand-200 dark:enabled:hover:border-brand-500/45'
                         )}

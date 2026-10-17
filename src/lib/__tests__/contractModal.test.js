@@ -92,10 +92,11 @@ describe('ContractModal, matrícula', () => {
     expect(regiao.textContent).toContain('Escolha o motivo do desconto.');
   });
 
-  it('os botões do tipo de desconto têm nome por extenso', async () => {
+  // WCAG 2.5.3: o nome acessível começa pelo texto visível, para o comando de voz.
+  it('os botões do tipo de desconto têm nome que contém o texto visível', async () => {
     await montar({ lead: leadNovo, mode: 'matricula' });
-    expect(document.body.querySelector('button[aria-label="Desconto em porcentagem"]')).not.toBeNull();
-    expect(document.body.querySelector('button[aria-label="Desconto em reais"]')).not.toBeNull();
+    expect(document.body.querySelector('button[aria-label="% de desconto"]')).not.toBeNull();
+    expect(document.body.querySelector('button[aria-label="R$ de desconto"]')).not.toBeNull();
   });
 
   it('o motivo escolhido não fica pressionado quando o desconto some', async () => {
@@ -105,10 +106,13 @@ describe('ContractModal, matrícula', () => {
     await digitar(campo, '10');
     await clicar(botao('Campanha'));
     expect(botao('Campanha').getAttribute('aria-pressed')).toBe('true');
+    expect(botao('Campanha').className).toContain('border-brand-600');
 
     await digitar(campo, '');
     expect(botao('Campanha').disabled).toBe(true);
     expect(botao('Campanha').getAttribute('aria-pressed')).toBe('false');
+    expect(botao('Campanha').className).not.toContain('border-brand-600');
+    expect(botao('Campanha').className).not.toContain('text-brand-700');
   });
 
   it('aplicar desconto liga os motivos e o rodapé pede o motivo até ele ser escolhido', async () => {
