@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
-import { Check, GraduationCap, RefreshCw, Search, X } from 'lucide-react';
+import { AlertTriangle, Calendar, Check, Clock, GraduationCap, Link2, RefreshCw, Search, X } from 'lucide-react';
 import { buildMatriculaWrites, computeEndsAt, liveRenewalOf, renewalStartProblem } from '../lib/contracts.js';
 import { commitMatricula } from '../lib/contractsWrites.js';
 import { calendarDaysBetween, fromDateInputValue, getSafeDateOrNull, toDateInputValue } from '../lib/dates.js';
 import { fmtBRL } from '../lib/format.js';
+import { confirmBlockOf, reasonHintOf, startStatusOf } from '../lib/contractModalView.js';
 import {
   DISCOUNT_MODES,
   DISCOUNT_REASONS,
@@ -13,7 +14,6 @@ import {
   daysBetween,
   plansWithSales,
   searchPlans,
-  seamLabel,
   seamStart,
   seamWarning,
   topSellingPlans
@@ -36,7 +36,7 @@ import { Dialog, DialogContent, DialogTitle } from '../components/ui/dialog.jsx'
 const shortId = (id) => (id ? String(id).slice(0, 8).toUpperCase() : '');
 const fmtDate = (d) => (d ? d.toLocaleDateString('pt-BR') : '—');
 const monthsLabel = (n) => (Number(n) === 1 ? '1 mês' : `${Number(n) || 0} meses`);
-const monthlyLabel = (value, months) => (Number(months) > 0 ? `${fmtBRL(Number(value) / Number(months))}/mês` : '—');
+const monthlyLabel = (value, months) => (Number(months) > 0 ? `${fmtBRL(Number(value) / Number(months))} por mês` : '—');
 const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
 const daysLabel = (n) => `${n} ${n === 1 ? 'dia' : 'dias'}`;
 
@@ -51,33 +51,109 @@ const renewedAlreadyText = (renewal) => {
   return `Este contrato já foi renovado${detail ? ` (${detail})` : ''}. Abra a ficha do cliente para ver o contrato novo.`;
 };
 
-const StepLabel = ({ n, children, hint }) => (
-  <div className="flex items-center gap-2.5 mb-3">
-    <span className="size-[18px] flex-none rounded-full grid place-items-center text-[10px] font-bold bg-slate-900 text-white dark:bg-white dark:text-slate-900">
-      {n}
-    </span>
-    <span className="text-[13.5px] font-semibold">{children}</span>
-    {hint && <span className="num text-[11.5px] text-slate-500 dark:text-slate-400 whitespace-nowrap">{hint}</span>}
-  </div>
-);
-
-// Rótulo em versalete. Sempre no tom `muted` — a 9.5px ele faz trabalho
-// estrutural, e o tom mais claro não passa contraste nesse tamanho.
-const Caps = ({ children, className }) => (
-  <div className={cn('text-[9.5px] font-bold uppercase tracking-[.08em] text-slate-500 dark:text-slate-400', className)}>
+// Cabeça de cada seção: título, uma linha de apoio e, à direita, o controle da
+// seção (a busca de plano, a data de "Outra data", o valor do desconto).
+const SectionHead = ({ title, hint, children }) => (
+  <div className="flex min-h-9 items-start justify-between gap-4 mb-2.5">
+    <div className="min-w-0">
+      <h3 className="text-[14.5px] font-semibold leading-tight">{title}</h3>
+      {hint && <p className="mt-0.5 text-[12.5px] text-muted-foreground">{hint}</p>}
+    </div>
     {children}
   </div>
 );
 
+// Etiqueta em pílula, minúscula. Texto no passo 700 no claro e 300/400 no escuro.
 const Chip = ({ tone = 'amber', children }) => (
   <span className={cn(
-    'inline-flex items-center h-[19px] px-[7px] rounded-[5px] text-[9.5px] font-bold uppercase tracking-[.05em] whitespace-nowrap',
+    'inline-flex h-6 items-center rounded-full px-2.5 text-[12px] font-semibold whitespace-nowrap',
     tone === 'amber' && 'bg-amber-500/12 text-amber-700 dark:bg-amber-500/16 dark:text-amber-400',
     tone === 'success' && 'bg-emerald-500/10 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400',
     tone === 'brand' && 'bg-brand-50 text-brand-700 dark:bg-brand-500/18 dark:text-brand-300',
     tone === 'slate' && 'bg-slate-500/10 text-slate-600 dark:bg-slate-400/15 dark:text-slate-300'
   )}>{children}</span>
 );
+
+// Faixa de altura fixa embaixo das opções de início: a vigência, ou o aviso do
+// encaixe. Sempre ocupa o mesmo espaço, então o modal não pula quando o texto muda.
+const STATUS_TONE = {
+  ok: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300',
+  warn: 'border border-amber-300/60 bg-amber-50 text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200',
+  bad: 'border border-rose-300/60 bg-rose-50 text-rose-700 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-300'
+};
+function StartStatus({ tone, text }) {
+  const Icon = tone === 'ok' ? Check : AlertTriangle;
+  return (
+    <div
+      data-slot="start-status"
+      role={tone === 'ok' ? undefined : 'status'}
+      className={cn('mt-2.5 flex min-h-[52px] items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-[13px] leading-[1.45]', STATUS_TONE[tone])}
+    >
+      <Icon size={16} className="flex-none" aria-hidden="true" />
+      <p className="min-w-0 text-pretty">{text}</p>
+    </div>
+  );
+}
+
+// Uma linha da lista de planos. O seletor redondo é só desenho: a linha inteira
+// é o botão, com role="radio" para o leitor de tela.
+function PlanRow({ plan, on, tag, onPick }) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={on}
+      onClick={() => onPick(plan.id)}
+      className={cn(
+        'grid min-h-[52px] w-full grid-cols-[18px_minmax(0,1fr)_62px_88px] items-center gap-3 px-3.5 py-2 text-left transition',
+        'focus-visible:outline-none focus-visible:anel-foco focus-visible:ring-inset',
+        on ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-slate-50 dark:hover:bg-white/[0.04]'
+      )}
+    >
+      <span className={cn('relative size-[18px] rounded-full border-[1.5px] bg-card', on ? 'border-brand-600 dark:border-brand-400' : 'border-slate-300 dark:border-white/20')}>
+        {on && <span className="absolute inset-[3px] rounded-full bg-brand-600 dark:bg-brand-400" />}
+      </span>
+      <span className="min-w-0">
+        <span className="flex items-center gap-2">
+          <span className={cn('truncate text-[13.5px] font-semibold', on && 'text-brand-700 dark:text-brand-300')}>{plan.name}</span>
+          {tag && <Chip tone={tag.tone}>{tag.label}</Chip>}
+        </span>
+        <span className="num block text-[12px] text-muted-foreground">{monthlyLabel(plan.value, plan.durationMonths)}</span>
+      </span>
+      <span className="num text-right text-[12.5px] text-muted-foreground">{monthsLabel(plan.durationMonths)}</span>
+      <span className={cn('num text-right font-display text-[15px] font-bold', on && 'text-brand-700 dark:text-brand-300')}>{fmtBRL(plan.value)}</span>
+    </button>
+  );
+}
+
+// Um cartão das opções de início.
+function StartCard({ option, on, onPick }) {
+  const { Icon } = option;
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={on}
+      title={option.tip}
+      onClick={() => onPick(option.id)}
+      className={cn(
+        'flex min-w-0 items-center gap-2.5 rounded-xl border-[1.5px] py-2.5 pl-2.5 pr-3 text-left transition',
+        'focus-visible:outline-none focus-visible:anel-foco',
+        on
+          ? 'border-brand-600 bg-brand-50 dark:border-brand-500 dark:bg-brand-500/15'
+          : 'border-border bg-card hover:border-brand-200 dark:hover:border-brand-500/45'
+      )}
+    >
+      <span className={cn('grid size-[30px] flex-none place-items-center rounded-[9px]', on ? 'bg-brand-600 text-white' : 'bg-slate-100 text-muted-foreground dark:bg-white/[0.06]')}>
+        <Icon size={15} />
+      </span>
+      <span className="min-w-0">
+        <span className={cn('block truncate text-[13.5px] font-semibold', on && 'text-brand-700 dark:text-brand-300')}>{option.label}</span>
+        <span className="num block truncate text-[12.5px] text-muted-foreground">{option.hint}</span>
+      </span>
+    </button>
+  );
+}
 
 function ContractModal({
   lead: liveLead,
@@ -192,7 +268,7 @@ function ContractModal({
 
   // Renovação: o encaixe com o contrato atual. Matrícula: só o desvio de hoje.
   const seam = isRenewal ? computeSeam(refEnd, startsAt) : null;
-  const offsetDays = startsAt ? (daysBetween(startOfToday(), startsAt) || 0) : 0;
+  const offsetDays = startsAt ? (calendarDaysBetween(startOfToday(), startsAt) || 0) : 0;
   // Na sobreposição, o aviso só promete encurtar o contrato atual quando a
   // gravação encurta. Sem o documento dele, ou com ele já encurtado por outra
   // renovação, os dois contratos valem juntos.
@@ -245,11 +321,11 @@ function ContractModal({
     };
   })();
 
-  // Leitura do encaixe embaixo das barras. Com o atual encurtado, diz até
-  // quando ele passa a valer.
-  const seamText = seam && shortenTo
-    ? `O contrato atual passa a terminar em ${fmtDate(shortenTo)}, ${daysLabel(seam.overlapDays)} antes do previsto.`
-    : seamLabel(seam);
+  // A faixa de vigência e o que falta para confirmar (lib/contractModalView.js).
+  const startStatus = startStatusOf({
+    problem: startProblem, warning, severe: warningIsSevere, startsAt, endsAt, seam, planMonths
+  });
+  const blockText = confirmBlockOf({ plan, startsAt, startProblem, hasDiscount, reason });
 
   const pickPlan = (id) => {
     setPlanId(id);
@@ -300,24 +376,34 @@ function ContractModal({
 
   const noPlans = activePlans.length === 0;
 
+  // Os cartões do início. O texto longo (quantos dias do atual a data toma) vai na
+  // dica do mouse e, com a opção marcada, na faixa de vigência.
   const startOptions = [
     emendaDate && {
       id: 'emendar',
-      label: 'Emendar no fim do atual',
-      hint: `começa em ${fmtDate(emendaDate)}`,
-      chip: 'Sem lacuna'
+      label: 'Emendar',
+      hint: fmtDate(emendaDate),
+      tip: 'Começa no dia seguinte ao fim do contrato atual, sem lacuna.',
+      Icon: Link2
     },
     {
       id: 'hoje',
-      label: 'Começar hoje',
-      hint: todayOverlap
-        ? `${fmtDate(today)} · ${todayShortens
-          ? `encerra o atual ${daysLabel(todayOverlap)} antes`
-          : `os dois valem juntos por ${daysLabel(todayOverlap)}`}`
-        : fmtDate(today),
-      chip: isRenewal ? null : 'Padrão'
+      label: 'Hoje',
+      hint: fmtDate(today),
+      tip: todayOverlap
+        ? `Começa hoje. ${todayShortens
+          ? `Encerra o atual ${daysLabel(todayOverlap)} antes.`
+          : `Os dois valem juntos por ${daysLabel(todayOverlap)}.`}`
+        : 'Começa hoje.',
+      Icon: Clock
     },
-    { id: 'outra', label: 'Outra data', hint: 'define manualmente', custom: true }
+    {
+      id: 'outra',
+      label: 'Outra data',
+      hint: startMode === 'outra' && startsAt ? fmtDate(startsAt) : 'Escolher',
+      tip: 'Defina a data manualmente.',
+      Icon: Calendar
+    }
   ].filter(Boolean);
 
   const isUpgrade = isRenewal && plan && (finalValue > refValue || planMonths > refMonths);
@@ -328,17 +414,25 @@ function ContractModal({
   const hadContract = Boolean(lead?.currentContractId && refEnd);
   const Icon = isRenewal ? RefreshCw : GraduationCap;
 
+  const headerSub = isRenewal || hadContract
+    ? `${isRenewal ? 'Contrato atual' : 'Último contrato'}: ${lead?.currentPlanName || 'Contrato'}${lead?.currentContractId ? ` #${shortId(lead.currentContractId)}` : ''}${refValue ? `, ${fmtBRL(refValue)}` : ''}${refEnd ? `, ${refDaysLeft != null && refDaysLeft < 0 ? 'venceu' : 'vence'} em ${fmtDate(refEnd)}` : ''}`
+    : 'Primeira matrícula';
+  const headerChip = isRenewal || hadContract
+    ? (refDaysLeft != null
+      ? <Chip tone={refDaysLeft < 0 ? 'slate' : 'amber'}>{refDaysLeft < 0 ? `sem contrato há ${Math.abs(refDaysLeft)} dias` : `restam ${refDaysLeft} dias`}</Chip>
+      : null)
+    : (lead?.status ? <Chip tone="slate">{lead.status}</Chip> : null);
+
   const writes = isRenewal
     ? [
       `Contrato novo, ligado ao ${lead?.currentContractId ? `#${shortId(lead.currentContractId)}` : 'contrato atual'}`,
       ...(shortenTo ? [`O contrato atual passa a terminar em ${fmtDate(shortenTo)}`] : []),
-      'Resumo no cliente: plano, valor e vigência',
-      'Evento na linha do tempo',
+      'Resumo do cliente e linha do tempo atualizados',
       'Renovação concluída na Meta Diária de hoje'
     ]
     : [
       'Contrato com plano, valor e vigência',
-      'O lead vira cliente — fase Venda no funil',
+      'O lead vira cliente, na fase Venda do funil',
       'Evento na linha do tempo',
       'Conversão atribuída à última aula experimental atendida'
     ];
@@ -348,46 +442,28 @@ function ContractModal({
       <DialogContent
         showCloseButton={false}
         overlayClassName="z-[210]"
-        className="z-[210] block p-0 gap-0 w-[940px] max-w-[calc(100vw-2rem)] sm:max-w-[940px] rounded-2xl overflow-hidden border-border"
+        className="z-[210] block p-0 gap-0 w-[920px] max-w-[calc(100vw-2rem)] sm:max-w-[920px] rounded-2xl overflow-hidden border-border"
       >
-        {/* Cabeçalho: o que está sendo fechado */}
-        <div className="flex items-start gap-4 px-6 pt-5 pb-4 border-b border-slate-100 dark:border-white/[0.06]">
+        {/* Cabeçalho: o que está sendo fechado, numa linha só */}
+        <div className="flex items-center gap-4 px-6 py-[18px] border-b border-border">
           <span className={cn(
-            'size-10 flex-none rounded-xl grid place-items-center',
+            'size-11 flex-none rounded-[14px] grid place-items-center',
             isRenewal
               ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300'
               : 'bg-orange-50 text-[#C2410C] dark:bg-orange-500/15 dark:text-orange-300'
           )}>
-            <Icon size={19} />
+            <Icon size={20} />
           </span>
           <div className="min-w-0 flex-1">
-            <DialogTitle className="font-display text-[20px] font-bold tracking-tight">
-              {isRenewal ? 'Renovar contrato' : 'Matricular cliente'}
-            </DialogTitle>
-            <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
-              <span className="text-[13px] font-semibold">{lead?.name || 'Cliente'}</span>
-              <span className="text-slate-400 dark:text-slate-500">·</span>
-              {isRenewal || hadContract ? (
-                <>
-                  <span className="num text-[12.5px] text-slate-500 dark:text-slate-400">
-                    {!isRenewal && 'último contrato: '}
-                    {lead?.currentPlanName || 'Contrato'}
-                    {lead?.currentContractId ? ` #${shortId(lead.currentContractId)}` : ''}
-                    {refValue ? ` · ${fmtBRL(refValue)}` : ''}
-                    {refEnd ? ` · ${refDaysLeft != null && refDaysLeft < 0 ? 'venceu' : 'vence'} ${fmtDate(refEnd)}` : ''}
-                  </span>
-                  {refDaysLeft != null && (
-                    <Chip tone={refDaysLeft < 0 ? 'slate' : 'amber'}>
-                      {refDaysLeft < 0 ? `sem contrato há ${Math.abs(refDaysLeft)} dias` : `restam ${refDaysLeft} dias`}
-                    </Chip>
-                  )}
-                </>
-              ) : (
-                <>
-                  <span className="text-[12.5px] text-slate-500 dark:text-slate-400">primeira matrícula</span>
-                  {lead?.status && <Chip tone="slate">{lead.status}</Chip>}
-                </>
-              )}
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <DialogTitle className="font-display text-[21px] font-bold tracking-tight">
+                {isRenewal ? 'Renovar contrato' : 'Matricular cliente'}
+              </DialogTitle>
+              {headerChip}
+            </div>
+            <div className="mt-1 flex min-w-0 items-center gap-2 text-[13px] text-muted-foreground">
+              <span className="flex-none font-semibold text-foreground">{lead?.name || 'Cliente'}</span>
+              <span className="num truncate">{headerSub}</span>
             </div>
           </div>
           <button
@@ -395,7 +471,7 @@ function ContractModal({
             onClick={() => onClose && onClose()}
             title="Fechar"
             aria-label="Fechar"
-            className="size-8 flex-none rounded-[9px] grid place-items-center text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/[0.06] dark:hover:text-white transition"
+            className="size-8 flex-none rounded-[9px] grid place-items-center text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/[0.06] dark:hover:text-white transition focus-visible:outline-none focus-visible:anel-foco"
           >
             <X size={16} />
           </button>
@@ -409,176 +485,92 @@ function ContractModal({
             </div>
           </div>
         ) : (
-          <div className="flex items-stretch max-h-[70vh] overflow-y-auto">
+          <div className="grid max-h-[70vh] grid-cols-1 overflow-y-auto md:grid-cols-[minmax(0,1fr)_320px]">
             {/* ===== Decisões ===== */}
-            <div className="flex-1 min-w-0 px-6 pt-5 pb-6">
-              {/* 1. Plano */}
-              <div className="flex items-center gap-2.5 mb-3">
-                <span className="size-[18px] flex-none rounded-full grid place-items-center text-[10px] font-bold bg-slate-900 text-white dark:bg-white dark:text-slate-900">1</span>
-                <span className="text-[13.5px] font-semibold">Plano</span>
-                <span className="text-[11.5px] text-slate-500 dark:text-slate-400 whitespace-nowrap">3 mais vendidos</span>
-                <div className="flex-1"></div>
-                <div className="relative flex-none">
-                  <Search size={13} className="absolute left-2.5 top-[9px] text-slate-400 dark:text-slate-500" />
-                  <input
-                    value={planSearch}
-                    onChange={e => setPlanSearch(e.target.value)}
-                    placeholder="Buscar outro plano"
-                    className="h-[31px] w-[196px] rounded-[9px] border border-border bg-card text-[12px] pl-[27px] pr-7 outline-none focus:border-brand-400 dark:focus:border-brand-500/60 transition"
-                  />
-                  {searchOpen && (
-                    <button
-                      type="button"
-                      onClick={() => setPlanSearch('')}
-                      title="Limpar"
-                      aria-label="Limpar busca"
-                      className="absolute right-1.5 top-1.5 size-5 rounded-md grid place-items-center text-slate-400 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-white/[0.06] dark:hover:text-white transition"
-                    >
-                      <X size={12} />
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {searchOpen ? (
-                <div className="rounded-xl border border-border overflow-hidden shadow-card">
-                  <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-white/[0.03]">
-                    <Caps>{results.length === 1 ? '1 plano' : `${results.length} planos`}</Caps>
-                    <div className="flex-1"></div>
-                    <span className="text-[11px] text-slate-400 dark:text-slate-500 whitespace-nowrap">catálogo ativo · Configurações → Catálogos</span>
+            <div className="flex min-w-0 flex-col gap-[22px] px-6 py-[22px]">
+              {/* Plano */}
+              <section>
+                <SectionHead
+                  title="Plano"
+                  hint={searchOpen ? (results.length === 1 ? '1 plano no catálogo ativo' : `${results.length} planos no catálogo ativo`) : 'Os 3 mais vendidos.'}
+                >
+                  <div className="relative flex-none">
+                    <Search size={13} className="absolute left-3 top-[10px] text-slate-400 dark:text-slate-500" />
+                    <input
+                      value={planSearch}
+                      onChange={e => setPlanSearch(e.target.value)}
+                      placeholder="Buscar outro plano"
+                      aria-label="Buscar outro plano"
+                      className="h-8 w-[210px] rounded-full border border-border bg-card pl-8 pr-8 text-[13px] outline-none transition focus-visible:anel-foco"
+                    />
+                    {searchOpen && (
+                      <button
+                        type="button"
+                        onClick={() => setPlanSearch('')}
+                        title="Limpar"
+                        aria-label="Limpar busca"
+                        className="absolute right-1.5 top-1.5 size-5 rounded-full grid place-items-center text-slate-400 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-white/[0.06] dark:hover:text-white transition"
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
                   </div>
-                  {results.length === 0 ? (
-                    <div className="px-3 py-4 text-[12.5px] text-slate-500 dark:text-slate-400">
-                      Nenhum plano ativo com esse nome. Cadastre em <span className="font-semibold text-slate-700 dark:text-slate-200">Configurações → Catálogos → Planos</span>.
+                </SectionHead>
+                <div
+                  role="radiogroup"
+                  aria-label="Plano"
+                  className="max-h-[208px] min-h-[156px] divide-y divide-border overflow-y-auto rounded-xl border border-border"
+                >
+                  {searchOpen && results.length === 0 ? (
+                    <div className="px-3.5 py-4 text-[13px] text-muted-foreground">
+                      Nenhum plano ativo com esse nome. Cadastre em <span className="font-semibold text-foreground">Configurações → Catálogos → Planos</span>.
                     </div>
-                  ) : results.map(p => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => pickPlan(p.id)}
-                      className={cn(
-                        'flex items-center gap-3 w-full text-left px-3 py-2.5 border-b border-slate-100 dark:border-white/[0.06] last:border-0 transition',
-                        p.id === planId ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-slate-50 dark:hover:bg-white/[0.04]'
-                      )}
-                    >
-                      <span className={cn('min-w-0 flex-[1.4] truncate text-[12.5px] font-semibold', p.id === planId && 'text-brand-700 dark:text-brand-300')}>{p.name}</span>
-                      <span className="num w-[70px] flex-none text-[11.5px] text-slate-500 dark:text-slate-400">{monthsLabel(p.durationMonths)}</span>
-                      <span className="num w-[92px] flex-none text-right text-[12.5px] font-semibold">{fmtBRL(p.value)}</span>
-                      <span className="num w-[92px] flex-none text-right text-[11px] text-slate-500 dark:text-slate-400">{monthlyLabel(p.value, p.durationMonths)}</span>
-                      <span className="w-[86px] flex-none flex justify-end">
-                        {topPlans.some(t => t.id === p.id) && <Chip tone="success">Mais vendido</Chip>}
-                      </span>
-                    </button>
+                  ) : (searchOpen ? results : cards).map(p => {
+                    const top = topPlans.some(t => t.id === p.id);
+                    const tag = searchOpen
+                      ? (top ? { tone: 'success', label: 'Mais vendido' } : null)
+                      : (top ? null : { tone: 'brand', label: 'Buscado' });
+                    return <PlanRow key={p.id} plan={p} on={p.id === planId} tag={tag} onPick={pickPlan} />;
+                  })}
+                </div>
+              </section>
+
+              {/* Início da vigência */}
+              <section>
+                <SectionHead title="Início da vigência" hint="Quando o contrato novo começa a valer?">
+                  {startMode === 'outra' && (
+                    <input
+                      type="date"
+                      value={customStart}
+                      aria-label="Data de início"
+                      onChange={e => { setCustomStart(e.target.value); setStartMode('outra'); }}
+                      className="num h-8 flex-none rounded-lg border border-border bg-card px-2.5 text-[13px] outline-none transition focus-visible:anel-foco"
+                    />
+                  )}
+                </SectionHead>
+                <div
+                  role="radiogroup"
+                  aria-label="Início da vigência"
+                  className={cn('grid gap-2.5', startOptions.length === 3 ? 'grid-cols-3' : 'grid-cols-2')}
+                >
+                  {startOptions.map(o => (
+                    <StartCard key={o.id} option={o} on={o.id === startMode} onPick={setStartMode} />
                   ))}
                 </div>
-              ) : (
-                <div className="flex gap-2">
-                  {cards.map(p => {
-                    const on = p.id === planId;
-                    const offTop = !topPlans.some(t => t.id === p.id);
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => pickPlan(p.id)}
-                        className={cn(
-                          'relative flex-1 min-w-0 text-left px-[11px] pt-[11px] pb-3 rounded-xl border-[1.5px] transition',
-                          on
-                            ? 'border-brand-600 bg-brand-50 dark:border-brand-500 dark:bg-brand-500/15'
-                            : 'border-border bg-card hover:border-brand-200 dark:hover:border-brand-500/45'
-                        )}
-                      >
-                        {offTop && (
-                          <span className="absolute -top-[7px] right-2">
-                            <Chip tone="brand">Buscado</Chip>
-                          </span>
-                        )}
-                        <div className={cn('truncate text-[12.5px] font-semibold', on && 'text-brand-700 dark:text-brand-300')}>{p.name}</div>
-                        <div className="num text-[10.5px] text-slate-500 dark:text-slate-400 mt-px">
-                          {monthsLabel(p.durationMonths)} · {p.sold === 1 ? '1 venda' : `${p.sold} vendas`}
-                        </div>
-                        <div className={cn('num font-display text-[16px] font-bold tracking-tight mt-2', on && 'text-brand-700 dark:text-brand-300')}>{fmtBRL(p.value)}</div>
-                        <div className="num text-[10.5px] text-slate-500 dark:text-slate-400 mt-px">{monthlyLabel(p.value, p.durationMonths)}</div>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+                <StartStatus tone={startStatus.tone} text={startStatus.text} />
+              </section>
 
-              {/* 2. Início da vigência */}
-              <div className="mt-6">
-                <StepLabel n={2}>Início da vigência</StepLabel>
-                <div className="flex flex-col gap-[7px]">
-                  {startOptions.map(o => {
-                    const on = o.id === startMode;
-                    return (
-                      <button
-                        key={o.id}
-                        type="button"
-                        onClick={() => setStartMode(o.id)}
-                        className={cn(
-                          'flex items-center gap-[11px] text-left px-3 py-2.5 rounded-[11px] border-[1.5px] transition',
-                          on
-                            ? 'border-brand-600 bg-brand-50 dark:border-brand-500 dark:bg-brand-500/15'
-                            : 'border-border bg-card hover:border-brand-200 dark:hover:border-brand-500/45'
-                        )}
-                      >
-                        <span className={cn(
-                          'size-4 flex-none rounded-full border-[1.5px] grid place-items-center',
-                          on ? 'border-brand-600 dark:border-brand-400' : 'border-slate-300 dark:border-white/20'
-                        )}>
-                          {on && <span className="size-2 rounded-full bg-brand-600 dark:bg-brand-400"></span>}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <div className={cn('text-[12.5px] font-semibold', on && 'text-brand-700 dark:text-brand-300')}>{o.label}</div>
-                          <div className="num text-[11px] text-slate-500 dark:text-slate-400 mt-px">{o.hint}</div>
-                        </div>
-                        {o.custom && (
-                          <input
-                            type="date"
-                            value={customStart}
-                            onChange={e => { setCustomStart(e.target.value); setStartMode('outra'); }}
-                            onClick={e => { e.stopPropagation(); setStartMode('outra'); }}
-                            className="num flex-none h-8 rounded-lg border border-border bg-card text-[12px] px-2.5 outline-none focus:border-brand-400 transition"
-                          />
-                        )}
-                        {o.chip && <Chip tone="success">{o.chip}</Chip>}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {startProblem && (
-                  <div className="flex items-start gap-2.5 mt-2.5 px-3 py-2.5 rounded-[11px] border border-rose-300/60 bg-rose-500/[0.07] dark:border-rose-500/40 dark:bg-rose-500/10">
-                    <p className="min-w-0 flex-1 text-[12px] leading-[1.5] font-semibold text-rose-700 dark:text-rose-300 text-pretty">{startProblem}</p>
-                  </div>
-                )}
-
-                {warning && (
-                  <div className={cn(
-                    'flex items-start gap-2.5 mt-2.5 px-3 py-2.5 rounded-[11px] border',
-                    warningIsSevere
-                      ? 'border-rose-300/60 bg-rose-500/[0.07] dark:border-rose-500/40 dark:bg-rose-500/10'
-                      : 'border-amber-300/60 bg-amber-500/[0.09] dark:border-amber-500/40 dark:bg-amber-500/10'
-                  )}>
-                    <span className={cn(
-                      'flex-none mt-0.5',
-                      warningIsSevere ? 'text-rose-700 dark:text-rose-400' : 'text-amber-700 dark:text-amber-400'
-                    )}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" />
-                      </svg>
+              {/* Valor e desconto */}
+              <section>
+                <SectionHead title="Valor e desconto" hint={plan ? `Tabela de ${fmtBRL(listValue)}. Dê um desconto se foi combinado.` : undefined}>
+                  {hasDiscount && (
+                    <span className="num flex-none self-center rounded-full bg-emerald-50 px-3 py-1 text-[12.5px] font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+                      − {fmtBRL(discountValue)} ({discountPct}%)
                     </span>
-                    <p className="min-w-0 flex-1 text-[12px] leading-[1.5] text-slate-600 dark:text-slate-300 text-pretty">{warning}</p>
-                  </div>
-                )}
-              </div>
-
-              {/* 3. Valor */}
-              <div className="mt-6">
-                <StepLabel n={3} hint={plan ? `tabela ${fmtBRL(listValue)}` : undefined}>Valor</StepLabel>
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  <div className="flex gap-0.5 p-[3px] rounded-[10px] bg-slate-100 dark:bg-white/[0.06]">
+                  )}
+                </SectionHead>
+                <div className="flex h-10 items-center gap-2.5">
+                  <div className="flex gap-0.5 rounded-full bg-slate-100 p-[3px] dark:bg-white/[0.06]" role="group" aria-label="Tipo de desconto">
                     {[
                       { id: DISCOUNT_MODES.NENHUM, label: 'Sem desconto' },
                       { id: DISCOUNT_MODES.PERCENT, label: '%' },
@@ -588,12 +580,13 @@ function ContractModal({
                       <button
                         key={d.id}
                         type="button"
+                        aria-pressed={discountMode === d.id}
                         onClick={() => { setDiscountMode(d.id); setDiscountInput(''); setReason(null); }}
                         className={cn(
-                          'h-[30px] px-[11px] rounded-lg text-[12px] font-semibold whitespace-nowrap transition',
+                          'h-8 rounded-full px-3.5 text-[13px] font-semibold whitespace-nowrap transition focus-visible:outline-none focus-visible:anel-foco',
                           discountMode === d.id
-                            ? 'bg-card text-slate-900 dark:text-white shadow-card'
-                            : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                            ? 'bg-card text-foreground shadow-card'
+                            : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
                         )}
                       >{d.label}</button>
                     ))}
@@ -601,213 +594,204 @@ function ContractModal({
 
                   {discountMode !== DISCOUNT_MODES.NENHUM && (
                     <div className="relative flex-none">
-                      <span className="num absolute left-3 top-[9px] text-[12.5px] font-semibold text-slate-500 dark:text-slate-400">
+                      <span className="num absolute left-3 top-[11px] text-[13px] font-semibold text-muted-foreground">
                         {discountMode === DISCOUNT_MODES.PERCENT ? '%' : 'R$'}
                       </span>
                       <input
                         type="text"
                         inputMode="decimal"
                         value={discountInput}
+                        aria-label="Valor do desconto"
                         onChange={e => setDiscountInput(e.target.value)}
                         placeholder={discountMode === DISCOUNT_MODES.PERCENT ? '10' : discountMode === DISCOUNT_MODES.REAIS ? '150' : '1.240'}
                         className={cn(
-                          'num w-[132px] h-9 rounded-[10px] border-[1.5px] border-brand-200 dark:border-brand-500/45 bg-card text-[13.5px] font-semibold pr-3 outline-none focus:border-brand-600 dark:focus:border-brand-400 transition',
+                          'num h-10 w-[128px] rounded-[11px] border-[1.5px] border-brand-200 bg-card pr-3 text-[14.5px] font-semibold outline-none transition dark:border-brand-500/45 focus:border-brand-600 dark:focus:border-brand-400',
                           discountMode === DISCOUNT_MODES.PERCENT ? 'pl-7' : 'pl-[38px]'
                         )}
                       />
                     </div>
                   )}
-
-                  {hasDiscount && (
-                    <span className="num text-[12px] font-semibold text-emerald-700 dark:text-emerald-400 whitespace-nowrap">
-                      − {fmtBRL(discountValue)} ({discountPct}%)
-                    </span>
-                  )}
                 </div>
 
-                {hasDiscount && (
-                  <div className="mt-2.5">
-                    <Caps className="mb-2">Motivo do desconto</Caps>
-                    <div className="flex flex-wrap gap-1.5">
-                      {DISCOUNT_REASONS.map(r => (
-                        <button
-                          key={r}
-                          type="button"
-                          onClick={() => setReason(r)}
-                          className={cn(
-                            'h-[29px] px-[11px] rounded-lg border-[1.5px] text-[12px] font-semibold whitespace-nowrap transition',
-                            r === reason
-                              ? 'border-brand-600 bg-brand-50 text-brand-700 dark:border-brand-500 dark:bg-brand-500/15 dark:text-brand-300'
-                              : 'border-border bg-card text-slate-600 dark:text-slate-300 hover:border-brand-200 dark:hover:border-brand-500/45'
-                          )}
-                        >{r}</button>
-                      ))}
-                    </div>
+                <div className="mt-3.5">
+                  <span className="text-[12.5px] text-muted-foreground">
+                    Motivo do desconto
+                    {reasonHintOf({ hasDiscount, reason }) && (
+                      <span className={cn('ml-1', hasDiscount ? 'font-semibold text-amber-700 dark:text-amber-300' : 'text-slate-400 dark:text-slate-500')}>
+                        ({reasonHintOf({ hasDiscount, reason })})
+                      </span>
+                    )}
+                  </span>
+                  <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Motivo do desconto">
+                    {DISCOUNT_REASONS.map(r => (
+                      <button
+                        key={r}
+                        type="button"
+                        disabled={!hasDiscount}
+                        aria-pressed={r === reason}
+                        onClick={() => setReason(r)}
+                        className={cn(
+                          'h-[34px] rounded-full border px-3.5 text-[13px] font-medium whitespace-nowrap transition focus-visible:outline-none focus-visible:anel-foco',
+                          'disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-45 dark:disabled:bg-white/[0.03]',
+                          r === reason
+                            ? 'border-brand-600 bg-brand-50 font-semibold text-brand-700 dark:border-brand-500 dark:bg-brand-500/15 dark:text-brand-300'
+                            : 'border-border bg-card hover:border-brand-200 dark:hover:border-brand-500/45'
+                        )}
+                      >{r}</button>
+                    ))}
                   </div>
-                )}
-              </div>
+                </div>
+              </section>
             </div>
 
             {/* ===== Recibo ===== */}
-            <div className="w-[344px] flex-none border-l border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-white/[0.03] flex flex-col">
-              <div className="px-[22px] pt-5 pb-[18px]">
-                <Caps>{isRenewal ? 'Novo contrato' : 'Nova matrícula'}</Caps>
-
-                <div className="flex items-center gap-2.5 mt-2.5 flex-wrap">
-                  <span className="font-display text-[22px] font-bold tracking-tight">{plan?.name || '—'}</span>
+            <aside aria-label="Recibo" className="flex flex-col border-t border-border bg-slate-50 dark:bg-white/[0.03] md:border-l md:border-t-0">
+              <div className="px-[22px] pt-5">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <span className="font-display text-[21px] font-bold leading-tight tracking-tight">{plan?.name || '—'}</span>
                   {isUpgrade && <Chip tone="success">{upgradeLabel}</Chip>}
                 </div>
-                <div className="num text-[11.5px] text-slate-500 dark:text-slate-400 mt-1">
+                <div className="num mt-1 text-[12.5px] text-muted-foreground">
                   {monthsLabel(planMonths)}
-                  {isRenewal && lead?.currentPlanName ? ` · renovação de ${lead.currentPlanName}` : ''}
+                  {isRenewal && lead?.currentPlanName ? `, renovação de ${lead.currentPlanName}` : ''}
                   {isRenewal && lead?.currentContractId ? ` #${shortId(lead.currentContractId)}` : ''}
                 </div>
 
                 {/* Vigência */}
-                <div className="mt-[18px] pt-4 border-t border-border">
-                  <Caps className="mb-3">Vigência</Caps>
+                <div className="mt-4 border-t border-border pt-3.5">
+                  <div className="mb-2.5 text-[12.5px] text-muted-foreground">Vigência</div>
                   {isRenewal ? (
-                    <>
-                      <div className="flex flex-col gap-2.5">
-                        <div>
-                          <div className="flex items-baseline justify-between gap-2">
-                            <span className="text-[11.5px] text-slate-500 dark:text-slate-400 truncate">Atual · {lead?.currentPlanName || '—'}</span>
-                            <span className="num text-[10.5px] text-slate-400 dark:text-slate-500 flex-none">até {fmtDate(shortenTo || refEnd)}</span>
-                          </div>
-                          <div className="relative h-2 mt-1 rounded-full bg-slate-200/70 dark:bg-white/[0.06]">
-                            {bars && (
-                              <span
-                                className={cn('absolute top-0 bottom-0', shortenTo ? 'rounded-l-full' : 'rounded-full', 'bg-slate-300 dark:bg-slate-600')}
-                                style={{ left: `${bars.curLeft}%`, width: `${bars.curWidth}%` }}
-                              />
-                            )}
-                            {bars && shortenTo && (
-                              <span
-                                title="Dias que o contrato atual perde"
-                                className="absolute top-0 bottom-0 rounded-r-full bg-rose-200 dark:bg-rose-500/35"
-                                style={{ left: `${bars.lostLeft}%`, width: `${bars.lostWidth}%` }}
-                              />
-                            )}
-                          </div>
+                    <div className="flex flex-col gap-2.5">
+                      <div>
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="truncate text-[12.5px] text-muted-foreground">Atual, {lead?.currentPlanName || '—'}</span>
+                          <span className="num flex-none text-[12px] text-slate-400 dark:text-slate-500">até {fmtDate(shortenTo || refEnd)}</span>
                         </div>
-                        <div>
-                          <div className="flex items-baseline justify-between gap-2">
-                            <span className="text-[11.5px] font-semibold text-brand-700 dark:text-brand-300 truncate">Novo · {plan?.name || '—'}</span>
-                            <span className="num text-[10.5px] text-slate-500 dark:text-slate-400 flex-none">{fmtDate(startsAt)} → {fmtDate(endsAt)}</span>
-                          </div>
-                          <div className="relative h-2 mt-1 rounded-full bg-slate-200/70 dark:bg-white/[0.06]">
-                            {bars && (
-                              <span
-                                className="absolute top-0 bottom-0 rounded-full bg-brand-600"
-                                style={{ left: `${bars.newLeft}%`, width: `${bars.newWidth}%` }}
-                              />
-                            )}
-                          </div>
+                        <div className="relative mt-1 h-2 rounded-full bg-slate-200/70 dark:bg-white/[0.06]">
+                          {bars && (
+                            <span
+                              className={cn('absolute bottom-0 top-0', shortenTo ? 'rounded-l-full' : 'rounded-full', 'bg-slate-300 dark:bg-slate-600')}
+                              style={{ left: `${bars.curLeft}%`, width: `${bars.curWidth}%` }}
+                            />
+                          )}
+                          {bars && shortenTo && (
+                            <span
+                              title="Dias que o contrato atual perde"
+                              className="absolute bottom-0 top-0 rounded-r-full bg-rose-200 dark:bg-rose-500/35"
+                              style={{ left: `${bars.lostLeft}%`, width: `${bars.lostWidth}%` }}
+                            />
+                          )}
                         </div>
                       </div>
-                      {seam && (
-                        <div className={cn(
-                          'num text-[11px] mt-2.5',
-                          seam.kind === SEAM_KIND.EMENDA && 'text-emerald-700 dark:text-emerald-400',
-                          seam.kind === SEAM_KIND.LACUNA && 'text-amber-700 dark:text-amber-400',
-                          seam.kind === SEAM_KIND.SOBREPOSICAO && 'text-rose-700 dark:text-rose-400'
-                        )}>{seamText}</div>
-                      )}
-                    </>
+                      <div>
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="truncate text-[12.5px] font-semibold text-brand-700 dark:text-brand-300">Novo, {plan?.name || '—'}</span>
+                          <span className="num flex-none text-[12px] text-muted-foreground">{fmtDate(startsAt)} a {fmtDate(endsAt)}</span>
+                        </div>
+                        <div className="relative mt-1 h-2 rounded-full bg-slate-200/70 dark:bg-white/[0.06]">
+                          {bars && (
+                            <span
+                              className="absolute bottom-0 top-0 rounded-full bg-brand-600"
+                              style={{ left: `${bars.newLeft}%`, width: `${bars.newWidth}%` }}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   ) : (
                     <div className="flex flex-col gap-[7px]">
                       <div className="flex items-baseline justify-between gap-2.5">
-                        <span className="text-[11.5px] text-slate-500 dark:text-slate-400">Início</span>
-                        <span className="num text-[12px] font-semibold">{fmtDate(startsAt)}</span>
+                        <span className="text-[12.5px] text-muted-foreground">Início</span>
+                        <span className="num text-[13px] font-semibold">{fmtDate(startsAt)}</span>
                       </div>
-                      <div className="relative h-2 rounded-full overflow-hidden bg-slate-200/70 dark:bg-white/[0.06]">
+                      <div className="relative h-2 overflow-hidden rounded-full bg-slate-200/70 dark:bg-white/[0.06]">
                         <span className="absolute inset-0 rounded-full bg-brand-600" />
                       </div>
                       <div className="flex items-baseline justify-between gap-2.5">
-                        <span className="text-[11.5px] text-slate-500 dark:text-slate-400">Término</span>
-                        <span className="num text-[12px] font-semibold text-brand-700 dark:text-brand-300">{fmtDate(endsAt)}</span>
-                      </div>
-                      <div className="num text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                        {monthsLabel(planMonths)} de vigência{offsetDays === 0 ? ', a partir de hoje' : ''}
+                        <span className="text-[12.5px] text-muted-foreground">Término</span>
+                        <span className="num text-[13px] font-semibold text-brand-700 dark:text-brand-300">{fmtDate(endsAt)}</span>
                       </div>
                     </div>
                   )}
                 </div>
 
                 {/* Conta */}
-                <div className="mt-[18px] pt-4 border-t border-border flex flex-col gap-[7px]">
+                <div className="mt-4 flex flex-col gap-[7px] border-t border-border pt-3.5">
                   <div className="flex items-baseline justify-between gap-2.5">
-                    <span className="text-[12px] text-slate-500 dark:text-slate-400">Tabela</span>
-                    <span className="num text-[12.5px] text-slate-600 dark:text-slate-300">{fmtBRL(listValue)}</span>
-                  </div>
-                  {hasDiscount && (
-                    <div className="flex items-baseline justify-between gap-2.5">
-                      <span className="text-[12px] text-slate-500 dark:text-slate-400 truncate">
-                        Desconto{reason ? ` · ${reason.toLowerCase()}` : ''}
-                      </span>
-                      <span className="num text-[12.5px] font-semibold text-emerald-700 dark:text-emerald-400 flex-none">− {fmtBRL(discountValue)}</span>
-                    </div>
-                  )}
-                  <div className="flex items-baseline justify-between gap-2.5 pt-2 border-t border-border">
-                    <span className="text-[12.5px] font-semibold">Valor do contrato</span>
-                    <span className="num font-display text-[22px] font-bold tracking-tight leading-none">{fmtBRL(finalValue)}</span>
+                    <span className="text-[12.5px] text-muted-foreground">Tabela</span>
+                    <span className="num text-[13px]">{fmtBRL(listValue)}</span>
                   </div>
                   <div className="flex items-baseline justify-between gap-2.5">
-                    <span className="text-[11.5px] text-slate-500 dark:text-slate-400">Equivalente mensal</span>
-                    <span className="num text-[11.5px] text-slate-500 dark:text-slate-400">{monthlyLabel(finalValue, planMonths)}</span>
+                    <span className="truncate text-[12.5px] text-muted-foreground">
+                      Desconto{hasDiscount && reason ? `, ${reason.toLowerCase()}` : ''}
+                    </span>
+                    {hasDiscount
+                      ? <span className="num flex-none text-[13px] font-semibold text-emerald-700 dark:text-emerald-400">− {fmtBRL(discountValue)}</span>
+                      : <span className="text-[13px] text-muted-foreground">Nenhum</span>}
+                  </div>
+                  <div className="flex items-baseline justify-between gap-2.5 border-t border-border pt-2.5">
+                    <span className="text-[13px] font-semibold">Valor do contrato</span>
+                    <span className="num font-display text-[24px] font-bold leading-none tracking-tight">{fmtBRL(finalValue)}</span>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-2.5">
+                    <span className="text-[12.5px] text-muted-foreground">{isRenewal && oldMonthly > 0 ? 'Mensal novo' : 'Por mês'}</span>
+                    <span className="num text-[12.5px]">
+                      {fmtBRL(newMonthly)}
+                      {isRenewal && oldMonthly > 0 && deltaPct !== 0 && (
+                        <span className={cn('ml-1 text-[12px] font-bold', deltaPct > 0 ? 'text-amber-700 dark:text-amber-400' : 'text-emerald-700 dark:text-emerald-400')}>
+                          {deltaPct > 0 ? '+' : ''}{deltaPct}%
+                        </span>
+                      )}
+                    </span>
                   </div>
                   {isRenewal && oldMonthly > 0 && (
                     <div className="flex items-baseline justify-between gap-2.5">
-                      <span className="text-[11.5px] text-slate-500 dark:text-slate-400">Hoje paga</span>
-                      <span className={cn(
-                        'num text-[11.5px] font-semibold',
-                        deltaPct > 0 ? 'text-amber-700 dark:text-amber-400'
-                          : deltaPct < 0 ? 'text-emerald-700 dark:text-emerald-400'
-                            : 'text-slate-500 dark:text-slate-400'
-                      )}>
-                        {fmtBRL(oldMonthly)} → {fmtBRL(newMonthly)}{deltaPct === 0 ? '' : ` (${deltaPct > 0 ? '+' : ''}${deltaPct}%)`}
-                      </span>
+                      <span className="text-[12.5px] text-muted-foreground">Mensal atual</span>
+                      <span className="num text-[12.5px] text-muted-foreground">{fmtBRL(oldMonthly)}</span>
                     </div>
                   )}
                 </div>
               </div>
 
-              <div className="flex-1"></div>
+              <div className="flex-1" />
 
               {/* O que será gravado */}
-              <div className="px-[22px] pt-4 pb-[18px] border-t border-border">
-                <Caps className="mb-2.5">Ao confirmar</Caps>
+              <div className="mt-4 border-t border-border px-[22px] pb-[18px] pt-3.5">
+                <div className="mb-2 text-[12.5px] text-muted-foreground">Ao confirmar</div>
                 <div className="flex flex-col gap-1.5">
                   {writes.map(text => (
                     <div key={text} className="flex items-start gap-2">
-                      <Check size={13} strokeWidth={2.4} className="flex-none mt-0.5 text-emerald-600 dark:text-emerald-400" />
-                      <span className="text-[11.5px] leading-[1.45] text-slate-600 dark:text-slate-300 text-pretty">{text}</span>
+                      <Check size={13} strokeWidth={2.4} className="mt-0.5 flex-none text-emerald-600 dark:text-emerald-400" />
+                      <span className="text-pretty text-[12px] leading-[1.45] text-slate-600 dark:text-slate-300">{text}</span>
                     </div>
                   ))}
                 </div>
               </div>
-            </div>
+            </aside>
           </div>
         )}
 
-        {/* Rodapé */}
-        <div className="flex items-center gap-2.5 px-6 py-3.5 border-t border-slate-100 dark:border-white/[0.06]">
-          <span className="num text-[11.5px] text-slate-500 dark:text-slate-400 truncate">
-            {plan && startsAt && endsAt ? `${plan.name} · ${fmtDate(startsAt)} → ${fmtDate(endsAt)} · ${fmtBRL(finalValue)}` : ''}
-          </span>
+        {/* Rodapé: o que falta, à esquerda; as ações, à direita */}
+        <div data-slot="contract-footer" className="flex min-h-[62px] items-center gap-2.5 border-t border-border px-6 py-3.5">
+          {blockText && (
+            <span role="status" className="inline-flex items-center gap-1.5 text-[13px] font-medium text-amber-700 dark:text-amber-300">
+              <AlertTriangle size={15} aria-hidden="true" />
+              {blockText}
+            </span>
+          )}
           <div className="flex-1"></div>
           <button
             type="button"
             onClick={() => onClose && onClose()}
             disabled={submitting}
-            className="h-[38px] px-4 rounded-[10px] text-[13px] font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/[0.06] dark:hover:text-white whitespace-nowrap transition disabled:opacity-50"
+            className="h-[38px] px-4 rounded-[10px] text-[13px] font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/[0.06] dark:hover:text-white whitespace-nowrap transition disabled:opacity-50 focus-visible:outline-none focus-visible:anel-foco"
           >Cancelar</button>
           <button
             type="button"
             onClick={handleConfirm}
-            disabled={submitting || noPlans}
+            disabled={submitting || noPlans || Boolean(blockText)}
             className={cn(
-              'inline-flex items-center gap-[7px] h-[38px] px-[17px] rounded-[10px] text-white text-[13px] font-semibold whitespace-nowrap transition disabled:opacity-50',
+              'inline-flex items-center gap-[7px] h-[38px] px-[17px] rounded-[10px] text-white text-[13px] font-semibold whitespace-nowrap transition disabled:opacity-50 focus-visible:outline-none focus-visible:anel-foco focus-visible:ring-offset-2 focus-visible:ring-offset-background',
               isRenewal ? 'bg-brand-600 hover:bg-brand-700' : 'bg-[#C2410C] hover:bg-[#9A3412]'
             )}
           >
