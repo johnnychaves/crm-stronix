@@ -567,10 +567,9 @@ function ContractModal({
           <button
             type="button"
             onClick={() => onClose && onClose()}
-            disabled={submitting}
             title="Fechar"
             aria-label="Fechar"
-            className="size-8 flex-none rounded-[9px] grid place-items-center text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/[0.06] dark:hover:text-white transition disabled:opacity-50 focus-visible:outline-none focus-visible:anel-foco"
+            className="size-8 flex-none rounded-[9px] grid place-items-center text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/[0.06] dark:hover:text-white transition focus-visible:outline-none focus-visible:anel-foco"
           >
             <X size={16} />
           </button>

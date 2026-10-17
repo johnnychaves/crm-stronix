@@ -780,7 +780,7 @@ describe('ContractModal, durante o envio o formulário', () => {
 });
 
 describe('ContractModal, durante o envio', () => {
-  it('o Confirmar não perde o foco, um segundo clique não grava de novo e o X do cabeçalho fica desligado', async () => {
+  it('o Confirmar não perde o foco e um segundo clique não grava de novo; o Cancelar fica desligado', async () => {
     commitMatricula.mockImplementationOnce(() => new Promise(() => {}));
     await montar({ lead: leadNovo, mode: 'matricula' });
     const confirmar = botao('Confirmar matrícula');
@@ -792,10 +792,31 @@ describe('ContractModal, durante o envio', () => {
     expect(confirmar.disabled).toBe(false);
     expect(confirmar.getAttribute('aria-disabled')).toBe('true');
     expect(document.activeElement).toBe(confirmar);
-    expect(document.body.querySelector('button[aria-label="Fechar"]').disabled).toBe(true);
     expect(botao('Cancelar').disabled).toBe(true);
 
     await clicar(confirmar);
+    expect(commitMatricula).toHaveBeenCalledTimes(1);
+  });
+
+  // Como na main: com o cache persistente do Firestore e a internet fora, o batch.commit()
+  // fica pendente até a rede voltar, e o X é a única saída. A gravação segue na fila, e
+  // se falhar o toast de erro aparece fora do modal. Esc, clique fora e Cancelar seguem travados.
+  it('o X do cabeçalho continua ligado durante o envio e fecha o modal, sem mudar o nome nem o foco', async () => {
+    const onClose = vi.fn();
+    commitMatricula.mockImplementationOnce(() => new Promise(() => {}));
+    await montar({ lead: leadNovo, mode: 'matricula', onClose });
+    await clicar(botao('Confirmar matrícula'));
+    expect(commitMatricula).toHaveBeenCalledTimes(1);
+
+    const x = document.body.querySelector('button[aria-label="Fechar"]');
+    expect(x.disabled).toBe(false);
+    expect(x.getAttribute('title')).toBe('Fechar');
+    x.focus();
+    expect(document.activeElement).toBe(x);
+
+    await clicar(x);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    // A gravação em andamento não é cancelada nem repetida.
     expect(commitMatricula).toHaveBeenCalledTimes(1);
   });
 
