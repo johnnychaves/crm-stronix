@@ -494,12 +494,17 @@ export function screenKey(route) {
 
 // Título da aba do navegador: tela primeiro, para distinguir várias abas.
 // Nunca leva nome de lead, porque o histórico do navegador guarda o título.
-export function documentTitle({ screen, tenantName } = {}) {
+// `urgent` é a contagem de tarefas urgentes da Meta (metaFoco.urgentCount): só
+// um número, entre parênteses, na frente. Zero ou valor que não seja número
+// positivo deixa o título como estava.
+export function documentTitle({ screen, tenantName, urgent } = {}) {
   const parts = [];
   if (own(SCREENS, screen)) parts.push(SCREENS[screen].title);
   if (tenantName) parts.push(tenantName);
   parts.push('STRONILEAD');
-  return parts.join(' · ');
+  const base = parts.join(' · ');
+  const n = typeof urgent === 'number' && Number.isFinite(urgent) ? Math.floor(urgent) : 0;
+  return n > 0 ? `(${n > 99 ? '99+' : n}) ${base}` : base;
 }
 
 // Molde do endereço para o Sentry: '/:tenant' no lugar da academia e ':leadId'
