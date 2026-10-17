@@ -9,7 +9,7 @@ import { isMetaParticipant } from '../lib/acesso.js';
 import { logInteraction } from '../lib/interactions.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { stageChangeFields } from '../lib/stageMove.js';
-import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, computeVolumeInRange, countMetaDaysInMonth, volumeTargetFor, volumeBreakdownLabel, tomorrowAppointmentsOf, slotTotals } from '../lib/dailyGoal.js';
+import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, computeVolumeInRange, countMetaDaysInMonth, volumeTargetFor, volumeBreakdownLabel, tomorrowAppointmentsOf, slotTotals, newLeadHandledPatch } from '../lib/dailyGoal.js';
 import { followUpChannelOf } from '../lib/contactGoal.js';
 import { futureInstant } from '../lib/dates.js';
 import { computeDayAgenda } from '../lib/dayAgenda.js';
@@ -1386,8 +1386,8 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
     const taskKey = `${lead.id}:${categorySlug}`;
     if (!claimTask(taskKey)) return;
     try {
-      // O Concluir do Novo lead trata o lead: o newLeadHandledAt impede que ele
-      // vire Atrasado quando a janela de 24h fechar.
+      // O Concluir do Novo lead trata o lead (newLeadHandledPatch): ele não vira
+      // Atrasado quando a janela de 24h fechar.
       await logInteraction(db, lead, appUser, {
         text: noteText
           ? `✅ ${categoryLabel} — Meta Diária. Obs: ${noteText}`
@@ -1395,7 +1395,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
         type: 'daily_goal_done',
         dailyGoalCategory: categorySlug,
         ...goalOwnerFields(lead, categorySlug)
-      }, categorySlug === DAILY_GOAL_CATEGORIES.NOVO_24H ? { newLeadHandledAt: new Date() } : null);
+      }, newLeadHandledPatch(categorySlug));
       toast.success(`Tarefa "${categoryLabel}" concluída.`);
     } catch (err) {
       console.error(err);

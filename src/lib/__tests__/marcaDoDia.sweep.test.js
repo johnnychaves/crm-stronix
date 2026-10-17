@@ -118,7 +118,10 @@ describe('o Reagendar do card só abre o pop-up', () => {
 // O Concluir do Novo lead trata o lead: sem o newLeadHandledAt, ele voltava
 // como Atrasado quando a janela de 24h fechasse (newLeadDueOf).
 describe('o Concluir do Novo lead marca o lead como tratado', () => {
-  it('handleGoalDone grava o newLeadHandledAt no Novo lead', () => {
-    expect(corpoDe('handleGoalDone')).toContain('categorySlug === DAILY_GOAL_CATEGORIES.NOVO_24H ? { newLeadHandledAt: new Date() } : null');
+  // A regra de qual categoria grava o campo mora no newLeadHandledPatch, com
+  // teste próprio (dailyGoal.test.js). Aqui só se confere que o Concluir passa
+  // o patch dele, com a categoria da tarefa.
+  it('handleGoalDone grava o newLeadHandledPatch da categoria', () => {
+    expect(corpoDe('handleGoalDone')).toContain('newLeadHandledPatch(categorySlug)');
   });
 });

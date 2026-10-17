@@ -186,6 +186,12 @@ export function newLeadDueOf(lead) {
   return new Date(created.getTime() + NEW_LEAD_WINDOW_MS);
 }
 
+// O que o Concluir da Meta grava no lead, além da marca: no Novo lead, o sinal
+// de que ele foi tratado (newLeadHandledAt), senão ele voltaria como Atrasado
+// quando a janela de 24h fechasse. Nas outras categorias, nada.
+export const newLeadHandledPatch = (categorySlug, at = new Date()) =>
+  (categorySlug === DAILY_GOAL_CATEGORIES.NOVO_24H ? { newLeadHandledAt: at } : null);
+
 // O prazo do próximo contato: o nextFollowUp, ou o do lead novo sem próximo passo.
 export const followUpDueOf = (lead) => lead?.nextFollowUp || newLeadDueOf(lead);
 

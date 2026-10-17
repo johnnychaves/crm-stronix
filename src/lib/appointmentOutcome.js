@@ -12,9 +12,12 @@
 // aula no lead dele, e o crédito fica com essa pessoa mesmo que o próximo
 // agendamento passe a tarefa do lead para outra.
 //
-// O que o Compareceu e o Cancelou tiram do lead é o consumedFields
-// (outcomeCorrection.js): o eco do agendamento no próximo contato e, no
-// Cancelou, o agendamento. Mesma regra para lead e cliente.
+// O que o Compareceu e o Cancelou mudam no lead é o consumedFields
+// (outcomeCorrection.js): tira o eco do agendamento no próximo contato e, no
+// Cancelou, o agendamento, e o Cancelou grava o newLeadHandledAt, que tira o
+// lead novo da regra de Atrasados (newLeadDueOf). Mesma regra para lead e
+// cliente. Caminho novo que cancele um agendamento passa pelo consumedFields,
+// senão o lead novo volta a Atrasados contado do cadastro.
 //
 // Flags:
 //   promote — em comparecimento de visita/aula, empurra o lead para a etapa

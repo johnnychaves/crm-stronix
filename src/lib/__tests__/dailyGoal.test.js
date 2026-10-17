@@ -21,7 +21,8 @@ import {
   DG_CATEGORY_META,
   COLOR_TONES,
   tomorrowAppointmentsOf,
-  newLeadDueOf
+  newLeadDueOf,
+  newLeadHandledPatch
 } from '../dailyGoal.js';
 import { DAILY_GOAL_CATEGORIES } from '../leads.js';
 import { contactDone, contactReschedule } from '../contactGoal.js';
@@ -1343,5 +1344,16 @@ describe('lead novo sem próximo passo vira Atrasado', () => {
     expect(overdueDaysOf(novo({ createdAt: new Date(2026, 9, 17, 8, 0) }), AGORA)).toBe(2);
     // No mesmo dia em que a janela fecha, ainda não tem dia de atraso.
     expect(overdueDaysOf(novo(), AGORA)).toBe(0);
+  });
+});
+
+// O Concluir da Meta grava no Novo lead que ele foi tratado, e em nenhuma
+// outra categoria.
+describe('newLeadHandledPatch', () => {
+  it('no Novo lead grava o newLeadHandledAt, e nas outras categorias nada', () => {
+    const at = new Date(2026, 9, 20, 10, 0);
+    expect(newLeadHandledPatch(DAILY_GOAL_CATEGORIES.NOVO_24H, at)).toEqual({ newLeadHandledAt: at });
+    expect(newLeadHandledPatch(DAILY_GOAL_CATEGORIES.ATRASADO, at)).toBeNull();
+    expect(newLeadHandledPatch(DAILY_GOAL_CATEGORIES.CONTATO_HOJE, at)).toBeNull();
   });
 });

@@ -224,3 +224,28 @@ describe('isAppointmentEcho', () => {
     expect(isAppointmentEcho({})).toBe(false);
   });
 });
+
+// O eco antigo, reconhecido só pelo horário (sem o tipo no próximo contato),
+// ganha o tipo do compromisso no Compareceu. É esse tipo que o desfazer lê
+// para devolver o eco: sem ele, o eco saía e não voltava.
+describe('o eco sem tipo sai no Compareceu e volta no desfazer', () => {
+  const agendado = new Date(2026, 9, 17, 18, 0);
+  const antigo = { appointmentType: 'visita', appointmentScheduledFor: agendado, nextFollowUp: new Date(agendado), nextFollowUpType: null };
+
+  it('o Compareceu tira o eco e grava o tipo da visita', () => {
+    expect(consumedFields('attended', antigo)).toEqual({ nextFollowUp: null, nextFollowUpType: 'Visita' });
+    expect(consumedFields('attended', { ...antigo, appointmentType: 'aula_experimental' }))
+      .toEqual({ nextFollowUp: null, nextFollowUpType: 'Aula Experimental' });
+  });
+
+  it('o desfazer devolve o eco', () => {
+    const depois = { ...antigo, ...consumedFields('attended', antigo) };
+    expect(planAttendedUndo({ lead: depois, fromOutcome: 'attended', isClient: true }).patch).toEqual({
+      appointmentPromotedFrom: null, nextFollowUp: agendado,
+    });
+  });
+
+  it('o eco que já tinha o tipo não muda o tipo', () => {
+    expect(consumedFields('attended', { ...antigo, nextFollowUpType: 'Aula Experimental' })).toEqual({ nextFollowUp: null });
+  });
+});

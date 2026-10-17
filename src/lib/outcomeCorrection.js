@@ -65,9 +65,19 @@ export const isAppointmentEcho = (lead) => {
 // cuja visita foi cancelada voltava para Atrasados na hora, com o atraso
 // contado do cadastro (newLeadDueOf, em dailyGoal.js). O Compareceu não
 // precisa: o agendamento fica e já tira o lead dessa regra.
+// O eco reconhecido só pelo horário (lead antigo, sem o tipo no próximo
+// contato) ganha no Compareceu o tipo do compromisso: é esse tipo que o
+// desfazer (planAttendedUndo) lê para saber que houve eco e devolvê-lo.
+const ECHO_TYPE_LABEL = { visita: 'Visita', aula_experimental: 'Aula Experimental' };
+
 export function consumedFields(outcome, lead, at = new Date()) {
   if (outcome !== 'attended' && outcome !== 'cancelled') return {};
-  const patch = isAppointmentEcho(lead) ? { nextFollowUp: null } : {};
+  const patch = {};
+  if (isAppointmentEcho(lead)) {
+    patch.nextFollowUp = null;
+    const label = ECHO_TYPE_LABEL[lead?.appointmentType];
+    if (outcome === 'attended' && label && !normalizeAppointmentType(lead?.nextFollowUpType)) patch.nextFollowUpType = label;
+  }
   if (outcome === 'cancelled') {
     Object.assign(patch, { appointmentScheduledFor: null, appointmentType: null, newLeadHandledAt: at });
   }
@@ -91,10 +101,11 @@ export function stageToRevert(lead) {
 // Compareceu que tirou o eco (consumedFields) e ninguém agendou outro contato
 // depois. Vale também para o cliente, que perde o eco como qualquer lead. O
 // sinal de que houve eco é o tipo do compromisso, que fica no lead quando o
-// eco sai. Sem ele (o contato tinha sido concluído antes, e o "Contato feito"
-// apaga o tipo), não há o que devolver: devolver criaria um contato que
-// ninguém marcou, e a Meta o cobraria em Contato Hoje. A etapa só volta para
-// quem não é cliente.
+// eco sai (o eco antigo, reconhecido só pelo horário, ganha o tipo no
+// Compareceu, em consumedFields). Sem ele (o contato tinha sido concluído
+// antes, e o "Contato feito" apaga o tipo), não há o que devolver: devolver
+// criaria um contato que ninguém marcou, e a Meta o cobraria em Contato Hoje.
+// A etapa só volta para quem não é cliente.
 export function planAttendedUndo({ lead, fromOutcome, isClient = false }) {
   const patch = { appointmentPromotedFrom: null };
   const from = isClient ? null : stageToRevert(lead);
