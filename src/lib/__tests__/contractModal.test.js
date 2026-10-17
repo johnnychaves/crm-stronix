@@ -57,8 +57,10 @@ async function digitar(el, valor) {
   });
 }
 const rodape = () => document.body.querySelector('[data-slot="contract-footer"]');
-const tecla = async (el, key) => {
-  await act(async () => { el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })); });
+const tecla = async (el, key, init = {}) => {
+  const evento = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init });
+  await act(async () => { el.dispatchEvent(evento); });
+  return evento;
 };
 const radios = (grupo) => [...document.body.querySelectorAll(`[role="radiogroup"][aria-label="${grupo}"] [role="radio"]`)];
 const marcado = (grupo) => radios(grupo).find((r) => r.getAttribute('aria-checked') === 'true');
@@ -287,7 +289,6 @@ describe('ContractModal, teclado e foco', () => {
     primeiro.focus();
     await tecla(primeiro, 'ArrowUp');
     expect(document.activeElement).toBe(ultimo);
-    expect(ultimo.getAttribute('aria-checked')).toBe('true');
     await tecla(ultimo, 'ArrowDown');
     expect(document.activeElement).toBe(primeiro);
     await tecla(primeiro, 'End');
@@ -296,22 +297,92 @@ describe('ContractModal, teclado e foco', () => {
     expect(document.activeElement).toBe(primeiro);
   });
 
-  it('escolher o plano pela seta é escolher pelo clique: o desconto e o motivo zeram', async () => {
+  // Escolher plano zera o desconto e limpa a busca, então no Plano a seta só move o
+  // foco; Enter, Espaço (o botão nativo clica) e o clique escolhem.
+  it('no Plano a seta só move o foco: não escolhe, não limpa a busca e não zera o desconto', async () => {
     await montar({ lead: leadNovo, mode: 'matricula' });
     await clicar(botao('%'));
     await digitar(document.body.querySelector('input[aria-label="Valor do desconto"]'), '10');
     await clicar(botao('Campanha'));
+    await digitar(document.body.querySelector('input[placeholder="Buscar outro plano"]'), 'tral');
+    const achados = radios('Plano');
+    expect(achados.length).toBe(3);
+    const marcadoAntes = marcado('Plano');
 
-    const antes = marcado('Plano');
-    antes.focus();
-    await tecla(antes, 'ArrowDown');
+    achados[0].focus();
+    const evento = await tecla(achados[0], 'ArrowDown');
 
-    expect(marcado('Plano')).not.toBe(antes);
-    expect(document.body.textContent).not.toContain('− R$');
-    expect(motivos().every((b) => b.disabled)).toBe(true);
+    expect(evento.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(achados[1]);
+    expect(marcado('Plano')).toBe(marcadoAntes);
+    expect(document.body.querySelector('input[placeholder="Buscar outro plano"]').value).toBe('tral');
+    expect(radios('Plano').length).toBe(3);
+    expect(document.body.textContent).toContain('R$ 51,00 (10%)');
+    expect(botao('Campanha').getAttribute('aria-pressed')).toBe('true');
+    // O Tab itinerante acompanha o foco: um único tabindex 0, no rádio focado.
+    expect(radios('Plano').filter((r) => r.getAttribute('tabindex') === '0')).toEqual([achados[1]]);
   });
 
-  it('escolher "Outra data" leva o foco para o campo de data, pelo clique e pela seta', async () => {
+  it('no Plano, Enter ou Espaço no rádio focado escolhem, pelo mesmo caminho do clique', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    await clicar(botao('%'));
+    await digitar(document.body.querySelector('input[aria-label="Valor do desconto"]'), '10');
+    await clicar(botao('Campanha'));
+    await digitar(document.body.querySelector('input[placeholder="Buscar outro plano"]'), 'tral');
+    const achados = radios('Plano');
+    achados[0].focus();
+    await tecla(achados[0], 'ArrowDown');
+
+    // No navegador, Enter e Espaço num botão disparam o clique; o jsdom não faz isso sozinho.
+    await clicar(document.activeElement);
+
+    expect(marcado('Plano').textContent).toContain('Musculação Semestral');
+    expect(document.body.querySelector('input[placeholder="Buscar outro plano"]').value).toBe('');
+    expect(document.body.textContent).not.toContain('− R$');
+    expect(motivos().every((b) => b.disabled)).toBe(true);
+    expect(radios('Plano').filter((r) => r.getAttribute('tabindex') === '0')).toEqual([marcado('Plano')]);
+  });
+
+  it('o Tab itinerante volta ao marcado quando o foco sai do grupo de planos', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    const marcadoAntes = marcado('Plano');
+    const outro = radios('Plano').find((r) => r !== marcadoAntes);
+    outro.focus();
+    await act(async () => {});
+    expect(outro.getAttribute('tabindex')).toBe('0');
+    document.body.querySelector('input[placeholder="Buscar outro plano"]').focus();
+    await act(async () => {});
+    expect(radios('Plano').filter((r) => r.getAttribute('tabindex') === '0')).toEqual([marcadoAntes]);
+  });
+
+  it('com Shift, Ctrl, Alt ou Meta as setas, Home e End não fazem nada nos dois grupos', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    for (const grupo of ['Plano', 'Início da vigência']) {
+      const lista = radios(grupo);
+      const atual = marcado(grupo);
+      atual.focus();
+      for (const init of [{ shiftKey: true }, { ctrlKey: true }, { altKey: true }, { metaKey: true }]) {
+        for (const key of ['ArrowDown', 'ArrowRight', 'Home', 'End']) {
+          const evento = await tecla(atual, key, init);
+          expect(evento.defaultPrevented).toBe(false);
+        }
+      }
+      expect(document.activeElement).toBe(atual);
+      expect(marcado(grupo)).toBe(atual);
+      expect(radios(grupo)).toEqual(lista);
+    }
+  });
+
+  it('a seta tratada chama preventDefault nos dois grupos', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    for (const grupo of ['Plano', 'Início da vigência']) {
+      const atual = marcado(grupo);
+      atual.focus();
+      expect((await tecla(atual, 'ArrowDown')).defaultPrevented).toBe(true);
+    }
+  });
+
+  it('clicar em "Outra data" leva o foco para o campo de data', async () => {
     await montar({ lead: leadNovo, mode: 'matricula' });
     await clicar(opcao('Outra data'));
     const campo = document.body.querySelector('input[type="date"]');
@@ -320,10 +391,23 @@ describe('ContractModal, teclado e foco', () => {
     expect(campo.className).toContain('dark:[color-scheme:dark]');
   });
 
-  it('escolher "Outra data" pela seta também leva o foco para o campo de data', async () => {
+  // A seta seguinte, com o foco no campo de data, soma ou tira um dia: numa renovação
+  // isso encurtaria o contrato atual sem a pessoa perceber.
+  it('escolher "Outra data" pela seta marca o cartão e deixa o foco nele, não no campo de data', async () => {
     await montar({ lead: leadNovo, mode: 'matricula' });
     opcao('Hoje').focus();
     await tecla(opcao('Hoje'), 'ArrowRight');
+    expect(opcao('Outra data').getAttribute('aria-checked')).toBe('true');
+    expect(document.activeElement).toBe(opcao('Outra data'));
+    expect(document.body.querySelector('input[type="date"]')).not.toBeNull();
+    expect(document.activeElement).not.toBe(document.body.querySelector('input[type="date"]'));
+  });
+
+  it('ativar o cartão "Outra data" já marcado leva o foco ao campo de data', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    opcao('Hoje').focus();
+    await tecla(opcao('Hoje'), 'ArrowRight');
+    await clicar(opcao('Outra data'));
     expect(document.activeElement).toBe(document.body.querySelector('input[type="date"]'));
   });
 
@@ -394,6 +478,36 @@ describe('ContractModal, nomes e leitura', () => {
     expect(linha.querySelector('span').className).toContain('border-brand-600');
     const naoMarcada = radios('Plano').find((r) => r !== linha);
     expect(naoMarcada.querySelector('span').className).toContain('border-slate-500');
+  });
+});
+
+describe('ContractModal, durante o envio', () => {
+  it('o Confirmar não perde o foco, um segundo clique não grava de novo e o X do cabeçalho fica desligado', async () => {
+    commitMatricula.mockImplementationOnce(() => new Promise(() => {}));
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    const confirmar = botao('Confirmar matrícula');
+    confirmar.focus();
+    await clicar(confirmar);
+
+    expect(commitMatricula).toHaveBeenCalledTimes(1);
+    expect(confirmar.textContent).toContain('Salvando');
+    expect(confirmar.disabled).toBe(false);
+    expect(confirmar.getAttribute('aria-disabled')).toBe('true');
+    expect(document.activeElement).toBe(confirmar);
+    expect(document.body.querySelector('button[aria-label="Fechar"]').disabled).toBe(true);
+    expect(botao('Cancelar').disabled).toBe(true);
+
+    await clicar(confirmar);
+    expect(commitMatricula).toHaveBeenCalledTimes(1);
+  });
+
+  it('uma trava continua desligando o botão de verdade', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    await clicar(botao('%'));
+    await digitar(document.body.querySelector('input[aria-label="Valor do desconto"]'), '10');
+    const confirmar = botao('Confirmar matrícula');
+    expect(confirmar.disabled).toBe(true);
+    expect(confirmar.getAttribute('aria-disabled')).toBeNull();
   });
 });
 

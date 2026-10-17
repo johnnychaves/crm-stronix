@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { AlertTriangle, Calendar, Check, Clock, GraduationCap, Link2, RefreshCw, Search, X } from 'lucide-react';
 import { buildMatriculaWrites, computeEndsAt, liveRenewalOf, renewalStartProblem } from '../lib/contracts.js';
 import { commitMatricula } from '../lib/contractsWrites.js';
@@ -101,18 +102,18 @@ function StartStatus({ tone, text }) {
 // dá cerca de 4,2:1 ali, e o slate-600 passa dos 4,5:1. No escuro fica o de antes.
 const SUPPORT_ON = 'text-slate-600 dark:text-muted-foreground';
 
-// Teclado de um grupo de rádios (padrão ARIA), dos dois grupos do modal. Só o
-// marcado fica no Tab; as setas movem para o próximo ou o anterior, com volta,
-// escolhem e levam o foco; Home e End vão às pontas. Escolher é clicar no rádio,
-// então a seta faz o mesmo que o mouse (no Plano, o pickPlan). O foco vai antes do
-// clique: o "Outra data" monta o campo de data com autoFocus, e o foco tem de
-// terminar lá.
+// Teclado de um grupo de rádios (padrão ARIA), dos dois grupos do modal. As setas
+// movem o foco para o próximo ou o anterior, com volta; Home e End vão às pontas.
+// Com Shift, Ctrl, Alt ou Meta não faz nada, para o navegador agir. `ids` é a
+// ordem dos rádios na tela. Com `pick`, o rádio que recebe o foco também é
+// escolhido (ativação automática, o Início); sem ele, só o foco anda e Enter,
+// Espaço ou o clique escolhem (ativação manual, o Plano).
 const RADIO_STEP = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 };
-function onRadioGroupKeyDown(e) {
-  if (e.altKey || e.ctrlKey || e.metaKey) return;
+const radioKeyDown = (ids, pick) => (e) => {
+  if (e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return;
   const radios = [...e.currentTarget.querySelectorAll('[role="radio"]')];
   const at = radios.indexOf(e.target);
-  if (at < 0) return;
+  if (at < 0 || radios.length !== ids.length) return;
   let to;
   if (e.key in RADIO_STEP) to = (at + RADIO_STEP[e.key] + radios.length) % radios.length;
   else if (e.key === 'Home') to = 0;
@@ -120,20 +121,21 @@ function onRadioGroupKeyDown(e) {
   else return;
   e.preventDefault();
   radios[to].focus();
-  radios[to].click();
-}
+  pick?.(ids[to]);
+};
 // Quem fica no Tab: o marcado, ou o primeiro quando nenhum dos mostrados está marcado.
 const tabStopId = (ids, selectedId) => (ids.includes(selectedId) ? selectedId : ids[0] ?? null);
 
 // Uma linha da lista de planos. O seletor redondo é só desenho: a linha inteira
 // é o botão, com role="radio" para o leitor de tela.
-function PlanRow({ plan, on, tabStop, tag, onPick }) {
+function PlanRow({ plan, on, tabStop, tag, onPick, onFocus }) {
   return (
     <button
       type="button"
       role="radio"
       aria-checked={on}
       tabIndex={tabStop ? 0 : -1}
+      onFocus={() => onFocus(plan.id)}
       onClick={() => onPick(plan.id)}
       className={cn(
         'grid min-h-[52px] w-full grid-cols-[18px_minmax(0,1fr)_62px_88px] items-center gap-3 px-3.5 py-2 text-left transition',
@@ -263,6 +265,10 @@ function ContractModal({
   const [planId, setPlanId] = useState(initialPlan?.id || '');
   const [planSearch, setPlanSearch] = useState('');
   const searchRef = useRef(null);
+  // O rádio do Plano que tem o foco: o Tab itinerante acompanha o foco enquanto as
+  // setas o movem sem escolher.
+  const [focusedPlanId, setFocusedPlanId] = useState(null);
+  const dateRef = useRef(null);
   const [startMode, setStartMode] = useState(emendaDate ? 'emendar' : 'hoje');
   const [customStart, setCustomStart] = useState(toDateInputValue(emendaDate || new Date()));
   const [discountMode, setDiscountMode] = useState(DISCOUNT_MODES.NENHUM);
@@ -365,6 +371,7 @@ function ContractModal({
   const reasonHint = reasonHintOf({ hasDiscount, reason });
 
   const pickPlan = (id) => {
+    setFocusedPlanId(null);
     // O plano que já está marcado só limpa a busca: o valor de tabela é o mesmo,
     // então o desconto e o motivo continuam valendo.
     if (id === planId) { setPlanSearch(''); return; }
@@ -376,9 +383,20 @@ function ContractModal({
     setReason(null);
   };
 
+  // Escolher o cartão "Outra data" (clique, Enter ou Espaço) leva o foco ao campo
+  // de data. A seta só marca o cartão, sem mexer no foco: com o foco no campo, a
+  // seta seguinte somaria ou tiraria um dia da data.
+  const pickStart = (id) => {
+    if (id !== 'outra') { setStartMode(id); return; }
+    flushSync(() => setStartMode('outra'));
+    dateRef.current?.focus();
+  };
+
   const handleClose = (open) => { if (!open && !submitting) onClose && onClose(); };
 
   const handleConfirm = async () => {
+    // Durante o envio o botão fica focável (aria-disabled), então o clique é ignorado aqui.
+    if (submitting) return;
     if (!plan) { toast.warning('Selecione um plano.'); return; }
     if (!startsAt) { toast.warning('Informe a data de início.'); return; }
     if (startProblem) { toast.warning(startProblem); return; }
@@ -477,8 +495,10 @@ function ContractModal({
 
   // Quem fica no Tab em cada grupo de rádios.
   const planList = searchOpen ? results : cards;
-  const planTabStop = tabStopId(planList.map(p => p.id), planId);
-  const startTabStop = tabStopId(startOptions.map(o => o.id), startMode);
+  const planIds = planList.map(p => p.id);
+  const startIds = startOptions.map(o => o.id);
+  const planTabStop = planIds.includes(focusedPlanId) ? focusedPlanId : tabStopId(planIds, planId);
+  const startTabStop = tabStopId(startIds, startMode);
 
   return (
     <Dialog open onOpenChange={handleClose}>
@@ -513,9 +533,10 @@ function ContractModal({
           <button
             type="button"
             onClick={() => onClose && onClose()}
+            disabled={submitting}
             title="Fechar"
             aria-label="Fechar"
-            className="size-8 flex-none rounded-[9px] grid place-items-center text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/[0.06] dark:hover:text-white transition focus-visible:outline-none focus-visible:anel-foco"
+            className="size-8 flex-none rounded-[9px] grid place-items-center text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/[0.06] dark:hover:text-white transition disabled:opacity-50 focus-visible:outline-none focus-visible:anel-foco"
           >
             <X size={16} />
           </button>
@@ -565,7 +586,10 @@ function ContractModal({
                 <div
                   role="radiogroup"
                   aria-label="Plano"
-                  onKeyDown={onRadioGroupKeyDown}
+                  // Plano usa ativação manual: escolher um plano zera o desconto e limpa a busca,
+                  // então a seta só move o foco e Enter, Espaço ou o clique escolhem.
+                  onKeyDown={radioKeyDown(planIds)}
+                  onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget)) setFocusedPlanId(null); }}
                   className="max-h-[208px] min-h-[156px] divide-y divide-border overflow-y-auto rounded-xl border border-border"
                 >
                   {searchOpen && results.length === 0 ? (
@@ -577,7 +601,7 @@ function ContractModal({
                     const tag = searchOpen
                       ? (top ? { tone: 'success', label: 'Mais vendido' } : null)
                       : (top ? null : { tone: 'brand', label: 'Buscado' });
-                    return <PlanRow key={p.id} plan={p} on={p.id === planId} tabStop={p.id === planTabStop} tag={tag} onPick={pickPlan} />;
+                    return <PlanRow key={p.id} plan={p} on={p.id === planId} tabStop={p.id === planTabStop} tag={tag} onPick={pickPlan} onFocus={setFocusedPlanId} />;
                   })}
                 </div>
               </section>
@@ -588,7 +612,7 @@ function ContractModal({
                   {startMode === 'outra' && (
                     <input
                       type="date"
-                      autoFocus
+                      ref={dateRef}
                       value={customStart}
                       aria-label="Data de início"
                       onChange={e => { setCustomStart(e.target.value); setStartMode('outra'); }}
@@ -599,11 +623,11 @@ function ContractModal({
                 <div
                   role="radiogroup"
                   aria-label="Início da vigência"
-                  onKeyDown={onRadioGroupKeyDown}
+                  onKeyDown={radioKeyDown(startIds, setStartMode)}
                   className={cn('grid gap-2.5', startOptions.length === 3 ? 'grid-cols-3' : 'grid-cols-2')}
                 >
                   {startOptions.map(o => (
-                    <StartCard key={o.id} option={o} on={o.id === startMode} tabStop={o.id === startTabStop} onPick={setStartMode} />
+                    <StartCard key={o.id} option={o} on={o.id === startMode} tabStop={o.id === startTabStop} onPick={pickStart} />
                   ))}
                 </div>
                 <StartStatus tone={startStatus.tone} text={startStatus.text} />
@@ -842,9 +866,10 @@ function ContractModal({
           <button
             type="button"
             onClick={handleConfirm}
-            disabled={submitting || noPlans || Boolean(blockText)}
+            disabled={noPlans || Boolean(blockText)}
+            aria-disabled={submitting || undefined}
             className={cn(
-              'inline-flex items-center gap-[7px] h-[38px] px-[17px] rounded-[10px] text-white text-[13px] font-semibold whitespace-nowrap transition disabled:opacity-50 focus-visible:outline-none focus-visible:anel-foco focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+              'inline-flex items-center gap-[7px] h-[38px] px-[17px] rounded-[10px] text-white text-[13px] font-semibold whitespace-nowrap transition disabled:opacity-50 aria-disabled:opacity-50 focus-visible:outline-none focus-visible:anel-foco focus-visible:ring-offset-2 focus-visible:ring-offset-background',
               isRenewal ? 'bg-brand-600 hover:bg-brand-700' : 'bg-[#C2410C] hover:bg-[#9A3412]'
             )}
           >
