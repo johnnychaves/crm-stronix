@@ -845,12 +845,17 @@ describe('ContractModal, renovação', () => {
     const dia = (d) => d.toLocaleDateString('pt-BR');
 
     it('emendando: grava como renovação do contrato atual, começando no dia seguinte ao fim', async () => {
-      await montar(props, [atual]);
+      // O plano mais vendido é outro (Musculação Trimestral): a renovação tem de oferecer o do cliente.
+      const vendas = ['v1', 'v2'].map((id) => ({ id, leadId: id, planId: 'p1', planName: 'Musculação Trimestral', status: 'vencido', startsAt: D(2026, 1, 5), endsAt: D(2026, 4, 5) }));
+      await montar(props, [atual, ...vendas]);
       await clicar(botao('Confirmar renovação'));
       expect(commitMatricula).toHaveBeenCalledTimes(1);
       const arg = commitMatricula.mock.calls[0][0];
       expect(arg).toMatchObject({ mode: 'renovacao', renewedFromId: 'c1abcdef', previousContract: atual });
       expect(dia(arg.startsAt)).toBe('13/12/2026');
+      // A renovação oferece o plano que o cliente já tem (Pilates Trimestral), pelo valor de tabela.
+      expect(arg.plan.id).toBe('p3');
+      expect(arg.value).toBe(990);
     });
 
     it('começando hoje: o mesmo contrato renovado, com o início em hoje', async () => {
@@ -863,14 +868,59 @@ describe('ContractModal, renovação', () => {
       expect(dia(arg.startsAt)).toBe('16/10/2026');
     });
 
-    it('sem a prop currentContract (Kanban e Meta Diária): o contrato atual vem da lista de contratos', async () => {
-      await montar({ lead: leadCliente, mode: 'renovacao', renewedFromId: 'c1abcdef' }, [atual]);
+    it('como o Kanban monta (só lead e contratos, sem renewedFromId nem currentContract): o contrato atual vem da lista', async () => {
+      await montar({ lead: leadCliente, mode: 'renovacao' }, [atual]);
       await clicar(botao('Confirmar renovação'));
       expect(commitMatricula).toHaveBeenCalledTimes(1);
       const arg = commitMatricula.mock.calls[0][0];
       expect(arg).toMatchObject({ mode: 'renovacao', renewedFromId: 'c1abcdef', previousContract: atual });
       expect(dia(arg.startsAt)).toBe('13/12/2026');
     });
+  });
+
+  it('a dica do cartão "Hoje" vem da prévia: encerra o atual quando a gravação encurta', async () => {
+    await montar(props, [atual]);
+    expect(opcao('Hoje').getAttribute('title')).toBe('Começa hoje. Encerra o atual 58 dias antes.');
+    expect(opcao('Emendar').getAttribute('title')).toContain('sem lacuna');
+  });
+
+  it('atual já encurtado por outra renovação: "Hoje" não encurta, e a faixa e a dica dizem que os dois valem juntos', async () => {
+    const encurtado = { ...atual, shortenedById: 'c0outra', originalEndsAt: D(2027, 1, 12) };
+    await montar({ ...props, currentContract: encurtado }, [encurtado]);
+    await clicar(opcao('Hoje'));
+    const faixa = document.body.querySelector('[data-slot="start-status"]');
+    expect(faixa.textContent).toContain('O contrato atual continua até 12/12/2026, e os dois valem juntos por 58 dias.');
+    expect(faixa.textContent).not.toContain('passa a terminar');
+    expect(faixa.className).toContain('rose');
+    expect(opcao('Hoje').getAttribute('title')).toBe('Começa hoje. Os dois valem juntos por 58 dias.');
+    expect(document.body.querySelector('aside[aria-label="Recibo"]').textContent).not.toContain('passa a terminar em');
+  });
+
+  // Se a gravação falha, o modal volta a seguir os dados de agora. Sem isso a tela
+  // ficaria presa nos dados de quando a pessoa clicou em Confirmar.
+  it('depois de uma falha ao gravar, a tela volta a seguir os dados ao vivo', async () => {
+    const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let empurrar;
+    function Casca() {
+      const [contratos, setContratos] = useState([atual]);
+      empurrar = (novo) => setContratos((lista) => [...lista, novo]);
+      return h(GeneralConfigContext.Provider, { value: { planos, contratos } }, modal(props));
+    }
+    commitMatricula.mockRejectedValueOnce(new Error('sem rede'));
+    await renderizar(h(Casca), D(2026, 10, 16, 10, 20));
+    const faixa = document.body.querySelector('[data-slot="start-status"]');
+    expect(faixa.textContent).toContain('Emenda perfeita');
+
+    await clicar(botao('Confirmar renovação'));
+    expect(rodape().querySelector('[role="alert"]')).not.toBeNull();
+
+    await act(async () => {
+      empurrar({ id: 'c2xyz', leadId: 'l2', renewedFromId: 'c1abcdef', planName: 'Pilates Trimestral', status: 'ativo', startsAt: D(2026, 12, 13), endsAt: D(2027, 3, 13) });
+    });
+
+    expect(faixa.textContent).toContain('Este contrato já foi renovado');
+    expect(botao('Confirmar renovação').disabled).toBe(true);
+    erro.mockRestore();
   });
 
   it('a prévia do encurtamento segue o início escolhido: emendar não encurta, hoje encurta até ontem', async () => {
