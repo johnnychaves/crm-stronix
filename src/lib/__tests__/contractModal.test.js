@@ -699,6 +699,42 @@ describe('ContractModal, subtítulo do cabeçalho', () => {
   });
 });
 
+// Medido no Chromium (viewport de 1600 px de altura, entre 768 e cerca de 850 px): clicar em "%"
+// mandava o campo do valor para uma 2ª linha (+48 px), a pílula "− R$ 51,00 (10%)" quebrava a
+// linha de apoio de "Valor e desconto" (+18,7 px) e a busca de plano quebrava "5 planos no
+// catálogo ativo" (+8 px). Na seção estreita as duas frases encurtam e a linha dos controles
+// reserva a 2ª linha, para a altura não depender do desconto nem da busca.
+describe('ContractModal, altura estável na seção estreita', () => {
+  const secao = (titulo) => [...document.body.querySelectorAll('section')].find((el) => el.querySelector('h3')?.textContent === titulo);
+
+  it('as três seções são containers, e a linha dos controles do desconto reserva a 2ª linha', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    for (const titulo of ['Plano', 'Início da vigência', 'Valor e desconto']) {
+      expect(secao(titulo).className).toContain('@container');
+    }
+    const controles = document.body.querySelector('[role="group"][aria-label="Tipo de desconto"]').parentElement;
+    expect(controles.className).toContain('@max-md:min-h-[90px]');
+    expect(controles.className).toContain('content-start');
+  });
+
+  it('a 2ª frase de apoio do desconto some na seção estreita, e a pílula não a quebra', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    const apoio = secao('Valor e desconto').querySelector('h3').nextElementSibling;
+    expect(apoio.textContent).toBe('Tabela de R$ 510,00. Dê um desconto se foi combinado.');
+    const segunda = [...apoio.querySelectorAll('span')].find((el) => el.textContent.includes('Dê um desconto'));
+    expect(segunda.className).toContain('@max-lg:hidden');
+  });
+
+  it('a linha de apoio do Plano na busca encurta para "N planos" na seção estreita', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    await digitar(document.body.querySelector('input[placeholder="Buscar outro plano"]'), 'tral');
+    const apoio = secao('Plano').querySelector('h3').nextElementSibling;
+    expect(apoio.textContent).toBe('3 planos no catálogo ativo');
+    const resto = [...apoio.querySelectorAll('span')].find((el) => el.textContent.includes('no catálogo ativo'));
+    expect(resto.className).toContain('@max-md:hidden');
+  });
+});
+
 describe('ContractModal, o que se grava sem desconto', () => {
   const nenhum ={ discountMode: 'nenhum', discountValue: 0, discountReason: null };
   const gravado = () => commitMatricula.mock.calls[0][0];

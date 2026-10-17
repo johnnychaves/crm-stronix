@@ -618,7 +618,9 @@ function ContractModal({
                 <SectionHead
                   title="Plano"
                   hintLive
-                  hint={searchOpen ? (results.length === 1 ? '1 plano no catálogo ativo' : `${results.length} planos no catálogo ativo`) : 'Os 3 mais vendidos.'}
+                  hint={searchOpen
+                    ? <>{results.length === 1 ? '1 plano' : `${results.length} planos`}<span className="@max-md:hidden"> no catálogo ativo</span></>
+                    : 'Os 3 mais vendidos.'}
                 >
                   <div className="relative flex-none">
                     <Search size={13} className="absolute left-3 top-[10px] text-slate-400 dark:text-slate-500" />
@@ -694,15 +696,19 @@ function ContractModal({
               </section>
 
               {/* Valor e desconto */}
-              <section>
-                <SectionHead title="Valor e desconto" hint={plan ? `Tabela de ${fmtBRL(listValue)}. Dê um desconto se foi combinado.` : undefined}>
+              <section className="@container">
+                <SectionHead
+                  title="Valor e desconto"
+                  hint={plan ? <>Tabela de {fmtBRL(listValue)}.<span className="@max-lg:hidden"> Dê um desconto se foi combinado.</span></> : undefined}
+                >
                   {hasDiscount && (
                     <span className="num flex-none self-center rounded-full bg-emerald-50 px-3 py-1 text-[12.5px] font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
                       − {fmtBRL(discountValue)} ({discountPct}%)
                     </span>
                   )}
                 </SectionHead>
-                <div className="flex min-h-10 flex-wrap items-center gap-2.5">
+                {/* Na seção estreita o campo do valor cai para a 2ª linha: a linha já reserva as duas, para a altura não mudar ao escolher um tipo de desconto. */}
+                <div className="flex min-h-10 flex-wrap content-start items-center gap-2.5 @max-md:min-h-[90px]">
                   <div className="flex gap-0.5 rounded-full bg-slate-100 p-[3px] dark:bg-white/[0.06]" role="group" aria-label="Tipo de desconto">
                     {[
                       { id: DISCOUNT_MODES.NENHUM, label: 'Sem desconto' },
