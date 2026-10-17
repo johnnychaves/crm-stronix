@@ -195,6 +195,19 @@ export const newLeadHandledPatch = (categorySlug, at = new Date()) =>
 // O prazo do próximo contato: o nextFollowUp, ou o do lead novo sem próximo passo.
 export const followUpDueOf = (lead) => lead?.nextFollowUp || newLeadDueOf(lead);
 
+// O lead está em Atrasados na Meta? O próximo contato venceu antes de hoje, ou a
+// janela de 24h do lead novo sem próximo passo já fechou. Venda e Perda nunca.
+// Regra única da categoria, do "Atrasados agora" do Operacional e do "Contato
+// atrasado" de Leads parados; os dias de atraso são os do overdueDaysOf.
+export function isMetaOverdue(lead, now = new Date()) {
+  if (!lead || lead.status === 'Venda' || lead.status === 'Perda') return false;
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+  if (lead.nextFollowUp) return lead.nextFollowUp < todayStart;
+  const due = newLeadDueOf(lead);
+  return Boolean(due && due < now);
+}
+
 // Dias de atraso de um lead (follow-up vencido antes de hoje). 0 = em dia.
 // Mesma régua do card da Meta: dia parcial não conta, mínimo 1.
 export function overdueDaysOf(lead, refDate = new Date()) {
@@ -344,13 +357,9 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
     }
 
     // 2. Atrasados: o próximo contato venceu antes de hoje, ou o lead novo
-    // passou da janela de 24h sem ninguém mexer nele (newLeadDueOf). O lead
+    // passou da janela de 24h sem ninguém mexer nele (isMetaOverdue). O lead
     // novo entra assim que a janela fecha, então ele nunca fica sem categoria.
-    const newLeadDue = newLeadDueOf(lead);
-    if (
-      lead.status !== 'Venda' && lead.status !== 'Perda' &&
-      ((lead.nextFollowUp && lead.nextFollowUp < todayStart) || (newLeadDue && newLeadDue < nowRef))
-    ) {
+    if (isMetaOverdue(lead, nowRef)) {
       addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.atrasado, DAILY_GOAL_CATEGORIES.ATRASADO);
     }
 

@@ -4,6 +4,7 @@ import { normalizeLeadDoc } from '../lib/leads.js';
 import { isSeller } from '../lib/acesso.js';
 import { LIST_PAGE_SIZE, buildInteractionIndex, lastInteractionDateOf, isHotLeadFromDate } from '../lib/leadStatus.js';
 import { usePagedLeads } from '../hooks/usePagedLeads.js';
+import { useMinuteClock } from '../hooks/useMinuteClock.js';
 import { useScreenParams } from '../hooks/useScreenParams.js';
 import { ORDENS_DE_LEADS } from '../lib/screenParams.js';
 import { allLeadsQuerySpec } from '../lib/leadQueries.js';
@@ -144,6 +145,10 @@ function LeadsView({ interactions, statuses, usersList, funnels: allFunnels, sou
   // a ordem por tempo sem contato sem recomputar interactions.filter() por linha.
   const interactionIndex = useMemo(() => buildInteractionIndex(interactions), [interactions]);
 
+  // O relógio da tela, por minuto: a ordem por ação depende da hora (o lead novo
+  // passa a atrasado quando a janela de 24h fecha), e a linha usa o mesmo instante.
+  const now = useMinuteClock();
+
   // Filtragem 100% pelas pílulas da barra (sem busca textual — removida no redesign 6a).
   const filteredLeads = useMemo(() => {
     const matched = (leads || []).filter(l => {
@@ -153,8 +158,8 @@ function LeadsView({ interactions, statuses, usersList, funnels: allFunnels, sou
       const matchOrigem = !origemFilter || l.source === origemFilter;
       return matchFunnel && matchStatus && matchConsultant && matchOrigem;
     });
-    return sortLeads(matched, order, (l) => lastInteractionDateOf(l, interactionIndex));
-  }, [leads, interactionIndex, statusFilters, origemFilter, order, consultantFilters, selectedFunnelId, defaultFunnelId]);
+    return sortLeads(matched, order, (l) => lastInteractionDateOf(l, interactionIndex), now);
+  }, [leads, interactionIndex, statusFilters, origemFilter, order, consultantFilters, selectedFunnelId, defaultFunnelId, now]);
 
   const visibleLeads = filteredLeads.slice(0, visibleCount);
 
@@ -214,8 +219,6 @@ function LeadsView({ interactions, statuses, usersList, funnels: allFunnels, sou
   const subline = loadingFirst
     ? 'Carregando leads…'
     : `${hasActiveFilters ? `${filteredLeads.length} de ${baseLeads.length}` : baseLeads.length} leads${funnelName ? ` no funil ${funnelName}` : ''}, ${ORDEM[order]?.texto}`;
-
-  const now = new Date();
 
   return (
     <div className="-m-4 md:-m-8 h-[calc(100%+2rem)] md:h-[calc(100%+4rem)] flex flex-col animate-fade-in">

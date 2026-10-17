@@ -2,7 +2,7 @@
 // barra no lugar das abas e do balão de filtros, nenhum botão de exportar (a
 // planilha é a do relatório) e, em cada linha, o trilho da fase e a próxima
 // ação por extenso. Renderizada em node, como em clientsView.test.js.
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { MemoryRouter } from 'react-router';
@@ -30,6 +30,12 @@ const FASES = [
   { id: 's2', name: 'Contato feito', color: 'violet', order: 2 },
   { id: 's3', name: 'Negociação', color: 'orange', order: 3 },
 ];
+
+// Relógio fixo, antes de 17/10/2026 (NEW_LEAD_OVERDUE_SINCE): os cadastros
+// saem de dias antes dele. Com o relógio de verdade, a partir de 19/10/2026 a
+// Ana Nova, sem próximo passo, viraria atrasada e a ordem por ação mudaria.
+beforeAll(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date(2026, 9, 16, 12, 0)); });
+afterAll(() => { vi.useRealTimers(); });
 
 const DAY = 864e5;
 const em = (dias, hora = 9) => { const d = new Date(Date.now() + dias * DAY); d.setHours(hora, 0, 0, 0); return d; };

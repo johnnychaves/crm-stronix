@@ -22,7 +22,8 @@ import {
   COLOR_TONES,
   tomorrowAppointmentsOf,
   newLeadDueOf,
-  newLeadHandledPatch
+  newLeadHandledPatch,
+  isMetaOverdue
 } from '../dailyGoal.js';
 import { DAILY_GOAL_CATEGORIES } from '../leads.js';
 import { contactDone, contactReschedule } from '../contactGoal.js';
@@ -1344,6 +1345,18 @@ describe('lead novo sem próximo passo vira Atrasado', () => {
     expect(overdueDaysOf(novo({ createdAt: new Date(2026, 9, 17, 8, 0) }), AGORA)).toBe(2);
     // No mesmo dia em que a janela fecha, ainda não tem dia de atraso.
     expect(overdueDaysOf(novo(), AGORA)).toBe(0);
+  });
+
+  // Regra única do Atrasado: a Meta, o "Atrasados agora" do Operacional e o
+  // "Contato atrasado" de Leads parados perguntam ao isMetaOverdue.
+  it('isMetaOverdue: o lead novo é atrasado já no dia em que a janela fecha, o contato só no dia seguinte', () => {
+    expect(isMetaOverdue(novo(), AGORA)).toBe(true);
+    expect(isMetaOverdue(novo(), new Date(2026, 9, 20, 7, 59))).toBe(false);
+    // O contato de hoje cedo ainda não é atrasado; o de ontem já é.
+    expect(isMetaOverdue(novo({ nextFollowUp: new Date(2026, 9, 20, 8, 0) }), AGORA)).toBe(false);
+    expect(isMetaOverdue(novo({ nextFollowUp: new Date(2026, 9, 19, 18, 0) }), AGORA)).toBe(true);
+    expect(isMetaOverdue(novo({ status: 'Venda', nextFollowUp: new Date(2026, 9, 19, 18, 0) }), AGORA)).toBe(false);
+    expect(isMetaOverdue(null, AGORA)).toBe(false);
   });
 });
 

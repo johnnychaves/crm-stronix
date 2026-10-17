@@ -189,6 +189,22 @@ describe('Leads parados', () => {
     expect(fora.exportRows.map((x) => x.consultor)).toEqual(['Sem responsável', 'Fora da equipe']);
   });
 
+  // O "Contato atrasado" é o Atrasado da Meta (isMetaOverdue): o lead novo sem
+  // próximo passo conta já no dia em que a janela de 24h fecha, como na Meta e
+  // no Operacional. Pelo overdueDaysOf, ele só aparecia no dia seguinte.
+  it('o lead novo sem próximo passo é contato atrasado no dia em que a janela fecha', () => {
+    const novo = L('n1', { createdAt: new Date(2026, 9, 17, 9, 0), nextFollowUp: null });
+    const r = rel({ ...ctxOf(), now: new Date(2026, 9, 18, 15, 0), liveLeads: [novo] });
+    expect(valores(r)).toEqual([
+      ['situacao:sem-proximo-passo', 'Sem próximo passo', 1],
+      ['situacao:atrasado', 'Contato atrasado', 1],
+      ['situacao:sem-registro', 'Sem registro há mais de 7 dias', 0],
+    ]);
+    // Os dias de atraso só começam no dia seguinte, como no card da Meta.
+    const filtrado = rel({ ...ctxOf(), now: new Date(2026, 9, 18, 15, 0), liveLeads: [novo] }, { recorte: 'situacao:atrasado' });
+    expect(filtrado.rows.map((x) => [x.id, x.late])).toEqual([['n1', 0]]);
+  });
+
   it('o em aberto e o sem próximo passo são os da carteira de agora do painel CRM, para cada pessoa e funil', () => {
     const ctx = ctxOf();
     for (const userId of [null, 'ana', 'diego']) {
