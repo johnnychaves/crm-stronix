@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { createPortal } from 'react-dom';
 import confetti from 'canvas-confetti';
 import { collection, onSnapshot, query, where, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH, DAILY_GOAL_HISTORY_PATH } from '../lib/firebase.js';
@@ -9,7 +8,8 @@ import { isMetaParticipant } from '../lib/acesso.js';
 import { logInteraction } from '../lib/interactions.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { stageChangeFields } from '../lib/stageMove.js';
-import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, computeVolumeInRange, countMetaDaysInMonth, volumeTargetFor, volumeBreakdownLabel, tomorrowAppointmentsOf } from '../lib/dailyGoal.js';
+import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, computeVolumeInRange, countMetaDaysInMonth, volumeTargetFor, volumeBreakdownLabel, tomorrowAppointmentsOf, slotTotals, newLeadHandledPatch } from '../lib/dailyGoal.js';
+import { followUpChannelOf } from '../lib/contactGoal.js';
 import { computeDayAgenda } from '../lib/dayAgenda.js';
 import { useDayAgenda } from '../hooks/useDayAgenda.js';
 import { useScreenParams } from '../hooks/useScreenParams.js';
@@ -17,7 +17,7 @@ import { DayAgendaCard } from '../components/dailygoal/DayAgendaCard.jsx';
 import { RoutineCard } from '../components/dailygoal/RoutineCard.jsx';
 import { OutcomePopover } from '../components/dailygoal/OutcomePopover.jsx';
 import { writeAppointmentOutcome, correctAppointmentOutcome } from '../lib/appointmentOutcome.js';
-import { planPromotion, correctableOutcome } from '../lib/outcomeCorrection.js';
+import { planPromotion, correctableOutcome, consumedFields } from '../lib/outcomeCorrection.js';
 import { applyOutcomeToAula, closeOpenAppointment, upsertScheduledAppointment, upsertScheduledAula } from '../lib/aulasWrites.js';
 import { recordPlanFor } from '../lib/aulas.js';
 import { daysToExpiryOf, activeRenewalCheckpoint } from '../lib/renewalGoal.js';
@@ -29,13 +29,14 @@ import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { LeadLink } from '../components/nav/AppLink.jsx';
 import { ContactPhone } from '../components/profile/ContactPhone.jsx';
-import { SOLO_TRAINING, SOLO_TRAINING_LABEL, professorsForModality, professorNameById } from '../lib/professores.js';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { Btn, IconBtn } from '../components/ui/Btn.jsx';
 import { RenewalOutcomeModal } from '../modals/RenewalOutcomeModal.jsx';
 import { ContactOutcomeModal } from '../modals/ContactOutcomeModal.jsx';
 import { ContractModal } from '../modals/ContractModal.jsx';
-import { AlertCircle, BookOpen, Building2, Calendar, Check, CheckCircle, ChevronRight, Clock, Dumbbell, Flame, Kanban, MessageCircle, MessageSquare, MoreHorizontal, Phone, RefreshCw, Target, X, Zap } from 'lucide-react';
+import { RescheduleModal } from '../modals/RescheduleModal.jsx';
+import { NextContactModal } from '../modals/NextContactModal.jsx';
+import { AlertCircle, BookOpen, Building2, Calendar, Check, CheckCircle, ChevronRight, Clock, Dumbbell, Flame, Kanban, MessageCircle, MessageSquare, MoreHorizontal, Phone, RefreshCw, Target, Zap } from 'lucide-react';
 
 // DAILY GOAL VIEW — DESIGN PRIMITIVES
 // ==========================================
@@ -350,7 +351,7 @@ function DgSection({ slug, tasks, render }) {
 // Renders a single (lead × categorySlug) task card.
 // Same lead with two pending categories renders TWICE — once per slug — with independent actions per main's per-category status model.
 // Exportado para o teste em node conferir os links sem montar a tela inteira.
-export function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, onSnooze, onOutcome, onReschedule, onGoalDone, onWhatsapp, onCall }) {
+export function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, onPostpone, onOutcome, onReschedule, onGoalDone, onWhatsapp, onCall }) {
   const m = DG_CATEGORY_META[slug];
   if (!m) return null;
   const t = COLOR_TONES[m.color];
@@ -380,14 +381,11 @@ export function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE
   const appointmentLabel = (isAppt && apptDate) ? `Hoje · ${formatHourLabel(apptDate)}` : null;
   const enteredAtLabel = (isNovo && task.createdAt) ? formatHourLabel(task.createdAt) : null;
   const age = isNovo ? humanizeAge(task.createdAt, now) : null;
-  // TODO: substituir por critério Hot/Cold real (src/lib/leads) quando integrado aqui
-  // Relógio vem da prop `now` (atualizada por minuto) — não de Date.now() no
-  // render, que é instável entre re-renders e viola a pureza do componente.
-  const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
-  const isHot = isNovo && task.createdAt && task.createdAt >= oneHourAgo;
-  const overdueDays = (isOverdue && task.nextFollowUp)
-    ? Math.max(1, Math.ceil((new Date(now).setHours(0, 0, 0, 0) - task.nextFollowUp) / 86400000))
-    : 0;
+  // A régua da lib (overdueDaysOf), a mesma da ordem da lista e dos Relatórios.
+  // Conta também o lead novo sem próximo passo, que entra aqui sem próximo
+  // contato: para ele o card diz por que está atrasado.
+  const overdueDays = isOverdue ? overdueDaysOf(task, now) : 0;
+  const newLeadWithoutNextStep = isOverdue && !task.nextFollowUp;
   const note = task.observation || '';
 
   return (
@@ -413,11 +411,6 @@ export function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE
             >
               {task.name}
             </LeadLink>
-            {isHot && (
-              <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-300">
-                <Flame size={11} /> Quente
-              </span>
-            )}
           </div>
           <div className="flex items-center gap-2 mt-0.5 text-[12px] text-slate-500 dark:text-slate-400 num flex-wrap">
             <ContactPhone lead={task} showName />
@@ -443,6 +436,9 @@ export function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE
               <TimePill icon={<Clock size={11} />}>
                 Entrou {enteredAtLabel}{age ? <span className="opacity-60"> · {age}</span> : null}
               </TimePill>
+            )}
+            {newLeadWithoutNextStep && (
+              <TimePill icon={<AlertCircle size={11} />} tone="rose">Sem próximo passo desde o cadastro</TimePill>
             )}
             {isOverdue && overdueDays > 0 && (
               overdueDays >= slaOverdueDays ? (
@@ -500,7 +496,7 @@ export function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE
           <Btn kind="soft" icon={<WhatsappGlyph size={14} />} onClick={() => onWhatsapp && onWhatsapp(task)}>WhatsApp</Btn>
           <IconBtn icon={<Phone size={15} />} title="Ligar" onClick={() => onCall && onCall(task)} />
           {!isAppt && (
-            <IconBtn icon={<Calendar size={15} />} title="Adiar p/ amanhã" onClick={() => onSnooze && onSnooze(task)} />
+            <IconBtn icon={<Calendar size={15} />} title="Reagendar" onClick={() => onPostpone && onPostpone(task, slug)} />
           )}
         </div>
         <div className="flex items-center gap-1.5 flex-wrap justify-end">
@@ -618,346 +614,6 @@ export function TomorrowApptRow({ lead, when }) {
   );
 }
 
-// Build a `YYYY-MM-DDTHH:MM` string in LOCAL time for <input type="datetime-local">.
-function toDatetimeLocalValue(date) {
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-// Botão de tipo do RescheduleModal — fora do componente pai para não ser
-// recriado a cada render (evitava perder foco/estado dos inputs irmãos do modal).
-function RescheduleTypeBtn({ active, label, onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex-1 h-9 px-3 rounded-lg text-[12.5px] font-semibold transition border ${
-        active
-          ? 'bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900 dark:border-white'
-          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-white/[0.03] dark:text-slate-300 dark:border-white/[0.07] dark:hover:bg-white/[0.06]'
-      }`}
-    >
-      {label}
-    </button>
-  );
-}
-
-function RescheduleModal({ lead, categorySlug, currentDate, currentType, flow = 'manual', onConfirm, onClose }) {
-  const isAfterNoShow = flow === 'after_no_show';
-  const { modalities, trialClassOptions, professores } = useGeneralConfig();
-
-  const defaultValue = useMemo(() => {
-    const base = currentDate ? new Date(currentDate) : new Date();
-    base.setDate(base.getDate() + 1);
-    return toDatetimeLocalValue(base);
-  }, [currentDate]);
-
-  const initialType = currentType === 'aula_experimental' || categorySlug === DAILY_GOAL_CATEGORIES.AULA_HOJE
-    ? 'aula_experimental'
-    : 'visita';
-
-  const [dateValue, setDateValue] = useState(defaultValue);
-  const [apptType, setApptType] = useState(initialType);
-  const [note, setNote] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  // Aula experimental: modalidade + quantidade (semeadas do lead, se houver).
-  const [modality, setModality] = useState(lead?.appointmentModality || '');
-  const [qty, setQty] = useState(() => {
-    const n = Number(lead?.trialClassesPlanned);
-    return Number.isFinite(n) && n > 0 ? n : ((trialClassOptions && trialClassOptions[0]) || 1);
-  });
-  // Professor responsável (ou "Treina sozinho"), semeado do lead se houver.
-  const [professorSel, setProfessorSel] = useState(
-    lead?.appointmentSoloTraining ? SOLO_TRAINING : (lead?.appointmentProfessorId || '')
-  );
-
-  // Garante que a opção semeada do lead apareça no select mesmo que não esteja
-  // mais na lista configurada (ex.: opção removida depois do agendamento).
-  const qtyOptions = useMemo(() => {
-    const base = (trialClassOptions && trialClassOptions.length ? trialClassOptions : [1]);
-    return base.includes(qty) ? base : [...base, qty].sort((a, b) => a - b);
-  }, [trialClassOptions, qty]);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!dateValue || submitting) return;
-    const newDate = new Date(dateValue);
-    if (isNaN(newDate.getTime())) return;
-    const isAula = apptType === 'aula_experimental';
-    const finalQty = Number(qty) > 0 ? Math.floor(Number(qty)) : ((trialClassOptions && trialClassOptions[0]) || 1);
-    const isSolo = professorSel === SOLO_TRAINING;
-    const professorId = isAula && !isSolo ? (professorSel || null) : null;
-    const soloTraining = isAula && isSolo;
-    const professorName = professorId ? professorNameById(professores, professorId) : null;
-    setSubmitting(true);
-    await onConfirm(newDate, note, apptType, isAula ? (modality || '').trim() : null, isAula ? finalQty : null, professorId, professorName, soloTraining);
-    setSubmitting(false);
-  };
-
-  const title = isAfterNoShow
-    ? 'Agendar próxima tentativa'
-    : `Remarcar ${apptType === 'aula_experimental' ? 'aula experimental' : 'visita'}`;
-
-  const helperText = isAfterNoShow
-    ? 'A tarefa de hoje já foi marcada como "Não veio". O lead voltará à Meta Diária na nova data.'
-    : 'A tarefa de hoje será concluída e o lead voltará para a sua Meta Diária na nova data.';
-
-  return createPortal(
-    <>
-      <div onClick={onClose} className="fixed inset-0 z-[110] bg-slate-900/40 dark:bg-black/60 backdrop-blur-md animate-fade-in" />
-      <div className="fixed inset-0 z-[111] grid place-items-center p-4 animate-fade-in pointer-events-none">
-        <form onSubmit={handleSubmit} className="bg-white dark:bg-neutral-900 rounded-2xl shadow-2xl max-w-md w-full p-6 pointer-events-auto">
-          <div className="flex items-start gap-3 mb-5">
-            <div className={`w-10 h-10 rounded-xl grid place-items-center shrink-0 text-lg ${
-              isAfterNoShow
-                ? 'bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300'
-                : 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
-            }`}>
-              {isAfterNoShow ? '↻' : '🔄'}
-            </div>
-            <div className="min-w-0 flex-1">
-              <h3 className="text-[16px] font-semibold text-slate-900 dark:text-white">{title}</h3>
-              <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">{lead.name}</p>
-              {contactOf(lead).phone && (
-                <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5 min-w-0">
-                  <ContactPhone lead={lead} showName />
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div>
-              <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                Tipo
-              </label>
-              <div className="flex gap-2">
-                <RescheduleTypeBtn active={apptType === 'visita'} onClick={() => setApptType('visita')} label="Visita" />
-                <RescheduleTypeBtn active={apptType === 'aula_experimental'} onClick={() => setApptType('aula_experimental')} label="Aula Experimental" />
-              </div>
-            </div>
-            <div>
-              <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                Nova data e horário
-              </label>
-              <input
-                type="datetime-local"
-                value={dateValue}
-                onChange={(e) => setDateValue(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[14px] num focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500"
-                required
-                autoFocus
-              />
-            </div>
-            {apptType === 'aula_experimental' && (
-              <>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                      Modalidade
-                    </label>
-                    <select
-                      value={modality}
-                      onChange={(e) => { setModality(e.target.value); setProfessorSel(''); }}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[14px] focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 appearance-none cursor-pointer"
-                    >
-                      <option value="">{(modalities || []).length ? 'Selecione...' : 'Cadastre em Config. Gerais'}</option>
-                      {(modalities || []).map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                      Aulas previstas
-                    </label>
-                    <select
-                      value={qty}
-                      onChange={(e) => setQty(Number(e.target.value))}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[14px] num focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 appearance-none cursor-pointer"
-                    >
-                      {qtyOptions.map(n => (
-                        <option key={n} value={n}>{n} {n === 1 ? 'aula' : 'aulas'}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                    Professor
-                  </label>
-                  <select
-                    value={professorSel}
-                    onChange={(e) => setProfessorSel(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[14px] focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 appearance-none cursor-pointer"
-                  >
-                    <option value="">Selecione...</option>
-                    {professorsForModality(professores, modalities, modality).map((p) => (
-                      <option key={p.id} value={p.id}>{p.nome}</option>
-                    ))}
-                    <option value={SOLO_TRAINING}>{SOLO_TRAINING_LABEL}</option>
-                  </select>
-                </div>
-              </>
-            )}
-            <div>
-              <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                Observação (opcional)
-              </label>
-              <textarea
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                rows={2}
-                placeholder={isAfterNoShow ? 'Ex: combinar pela manhã, ligar antes' : 'Ex: lead pediu para remarcar por motivo de trabalho'}
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[14px] focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 resize-none"
-              />
-            </div>
-          </div>
-
-          <p className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-4 leading-relaxed">{helperText}</p>
-
-          <div className="mt-5 flex items-center justify-end gap-2">
-            <Btn kind="secondary" onClick={onClose}>
-              {isAfterNoShow ? 'Não remarcar agora' : 'Cancelar'}
-            </Btn>
-            <button
-              type="submit"
-              disabled={submitting || !dateValue}
-              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12px] font-semibold whitespace-nowrap transition active:scale-[.98] bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Check size={14} />
-              {submitting ? 'Salvando...' : (isAfterNoShow ? 'Confirmar agendamento' : 'Confirmar remarcação')}
-            </button>
-          </div>
-        </form>
-      </div>
-    </>,
-    document.body
-  );
-}
-
-// Botão de preset do NextContactModal — fora do pai para não recriar a cada
-// render (mesmo motivo do RescheduleTypeBtn).
-function NextContactPresetBtn({ icon, label, onClick, disabled }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="h-[38px] inline-flex items-center justify-center gap-1.5 px-3 rounded-lg text-[13px] font-semibold border bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300 disabled:opacity-50 disabled:cursor-not-allowed transition dark:bg-white/[0.03] dark:text-slate-200 dark:border-white/[0.07] dark:hover:bg-white/[0.06]"
-    >
-      {icon}{label}
-    </button>
-  );
-}
-
-// Popover "Próximo contato?" — abre ao CONCLUIR uma tarefa de Contato/Atrasado
-// (e após Compareceu/Cancelou em visita/aula). Garante que o lead sempre saia
-// com uma data futura OU sem data — nunca com o nextFollowUp parado no passado,
-// que era o que o trazia de volta como "Atrasado" no dia seguinte.
-function NextContactModal({ lead, contextLabel = 'Tarefa concluída', onPick, onSkip, onClose }) {
-  const [note, setNote] = useState('');
-  const [customMode, setCustomMode] = useState(false);
-  const [customValue, setCustomValue] = useState(() => {
-    const base = new Date();
-    base.setDate(base.getDate() + 1);
-    base.setHours(9, 0, 0, 0);
-    return toDatetimeLocalValue(base);
-  });
-  const [submitting, setSubmitting] = useState(false);
-
-  const run = async (fn) => {
-    if (submitting) return;
-    setSubmitting(true);
-    try { await fn(); } finally { setSubmitting(false); }
-  };
-  const pickIn = (days) => run(async () => {
-    const d = new Date();
-    d.setDate(d.getDate() + days);
-    await onPick(d, note);
-  });
-  const pickCustom = () => run(async () => {
-    if (!customValue) return;
-    const d = new Date(customValue);
-    // Trava de data futura (mesma garantia do ContactOutcomeModal): nunca
-    // agenda o próximo contato no passado/agora, senão o lead cairia em
-    // Atrasados. Cobre o fluxo pós-desfecho (Compareceu/Cancelou), único que
-    // ainda usa este popup depois de Atrasados migrar pro ContactOutcomeModal.
-    if (isNaN(d.getTime()) || d.getTime() <= Date.now()) return;
-    await onPick(d, note);
-  });
-  const skip = () => run(async () => { await onSkip(note); });
-
-  return createPortal(
-    <>
-      <div onClick={onClose} className="fixed inset-0 z-[110] bg-slate-900/40 dark:bg-black/60 backdrop-blur-md animate-fade-in" />
-      <div className="fixed inset-0 z-[111] grid place-items-center p-4 animate-fade-in pointer-events-none">
-        <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-2xl max-w-md w-full p-6 pointer-events-auto">
-          <div className="flex items-start gap-3 mb-5">
-            <div className="w-10 h-10 rounded-xl grid place-items-center shrink-0 bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
-              <Calendar size={18} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h3 className="text-[16px] font-semibold text-slate-900 dark:text-white">Próximo contato?</h3>
-              <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">{contextLabel} · {lead.name}</p>
-            </div>
-          </div>
-
-          <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-            Quando voltar a falar
-          </label>
-          {!customMode ? (
-            <div className="grid grid-cols-2 gap-2">
-              <NextContactPresetBtn disabled={submitting} onClick={() => pickIn(1)} icon={<Calendar size={15} />} label="Amanhã" />
-              <NextContactPresetBtn disabled={submitting} onClick={() => pickIn(3)} icon={<Calendar size={15} />} label="Em 3 dias" />
-              <NextContactPresetBtn disabled={submitting} onClick={() => pickIn(7)} icon={<Calendar size={15} />} label="Em 7 dias" />
-              <NextContactPresetBtn disabled={submitting} onClick={() => setCustomMode(true)} icon={<Calendar size={15} />} label="Escolher data…" />
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <input
-                type="datetime-local"
-                value={customValue}
-                min={toDatetimeLocalValue(new Date())}
-                onChange={(e) => setCustomValue(e.target.value)}
-                autoFocus
-                className="flex-1 px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[14px] num focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500"
-              />
-              <Btn kind="primary" size="md" icon={<Check size={14} />} onClick={pickCustom} disabled={submitting || !customValue}>OK</Btn>
-            </div>
-          )}
-
-          <button
-            type="button"
-            onClick={skip}
-            disabled={submitting}
-            className="w-full mt-2 h-[38px] inline-flex items-center justify-center gap-1.5 rounded-lg text-[13px] font-medium text-slate-500 border border-dashed border-slate-300 hover:bg-slate-50 hover:text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition dark:border-white/10 dark:text-slate-400 dark:hover:bg-white/[0.04]"
-          >
-            <X size={14} /> Sem próximo contato
-          </button>
-
-          <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mt-4 mb-1.5">
-            Observação (opcional)
-          </label>
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            rows={2}
-            placeholder="Ex: respondeu no WhatsApp, retornar a proposta"
-            className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[14px] focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 resize-none"
-          />
-
-          <div className="mt-5 flex items-center justify-between gap-2">
-            <span className="text-[11.5px] text-slate-400 dark:text-slate-500 inline-flex items-center gap-1">
-              <RefreshCw size={12} /> Agendar conta como reaquecimento
-            </span>
-            <Btn kind="secondary" onClick={onClose} disabled={submitting}>Cancelar</Btn>
-          </div>
-        </div>
-      </div>
-    </>,
-    document.body
-  );
-}
-
 // ==========================================
 // DAILY GOAL VIEW (META DIÁRIA)
 // ==========================================
@@ -973,6 +629,15 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
   const [rescheduleTarget, setRescheduleTarget] = useState(null);
   const [nextContactTarget, setNextContactTarget] = useState(null);
   const prevProgress = useRef(null); // null = ainda sem cálculo nesta montagem
+  // Tarefas com gravação em andamento (lead e categoria). O card só some quando
+  // o snapshot chega, e o segundo clique nesse meio gravava a marca de novo.
+  const savingTasks = useRef(new Set());
+  const claimTask = (key) => {
+    if (savingTasks.current.has(key)) return false;
+    savingTasks.current.add(key);
+    return true;
+  };
+  const releaseTask = (key) => savingTasks.current.delete(key);
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 60_000);
@@ -1033,10 +698,15 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
 
   // Slots da MINHA meta — regra única em src/lib/dailyGoal.js (Meta-only:
   // só Venda/Perda hoje ou daily_goal_done marcam tarefa).
-  const processedLeads = useMemo(() => {
-    void todayKey; // recategoriza na virada do dia (A5)
-    return computeDailyGoalSlots(leads, buildInteractionsByLead(interactions), appUser.id, renewalCheckpoints, renewalGraceDays);
-  }, [leads, appUser, interactions, todayKey, renewalCheckpoints, renewalGraceDays]);
+  // Com o relógio da tela (`now`, por minuto): a janela de 24h do lead novo
+  // fecha na hora certa, e não só quando chega dado novo.
+  // O índice das interações só muda quando chegam interações, e não a cada
+  // minuto do relógio.
+  const interactionsByLead = useMemo(() => buildInteractionsByLead(interactions), [interactions]);
+  const processedLeads = useMemo(
+    () => computeDailyGoalSlots(leads, interactionsByLead, appUser.id, renewalCheckpoints, renewalGraceDays, now),
+    [leads, appUser, interactionsByLead, now, renewalCheckpoints, renewalGraceDays]
+  );
 
   // Agenda do dia (painel compartilhado): todas as visitas e aulas de HOJE na
   // academia, de qualquer consultor. Calculada à parte — NÃO entra em
@@ -1073,11 +743,10 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
     setSavingAgendaId(row.id);
     try {
       // CLIENTE é caso à parte: ele está na agenda só para upsell de modalidade,
-      // não para prospecção. A presença dele registra o desfecho e a timeline e
-      // para por aí — não mexe em etapa do funil (promote) e não consome o
-      // compromisso (consumeAppointment), que zeraria o próximo contato dele.
-      // Sem isso, confirmar a presença de um aluno apagava um contato agendado
-      // e podia empurrá-lo de volta para o funil de vendas.
+      // não para prospecção. A presença dele não mexe em etapa do funil
+      // (promote), senão podia empurrá-lo de volta para o funil de vendas. O
+      // próximo contato segue a regra de todos (consumedFields): sai só o eco do
+      // agendamento, e o contato de renovação marcado à parte fica.
       const quem = row.isMine ? '' : ` (meta de ${row.ownerName})`;
       const isCliente = row.isClient;
 
@@ -1116,7 +785,6 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
       await writeAppointmentOutcome({
         db, lead: row, outcome: choice, categorySlug: row.categorySlug, appUser, statuses,
         promote: !isCliente,
-        consumeAppointment: !isCliente,
         writeGoalDone: !jaTemMarcaHoje,
         sourceLabel: 'Agenda do dia',
       });
@@ -1143,16 +811,10 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
   const isLeadDoneForCategory = (lead, categorySlug) =>
     Boolean(lead.categoryStatus?.[categorySlug]);
 
-  // Agora cada lead pode estar em múltiplas categorias e cada uma
-  // tem status independente. Total de "slots" = soma das categorias
-  // de cada lead. Done = slots concluídos.
-  const totalSlots = processedLeads.reduce((acc, l) => acc + l.categorySlugs.length, 0);
-  const doneSlots = processedLeads.reduce(
-    (acc, l) => acc + l.categorySlugs.filter(s => isLeadDoneForCategory(l, s)).length,
-    0
-  );
+  // Cada lead pode estar em várias categorias, cada uma com status próprio. A
+  // conta é a mesma do selo do menu (slotTotals, em lib/dailyGoal.js).
+  const { totalSlots, doneSlots, progress } = slotTotals(processedLeads);
   const total = totalSlots;
-  const progress = totalSlots > 0 ? Math.round((doneSlots / totalSlots) * 100) : 100;
 
   // ── Meta por VOLUME (piso de esforço) ──────────────────────────────────
   // Alvo: definido por consultor (doc do usuário); sem alvo = sem régua.
@@ -1203,24 +865,41 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
     prevProgress.current = progress;
   }, [progress, total, volumeCount, volumeTarget, recordGoalHit]);
 
-  const handleSnooze = async (lead) => {
-    if (!window.confirm("Adiar o contato deste lead para amanhã?")) return;
-    try {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      await logInteraction(db, lead, appUser,
-        { text: `Contato adiado para amanhã via Meta Diária.`, type: 'note' },
-        {
-          nextFollowUp: tomorrow,
-          // A3: limpa o agendamento formal antigo (visita/aula que já passou e
-          // virou "Atrasado") para o lead não ficar preso com a data velha em
-          // getLeadAppointmentDate — assim ele aparece corretamente em "Amanhã".
-          // O tipo de contato (nextFollowUpType: Ligação/Mensagem) é preservado.
-          appointmentScheduledFor: null,
-          appointmentType: null
-        }
-      );
-    } catch(err) { console.error(err); toast.error('Não foi possível adiar o lead. Tente novamente.'); }
+  // Abre o pop-up de desfecho da categoria, já no desfecho pedido (o Reagendar
+  // do card passa 'reagendar'). Devolve false quando a categoria não tem
+  // pop-up: o Novo lead conclui direto.
+  // - Renovação e Vencidos: RenewalOutcomeModal (regra em renewalGoal.js e
+  //   expiredGoal.js), com o marco ativo na Renovação.
+  // - Contato e Atrasado: ContactOutcomeModal (regra em contactGoal.js), que
+  //   obriga data futura no Reagendar.
+  const openOutcomePopup = (lead, categorySlug, initialOutcome = null) => {
+    if (categorySlug === DAILY_GOAL_CATEGORIES.RENOVACAO) {
+      const checkpoint = activeRenewalCheckpoint(daysToExpiryOf(lead.currentContractEndsAt, now), renewalCheckpoints);
+      setRenewalTarget({ lead, activeCheckpoint: checkpoint, initialOutcome });
+      return true;
+    }
+    if (categorySlug === DAILY_GOAL_CATEGORIES.VENCIDO) {
+      setRenewalTarget({ lead, activeCheckpoint: null, variant: 'vencido', initialOutcome });
+      return true;
+    }
+    if (categorySlug === DAILY_GOAL_CATEGORIES.CONTATO_HOJE || categorySlug === DAILY_GOAL_CATEGORIES.ATRASADO) {
+      setContactTarget({ lead, categorySlug, initialOutcome });
+      return true;
+    }
+    return false;
+  };
+
+  // O botão de reagendar do card (o antigo "Adiar p/ amanhã"). Abre o pop-up de
+  // desfecho já no Reagendar, com amanhã preenchido e o motivo obrigatório, e a
+  // tarefa conta como feita, como no Reagendar do Concluir. Até 17/10/2026 ele
+  // gravava o próximo contato direto: a tarefa sumia sem marca e sem motivo (dava
+  // para bater o dia adiando tudo), o atrasado de uma visita perdida virava uma
+  // visita falsa no dia seguinte e o agendamento do aluno era apagado. O Novo
+  // lead usa o pop-up do contato.
+  const handleRescheduleTask = (lead, categorySlug) => {
+    if (!openOutcomePopup(lead, categorySlug, 'reagendar')) {
+      setContactTarget({ lead, categorySlug, initialOutcome: 'reagendar' });
+    }
   };
 
   const handleOutcome = async (lead, outcome, categorySlug) => {
@@ -1235,6 +914,10 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
       lead, outcome, categorySlug, statuses, promote: !isClientLead(lead),
     });
 
+    // A trava vem colada ao try: o finally sempre a solta, e nada antes dele
+    // pode deixá-la presa e o card mudo.
+    const taskKey = `${lead.id}:${categorySlug}`;
+    if (!claimTask(taskKey)) return;
     try {
       const leadUpdate = {
         appointmentOutcome: outcome,
@@ -1246,17 +929,9 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
         leadUpdate.status = promoteTo;
         leadUpdate.statusEnteredAt = serverTimestamp();
       }
-      // Comparecimento PRESERVA o agendamento (appointmentScheduledFor+
-      // appointmentType) → a pessoa nunca some da tela Visitas/Aulas e o desfecho
-      // reflete lá e na Meta. Limpa só o nextFollowUp (tira de "Atrasado" no dia
-      // seguinte). Cancelou remove o compromisso; "Não veio" segue p/ remarcação.
-      if (outcome === 'attended' || outcome === 'cancelled') {
-        leadUpdate.nextFollowUp = null;
-        if (outcome === 'cancelled') {
-          leadUpdate.appointmentScheduledFor = null;
-          leadUpdate.appointmentType = null;
-        }
-      }
+      // O que o desfecho tira do lead, na mesma regra da Agenda de hoje
+      // (consumedFields): o eco do agendamento e, no Cancelou, o agendamento.
+      Object.assign(leadUpdate, consumedFields(outcome, lead));
       // Marca a tarefa da Meta como concluída para essa categoria
       // específica. Type='daily_goal_done' é a fonte ÚNICA de verdade
       // para "tarefa cumprida" no fluxo da Meta Diária. O leadUpdate acompanha
@@ -1305,6 +980,8 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
     } catch (err) {
       console.error(err);
       toast.error('Não foi possível registrar o comparecimento. Tente novamente.');
+    } finally {
+      releaseTask(taskKey);
     }
   };
 
@@ -1341,47 +1018,19 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
 
   const handleGoalDone = async (lead, categorySlug, note) => {
     if (!Object.values(DAILY_GOAL_CATEGORIES).includes(categorySlug)) return;
-    // Renovação: concluir abre o popup de desfecho (Renovou/Não vai
-    // renovar/Reagendar) em vez do window.confirm genérico — a gravação
-    // (patch + timeline + daily_goal_done) acontece dentro do próprio modal
-    // (src/modals/RenewalOutcomeModal.jsx), que usa a regra pura de
-    // src/lib/renewalGoal.js.
-    if (categorySlug === DAILY_GOAL_CATEGORIES.RENOVACAO) {
-      const daysToExpiry = daysToExpiryOf(lead.currentContractEndsAt, now);
-      const checkpoint = activeRenewalCheckpoint(daysToExpiry, renewalCheckpoints);
-      setRenewalTarget({ lead, activeCheckpoint: checkpoint });
-      return;
-    }
-    // Vencidos: mesmo popup de desfecho da Renovação, na variante 'vencido'
-    // (Reativou / Não vai voltar / Reagendar contato). Não há marco a tratar —
-    // a saída do funil vem do nextFollowUp e do renewalDeclined.
-    if (categorySlug === DAILY_GOAL_CATEGORIES.VENCIDO) {
-      setRenewalTarget({ lead, activeCheckpoint: null, variant: 'vencido' });
-      return;
-    }
-    // Contato Hoje: concluir abre o popup de desfecho (Contato feito /
-    // Reagendar) — mesmo visual da renovação. A gravação (patch + timeline +
-    // daily_goal_done) acontece dentro do ContactOutcomeModal (regra pura em
-    // src/lib/contactGoal.js). Substitui o "Próximo contato?" só nesta categoria.
-    if (categorySlug === DAILY_GOAL_CATEGORIES.CONTATO_HOJE) {
-      setContactTarget({ lead, categorySlug });
-      return;
-    }
-    // Atrasado: usa o MESMO popup de desfecho do Contato (ContactOutcomeModal),
-    // que OBRIGA data futura ao reagendar. Antes abria o "Próximo contato?"
-    // antigo (NextContactModal) SEM essa trava, então dava para gravar um
-    // nextFollowUp no passado/hoje — o lead voltava para Atrasados no mesmo dia
-    // com a tarefa pendente (a marca daily_goal_done era carimbada 'atrasado',
-    // não casava com a nova categoria). A regra pura de conclusão/reagendamento
-    // (contactDone/contactReschedule) é a mesma; muda só o popup.
-    if (categorySlug === DAILY_GOAL_CATEGORIES.ATRASADO) {
-      setContactTarget({ lead, categorySlug });
-      return;
-    }
+    // Renovação, Vencidos, Contato e Atrasado concluem pelo pop-up de desfecho,
+    // que grava o patch, a linha do tempo e a marca do dia. O Atrasado usa o do
+    // contato porque ele obriga data futura no Reagendar: o "Próximo contato?"
+    // antigo deixava gravar o próximo contato no passado.
+    if (openOutcomePopup(lead, categorySlug)) return;
     const categoryLabel = DAILY_GOAL_CATEGORY_LABEL[categorySlug] || categorySlug;
     if (!window.confirm(`Concluir a tarefa "${categoryLabel}" deste lead?`)) return;
     const noteText = (note || '').trim();
+    const taskKey = `${lead.id}:${categorySlug}`;
+    if (!claimTask(taskKey)) return;
     try {
+      // O Concluir do Novo lead trata o lead (newLeadHandledPatch): ele não vira
+      // Atrasado quando a janela de 24h fechar.
       await logInteraction(db, lead, appUser, {
         text: noteText
           ? `✅ ${categoryLabel} — Meta Diária. Obs: ${noteText}`
@@ -1389,11 +1038,13 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
         type: 'daily_goal_done',
         dailyGoalCategory: categorySlug,
         ...goalOwnerFields(lead, categorySlug)
-      });
+      }, newLeadHandledPatch(categorySlug));
       toast.success(`Tarefa "${categoryLabel}" concluída.`);
     } catch (err) {
       console.error(err);
       toast.error('Não foi possível concluir a tarefa. Tente novamente.');
+    } finally {
+      releaseTask(taskKey);
     }
   };
 
@@ -1408,9 +1059,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
     const formattedDate = newDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
     const formattedTime = newDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     // Preserva o tipo de contato do lead (Ligação/Mensagem); default Mensagem.
-    const isLigacao = String(lead.nextFollowUpType || '').toLowerCase().includes('liga');
-    const followUpTypeLabel = isLigacao ? 'Ligação' : 'Mensagem';
-    const volumeKind = isLigacao ? 'ligacao' : 'mensagem';
+    const { type: followUpTypeLabel, volumeKind } = followUpChannelOf(lead);
     const closeTask = flow === 'complete';
     try {
       // Agendar o próximo CONTATO não encosta no compromisso formal. Até
@@ -1668,12 +1317,12 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
     });
     // SLA: na seção Atrasados, o atraso mais antigo vem primeiro — o consultor
     // ataca o lead mais crônico antes de o gestor precisar cobrar.
-    groups[DAILY_GOAL_CATEGORIES.ATRASADO].sort((a, b) => overdueDaysOf(b) - overdueDaysOf(a));
+    groups[DAILY_GOAL_CATEGORIES.ATRASADO].sort((a, b) => overdueDaysOf(b, now) - overdueDaysOf(a, now));
     // Vencidos: o vencimento mais RECENTE primeiro — o inverso dos Atrasados,
     // de propósito: a chance de reativação cai a cada dia fora da academia.
     groups[DAILY_GOAL_CATEGORIES.VENCIDO].sort((a, b) => expiredSortKey(b) - expiredSortKey(a));
     return groups;
-  }, [processedLeads]);
+  }, [processedLeads, now]);
 
   const counts = Object.fromEntries(
     DG_CATEGORY_ORDER.map(slug => [slug, (pendingBySlug[slug] || []).length])
@@ -1726,7 +1375,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
       slug={slug}
       now={now}
       slaOverdueDays={slaOverdueDays}
-      onSnooze={handleSnooze}
+      onPostpone={handleRescheduleTask}
       onOutcome={handleOutcome}
       onReschedule={(t, s) => setRescheduleTarget({ lead: t, categorySlug: s })}
       onGoalDone={handleGoalDone}
@@ -1933,12 +1582,12 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
 
       {renewalTarget && (
         <RenewalOutcomeModal
-          open
           lead={renewalTarget.lead}
           appUser={appUser}
           db={db}
           activeCheckpoint={renewalTarget.activeCheckpoint}
           variant={renewalTarget?.variant || 'renovacao'}
+          initialOutcome={renewalTarget.initialOutcome}
           onDone={handleRenewalOutcomeDone}
           onClose={() => setRenewalTarget(null)}
         />
@@ -1958,9 +1607,9 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
 
       {contactTarget && (
         <ContactOutcomeModal
-          open
           lead={contactTarget.lead}
           categorySlug={contactTarget.categorySlug}
+          initialOutcome={contactTarget.initialOutcome}
           appUser={appUser}
           db={db}
           onDone={() => setContactTarget(null)}

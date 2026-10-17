@@ -20,10 +20,14 @@ import {
   DG_CATEGORY_ORDER,
   DG_CATEGORY_META,
   COLOR_TONES,
-  tomorrowAppointmentsOf
+  tomorrowAppointmentsOf,
+  newLeadDueOf,
+  newLeadHandledPatch,
+  isMetaOverdue
 } from '../dailyGoal.js';
 import { DAILY_GOAL_CATEGORIES } from '../leads.js';
 import { contactDone, contactReschedule } from '../contactGoal.js';
+import { consumedFields } from '../outcomeCorrection.js';
 
 // Quarta-feira, 15 de julho de 2026, 10:00 local — "agora" de referência.
 const NOW = new Date(2026, 6, 15, 10, 0, 0);
@@ -1230,8 +1234,139 @@ describe('tomorrowAppointmentsOf', () => {
     expect(ids(tomorrowAppointmentsOf([hoje, depois, tarde, cedo], 'u1'))).toEqual([cedo.id, tarde.id]);
   });
 
+  // Atrasado de uma visita perdida ontem: o Reagendar do card marcou uma
+  // mensagem para amanhã e o agendamento vencido continuou no lead. O
+  // agendamento de um dia que já passou escondia o contato da prévia.
+  it('a visita perdida reagendada como contato aparece pelo contato', () => {
+    const l = lead({
+      appointmentType: 'visita', appointmentScheduledFor: new Date(2026, 6, 14, 16, 0),
+      nextFollowUp: amanha16, nextFollowUpType: 'Mensagem',
+    });
+    expect(tomorrowAppointmentsOf([l], 'u1')).toEqual([{ lead: l, when: amanha16 }]);
+  });
+
   it('aceita a data de referência', () => {
     const l = visitaDeAmanha({ appointmentScheduledFor: new Date(2026, 6, 20, 10, 0) });
     expect(ids(tomorrowAppointmentsOf([l], 'u1', new Date(2026, 6, 19, 23, 0)))).toEqual([l.id]);
+  });
+});
+
+// No dia do vencimento o cliente é cobrado só em Vencidos. A Renovação lia o
+// contrato à meia-noite, quando ele ainda não estava vencido, e o mesmo cliente
+// entrava nos dois funis enquanto o marco de 30 dias não tivesse sido tratado.
+describe('dia do vencimento: o cliente fica só em Vencidos', () => {
+  const HOJE_10H = new Date(2026, 9, 16, 10, 0);
+  const cliente = (endsAt) => lead({
+    status: 'Venda', lifecycleStage: 'cliente',
+    createdAt: new Date(2025, 9, 16),
+    currentContractStartsAt: new Date(2025, 9, 16),
+    currentContractEndsAt: endsAt,
+  });
+
+  beforeEach(() => { vi.setSystemTime(HOJE_10H); });
+
+  it('o contrato que venceu à meia-noite de hoje entra em Vencidos e não em Renovações', () => {
+    const c = cliente(new Date(2026, 9, 16));
+    const out = computeDailyGoalSlots([c], new Map(), 'u1', [90, 60, 30], 15);
+    expect(byId(out, c.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.VENCIDO]);
+  });
+
+  it('o que vence amanhã continua em Renovações, sem Vencidos', () => {
+    const c = cliente(new Date(2026, 9, 17));
+    const out = computeDailyGoalSlots([c], new Map(), 'u1', [90, 60, 30], 15);
+    expect(byId(out, c.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.RENOVACAO]);
+  });
+});
+
+// O lead novo nasce sem próximo contato. Passada a janela de 24h, ele vira
+// Atrasado até alguém concluir o contato pela Meta ou marcar o próximo passo,
+// em vez de sair de toda categoria da Meta.
+describe('lead novo sem próximo passo vira Atrasado', () => {
+  const AGORA = new Date(2026, 9, 20, 10, 0); // terça, 20/10/2026, 10:00
+  const novo = (over = {}) => lead({ createdAt: new Date(2026, 9, 19, 8, 0), lastInteractionAt: null, ...over });
+  const slugsDe = (l, now) => byId(computeDailyGoalSlots([l], new Map(), 'u1', undefined, undefined, now), l.id)?.categorySlugs || [];
+
+  beforeEach(() => { vi.setSystemTime(AGORA); });
+
+  it('passada a janela de 24h, sai do Novo lead e entra em Atrasados', () => {
+    expect(slugsDe(novo())).toEqual([DAILY_GOAL_CATEGORIES.ATRASADO]);
+  });
+
+  it('com a janela aberta continua só no Novo lead', () => {
+    expect(slugsDe(novo({ createdAt: new Date(2026, 9, 19, 15, 0) }))).toEqual([DAILY_GOAL_CATEGORIES.NOVO_24H]);
+  });
+
+  it('a troca acontece no minuto em que a janela fecha, pelo relógio da tela', () => {
+    const l = novo();
+    expect(slugsDe(l, new Date(2026, 9, 20, 7, 59))).toEqual([DAILY_GOAL_CATEGORIES.NOVO_24H]);
+    expect(slugsDe(l, new Date(2026, 9, 20, 8, 1))).toEqual([DAILY_GOAL_CATEGORIES.ATRASADO]);
+  });
+
+  it('mexer no lead sem concluir não tira: ele continua sem próximo passo', () => {
+    // Mudou de fase no Pipeline ou ganhou uma anotação na ficha.
+    expect(slugsDe(novo({ lastInteractionAt: new Date(2026, 9, 19, 9, 0) }))).toEqual([DAILY_GOAL_CATEGORIES.ATRASADO]);
+  });
+
+  it('o lead tratado pela Meta sai (o newLeadHandledAt do "Contato feito" e do Concluir)', () => {
+    expect(slugsDe(novo({ ...contactDone(new Date(2026, 9, 19, 9, 0)) }))).toEqual([]);
+  });
+
+  // O Cancelou apaga o agendamento e grava o newLeadHandledAt
+  // (consumedFields). Sem ele, o lead cuja visita foi cancelada voltava na hora
+  // para Atrasados, com o atraso contado do cadastro.
+  it('a visita cancelada não devolve o lead a Atrasados', () => {
+    const cancelada = novo({
+      ...consumedFields('cancelled', { nextFollowUpType: 'Visita' }, new Date(2026, 9, 20, 9, 0)),
+      nextFollowUpType: 'Visita',
+    });
+    expect(slugsDe(cancelada)).toEqual([]);
+  });
+
+  it('a visita que aconteceu também tira, porque o agendamento fica', () => {
+    const veio = novo({ appointmentType: 'visita', appointmentScheduledFor: new Date(2026, 9, 19, 18, 0) });
+    expect(slugsDe(veio)).toEqual([]);
+  });
+
+  it('lead com próximo contato ou com agendamento segue a regra de sempre', () => {
+    expect(slugsDe(novo({ nextFollowUp: new Date(2026, 9, 22, 9, 0), nextFollowUpType: 'Mensagem' }))).toEqual([]);
+    expect(slugsDe(novo({ appointmentType: 'visita', appointmentScheduledFor: new Date(2026, 9, 23, 9, 0) }))).toEqual([]);
+  });
+
+  it('lead cadastrado antes da regra, importado, em Perda ou cliente fica fora', () => {
+    expect(slugsDe(novo({ createdAt: new Date(2026, 9, 16, 8, 0) }))).toEqual([]);
+    expect(slugsDe(novo({ importBatchId: 'b1' }))).toEqual([]);
+    expect(slugsDe(novo({ status: 'Perda' }))).toEqual([]);
+    expect(newLeadDueOf(novo({ lifecycleStage: 'cliente' }))).toBeNull();
+  });
+
+  it('os dias de atraso contam do fim da janela', () => {
+    // Cadastrado 17/10 às 08:00, a janela fechou 18/10 às 08:00: de lá até a
+    // meia-noite de 20/10 são 1,7 dia, que arredonda para 2.
+    expect(overdueDaysOf(novo({ createdAt: new Date(2026, 9, 17, 8, 0) }), AGORA)).toBe(2);
+    // No mesmo dia em que a janela fecha, ainda não tem dia de atraso.
+    expect(overdueDaysOf(novo(), AGORA)).toBe(0);
+  });
+
+  // Regra única do Atrasado: a Meta, o "Atrasados agora" do Operacional e o
+  // "Contato atrasado" de Leads parados perguntam ao isMetaOverdue.
+  it('isMetaOverdue: o lead novo é atrasado já no dia em que a janela fecha, o contato só no dia seguinte', () => {
+    expect(isMetaOverdue(novo(), AGORA)).toBe(true);
+    expect(isMetaOverdue(novo(), new Date(2026, 9, 20, 7, 59))).toBe(false);
+    // O contato de hoje cedo ainda não é atrasado; o de ontem já é.
+    expect(isMetaOverdue(novo({ nextFollowUp: new Date(2026, 9, 20, 8, 0) }), AGORA)).toBe(false);
+    expect(isMetaOverdue(novo({ nextFollowUp: new Date(2026, 9, 19, 18, 0) }), AGORA)).toBe(true);
+    expect(isMetaOverdue(novo({ status: 'Venda', nextFollowUp: new Date(2026, 9, 19, 18, 0) }), AGORA)).toBe(false);
+    expect(isMetaOverdue(null, AGORA)).toBe(false);
+  });
+});
+
+// O Concluir da Meta grava no Novo lead que ele foi tratado, e em nenhuma
+// outra categoria.
+describe('newLeadHandledPatch', () => {
+  it('no Novo lead grava o newLeadHandledAt, e nas outras categorias nada', () => {
+    const at = new Date(2026, 9, 20, 10, 0);
+    expect(newLeadHandledPatch(DAILY_GOAL_CATEGORIES.NOVO_24H, at)).toEqual({ newLeadHandledAt: at });
+    expect(newLeadHandledPatch(DAILY_GOAL_CATEGORIES.ATRASADO, at)).toBeNull();
+    expect(newLeadHandledPatch(DAILY_GOAL_CATEGORIES.CONTATO_HOJE, at)).toBeNull();
   });
 });

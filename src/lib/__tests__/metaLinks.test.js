@@ -104,9 +104,9 @@ describe('Meta diária', () => {
     expect(html).toContain('Ana Lima');
   });
 
-  it('TaskCard: WhatsApp, Ligar, Adiar e Concluir continuam botões', () => {
+  it('TaskCard: WhatsApp, Ligar, Reagendar e Concluir continuam botões', () => {
     const html = taskCard();
-    for (const rotulo of ['WhatsApp', 'title="Ligar"', 'title="Adiar p/ amanhã"', 'Concluir']) {
+    for (const rotulo of ['WhatsApp', 'title="Ligar"', 'title="Reagendar"', 'Concluir']) {
       const i = html.indexOf(rotulo);
       expect(html.lastIndexOf('<button', i)).toBeGreaterThan(html.lastIndexOf('<a ', i));
     }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { nextActionOf, createdAgoOf, trailOf, sortLeads } from '../leadsList.js';
+import { nextActionOf, createdAgoOf, trailOf, sortLeads, isLeadOverdue } from '../leadsList.js';
 
 // Meio-dia de 16/10/2026.
 const NOW = new Date(2026, 9, 16, 12);
@@ -83,5 +83,43 @@ describe('trailOf', () => {
 
   it('fase que saiu do funil fica sem barra cheia e sem posição', () => {
     expect(trailOf('Etapa antiga', STAGES)).toEqual({ kind: 'open', filled: 0, total: 5, position: null });
+  });
+});
+
+// Todos os leads lê o atraso como a Meta: além do próximo contato vencido, o
+// lead novo sem próximo passo cuja janela de 24h fechou (newLeadDueOf). Antes
+// ele aparecia como "Sem agendamento" e ia para o fim da ordem por ação.
+describe('o lead novo sem próximo passo em Todos os leads', () => {
+  const AGORA = new Date(2026, 9, 20, 10, 0);
+  const novo = (id, over = {}) => ({ id, status: 'Novo lead', createdAt: new Date(2026, 9, 18, 8, 0), nextFollowUp: null, ...over });
+
+  it('é atrasado depois da janela, e não antes nem depois de tratado', () => {
+    expect(isLeadOverdue(novo('a'), AGORA)).toBe(true);
+    expect(isLeadOverdue(novo('b', { createdAt: new Date(2026, 9, 19, 15, 0) }), AGORA)).toBe(false);
+    expect(isLeadOverdue(novo('c', { newLeadHandledAt: new Date(2026, 9, 18, 9, 0) }), AGORA)).toBe(false);
+    expect(isLeadOverdue(novo('d', { status: 'Perda' }), AGORA)).toBe(false);
+  });
+
+  it('o próximo contato segue como antes: vencido é atrasado, e o futuro não', () => {
+    expect(isLeadOverdue({ status: 'Novo lead', nextFollowUp: new Date(2026, 9, 20, 9, 0) }, AGORA)).toBe(true);
+    expect(isLeadOverdue({ status: 'Novo lead', nextFollowUp: new Date(2026, 9, 20, 11, 0) }, AGORA)).toBe(false);
+  });
+
+  it('a próxima ação diz há quantos dias e que falta o próximo passo', () => {
+    // A janela fechou em 19/10 às 08:00.
+    expect(nextActionOf(novo('a'), AGORA, true)).toEqual({ text: 'Atrasado há 1 dia', sub: 'sem próximo passo', tone: 'late' });
+    expect(nextActionOf(novo('b', { createdAt: new Date(2026, 9, 19, 9, 0) }), AGORA, true))
+      .toEqual({ text: 'Atrasado', sub: 'sem próximo passo', tone: 'late' });
+    expect(nextActionOf(novo('c', { createdAt: new Date(2026, 9, 19, 15, 0) }), AGORA, false).text).toBe('Sem agendamento');
+  });
+
+  it('na ordem por ação, entra com os atrasados pelo fim da janela', () => {
+    const lista = [
+      { id: 'semData', status: 'Novo lead', createdAt: new Date(2026, 9, 10), nextFollowUp: null },
+      { id: 'amanha', status: 'Contato', createdAt: new Date(2026, 9, 10), nextFollowUp: new Date(2026, 9, 21, 9, 0) },
+      novo('novo'),
+      { id: 'atrasado', status: 'Contato', createdAt: new Date(2026, 9, 10), nextFollowUp: new Date(2026, 9, 18, 9, 0) },
+    ];
+    expect(sortLeads(lista, 'acao', () => null, AGORA).map((l) => l.id)).toEqual(['atrasado', 'novo', 'amanha', 'semData']);
   });
 });

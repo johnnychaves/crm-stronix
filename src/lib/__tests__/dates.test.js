@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calendarDaysBetween, fromDateTimeInputValue, startOfLocalDay, toDateTimeInputValue } from '../dates.js';
+import { calendarDaysBetween, fromDateTimeInputValue, futureInstant, startOfLocalDay, toDateTimeInputValue } from '../dates.js';
 
 // Os dois helpers do <input type="datetime-local">. Tudo em hora LOCAL: passar
 // pelo toISOString jogaria a data 3h para trás no Brasil e um contato marcado
@@ -82,5 +82,20 @@ describe('startOfLocalDay', () => {
   });
   it('null com data inválida', () => {
     expect(startOfLocalDay(null)).toBeNull();
+  });
+});
+
+// A trava de "só data e hora futuras" dos pop-ups da Meta.
+describe('futureInstant', () => {
+  const agora = new Date(2026, 9, 17, 14, 0).getTime();
+
+  it('devolve a data quando ela é depois de agora', () => {
+    expect(futureInstant('2026-10-17T14:01', agora)).toEqual(new Date(2026, 9, 17, 14, 1));
+  });
+
+  it('null para agora, para o passado e para o campo vazio', () => {
+    expect(futureInstant('2026-10-17T14:00', agora)).toBeNull();
+    expect(futureInstant('2026-10-16T18:00', agora)).toBeNull();
+    expect(futureInstant('', agora)).toBeNull();
   });
 });

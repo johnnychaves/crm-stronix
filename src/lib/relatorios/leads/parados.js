@@ -4,8 +4,9 @@
 // Sem período e sem comparação. As regras são as do app:
 // - em aberto e sem próximo passo são os da carteira de agora do painel CRM
 //   (openLeadsOf e noNextStepOf, as contas do pipelineNowOf);
-// - o atraso é o do Atrasado da Meta (overdueDaysOf), e fica com o dono do lead
-//   mesmo quando o contato foi delegado, como lá;
+// - o atraso é o do Atrasado da Meta (isMetaOverdue, com os dias do
+//   overdueDaysOf), e fica com o dono do lead mesmo quando o contato foi
+//   delegado, como lá;
 // - os dias sem registro são os do rodapé "Nd sem contato" do card do Pipeline
 //   (silenceDaysOf, a conta do kanbanSilence: dias do calendário, e não
 //   períodos de 24 horas), a partir da última interação pelo
@@ -22,7 +23,7 @@ import { STAGE_TRACKING_SINCE } from '../../crm/scope.js';
 import { openLeadsOf, noNextStepOf } from '../../crm/stages.js';
 import { buildInteractionIndex, lastInteractionDateOf } from '../../leadStatus.js';
 import { silenceDaysOf } from '../../kanban.js';
-import { overdueDaysOf } from '../../dailyGoal.js';
+import { isMetaOverdue, overdueDaysOf } from '../../dailyGoal.js';
 import { DIAS_PARADOS_PADRAO } from '../../screenParams.js';
 import {
   reportScope, namesOf, cutCode, countRows, applyCut, cutLabelOf, contactCells, CONTACT_COLUMNS, fmtDate, STAGE_SINCE_TEXT,
@@ -80,16 +81,17 @@ export function paradosReport(ctx, { userIds = [], funnelId = null, origem = nul
       lastAt,
       quiet,
       late: overdueDaysOf(l, ctx.now),
+      overdue: isMetaOverdue(l, ctx.now),
       noNext: noNextStepOf(l, ctx.now),
       stale: quiet != null && quiet > dias,
     };
   });
   // Um lead pode estar em mais de um número; na lista ele aparece uma vez.
-  const stuck = open.filter((x) => x.noNext || x.late > 0 || x.stale);
+  const stuck = open.filter((x) => x.noNext || x.overdue || x.stale);
 
   const tiles = [
     { key: SITUACAO.semProximoPasso, name: 'Sem próximo passo', value: open.filter((x) => x.noNext).length },
-    { key: SITUACAO.atrasado, name: 'Contato atrasado', value: open.filter((x) => x.late > 0).length },
+    { key: SITUACAO.atrasado, name: 'Contato atrasado', value: open.filter((x) => x.overdue).length },
     { key: SITUACAO.semRegistro, name: `Sem registro há mais de ${dias} dias`, value: open.filter((x) => x.stale).length },
   ];
   const byOwner = countRows(stuck, (x) => names.ownerKey(x.lead), names.ownerName, 'consultor', (id) => ({ note: names.ownerNote(id) }));
@@ -99,7 +101,7 @@ export function paradosReport(ctx, { userIds = [], funnelId = null, origem = nul
     const stageSince = stageSinceOf(l);
     const cuts = [cutCode('consultor', names.ownerKey(l))];
     if (x.noNext) cuts.push(SITUACAO.semProximoPasso);
-    if (x.late > 0) cuts.push(SITUACAO.atrasado);
+    if (x.overdue) cuts.push(SITUACAO.atrasado);
     if (x.stale) cuts.push(SITUACAO.semRegistro);
     return {
       id: l.id,

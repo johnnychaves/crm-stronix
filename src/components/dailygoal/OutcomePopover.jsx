@@ -72,7 +72,7 @@ export function OutcomePopover({
         title={compact ? (marked ? label : 'Marcar desfecho') : undefined}
         className={cn(
           'inline-flex items-center font-semibold whitespace-nowrap transition active:scale-[.98] disabled:opacity-60 disabled:cursor-default',
-          'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/50',
+          'focus:outline-none focus-visible:anel-foco',
           seal && 'size-7 shrink-0 justify-center rounded-full',
           !seal && compact && 'h-7 px-2.5 rounded-full border text-[11.5px]',
           !compact && 'gap-1.5 rounded-lg border',
@@ -102,7 +102,7 @@ export function OutcomePopover({
                 onClick={() => pick(item.id)}
                 className={cn(
                   'w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-[12.5px] font-semibold text-left transition',
-                  'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/50',
+                  'focus:outline-none focus-visible:anel-foco',
                   ITEM_TONE[item.tone]
                 )}
               >
