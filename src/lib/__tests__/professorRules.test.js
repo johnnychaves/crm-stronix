@@ -219,7 +219,13 @@ describe('as listas do professorWrites saem dos montadores de verdade', () => {
     const escrita = /LEADS_PATH, lead\.id\),\s*\{([\s\S]*?)\},\s*\{ merge: true \}/.exec(fonte);
     expect(escrita).not.toBeNull();
     expect(escrita[1]).toContain('lastInteractionAt: serverTimestamp(),');
-    expect(escrita[1]).toContain('interactionsCount: increment(1),');
+    // A escrita mora no logInteractions, que soma o número de interações do
+    // batch. O logInteraction, por onde o professor grava, manda uma só, então
+    // o increment é de 1. O logInteractions com mais de uma serve aos pop-ups
+    // de desfecho da Meta, que não abrem para o professor, e a regra recusaria
+    // a soma de 2 se abrissem.
+    expect(escrita[1]).toContain('interactionsCount: increment(ids.length),');
+    expect(fonte).toMatch(/export async function logInteraction\([^)]*\) \{\s*const \[id\] = await logInteractions\(db, lead, appUser, \[interactionPayload\], leadPatch\);/);
     expect(SCHEDULE_PATCH_FIELDS.filter((campo) => LEAD_BUMP_FIELDS.includes(campo))).toEqual([]);
     for (const typeLabel of SCHEDULE_TYPE_LABELS) {
       const patch = buildSchedulePatch({ typeLabel, date: new Date(2026, 9, 2, 18, 0), currentAulaId: 'a1', contactOwnerId: 'u2' });

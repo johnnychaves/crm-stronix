@@ -2,7 +2,7 @@
 // dia), tarefas concluídas por tipo e atrasados agora. Mesmas réguas da Meta
 // Diária (src/lib/dailyGoal.js); a equipe é sempre a soma das pessoas.
 
-import { volumeTargetFor, interactionOwnerAuthUid } from '../dailyGoal.js';
+import { volumeTargetFor, interactionOwnerAuthUid, isMetaOverdue } from '../dailyGoal.js';
 import { dayKeyOf } from './month.js';
 
 // Chave de quem não está em ctx.users: ex-consultor ou lead sem consultor.
@@ -174,16 +174,15 @@ export function tasksByType({ interactions, users, userId = null, start, end }) 
   return out;
 }
 
-// Mesma condição da categoria Atrasados da Meta Diária: lead fora de Venda e
-// Perda com próximo contato antes do início de hoje. Lead de quem não está na
-// equipe (ou sem consultor) fica em OTHERS_ID, chave que só aparece se houver.
+// A condição da categoria Atrasados da Meta Diária (isMetaOverdue): próximo
+// contato antes do início de hoje, ou o lead novo sem próximo passo cuja janela
+// de 24h já fechou. Lead de quem não está na equipe (ou sem consultor) fica em
+// OTHERS_ID, chave que só aparece se houver.
 export function overdueNow({ liveLeads, users, now }) {
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const byUser = new Map((users || []).map((u) => [u.id, 0]));
   let others = 0;
   (liveLeads || []).forEach((l) => {
-    if (l.status === 'Venda' || l.status === 'Perda') return;
-    if (!(l.nextFollowUp instanceof Date) || l.nextFollowUp >= todayStart) return;
+    if (!isMetaOverdue(l, now)) return;
     if (byUser.has(l.consultantId)) byUser.set(l.consultantId, byUser.get(l.consultantId) + 1);
     else others += 1;
   });
