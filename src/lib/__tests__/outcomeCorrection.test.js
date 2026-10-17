@@ -9,6 +9,8 @@ import {
   correctableOutcome,
   correctionText,
   revertStageText,
+  consumedFields,
+  isAppointmentEcho,
 } from '../outcomeCorrection.js';
 import { DAILY_GOAL_CATEGORIES } from '../leads.js';
 
@@ -85,7 +87,9 @@ describe('stageToRevert', () => {
 
 describe('planAttendedUndo', () => {
   const agendado = new Date(2026, 8, 29, 18);
-  const lead = { ...PROMOVIDO, appointmentScheduledFor: agendado, nextFollowUp: null };
+  // O Compareceu tirou o eco: o nextFollowUp está vazio, e o tipo do
+  // compromisso ficou.
+  const lead = { ...PROMOVIDO, appointmentScheduledFor: agendado, nextFollowUp: null, nextFollowUpType: 'Visita' };
 
   it('Compareceu desfeito: volta a etapa com a data antiga e o próximo contato vira o horário do agendamento', () => {
     expect(planAttendedUndo({ lead, fromOutcome: 'attended' })).toEqual({
@@ -107,9 +111,22 @@ describe('planAttendedUndo', () => {
     });
   });
 
-  it('cliente: nada de etapa nem de próximo contato', () => {
+  // O Compareceu tira o eco do cliente como o de qualquer lead
+  // (consumedFields), então o desfazer o devolve. A etapa não volta.
+  it('cliente: a etapa fica, e o eco que o Compareceu tirou volta', () => {
     expect(planAttendedUndo({ lead, fromOutcome: 'attended', isClient: true }))
+      .toEqual({ patch: { appointmentPromotedFrom: null, nextFollowUp: agendado }, revertedTo: null });
+  });
+
+  // O contato do cliente tinha sido concluído de manhã ("Contato feito" apaga
+  // o próximo contato e o tipo), e o Compareceu da tarde não tirou nada.
+  // Devolver o horário do agendamento criaria um contato que ninguém marcou,
+  // e a Meta o cobraria em Contato Hoje.
+  it('sem o tipo do compromisso não há eco a devolver', () => {
+    const semEco = { ...lead, nextFollowUpType: null };
+    expect(planAttendedUndo({ lead: semEco, fromOutcome: 'attended', isClient: true }))
       .toEqual({ patch: { appointmentPromotedFrom: null }, revertedTo: null });
+    expect(planAttendedUndo({ lead: semEco, fromOutcome: 'attended' }).patch).not.toHaveProperty('nextFollowUp');
   });
 
   it('Não compareceu desfeito não mexe no próximo contato', () => {
@@ -153,5 +170,82 @@ describe('textos', () => {
 
   it('a volta de etapa diz para onde', () => {
     expect(revertStageText('Novo')).toBe('Fase voltou para [Novo] após correção do desfecho.');
+  });
+});
+
+// O que o desfecho tira do lead, regra única do card da Meta e da Agenda de
+// hoje: o eco do agendamento no próximo contato e, no Cancelou, o agendamento.
+// Até 17/10/2026 o cliente era uma exceção que não perdia nada: a aula
+// cancelada ficava na agenda e o eco deixava o lead em Atrasados no dia
+// seguinte.
+describe('consumedFields: o desfecho tira o eco do agendamento', () => {
+  const agendado = new Date(2026, 9, 17, 18, 0);
+  const comEco = { appointmentType: 'visita', appointmentScheduledFor: agendado, nextFollowUp: agendado, nextFollowUpType: 'Visita' };
+  const comContato = { ...comEco, nextFollowUp: new Date(2026, 9, 20, 9, 0), nextFollowUpType: 'Mensagem' };
+  const cliente = { ...comEco, lifecycleStage: 'cliente', status: 'Matriculado' };
+  const at = new Date(2026, 9, 17, 10, 0);
+
+  it('Compareceu tira o eco e preserva o agendamento', () => {
+    expect(consumedFields('attended', comEco)).toEqual({ nextFollowUp: null });
+  });
+
+  // O Cancelou grava também que o lead foi tratado (newLeadHandledAt), porque
+  // o agendamento que sai era o sinal disso para a regra do lead novo.
+  it('Cancelou tira o eco e o agendamento, e marca o lead como tratado', () => {
+    expect(consumedFields('cancelled', comEco, at)).toEqual({ nextFollowUp: null, appointmentScheduledFor: null, appointmentType: null, newLeadHandledAt: at });
+  });
+
+  it('um contato de verdade marcado à parte fica', () => {
+    expect(consumedFields('attended', comContato)).toEqual({});
+    expect(consumedFields('cancelled', comContato, at)).toEqual({ appointmentScheduledFor: null, appointmentType: null, newLeadHandledAt: at });
+  });
+
+  it('cliente segue a mesma regra: a aula cancelada sai e o eco não vira Atrasado', () => {
+    expect(consumedFields('cancelled', cliente, at)).toEqual({ nextFollowUp: null, appointmentScheduledFor: null, appointmentType: null, newLeadHandledAt: at });
+    expect(consumedFields('attended', cliente)).toEqual({ nextFollowUp: null });
+  });
+
+  it('Não compareceu e Remarcou não tiram nada', () => {
+    expect(consumedFields('no_show', comEco)).toEqual({});
+    expect(consumedFields('rescheduled', comEco)).toEqual({});
+  });
+});
+
+describe('isAppointmentEcho', () => {
+  const agendado = new Date(2026, 9, 17, 18, 0);
+  it('o tipo de compromisso no próximo contato é eco', () => {
+    expect(isAppointmentEcho({ nextFollowUp: agendado, nextFollowUpType: 'Aula Experimental' })).toBe(true);
+  });
+  it('sem o tipo, o eco se reconhece pelo mesmo horário do agendamento', () => {
+    expect(isAppointmentEcho({ appointmentScheduledFor: agendado, nextFollowUp: new Date(agendado) })).toBe(true);
+  });
+  it('mensagem ou ligação em outro horário não é eco', () => {
+    expect(isAppointmentEcho({ appointmentScheduledFor: agendado, nextFollowUp: new Date(2026, 9, 20, 9, 0), nextFollowUpType: 'Ligação' })).toBe(false);
+    expect(isAppointmentEcho({})).toBe(false);
+  });
+});
+
+// O eco antigo, reconhecido só pelo horário (sem o tipo no próximo contato),
+// ganha o tipo do compromisso no Compareceu. É esse tipo que o desfazer lê
+// para devolver o eco: sem ele, o eco saía e não voltava.
+describe('o eco sem tipo sai no Compareceu e volta no desfazer', () => {
+  const agendado = new Date(2026, 9, 17, 18, 0);
+  const antigo = { appointmentType: 'visita', appointmentScheduledFor: agendado, nextFollowUp: new Date(agendado), nextFollowUpType: null };
+
+  it('o Compareceu tira o eco e grava o tipo da visita', () => {
+    expect(consumedFields('attended', antigo)).toEqual({ nextFollowUp: null, nextFollowUpType: 'Visita' });
+    expect(consumedFields('attended', { ...antigo, appointmentType: 'aula_experimental' }))
+      .toEqual({ nextFollowUp: null, nextFollowUpType: 'Aula Experimental' });
+  });
+
+  it('o desfazer devolve o eco', () => {
+    const depois = { ...antigo, ...consumedFields('attended', antigo) };
+    expect(planAttendedUndo({ lead: depois, fromOutcome: 'attended', isClient: true }).patch).toEqual({
+      appointmentPromotedFrom: null, nextFollowUp: agendado,
+    });
+  });
+
+  it('o eco que já tinha o tipo não muda o tipo', () => {
+    expect(consumedFields('attended', { ...antigo, nextFollowUpType: 'Aula Experimental' })).toEqual({ nextFollowUp: null });
   });
 });

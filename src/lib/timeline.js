@@ -118,12 +118,17 @@ export const isAppointmentReschedule = (i) =>
 // que é aleatório: sem isto a observação às vezes vinha antes do início.
 // Recebe a lista do mais novo para o mais antigo, como o useLeadTimeline, e
 // só mexe dentro de um empate. Evento sem data não empata com ninguém.
+// No mesmo empate, o lote do logInteractions (a nota do motivo e a marca do
+// dia, gravadas juntas) sai na ordem em que foi gravado: o batchSeq maior é o
+// mais novo e vem primeiro. Quem não tem o campo fica na ordem em que chegou.
 export const originLastOnTies = (list) => {
   const hora = (i) => validDate(i?.createdAt)?.getTime() ?? null;
+  const seq = (i) => (Number.isInteger(i?.batchSeq) ? i.batchSeq : -1);
   const out = [];
   let empate = [];
   const fechar = () => {
-    out.push(...empate.filter((i) => i._kind !== 'origin'), ...empate.filter((i) => i._kind === 'origin'));
+    const ordem = empate.slice().sort((a, b) => seq(b) - seq(a));
+    out.push(...ordem.filter((i) => i._kind !== 'origin'), ...ordem.filter((i) => i._kind === 'origin'));
     empate = [];
   };
   (list || []).forEach((item) => {
