@@ -1,26 +1,22 @@
-import { useMemo, useState } from 'react';
-import { Calendar, CheckCircle2, MessageSquare } from 'lucide-react';
-import { fromDateTimeInputValue, futureInstant, toDateTimeInputValue } from '../lib/dates.js';
+import { useState } from 'react';
+import { Calendar, Check } from 'lucide-react';
+import { getSafeDateOrNull } from '../lib/dates.js';
 import { logInteraction, logInteractions } from '../lib/interactions.js';
 import { formatHourLabel } from '../lib/format.js';
 import { contactDone, contactReschedule, followUpChannelOf } from '../lib/contactGoal.js';
 import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, goalOwnerFields } from '../lib/leads.js';
+import { overdueDaysOf } from '../lib/dailyGoal.js';
+import { dayRefText, whenFromPreset, whenInstant, whenIsFuture } from '../lib/whenPicker.js';
 import { useToast } from '../contexts/ToastContext.jsx';
-import { cn } from '../lib/utils.js';
-import { OUTCOME_TONE, outcomeButtonClass, SegmentedOutcome } from '../components/ui/SegmentedOutcome.jsx';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription
-} from '../components/ui/dialog.jsx';
+import { MotivoField, PopupButton, PopupShell } from '../components/dailygoal/popup/PopupShell.jsx';
+import { OutcomeCards } from '../components/dailygoal/popup/OutcomeCards.jsx';
+import { WhenPicker } from '../components/dailygoal/popup/WhenPicker.jsx';
 
-// Popup de desfecho da tarefa de CONTATO (Meta Diária) — mesmo idioma visual
-// (8b) do RenewalOutcomeModal, com 2 opções. Fino: a regra (patches) vive em
-// src/lib/contactGoal.js; aqui só monta a UI e grava via logInteraction.
-// Substitui o NextContactModal SÓ para a categoria Contato (atrasado segue no
-// fluxo antigo). NUNCA toca status/funil.
+// Pop-up de desfecho da tarefa de contato da Meta Diária (contato de hoje,
+// Atrasado e o Reagendar do Novo lead), na família de pop-ups da Meta
+// (components/dailygoal/popup). Fino: a regra (patches) vive em
+// src/lib/contactGoal.js, e aqui só se monta a tela e se grava. Nunca toca
+// status nem funil.
 //
 // onDone(outcome) — outcome ∈ 'feito' | 'reagendar'.
 
@@ -29,9 +25,9 @@ const OUTCOMES = {
   REAGENDAR: 'reagendar'
 };
 
-const SEGMENTS = [
-  { key: OUTCOMES.FEITO, label: 'Contato feito', Icon: CheckCircle2, tone: 'emerald' },
-  { key: OUTCOMES.REAGENDAR, label: 'Reagendar', Icon: Calendar, tone: 'amber' }
+const CARDS = [
+  { id: OUTCOMES.FEITO, label: 'Contato feito', desc: 'Conclui a tarefa, sem novo contato.', Icon: Check, tone: 'ok' },
+  { id: OUTCOMES.REAGENDAR, label: 'Reagendar', desc: 'Volta à sua Meta em outra data.', Icon: Calendar, tone: 'later' }
 ];
 
 const FOOTER_LABEL = {
@@ -39,60 +35,58 @@ const FOOTER_LABEL = {
   [OUTCOMES.REAGENDAR]: 'Reagendar'
 };
 
+// A linha de contexto sob o nome: o atraso, a hora do contato de hoje ou o
+// cadastro do lead novo.
+function contextOf(lead, categorySlug, now) {
+  if (categorySlug === DAILY_GOAL_CATEGORIES.ATRASADO) {
+    if (!lead?.nextFollowUp) return 'Sem próximo passo desde o cadastro';
+    const days = overdueDaysOf(lead, now);
+    return `Atrasado, ${days} ${days === 1 ? 'dia' : 'dias'}`;
+  }
+  if (categorySlug === DAILY_GOAL_CATEGORIES.NOVO_24H) {
+    const created = getSafeDateOrNull(lead?.createdAt);
+    return created ? `Lead novo, cadastrado ${dayRefText(created, now)}` : 'Lead novo';
+  }
+  const next = getSafeDateOrNull(lead?.nextFollowUp);
+  return next ? `${followUpChannelOf(lead).type} marcada para ${dayRefText(next, now)}` : DAILY_GOAL_CATEGORY_LABEL[categorySlug] || 'Contato';
+}
+
 // initialOutcome: o desfecho que abre escolhido. O Reagendar do card abre com
 // 'reagendar'; sem ele, abre em "Contato feito".
-function ContactOutcomeModal({ open = true, onClose, lead, categorySlug = DAILY_GOAL_CATEGORIES.CONTATO_HOJE, initialOutcome = null, appUser, db, onDone }) {
+function ContactOutcomeModal({ onClose, lead, categorySlug = DAILY_GOAL_CATEGORIES.CONTATO_HOJE, initialOutcome = null, appUser, db, onDone }) {
   const toast = useToast();
+  // O instante da montagem: o render segue puro, e o envio confere de novo no
+  // relógio, para nunca agendar um contato no passado. Marcar para hoje mais
+  // tarde é caso real (mensagem sem resposta de manhã) e não joga o lead em
+  // Atrasados: a Meta classifica o atraso por dia (dailyGoal.js).
+  const [nowMs] = useState(() => Date.now());
   const [outcome, setOutcome] = useState(Object.values(OUTCOMES).includes(initialOutcome) ? initialOutcome : OUTCOMES.FEITO);
   const [motivo, setMotivo] = useState('');
-  // Amanhã às 09:00, o mesmo horário que o wizard de agendamento sugere para
-  // dias futuros. Dia e hora saem do mesmo campo.
-  const [rescheduleStr, setRescheduleStr] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    d.setHours(9, 0, 0, 0);
-    return toDateTimeInputValue(d);
-  });
+  // Amanhã às 09:00, o mesmo horário que o assistente de agendamento sugere.
+  const [when, setWhen] = useState(() => whenFromPreset('amanha', '09:00', new Date(nowMs)));
   const [submitting, setSubmitting] = useState(false);
 
-  // Trava de instante futuro. Até 26/08/2026 a tela pedia só o DIA e gravava
-  // meia-noite, então todo reagendamento nascia às 00h; com a hora no campo o
-  // corte vira "depois de agora". Marcar para hoje mais tarde é caso real
-  // (mensagem sem resposta de manhã) e não joga o lead em Atrasados: a Meta
-  // classifica atraso por DIA (ver dailyGoal.js). O `nowMs` é fixado na
-  // montagem para o render seguir puro; o clique confere de novo no relógio.
-  const nowMs = useMemo(() => Date.now(), []);
-  const minRescheduleStr = useMemo(() => toDateTimeInputValue(new Date(nowMs)), [nowMs]);
-  const parsedReschedule = fromDateTimeInputValue(rescheduleStr);
-  const isRescheduleFuture = Boolean(futureInstant(rescheduleStr, nowMs));
   const motivoTrimmed = motivo.trim();
   const categoryLabel = DAILY_GOAL_CATEGORY_LABEL[categorySlug] || 'Contato';
-
-  const canSubmit = (() => {
-    if (submitting) return false;
-    if (outcome === OUTCOMES.FEITO) return true;
-    if (outcome === OUTCOMES.REAGENDAR) return motivoTrimmed.length > 0 && isRescheduleFuture;
-    return false;
-  })();
-
-  const handleOpenChange = (next) => { if (!next && !submitting) onClose && onClose(); };
+  const reagendar = outcome === OUTCOMES.REAGENDAR;
+  const hint = !reagendar ? ''
+    : !whenIsFuture(when, nowMs) ? 'Escolha um dia e horário futuros.'
+      : !motivoTrimmed ? 'Escreva o motivo do reagendamento.' : '';
 
   const handleConfirm = async () => {
-    if (!canSubmit) return;
-    // O nowMs do render envelhece se o popup ficar aberto; confere no relógio
-    // antes de gravar para nunca agendar um contato no passado.
-    if (outcome === OUTCOMES.REAGENDAR && !futureInstant(rescheduleStr)) {
+    if (hint || submitting) return;
+    const at = reagendar ? whenInstant(when) : null;
+    if (reagendar && !(at && at.getTime() > Date.now())) {
       toast.warning('Escolha uma data e hora futuras.');
       return;
     }
     setSubmitting(true);
     try {
-      if (outcome === OUTCOMES.FEITO) {
-        // Igual ao "Sem próximo contato" de hoje: conclui e limpa o
-        // nextFollowUp num único write (leadPatch junto do daily_goal_done).
-        // A marca guarda quem tem o contato agora (goalOwnerFields), que pode
-        // ser o colega que o recebeu, e o crédito fica com essa pessoa mesmo
-        // depois que o próximo contato é limpo ou passa para outra.
+      if (!reagendar) {
+        // Conclui e limpa o próximo contato num único write (o patch junto da
+        // marca). A marca guarda quem tem o contato agora (goalOwnerFields),
+        // que pode ser o colega que o recebeu, e o crédito fica com essa pessoa
+        // mesmo depois que o próximo contato é limpo ou passa para outra.
         await logInteraction(db, lead, appUser, {
           text: `✅ ${categoryLabel} — Meta Diária concluída (contato feito).`,
           type: 'daily_goal_done',
@@ -100,12 +94,12 @@ function ContactOutcomeModal({ open = true, onClose, lead, categorySlug = DAILY_
           ...goalOwnerFields(lead, categorySlug)
         }, contactDone());
         toast.success('Contato concluído.');
-      } else if (outcome === OUTCOMES.REAGENDAR) {
-        // Igual ao "Escolher data" de hoje: agenda o próximo toque preservando
-        // o canal, conta como reaquecimento (volumeKind) e registra o motivo.
-        const patch = contactReschedule(lead, parsedReschedule);
+      } else {
+        // Agenda o próximo toque preservando o canal, conta como reaquecimento
+        // (volumeKind) e registra o motivo.
+        const patch = contactReschedule(lead, at);
         const { volumeKind } = followUpChannelOf(lead);
-        const dateFmt = `${parsedReschedule.toLocaleDateString('pt-BR')} às ${formatHourLabel(parsedReschedule)}`;
+        const dateFmt = `${at.toLocaleDateString('pt-BR')} às ${formatHourLabel(at)}`;
         // A nota do motivo, a marca e o patch num batch só (logInteractions).
         await logInteractions(db, lead, appUser, [{
           text: `Motivo do reagendamento: ${motivoTrimmed} — próximo contato em ${dateFmt}.`,
@@ -116,7 +110,7 @@ function ContactOutcomeModal({ open = true, onClose, lead, categorySlug = DAILY_
           dailyGoalCategory: categorySlug,
           ...goalOwnerFields(lead, categorySlug),
           volumeKind,
-          rescheduledFor: parsedReschedule
+          rescheduledFor: at
         }], patch);
         toast.success(`Contato reagendado para ${dateFmt}.`);
       }
@@ -130,94 +124,30 @@ function ContactOutcomeModal({ open = true, onClose, lead, categorySlug = DAILY_
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="z-[210] max-w-md p-0 gap-0 overflow-hidden" overlayClassName="z-[210]">
-        <DialogHeader className="p-5 pb-4 space-y-0">
-          <DialogTitle className="flex items-center gap-2.5">
-            <span className="size-10 rounded-xl grid place-items-center bg-teal-50 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300 shrink-0">
-              <MessageSquare size={18} />
-            </span>
-            <span className="min-w-0">
-              <span className="block">Concluir contato</span>
-              <DialogDescription className="mt-0.5 truncate">{lead?.name || '—'}</DialogDescription>
-            </span>
-          </DialogTitle>
-        </DialogHeader>
-
-        <SegmentedOutcome
-          className="px-5 pt-1"
-          question="O contato foi feito?"
-          segments={SEGMENTS}
-          value={outcome}
-          onChange={setOutcome}
-        />
-
-        <div className="px-5 py-4">
-          {outcome === OUTCOMES.FEITO && (
-            <div className={cn('rounded-xl px-3.5 py-3 flex items-start gap-2 text-[12.5px] leading-relaxed', OUTCOME_TONE.emerald.panel)}>
-              <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
-              <span>Ao confirmar, a tarefa é concluída sem agendar um novo contato.</span>
-            </div>
-          )}
-
-          {outcome === OUTCOMES.REAGENDAR && (
-            <div className="space-y-3">
-              <div>
-                <label className="flex items-center gap-1 text-[11.5px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-                  Data e hora do próximo contato
-                  <span className="text-accent-500 normal-case text-[12px] leading-none">*</span>
-                </label>
-                <input
-                  type="datetime-local"
-                  value={rescheduleStr}
-                  min={minRescheduleStr}
-                  onChange={(e) => setRescheduleStr(e.target.value)}
-                  className="w-full h-[38px] px-3 rounded-xl bg-slate-50 dark:bg-white/5 border border-border focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[13px] num transition"
-                />
-                {rescheduleStr && !isRescheduleFuture && (
-                  <p className="text-[11.5px] text-rose-600 dark:text-rose-400 mt-1.5">Escolha uma data e hora futuras.</p>
-                )}
-              </div>
-              <div>
-                <label className="flex items-center gap-1 text-[11.5px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-                  Motivo do reagendamento
-                  <span className="text-accent-500 normal-case text-[12px] leading-none">*</span>
-                </label>
-                <textarea
-                  value={motivo}
-                  onChange={(e) => setMotivo(e.target.value)}
-                  rows={2}
-                  placeholder="Escreva o motivo do reagendamento…"
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-white/5 border border-border focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[13px] transition resize-none"
-                />
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="px-5 py-3.5 border-t border-border flex items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={() => !submitting && onClose && onClose()}
-            disabled={submitting}
-            className="h-[38px] px-3.5 rounded-xl text-[13px] font-semibold border border-border bg-transparent text-muted-foreground hover:bg-muted/50 transition disabled:opacity-50"
-          >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={handleConfirm}
-            disabled={!canSubmit}
-            className={cn(
-              'h-[38px] px-4 rounded-xl text-[13px] font-bold transition disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none',
-              outcomeButtonClass(SEGMENTS.find(s => s.key === outcome).tone)
-            )}
-          >
+    <PopupShell
+      title="Concluir contato"
+      lead={lead}
+      context={contextOf(lead, categorySlug, new Date(nowMs))}
+      busy={submitting}
+      onClose={onClose}
+      hint={hint}
+      actions={(
+        <>
+          <PopupButton kind="ghost" onClick={() => onClose && onClose()} disabled={submitting}>Cancelar</PopupButton>
+          <PopupButton onClick={handleConfirm} disabled={Boolean(hint) || submitting}>
             {submitting ? 'Salvando...' : FOOTER_LABEL[outcome]}
-          </button>
-        </div>
-      </DialogContent>
-    </Dialog>
+          </PopupButton>
+        </>
+      )}
+    >
+      <OutcomeCards question="O contato foi feito?" options={CARDS} value={outcome} onChange={setOutcome} />
+      {reagendar && (
+        <>
+          <WhenPicker value={when} onChange={setWhen} who="O contato" nowMs={nowMs} />
+          <MotivoField value={motivo} onChange={setMotivo} />
+        </>
+      )}
+    </PopupShell>
   );
 }
 

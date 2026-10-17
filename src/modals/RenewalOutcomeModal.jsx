@@ -1,32 +1,26 @@
-import { useMemo, useState } from 'react';
-import { Ban, Calendar, CheckCircle2, Info, RefreshCw } from 'lucide-react';
-import { fromDateTimeInputValue, futureInstant, toDateTimeInputValue } from '../lib/dates.js';
-import { fmtBRL, formatHourLabel } from '../lib/format.js';
+import { useId, useState } from 'react';
+import { Calendar, Check, CheckCircle2, X } from 'lucide-react';
+import { getSafeDateOrNull } from '../lib/dates.js';
+import { formatHourLabel } from '../lib/format.js';
 import { logInteractions } from '../lib/interactions.js';
 import { CONTRACT_CANCEL_REASONS } from '../lib/contracts.js';
 import { renewalDecline, renewalReschedule } from '../lib/renewalGoal.js';
 import { expiredLabel } from '../lib/expiredGoal.js';
 import { DAILY_GOAL_CATEGORIES } from '../lib/leads.js';
+import { whenFromPreset, whenInstant, whenIsFuture } from '../lib/whenPicker.js';
 import { useToast } from '../contexts/ToastContext.jsx';
-import { cn } from '../lib/utils.js';
-import { OUTCOME_TONE, outcomeButtonClass, SegmentedOutcome } from '../components/ui/SegmentedOutcome.jsx';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription
-} from '../components/ui/dialog.jsx';
+import { ChoiceChips, MotivoField, NoteToggle, PopupButton, PopupLabel, PopupNote, PopupShell } from '../components/dailygoal/popup/PopupShell.jsx';
+import { OutcomeCards } from '../components/dailygoal/popup/OutcomeCards.jsx';
+import { WhenPicker } from '../components/dailygoal/popup/WhenPicker.jsx';
 
-// Popup de desfecho da tarefa de Renovação (Meta Diária) — design "8b" do
-// handoff (seletor segmentado). Fino de propósito: toda a regra (patches,
-// gate de entrada) vive em src/lib/renewalGoal.js; este componente só monta
-// a UI e grava via logInteraction. NUNCA muda status/lifecycleStage — perda
-// de venda (não renova) é diferente de perda de funil.
+// Pop-up de desfecho da Renovação e dos Vencidos da Meta Diária, na família de
+// pop-ups da Meta (components/dailygoal/popup). Fino de propósito: a regra
+// (patches e a entrada na Meta) vive em src/lib/renewalGoal.js. Nunca muda
+// status nem lifecycleStage: não renovar não é perda de funil.
 //
-// onDone(outcome) — outcome ∈ 'renovou' | 'nao_renova' | 'reagendar'. Pra
-// 'renovou' o modal não grava nada (fecha e o caller abre o ContractModal
-// existente em mode='renovacao', que já reseta os campos de renovação).
+// onDone(outcome) — outcome ∈ 'renovou' | 'nao_renova' | 'reagendar'. No
+// 'renovou' o pop-up não grava nada: fecha, e quem chamou abre o ContractModal
+// em mode='renovacao', que já zera os campos de renovação.
 
 const OUTCOMES = {
   RENOVOU: 'renovou',
@@ -34,33 +28,29 @@ const OUTCOMES = {
   REAGENDAR: 'reagendar'
 };
 
-const FOOTER_LABEL = {
-  [OUTCOMES.RENOVOU]: 'Renovar',
-  [OUTCOMES.NAO_RENOVA]: 'Registrar perda',
-  [OUTCOMES.REAGENDAR]: 'Reagendar'
-};
-
-// Os dois funis de CLIENTE usam o mesmo popup: a mecânica dos três desfechos é
-// idêntica, muda o vocabulário. 'renovacao' cobra antes de vencer; 'vencido'
-// cobra depois (ver src/lib/expiredGoal.js).
+// Os dois funis de cliente usam o mesmo pop-up: os três desfechos são iguais,
+// muda o vocabulário. 'renovacao' cobra antes de vencer; 'vencido' cobra
+// depois (ver src/lib/expiredGoal.js).
 const VARIANTS = {
   renovacao: {
     title: 'Renovação de contrato',
     question: 'Qual o desfecho desta renovação?',
     category: DAILY_GOAL_CATEGORIES.RENOVACAO,
     categoryLabel: 'Renovação',
+    ends: 'vence',
     okLabel: 'Renovou',
     noLabel: 'Não vai renovar',
     okFooter: 'Renovar',
     okHint: 'Ao confirmar, abrimos o fluxo de nova matrícula com os dados do cliente.',
     noDoneText: '✅ Renovação — Meta Diária concluída (não vai renovar).',
-    noToast: 'Perda de renovação registrada. O cliente continua ativo — só sai desta cobrança.'
+    noToast: 'Perda de renovação registrada. O cliente continua ativo e só sai desta cobrança.'
   },
   vencido: {
     title: 'Contrato vencido',
     question: 'Qual o desfecho deste contrato vencido?',
     category: DAILY_GOAL_CATEGORIES.VENCIDO,
     categoryLabel: 'Contrato vencido',
+    ends: 'venceu',
     okLabel: 'Reativou',
     noLabel: 'Não vai voltar',
     okFooter: 'Reativar',
@@ -70,79 +60,57 @@ const VARIANTS = {
   }
 };
 
+const REASONS = CONTRACT_CANCEL_REASONS.map((r) => ({ id: r, label: r }));
+
 // initialOutcome: o desfecho que abre escolhido. O Reagendar do card abre com
 // 'reagendar'; sem ele, abre em "Renovou" (ou "Reativou").
-function RenewalOutcomeModal({ open = true, onClose, lead, appUser, db, activeCheckpoint, variant = 'renovacao', initialOutcome = null, onDone }) {
+function RenewalOutcomeModal({ onClose, lead, appUser, db, activeCheckpoint, variant = 'renovacao', initialOutcome = null, onDone }) {
   const v = VARIANTS[variant] || VARIANTS.renovacao;
   const toast = useToast();
+  const reasonsId = useId();
+  // O instante da montagem: o render segue puro, e o envio confere de novo no
+  // relógio, para nunca agendar um contato no passado.
+  const [nowMs] = useState(() => Date.now());
   const [outcome, setOutcome] = useState(Object.values(OUTCOMES).includes(initialOutcome) ? initialOutcome : OUTCOMES.RENOVOU);
+  // O motivo do reagendamento é obrigatório. O da perda sai de uma lista fixa
+  // (o mesmo vocabulário do cancelamento de contrato), com observação à parte.
   const [motivo, setMotivo] = useState('');
-  // Motivo de "não vai renovar": lista fixa (mesmo vocabulário do cancelamento
-  // de contrato, CONTRACT_CANCEL_REASONS). `motivo` continua sendo o texto
-  // livre — obrigatório no reagendamento, observação opcional aqui.
-  const [motivoLista, setMotivoLista] = useState('');
-  // Amanhã às 09:00, o mesmo horário que o wizard de agendamento sugere para
-  // dias futuros. Dia e hora saem do mesmo campo.
-  const [rescheduleStr, setRescheduleStr] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    d.setHours(9, 0, 0, 0);
-    return toDateTimeInputValue(d);
-  });
+  const [reason, setReason] = useState('');
+  const [note, setNote] = useState('');
+  // Amanhã às 09:00, o mesmo horário que o assistente de agendamento sugere.
+  const [when, setWhen] = useState(() => whenFromPreset('amanha', '09:00', new Date(nowMs)));
   const [submitting, setSubmitting] = useState(false);
 
-  // Trava de instante futuro. Até 26/08/2026 a tela pedia só o DIA e gravava
-  // meia-noite, então todo reagendamento nascia às 00h; com a hora no campo o
-  // corte vira "depois de agora". Marcar para hoje mais tarde é caso real
-  // (mensagem sem resposta de manhã) e não joga o lead em Atrasados: a Meta
-  // classifica atraso por DIA (ver dailyGoal.js). O `nowMs` é fixado na
-  // montagem para o render seguir puro; o clique confere de novo no relógio.
-  const nowMs = useMemo(() => Date.now(), []);
-  const minRescheduleStr = useMemo(() => toDateTimeInputValue(new Date(nowMs)), [nowMs]);
-  const parsedReschedule = fromDateTimeInputValue(rescheduleStr);
-  const isRescheduleFuture = Boolean(futureInstant(rescheduleStr, nowMs));
   const motivoTrimmed = motivo.trim();
+  const endsAt = getSafeDateOrNull(lead?.currentContractEndsAt);
+  const context = [lead?.currentPlanName || 'Sem plano', endsAt && `${v.ends} em ${endsAt.toLocaleDateString('pt-BR')}`].filter(Boolean).join(' · ');
+  const chip = variant === 'vencido'
+    ? (endsAt ? { text: expiredLabel(lead, new Date(nowMs)), muted: true } : null)
+    : (activeCheckpoint != null ? { text: `Marco de ${activeCheckpoint} dias` } : null);
 
-  // Vencidos troca "Marco de N dias" pelo selo de vencimento — calculado aqui
-  // dentro pra não chamar new Date() direto no render.
-  const expiredBadge = useMemo(
-    () => (variant === 'vencido' ? expiredLabel(lead) : null),
-    [variant, lead]
-  );
+  const hint = outcome === OUTCOMES.NAO_RENOVA ? (reason ? '' : 'Escolha o motivo da perda.')
+    : outcome !== OUTCOMES.REAGENDAR ? ''
+      : !whenIsFuture(when, nowMs) ? 'Escolha um dia e horário futuros.'
+        : !motivoTrimmed ? 'Escreva o motivo do reagendamento.' : '';
 
-  const segments = [
-    { key: OUTCOMES.RENOVOU, label: v.okLabel, Icon: CheckCircle2, tone: 'emerald' },
-    { key: OUTCOMES.NAO_RENOVA, label: v.noLabel, Icon: Ban, tone: 'rose' },
-    { key: OUTCOMES.REAGENDAR, label: 'Reagendar contato', Icon: Calendar, tone: 'amber' }
+  const cards = [
+    { id: OUTCOMES.RENOVOU, label: v.okLabel, desc: 'Abre a nova matrícula com os dados dele.', Icon: Check, tone: 'ok' },
+    { id: OUTCOMES.NAO_RENOVA, label: v.noLabel, desc: 'Continua cliente. Sai desta cobrança.', Icon: X, tone: 'no' },
+    { id: OUTCOMES.REAGENDAR, label: 'Reagendar contato', desc: 'Volta à sua Meta em outra data.', Icon: Calendar, tone: 'later' }
   ];
-  const footerLabel = { ...FOOTER_LABEL, [OUTCOMES.RENOVOU]: v.okFooter };
-
-  const endsAtLabel = lead?.currentContractEndsAt
-    ? (lead.currentContractEndsAt.toDate ? lead.currentContractEndsAt.toDate() : new Date(lead.currentContractEndsAt)).toLocaleDateString('pt-BR')
-    : null;
-
-  const canSubmit = (() => {
-    if (submitting) return false;
-    if (outcome === OUTCOMES.RENOVOU) return true;
-    if (outcome === OUTCOMES.NAO_RENOVA) return motivoLista.length > 0;
-    if (outcome === OUTCOMES.REAGENDAR) return motivoTrimmed.length > 0 && isRescheduleFuture;
-    return false;
-  })();
-
-  const handleOpenChange = (next) => { if (!next && !submitting) onClose && onClose(); };
+  const footerLabel = { [OUTCOMES.RENOVOU]: v.okFooter, [OUTCOMES.NAO_RENOVA]: 'Registrar perda', [OUTCOMES.REAGENDAR]: 'Reagendar' };
 
   const handleConfirm = async () => {
-    if (!canSubmit) return;
-    // O nowMs do render envelhece se o popup ficar aberto; confere no relógio
-    // antes de gravar para nunca agendar um contato no passado.
-    if (outcome === OUTCOMES.REAGENDAR && !futureInstant(rescheduleStr)) {
+    if (hint || submitting) return;
+    const at = outcome === OUTCOMES.REAGENDAR ? whenInstant(when) : null;
+    if (outcome === OUTCOMES.REAGENDAR && !(at && at.getTime() > Date.now())) {
       toast.warning('Escolha uma data e hora futuras.');
       return;
     }
 
     if (outcome === OUTCOMES.RENOVOU) {
-      // Não grava nada aqui — o caller abre o ContractModal (mode='renovacao'),
-      // que grava o contrato E reseta os campos de renovação num único batch.
+      // Não grava nada aqui: quem chamou abre o ContractModal (mode='renovacao'),
+      // que grava o contrato e zera os campos de renovação num único batch.
       onDone && onDone(OUTCOMES.RENOVOU);
       return;
     }
@@ -150,25 +118,26 @@ function RenewalOutcomeModal({ open = true, onClose, lead, appUser, db, activeCh
     setSubmitting(true);
     try {
       if (outcome === OUTCOMES.NAO_RENOVA) {
-        const patch = renewalDecline(lead, activeCheckpoint, { reason: motivoLista });
+        const patch = renewalDecline(lead, activeCheckpoint, { reason });
+        const obs = note.trim();
         // A nota do motivo, a marca e o patch num batch só (logInteractions).
         await logInteractions(db, lead, appUser, [{
-          text: `Motivo da perda de renovação: ${motivoLista}.${motivoTrimmed ? ` ${motivoTrimmed}` : ''}`,
+          text: `Motivo da perda de renovação: ${reason}.${obs ? ` ${obs}` : ''}`,
           type: 'note',
           renewalOutcome: 'declined',
-          renewalDeclineReason: motivoLista
+          renewalDeclineReason: reason
         }, {
           text: v.noDoneText,
           type: 'daily_goal_done',
           dailyGoalCategory: v.category
         }], patch);
         toast.success(v.noToast);
-      } else if (outcome === OUTCOMES.REAGENDAR) {
-        // Reagendar: o marco atual conta como resolvido (handled) e o contato
-        // vira um follow-up na categoria Contatos na data escolhida (nextFollowUp).
-        // Volta a Renovações só no próximo marco — ver src/lib/renewalGoal.js.
-        const patch = renewalReschedule(lead, parsedReschedule, activeCheckpoint);
-        const dateFmt = `${parsedReschedule.toLocaleDateString('pt-BR')} às ${formatHourLabel(parsedReschedule)}`;
+      } else {
+        // Reagendar: o marco atual conta como tratado e o contato vira um
+        // próximo contato na data escolhida, que aparece em Contatos. Volta a
+        // Renovações só no próximo marco (ver src/lib/renewalGoal.js).
+        const patch = renewalReschedule(lead, at, activeCheckpoint);
+        const dateFmt = `${at.toLocaleDateString('pt-BR')} às ${formatHourLabel(at)}`;
         await logInteractions(db, lead, appUser, [{
           text: `Motivo do reagendamento: ${motivoTrimmed} — próximo contato em ${dateFmt}.`,
           type: 'note'
@@ -177,7 +146,7 @@ function RenewalOutcomeModal({ open = true, onClose, lead, appUser, db, activeCh
           type: 'daily_goal_done',
           dailyGoalCategory: v.category
         }], patch);
-        toast.success(`Contato reagendado para ${dateFmt} — agora aparece em Contatos.`);
+        toast.success(`Contato reagendado para ${dateFmt}. Agora aparece em Contatos.`);
       }
       onDone && onDone(outcome);
     } catch (err) {
@@ -189,165 +158,42 @@ function RenewalOutcomeModal({ open = true, onClose, lead, appUser, db, activeCh
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="z-[210] max-w-md p-0 gap-0 overflow-hidden" overlayClassName="z-[210]">
-        <DialogHeader className="p-5 pb-4 space-y-0">
-          <DialogTitle className="flex items-center gap-2.5">
-            <span className="size-10 rounded-xl grid place-items-center bg-brand-50 text-brand-600 dark:bg-brand-600/20 dark:text-[#9FBCFF] shrink-0">
-              <RefreshCw size={18} />
-            </span>
-            <span className="min-w-0">
-              <span className="block">{v.title}</span>
-              <DialogDescription className="mt-0.5 truncate">{lead?.name || '—'}</DialogDescription>
-            </span>
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="px-5">
-          <div className="rounded-xl bg-slate-50 dark:bg-white/5 border border-border px-3.5 py-2.5 flex items-center gap-2 flex-wrap text-[12px] text-slate-600 dark:text-slate-300">
-            <span className="font-semibold text-foreground">{lead?.currentPlanName || 'Sem plano'}</span>
-            {Number.isFinite(Number(lead?.currentContractValue)) && (
-              <>
-                <span className="opacity-50">·</span>
-                <span>{fmtBRL(lead.currentContractValue)}</span>
-              </>
-            )}
-            {endsAtLabel && (
-              <>
-                <span className="opacity-50">·</span>
-                <span>Vence em <b className="font-semibold text-foreground">{endsAtLabel}</b></span>
-              </>
-            )}
-            {expiredBadge ? (
-              <span className="ml-auto inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 dark:bg-white/[0.06] dark:text-slate-200 whitespace-nowrap">
-                {expiredBadge}
-              </span>
-            ) : activeCheckpoint != null && (
-              <span className="ml-auto inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-brand-50 text-brand-700 dark:bg-brand-600/20 dark:text-[#9FBCFF] whitespace-nowrap">
-                Marco de {activeCheckpoint} dias
-              </span>
-            )}
-          </div>
-        </div>
-
-        <SegmentedOutcome
-          className="px-5 pt-4"
-          question={v.question}
-          segments={segments}
-          value={outcome}
-          onChange={setOutcome}
-        />
-
-        <div className="px-5 py-4">
-          {outcome === OUTCOMES.RENOVOU && (
-            <div className={cn('rounded-xl px-3.5 py-3 flex items-start gap-2 text-[12.5px] leading-relaxed', OUTCOME_TONE.emerald.panel)}>
-              <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
-              <span>{v.okHint}</span>
-            </div>
-          )}
-
-          {outcome === OUTCOMES.REAGENDAR && (
-            <div className="space-y-3">
-              <div>
-                <label className="flex items-center gap-1 text-[11.5px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-                  Data e hora do próximo contato
-                  <span className="text-accent-500 normal-case text-[12px] leading-none">*</span>
-                </label>
-                <input
-                  type="datetime-local"
-                  value={rescheduleStr}
-                  min={minRescheduleStr}
-                  onChange={(e) => setRescheduleStr(e.target.value)}
-                  className="w-full h-[38px] px-3 rounded-xl bg-slate-50 dark:bg-white/5 border border-border focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[13px] num transition"
-                />
-                {rescheduleStr && !isRescheduleFuture && (
-                  <p className="text-[11.5px] text-rose-600 dark:text-rose-400 mt-1.5">Escolha uma data e hora futuras.</p>
-                )}
-              </div>
-              <div>
-                <label className="flex items-center gap-1 text-[11.5px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-                  Motivo do reagendamento
-                  <span className="text-accent-500 normal-case text-[12px] leading-none">*</span>
-                </label>
-                <textarea
-                  value={motivo}
-                  onChange={(e) => setMotivo(e.target.value)}
-                  rows={2}
-                  placeholder="Escreva o motivo do reagendamento…"
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-white/5 border border-border focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[13px] transition resize-none"
-                />
-              </div>
-            </div>
-          )}
-
-          {outcome === OUTCOMES.NAO_RENOVA && (
-            <div className="space-y-3">
-              <div>
-                <label className="flex items-center gap-1 text-[11.5px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-                  Motivo da perda
-                  <span className="text-accent-500 normal-case text-[12px] leading-none">*</span>
-                </label>
-                <div className="flex flex-wrap gap-1.5">
-                  {CONTRACT_CANCEL_REASONS.map((r) => (
-                    <button
-                      key={r}
-                      type="button"
-                      onClick={() => setMotivoLista(r)}
-                      className={cn(
-                        'h-[30px] px-3 rounded-lg border-[1.5px] text-[12px] font-semibold whitespace-nowrap transition',
-                        r === motivoLista
-                          ? 'border-brand-600 bg-brand-50 text-brand-700 dark:border-brand-500 dark:bg-brand-600/20 dark:text-[#9FBCFF]'
-                          : 'border-border bg-card text-slate-600 dark:text-slate-300 hover:border-brand-200 dark:hover:border-brand-500/45'
-                      )}
-                    >
-                      {r}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="flex items-center gap-1 text-[11.5px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-                  Observação <span className="normal-case text-[12px] leading-none text-muted-foreground">(opcional)</span>
-                </label>
-                <textarea
-                  value={motivo}
-                  onChange={(e) => setMotivo(e.target.value)}
-                  rows={2}
-                  placeholder="Observação (opcional)"
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-white/5 border border-border focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[13px] transition resize-none"
-                />
-              </div>
-              <div className={cn('rounded-xl px-3.5 py-3 flex items-start gap-2 text-[12px] leading-relaxed bg-brand-50 text-brand-700 dark:bg-brand-600/20 dark:text-[#9FBCFF]')}>
-                <Info size={15} className="mt-0.5 shrink-0" />
-                <span>Continua cliente — não vai pro "Perda" do funil.</span>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="px-5 py-3.5 border-t border-border flex items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={() => !submitting && onClose && onClose()}
-            disabled={submitting}
-            className="h-[38px] px-3.5 rounded-xl text-[13px] font-semibold border border-border bg-transparent text-muted-foreground hover:bg-muted/50 transition disabled:opacity-50"
-          >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={handleConfirm}
-            disabled={!canSubmit}
-            className={cn(
-              'h-[38px] px-4 rounded-xl text-[13px] font-bold transition disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none',
-              outcomeButtonClass(segments.find(s => s.key === outcome).tone)
-            )}
-          >
+    <PopupShell
+      title={v.title}
+      lead={lead}
+      context={context}
+      chip={chip}
+      busy={submitting}
+      onClose={onClose}
+      hint={hint}
+      actions={(
+        <>
+          <PopupButton kind="ghost" onClick={() => onClose && onClose()} disabled={submitting}>Cancelar</PopupButton>
+          <PopupButton kind={outcome === OUTCOMES.NAO_RENOVA ? 'danger' : 'primary'} onClick={handleConfirm} disabled={Boolean(hint) || submitting}>
             {submitting ? 'Salvando...' : footerLabel[outcome]}
-          </button>
-        </div>
-      </DialogContent>
-    </Dialog>
+          </PopupButton>
+        </>
+      )}
+    >
+      <OutcomeCards question={v.question} options={cards} value={outcome} onChange={setOutcome} />
+      {outcome === OUTCOMES.RENOVOU && <PopupNote tone="ok" icon={CheckCircle2}>{v.okHint}</PopupNote>}
+      {outcome === OUTCOMES.NAO_RENOVA && (
+        <>
+          <div>
+            <PopupLabel id={reasonsId}>Motivo da perda</PopupLabel>
+            <ChoiceChips options={REASONS} value={reason} onChange={setReason} labelledBy={reasonsId} />
+          </div>
+          <NoteToggle placeholder="O que ele disse, se ajudar" value={note} onChange={setNote} />
+          <PopupNote>Continua cliente. Não vai para a Perda do funil.</PopupNote>
+        </>
+      )}
+      {outcome === OUTCOMES.REAGENDAR && (
+        <>
+          <WhenPicker value={when} onChange={setWhen} who="O contato" nowMs={nowMs} />
+          <MotivoField value={motivo} onChange={setMotivo} />
+        </>
+      )}
+    </PopupShell>
   );
 }
 
