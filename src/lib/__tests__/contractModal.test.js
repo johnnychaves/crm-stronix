@@ -3,7 +3,7 @@
 // modal é montado em jsdom e clicado; o commitMatricula, aqui um dublê, recebe o
 // que o modal gravaria.
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { createElement as h, act } from 'react';
+import { createElement as h, act, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ToastContext } from '../../contexts/ToastContext.jsx';
 import { GeneralConfigContext } from '../../contexts/GeneralConfigContext.jsx';
@@ -26,17 +26,19 @@ const planos = [
 ];
 
 let root = null;
-async function montar(props, contratos = [], agora = D(2026, 10, 16, 10, 20), catalogo = planos) {
+async function renderizar(arvore, agora) {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(agora);
   const container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
   await act(async () => {
-    root.render(h(ToastContext.Provider, { value: toast },
-      h(GeneralConfigContext.Provider, { value: { planos: catalogo, contratos } },
-        h(ContractModal, { appUser, db: {}, onClose: () => {}, onDone: () => {}, ...props }))));
+    root.render(h(ToastContext.Provider, { value: toast }, arvore));
   });
+}
+const modal = (props) => h(ContractModal, { appUser, db: {}, onClose: () => {}, onDone: () => {}, ...props });
+async function montar(props, contratos = [], agora = D(2026, 10, 16, 10, 20), catalogo = planos) {
+  await renderizar(h(GeneralConfigContext.Provider, { value: { planos: catalogo, contratos } }, modal(props)), agora);
 }
 afterEach(async () => {
   await act(async () => { root?.unmount(); });
@@ -226,6 +228,14 @@ describe('ContractModal, matrícula', () => {
     expect(faixa.textContent).toContain('A vigência só começa em 20/10/2026. Até lá');
     expect(faixa.textContent).not.toContain('—');
     expect(faixa.className).toContain('amber');
+  });
+
+  it('outra data amanhã, à tarde, já avisa que a vigência só começa amanhã', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' }, [], D(2026, 10, 16, 15, 40));
+    await clicar(opcao('Outra data'));
+    await digitar(document.body.querySelector('input[type="date"]'), '2026-10-17');
+    const faixa = document.body.querySelector('[data-slot="start-status"]');
+    expect(faixa.textContent).toContain('A vigência só começa em 17/10/2026. Até lá');
   });
 
   it('outra data no passado avisa que a matrícula é retroativa', async () => {
@@ -709,5 +719,79 @@ describe('ContractModal, renovação', () => {
     const faixa = document.body.querySelector('[data-slot="start-status"]');
     expect(faixa.textContent).toContain('antes do previsto');
     expect(faixa.className).toContain('rose');
+  });
+
+  describe('o que a renovação grava', () => {
+    const dia = (d) => d.toLocaleDateString('pt-BR');
+
+    it('emendando: grava como renovação do contrato atual, começando no dia seguinte ao fim', async () => {
+      await montar(props, [atual]);
+      await clicar(botao('Confirmar renovação'));
+      expect(commitMatricula).toHaveBeenCalledTimes(1);
+      const arg = commitMatricula.mock.calls[0][0];
+      expect(arg).toMatchObject({ mode: 'renovacao', renewedFromId: 'c1abcdef', previousContract: atual });
+      expect(dia(arg.startsAt)).toBe('13/12/2026');
+    });
+
+    it('começando hoje: o mesmo contrato renovado, com o início em hoje', async () => {
+      await montar(props, [atual]);
+      await clicar(opcao('Hoje'));
+      await clicar(botao('Confirmar renovação'));
+      expect(commitMatricula).toHaveBeenCalledTimes(1);
+      const arg = commitMatricula.mock.calls[0][0];
+      expect(arg).toMatchObject({ mode: 'renovacao', renewedFromId: 'c1abcdef', previousContract: atual });
+      expect(dia(arg.startsAt)).toBe('16/10/2026');
+    });
+
+    it('sem a prop currentContract (Kanban e Meta Diária): o contrato atual vem da lista de contratos', async () => {
+      await montar({ lead: leadCliente, mode: 'renovacao', renewedFromId: 'c1abcdef' }, [atual]);
+      await clicar(botao('Confirmar renovação'));
+      expect(commitMatricula).toHaveBeenCalledTimes(1);
+      const arg = commitMatricula.mock.calls[0][0];
+      expect(arg).toMatchObject({ mode: 'renovacao', renewedFromId: 'c1abcdef', previousContract: atual });
+      expect(dia(arg.startsAt)).toBe('13/12/2026');
+    });
+  });
+
+  it('a prévia do encurtamento segue o início escolhido: emendar não encurta, hoje encurta até ontem', async () => {
+    await montar(props, [atual]);
+    const recibo = () => document.body.querySelector('aside[aria-label="Recibo"]').textContent;
+    expect(recibo()).toContain('até 12/12/2026');
+    expect(recibo()).not.toContain('passa a terminar em');
+
+    await clicar(opcao('Hoje'));
+    expect(recibo()).toContain('O contrato atual passa a terminar em 15/10/2026');
+    expect(recibo()).toContain('até 15/10/2026');
+  });
+
+  // No Kanban e na Meta Diária a escrita local do Firestore põe a renovação nova na
+  // lista de contratos antes de o servidor confirmar. O modal congela o que mostra
+  // ao confirmar: sem isso, a faixa passaria a dizer "já foi renovado" e o botão
+  // ganharia disabled de verdade, tirando o foco dele no meio do envio.
+  it('depois de Confirmar, a renovação que a escrita local põe na lista não muda a faixa, o botão nem o foco', async () => {
+    let empurrar;
+    function Casca() {
+      const [contratos, setContratos] = useState([atual]);
+      empurrar = (novo) => setContratos((lista) => [...lista, novo]);
+      return h(GeneralConfigContext.Provider, { value: { planos, contratos } }, modal(props));
+    }
+    commitMatricula.mockImplementationOnce(() => new Promise(() => {}));
+    await renderizar(h(Casca), D(2026, 10, 16, 10, 20));
+    const faixa = document.body.querySelector('[data-slot="start-status"]');
+    const antes = faixa.textContent;
+    expect(antes).toContain('Emenda perfeita');
+    const confirmar = botao('Confirmar renovação');
+    confirmar.focus();
+    await clicar(confirmar);
+
+    await act(async () => {
+      empurrar({ id: 'c2xyz', leadId: 'l2', renewedFromId: 'c1abcdef', planName: 'Pilates Trimestral', status: 'ativo', startsAt: D(2026, 12, 13), endsAt: D(2027, 3, 13) });
+    });
+
+    expect(faixa.textContent).toBe(antes);
+    expect(faixa.textContent).not.toContain('já foi renovado');
+    expect(confirmar.disabled).toBe(false);
+    expect(confirmar.getAttribute('aria-disabled')).toBe('true');
+    expect(document.activeElement).toBe(confirmar);
   });
 });
