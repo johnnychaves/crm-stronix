@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Calendar, Check, Clock, GraduationCap, Link2, RefreshCw, Search, X } from 'lucide-react';
 import { buildMatriculaWrites, computeEndsAt, liveRenewalOf, renewalStartProblem } from '../lib/contracts.js';
 import { commitMatricula } from '../lib/contractsWrites.js';
@@ -53,11 +53,11 @@ const renewedAlreadyText = (renewal) => {
 
 // Cabeça de cada seção: título, uma linha de apoio e, à direita, o controle da
 // seção (a busca de plano, a data de "Outra data", o valor do desconto).
-const SectionHead = ({ title, hint, children }) => (
+const SectionHead = ({ title, hint, hintLive = false, children }) => (
   <div className="flex min-h-9 items-start justify-between gap-4 mb-2.5">
     <div className="min-w-0">
       <h3 className="text-[14.5px] font-semibold leading-tight">{title}</h3>
-      {hint && <p className="mt-0.5 text-[12.5px] text-muted-foreground">{hint}</p>}
+      {hint && <p aria-live={hintLive ? 'polite' : undefined} className="mt-0.5 text-[12.5px] text-muted-foreground">{hint}</p>}
     </div>
     {children}
   </div>
@@ -67,8 +67,8 @@ const SectionHead = ({ title, hint, children }) => (
 const Chip = ({ tone = 'amber', children }) => (
   <span className={cn(
     'inline-flex h-6 items-center rounded-full px-2.5 text-[12px] font-semibold whitespace-nowrap',
-    tone === 'amber' && 'bg-amber-500/12 text-amber-700 dark:bg-amber-500/16 dark:text-amber-400',
-    tone === 'success' && 'bg-emerald-500/10 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400',
+    tone === 'amber' && 'bg-amber-500/12 text-amber-800 dark:bg-amber-500/16 dark:text-amber-400',
+    tone === 'success' && 'bg-emerald-500/10 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-400',
     tone === 'brand' && 'bg-brand-50 text-brand-700 dark:bg-brand-500/18 dark:text-brand-300',
     tone === 'slate' && 'bg-slate-500/10 text-slate-600 dark:bg-slate-400/15 dark:text-slate-300'
   )}>{children}</span>
@@ -97,14 +97,43 @@ function StartStatus({ tone, text }) {
   );
 }
 
+// Texto de apoio sobre o fundo brand-50 do item marcado: text-muted-foreground
+// dá cerca de 4,2:1 ali, e o slate-600 passa dos 4,5:1. No escuro fica o de antes.
+const SUPPORT_ON = 'text-slate-600 dark:text-muted-foreground';
+
+// Teclado de um grupo de rádios (padrão ARIA), dos dois grupos do modal. Só o
+// marcado fica no Tab; as setas movem para o próximo ou o anterior, com volta,
+// escolhem e levam o foco; Home e End vão às pontas. Escolher é clicar no rádio,
+// então a seta faz o mesmo que o mouse (no Plano, o pickPlan). O foco vai antes do
+// clique: o "Outra data" monta o campo de data com autoFocus, e o foco tem de
+// terminar lá.
+const RADIO_STEP = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 };
+function onRadioGroupKeyDown(e) {
+  if (e.altKey || e.ctrlKey || e.metaKey) return;
+  const radios = [...e.currentTarget.querySelectorAll('[role="radio"]')];
+  const at = radios.indexOf(e.target);
+  if (at < 0) return;
+  let to;
+  if (e.key in RADIO_STEP) to = (at + RADIO_STEP[e.key] + radios.length) % radios.length;
+  else if (e.key === 'Home') to = 0;
+  else if (e.key === 'End') to = radios.length - 1;
+  else return;
+  e.preventDefault();
+  radios[to].focus();
+  radios[to].click();
+}
+// Quem fica no Tab: o marcado, ou o primeiro quando nenhum dos mostrados está marcado.
+const tabStopId = (ids, selectedId) => (ids.includes(selectedId) ? selectedId : ids[0] ?? null);
+
 // Uma linha da lista de planos. O seletor redondo é só desenho: a linha inteira
 // é o botão, com role="radio" para o leitor de tela.
-function PlanRow({ plan, on, tag, onPick }) {
+function PlanRow({ plan, on, tabStop, tag, onPick }) {
   return (
     <button
       type="button"
       role="radio"
       aria-checked={on}
+      tabIndex={tabStop ? 0 : -1}
       onClick={() => onPick(plan.id)}
       className={cn(
         'grid min-h-[52px] w-full grid-cols-[18px_minmax(0,1fr)_62px_88px] items-center gap-3 px-3.5 py-2 text-left transition',
@@ -112,7 +141,7 @@ function PlanRow({ plan, on, tag, onPick }) {
         on ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-slate-50 dark:hover:bg-white/[0.04]'
       )}
     >
-      <span className={cn('relative size-[18px] rounded-full border-[1.5px] bg-card', on ? 'border-brand-600 dark:border-brand-400' : 'border-slate-300 dark:border-white/20')}>
+      <span className={cn('relative size-[18px] rounded-full border-[1.5px] bg-card', on ? 'border-brand-600 dark:border-brand-400' : 'border-slate-500 dark:border-slate-400')}>
         {on && <span className="absolute inset-[3px] rounded-full bg-brand-600 dark:bg-brand-400" />}
       </span>
       <span className="min-w-0">
@@ -120,22 +149,23 @@ function PlanRow({ plan, on, tag, onPick }) {
           <span className={cn('truncate text-[13.5px] font-semibold', on && 'text-brand-700 dark:text-brand-300')}>{plan.name}</span>
           {tag && <Chip tone={tag.tone}>{tag.label}</Chip>}
         </span>
-        <span className="num block text-[12px] text-muted-foreground">{monthlyLabel(plan.value, plan.durationMonths)}</span>
+        <span className={cn('num block text-[12px]', on ? SUPPORT_ON : 'text-muted-foreground')}>{monthlyLabel(plan.value, plan.durationMonths)}</span>
       </span>
-      <span className="num text-right text-[12.5px] text-muted-foreground">{monthsLabel(plan.durationMonths)}</span>
+      <span className={cn('num text-right text-[12.5px]', on ? SUPPORT_ON : 'text-muted-foreground')}>{monthsLabel(plan.durationMonths)}</span>
       <span className={cn('num text-right font-display text-[15px] font-bold', on && 'text-brand-700 dark:text-brand-300')}>{fmtBRL(plan.value)}</span>
     </button>
   );
 }
 
 // Um cartão das opções de início.
-function StartCard({ option, on, onPick }) {
+function StartCard({ option, on, tabStop, onPick }) {
   const { Icon } = option;
   return (
     <button
       type="button"
       role="radio"
       aria-checked={on}
+      tabIndex={tabStop ? 0 : -1}
       title={option.tip}
       onClick={() => onPick(option.id)}
       className={cn(
@@ -151,7 +181,7 @@ function StartCard({ option, on, onPick }) {
       </span>
       <span className="min-w-0">
         <span className={cn('block truncate text-[13.5px] font-semibold', on && 'text-brand-700 dark:text-brand-300')}>{option.label}</span>
-        <span className="num block truncate text-[12.5px] text-muted-foreground">{option.hint}</span>
+        <span className={cn('num block truncate text-[12.5px]', on ? SUPPORT_ON : 'text-muted-foreground')}>{option.hint}</span>
       </span>
     </button>
   );
@@ -232,6 +262,7 @@ function ContractModal({
 
   const [planId, setPlanId] = useState(initialPlan?.id || '');
   const [planSearch, setPlanSearch] = useState('');
+  const searchRef = useRef(null);
   const [startMode, setStartMode] = useState(emendaDate ? 'emendar' : 'hoje');
   const [customStart, setCustomStart] = useState(toDateInputValue(emendaDate || new Date()));
   const [discountMode, setDiscountMode] = useState(DISCOUNT_MODES.NENHUM);
@@ -444,10 +475,16 @@ function ContractModal({
       'Conversão atribuída à última aula experimental atendida'
     ];
 
+  // Quem fica no Tab em cada grupo de rádios.
+  const planList = searchOpen ? results : cards;
+  const planTabStop = tabStopId(planList.map(p => p.id), planId);
+  const startTabStop = tabStopId(startOptions.map(o => o.id), startMode);
+
   return (
     <Dialog open onOpenChange={handleClose}>
       <DialogContent
         showCloseButton={false}
+        aria-describedby={undefined}
         overlayClassName="z-[210]"
         className="z-[210] block p-0 gap-0 w-[920px] max-w-[calc(100vw-2rem)] sm:max-w-[920px] rounded-2xl overflow-hidden border-border"
       >
@@ -499,24 +536,26 @@ function ContractModal({
               <section>
                 <SectionHead
                   title="Plano"
+                  hintLive
                   hint={searchOpen ? (results.length === 1 ? '1 plano no catálogo ativo' : `${results.length} planos no catálogo ativo`) : 'Os 3 mais vendidos.'}
                 >
                   <div className="relative flex-none">
                     <Search size={13} className="absolute left-3 top-[10px] text-slate-400 dark:text-slate-500" />
                     <input
+                      ref={searchRef}
                       value={planSearch}
                       onChange={e => setPlanSearch(e.target.value)}
                       placeholder="Buscar outro plano"
                       aria-label="Buscar outro plano"
-                      className="h-8 w-[210px] rounded-full border border-border bg-card pl-8 pr-8 text-[13px] outline-none transition focus-visible:anel-foco"
+                      className="h-8 w-[210px] rounded-full border border-border bg-card pl-8 pr-8 text-[13px] outline-none transition placeholder:text-slate-500 dark:placeholder:text-slate-400 focus-visible:anel-foco"
                     />
                     {searchOpen && (
                       <button
                         type="button"
-                        onClick={() => setPlanSearch('')}
+                        onClick={() => { setPlanSearch(''); searchRef.current?.focus(); }}
                         title="Limpar"
                         aria-label="Limpar busca"
-                        className="absolute right-1.5 top-1.5 size-5 rounded-full grid place-items-center text-muted-foreground hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-white/[0.06] dark:hover:text-white transition focus-visible:outline-none focus-visible:anel-foco"
+                        className="absolute right-1 top-1 size-6 rounded-full grid place-items-center text-muted-foreground hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-white/[0.06] dark:hover:text-white transition focus-visible:outline-none focus-visible:anel-foco"
                       >
                         <X size={12} />
                       </button>
@@ -526,18 +565,19 @@ function ContractModal({
                 <div
                   role="radiogroup"
                   aria-label="Plano"
+                  onKeyDown={onRadioGroupKeyDown}
                   className="max-h-[208px] min-h-[156px] divide-y divide-border overflow-y-auto rounded-xl border border-border"
                 >
                   {searchOpen && results.length === 0 ? (
                     <div className="px-3.5 py-4 text-[13px] text-muted-foreground">
                       Nenhum plano ativo com esse nome. Cadastre em <span className="font-semibold text-foreground">Configurações → Catálogos → Planos</span>.
                     </div>
-                  ) : (searchOpen ? results : cards).map(p => {
+                  ) : planList.map(p => {
                     const top = topPlans.some(t => t.id === p.id);
                     const tag = searchOpen
                       ? (top ? { tone: 'success', label: 'Mais vendido' } : null)
                       : (top ? null : { tone: 'brand', label: 'Buscado' });
-                    return <PlanRow key={p.id} plan={p} on={p.id === planId} tag={tag} onPick={pickPlan} />;
+                    return <PlanRow key={p.id} plan={p} on={p.id === planId} tabStop={p.id === planTabStop} tag={tag} onPick={pickPlan} />;
                   })}
                 </div>
               </section>
@@ -548,20 +588,22 @@ function ContractModal({
                   {startMode === 'outra' && (
                     <input
                       type="date"
+                      autoFocus
                       value={customStart}
                       aria-label="Data de início"
                       onChange={e => { setCustomStart(e.target.value); setStartMode('outra'); }}
-                      className="num h-8 flex-none rounded-lg border border-border bg-card px-2.5 text-[13px] outline-none transition focus-visible:anel-foco"
+                      className="num h-8 flex-none rounded-lg border border-border bg-card px-2.5 text-[13px] outline-none transition focus-visible:anel-foco dark:[color-scheme:dark]"
                     />
                   )}
                 </SectionHead>
                 <div
                   role="radiogroup"
                   aria-label="Início da vigência"
+                  onKeyDown={onRadioGroupKeyDown}
                   className={cn('grid gap-2.5', startOptions.length === 3 ? 'grid-cols-3' : 'grid-cols-2')}
                 >
                   {startOptions.map(o => (
-                    <StartCard key={o.id} option={o} on={o.id === startMode} onPick={setStartMode} />
+                    <StartCard key={o.id} option={o} on={o.id === startMode} tabStop={o.id === startTabStop} onPick={setStartMode} />
                   ))}
                 </div>
                 <StartStatus tone={startStatus.tone} text={startStatus.text} />
@@ -593,8 +635,8 @@ function ContractModal({
                         className={cn(
                           'h-8 rounded-full px-3.5 text-[13px] font-semibold whitespace-nowrap transition focus-visible:outline-none focus-visible:anel-foco',
                           discountMode === d.id
-                            ? 'bg-card text-foreground shadow-card'
-                            : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+                            ? 'bg-card text-foreground shadow-card dark:bg-white/[0.14]'
+                            : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
                         )}
                       >{d.label}</button>
                     ))}
@@ -609,7 +651,7 @@ function ContractModal({
                         type="text"
                         inputMode="decimal"
                         value={discountInput}
-                        aria-label="Valor do desconto"
+                        aria-label={discountMode === DISCOUNT_MODES.FINAL ? 'Valor final do contrato' : 'Valor do desconto'}
                         onChange={e => {
                           const next = e.target.value;
                           setDiscountInput(next);
@@ -618,7 +660,7 @@ function ContractModal({
                         }}
                         placeholder={discountMode === DISCOUNT_MODES.PERCENT ? '10' : discountMode === DISCOUNT_MODES.REAIS ? '150' : '1.240'}
                         className={cn(
-                          'num h-10 w-[128px] rounded-[11px] border-[1.5px] border-brand-200 bg-card pr-3 text-[14.5px] font-semibold outline-none transition focus-visible:anel-foco dark:border-brand-500/45 focus:border-brand-600 dark:focus:border-brand-400',
+                          'num h-10 w-[128px] rounded-[11px] border-[1.5px] border-brand-200 bg-card pr-3 text-[14.5px] font-semibold outline-none transition placeholder:text-slate-500 dark:placeholder:text-slate-400 focus-visible:anel-foco dark:border-brand-500/45 focus:border-brand-600 dark:focus:border-brand-400',
                           discountMode === DISCOUNT_MODES.PERCENT ? 'pl-7' : 'pl-[38px]'
                         )}
                       />
@@ -677,8 +719,8 @@ function ContractModal({
                     <div className="flex flex-col gap-2.5">
                       <div>
                         <div className="flex items-baseline justify-between gap-2">
-                          <span className="truncate text-[12.5px] text-muted-foreground">Atual, {lead?.currentPlanName || '—'}</span>
-                          <span className="num flex-none text-[12px] text-muted-foreground">até {fmtDate(shortenTo || refEnd)}</span>
+                          <span className="truncate text-[12.5px] text-muted-foreground">Atual, {lead?.currentPlanName || 'sem plano'}</span>
+                          <span className="num flex-none text-[12px] text-muted-foreground">{shortenTo || refEnd ? `até ${fmtDate(shortenTo || refEnd)}` : 'sem data'}</span>
                         </div>
                         <div className="relative mt-1 h-2 rounded-full bg-slate-200/70 dark:bg-white/[0.06]">
                           {bars && (
@@ -698,8 +740,8 @@ function ContractModal({
                       </div>
                       <div>
                         <div className="flex items-baseline justify-between gap-2">
-                          <span className="truncate text-[12.5px] font-semibold text-brand-700 dark:text-brand-300">Novo, {plan?.name || '—'}</span>
-                          <span className="num flex-none text-[12px] text-muted-foreground">{fmtDate(startsAt)} a {fmtDate(endsAt)}</span>
+                          <span className="truncate text-[12.5px] font-semibold text-brand-700 dark:text-brand-300">Novo, {plan?.name || 'sem plano'}</span>
+                          <span className="num flex-none text-[12px] text-muted-foreground">{startsAt && endsAt ? `${fmtDate(startsAt)} a ${fmtDate(endsAt)}` : 'sem data'}</span>
                         </div>
                         <div className="relative mt-1 h-2 rounded-full bg-slate-200/70 dark:bg-white/[0.06]">
                           {bars && (

@@ -57,6 +57,11 @@ async function digitar(el, valor) {
   });
 }
 const rodape = () => document.body.querySelector('[data-slot="contract-footer"]');
+const tecla = async (el, key) => {
+  await act(async () => { el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })); });
+};
+const radios = (grupo) => [...document.body.querySelectorAll(`[role="radiogroup"][aria-label="${grupo}"] [role="radio"]`)];
+const marcado = (grupo) => radios(grupo).find((r) => r.getAttribute('aria-checked') === 'true');
 const motivos = () => ['Fidelidade', 'Indicação', 'Campanha', 'Retorno', 'Outro'].map(botao);
 
 const leadNovo = { id: 'l1', name: 'Rafael Moreira', status: 'Negociação' };
@@ -240,6 +245,155 @@ describe('ContractModal, matrícula', () => {
     // O mesmo nó troca de texto e de tom, sem desmontar.
     expect(document.body.querySelector('[data-slot="start-status"]')).toBe(faixa);
     expect(faixa.getAttribute('role')).toBe('status');
+  });
+});
+
+describe('ContractModal, teclado e foco', () => {
+  it('só um rádio de cada grupo fica no Tab, o marcado', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    for (const grupo of ['Plano', 'Início da vigência']) {
+      const noTab = radios(grupo).filter((r) => r.getAttribute('tabindex') === '0');
+      expect(noTab).toEqual([marcado(grupo)]);
+      expect(radios(grupo).filter((r) => r !== marcado(grupo)).every((r) => r.getAttribute('tabindex') === '-1')).toBe(true);
+    }
+  });
+
+  it('com a busca aberta e o plano marcado fora dos achados, o primeiro achado fica no Tab', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    await digitar(document.body.querySelector('input[placeholder="Buscar outro plano"]'), 'pilates');
+    const achados = radios('Plano');
+    expect(achados.length).toBe(2);
+    expect(achados.map((r) => r.getAttribute('tabindex'))).toEqual(['0', '-1']);
+  });
+
+  it('seta para a direita no Início marca e foca o próximo cartão', async () => {
+    const inicio = D(2026, 9, 12);
+    const fim = D(2026, 12, 12);
+    const atual = { id: 'c1abcdef', leadId: 'l2', planId: 'p3', planName: 'Pilates Trimestral', value: 897, durationMonths: 3, status: 'ativo', startsAt: inicio, endsAt: fim, createdAt: inicio };
+    const lead = { id: 'l2', name: 'Camila Rezende', lifecycleStage: 'cliente', currentContractId: 'c1abcdef', currentPlanName: 'Pilates Trimestral', currentContractValue: 897, currentContractStartsAt: inicio, currentContractEndsAt: fim, currentContractStatus: 'ativo' };
+    await montar({ lead, mode: 'renovacao', currentContract: atual, renewedFromId: 'c1abcdef' }, [atual]);
+    expect(marcado('Início da vigência').textContent).toContain('Emendar');
+    opcao('Emendar').focus();
+    await tecla(opcao('Emendar'), 'ArrowRight');
+    expect(opcao('Hoje').getAttribute('aria-checked')).toBe('true');
+    expect(document.activeElement).toBe(opcao('Hoje'));
+    expect(opcao('Hoje').getAttribute('tabindex')).toBe('0');
+    expect(opcao('Emendar').getAttribute('tabindex')).toBe('-1');
+  });
+
+  it('as setas dão a volta, e Home e End vão às pontas', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    const [primeiro, , ultimo] = radios('Plano');
+    primeiro.focus();
+    await tecla(primeiro, 'ArrowUp');
+    expect(document.activeElement).toBe(ultimo);
+    expect(ultimo.getAttribute('aria-checked')).toBe('true');
+    await tecla(ultimo, 'ArrowDown');
+    expect(document.activeElement).toBe(primeiro);
+    await tecla(primeiro, 'End');
+    expect(document.activeElement).toBe(ultimo);
+    await tecla(ultimo, 'Home');
+    expect(document.activeElement).toBe(primeiro);
+  });
+
+  it('escolher o plano pela seta é escolher pelo clique: o desconto e o motivo zeram', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    await clicar(botao('%'));
+    await digitar(document.body.querySelector('input[aria-label="Valor do desconto"]'), '10');
+    await clicar(botao('Campanha'));
+
+    const antes = marcado('Plano');
+    antes.focus();
+    await tecla(antes, 'ArrowDown');
+
+    expect(marcado('Plano')).not.toBe(antes);
+    expect(document.body.textContent).not.toContain('− R$');
+    expect(motivos().every((b) => b.disabled)).toBe(true);
+  });
+
+  it('escolher "Outra data" leva o foco para o campo de data, pelo clique e pela seta', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    await clicar(opcao('Outra data'));
+    const campo = document.body.querySelector('input[type="date"]');
+    expect(document.activeElement).toBe(campo);
+    expect(campo.getAttribute('aria-label')).toBe('Data de início');
+    expect(campo.className).toContain('dark:[color-scheme:dark]');
+  });
+
+  it('escolher "Outra data" pela seta também leva o foco para o campo de data', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    opcao('Hoje').focus();
+    await tecla(opcao('Hoje'), 'ArrowRight');
+    expect(document.activeElement).toBe(document.body.querySelector('input[type="date"]'));
+  });
+
+  it('limpar a busca devolve o foco ao campo de busca, com alvo de 24 px', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    const busca = document.body.querySelector('input[placeholder="Buscar outro plano"]');
+    await digitar(busca, 'mensal');
+    const limpar = document.body.querySelector('button[aria-label="Limpar busca"]');
+    expect(limpar.className).toContain('size-6');
+    limpar.focus();
+    await clicar(limpar);
+    expect(busca.value).toBe('');
+    expect(document.activeElement).toBe(busca);
+  });
+});
+
+describe('ContractModal, nomes e leitura', () => {
+  it('o campo do valor se chama pelo que é em cada tipo de desconto', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    await clicar(botao('%'));
+    expect(document.body.querySelector('input[aria-label="Valor do desconto"]')).not.toBeNull();
+    await clicar(botao('Valor final'));
+    expect(document.body.querySelector('input[aria-label="Valor final do contrato"]')).not.toBeNull();
+    expect(document.body.querySelector('input[aria-label="Valor do desconto"]')).toBeNull();
+  });
+
+  it('a linha de apoio do plano avisa o leitor de tela quando a lista filtra', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    const apoio = () => [...document.body.querySelectorAll('[aria-live="polite"]')].find((el) => /mais vendidos|no catálogo ativo/.test(el.textContent));
+    const antes = apoio();
+    expect(antes.textContent).toContain('Os 3 mais vendidos.');
+    await digitar(document.body.querySelector('input[placeholder="Buscar outro plano"]'), 'mensal');
+    expect(apoio()).toBe(antes);
+    expect(antes.textContent).toContain('1 plano no catálogo ativo');
+  });
+
+  it('o diálogo não declara uma descrição que não existe, sem o aviso do Radix', async () => {
+    const aviso = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    expect(document.body.querySelector('[role="dialog"]').hasAttribute('aria-describedby')).toBe(false);
+    expect(aviso.mock.calls.filter((c) => String(c[0]).includes('Description'))).toEqual([]);
+    aviso.mockRestore();
+  });
+
+  it('o recibo não escreve travessão no meio da frase quando falta plano ou data', async () => {
+    const inicio = D(2026, 9, 12);
+    const fim = D(2026, 12, 12);
+    const atual = { id: 'c1abcdef', leadId: 'l2', planId: 'p3', planName: 'Pilates Trimestral', value: 897, durationMonths: 3, status: 'ativo', startsAt: inicio, endsAt: fim, createdAt: inicio };
+    const lead = { id: 'l2', name: 'Camila Rezende', lifecycleStage: 'cliente', currentContractId: 'c1abcdef', currentContractValue: 897, currentContractStartsAt: inicio, currentContractEndsAt: fim, currentContractStatus: 'ativo' };
+    await montar({ lead, mode: 'renovacao', currentContract: atual, renewedFromId: 'c1abcdef' }, [atual]);
+    await clicar(opcao('Outra data'));
+    await digitar(document.body.querySelector('input[type="date"]'), '');
+    const recibo = document.body.querySelector('aside[aria-label="Recibo"]').textContent;
+    expect(recibo).toContain('Atual, sem plano');
+    expect(recibo).toContain('sem data');
+    expect(recibo).not.toMatch(/—\s*a\s*—|até\s*—|,\s*—/);
+  });
+
+  it('o texto de apoio da linha e do cartão marcados usa o tom que passa no contraste', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    const linha = marcado('Plano');
+    expect([...linha.querySelectorAll('span')].some((el) => el.className.includes('text-slate-600'))).toBe(true);
+    expect(marcado('Início da vigência').querySelector('.num').className).toContain('text-slate-600');
+    expect(botao('Sem desconto').className).not.toContain('text-slate-600');
+    expect(botao('%').className).toContain('text-slate-600');
+    expect(botao('Sem desconto').className).toContain('dark:bg-white/[0.14]');
+    expect(document.body.querySelector('input[placeholder="Buscar outro plano"]').className).toContain('placeholder:text-slate-500');
+    expect(linha.querySelector('span').className).toContain('border-brand-600');
+    const naoMarcada = radios('Plano').find((r) => r !== linha);
+    expect(naoMarcada.querySelector('span').className).toContain('border-slate-500');
   });
 });
 
