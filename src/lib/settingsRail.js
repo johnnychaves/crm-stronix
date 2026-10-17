@@ -5,40 +5,62 @@
 // endereço calado no hrefFor, o clique leva para a seção padrão e nada reclama.
 // Quem cobra esse contrato é o settingsRail.test.js.
 //
-// O ícone de cada item mora na view (RAIL_ICONS, em SettingsView.jsx), porque
-// aqui não entra JSX. O que liga os dois é o id.
+// O ícone de cada item e de cada grupo mora em
+// src/views/settings/settingsRailIcons.js, porque aqui não entra JSX. O que liga
+// os dois é o id.
 
 import { SCREENS } from './routes.js';
 
-// Grupos do trilho, na ordem da tela. `soAssumida` marca o item que só existe
-// na sessão assumida do super console.
+// Grupos do trilho, na ordem da tela, no desenho do mockup A (17/10/2026). O
+// `id` do grupo é a chave do resumo (railSummaries) e do ícone. `soAssumida`
+// marca o item que só existe na sessão assumida do super console. `screen`
+// marca o item que leva a OUTRA tela do app (Rotinas): ele fica fora de
+// SETTINGS_RAIL_IDS, porque o contrato "todo destino é uma seção da tabela de
+// endereços" não vale para ele.
 export const SETTINGS_RAIL_GROUPS = Object.freeze([
-  { label: null, items: [{ id: 'overview', label: 'Visão geral' }] },
+  { id: 'overview', label: null, items: [{ id: 'overview', label: 'Visão geral' }] },
   {
-    label: 'Pessoas',
+    id: 'academia',
+    label: 'Academia',
     items: [
-      { id: 'team', label: 'Equipe & acessos' },
+      { id: 'profile', label: 'Perfil da academia' },
+      { id: 'billing', label: 'Plano & faturas' },
+    ],
+  },
+  { id: 'equipe', label: 'Equipe', items: [{ id: 'team', label: 'Equipe & acessos' }] },
+  {
+    id: 'dia',
+    label: 'Dia a dia',
+    items: [
+      { id: 'pace', label: 'Metas & ritmo' },
+      { id: 'sched', label: 'Agendamento' },
+      { id: 'rotinas', label: 'Rotinas', screen: 'rotinas' },
+    ],
+  },
+  {
+    id: 'funil',
+    label: 'Funil',
+    items: [
+      { id: 'funnels', label: 'Funis & etapas' },
+      { id: 'catalogs', label: 'Catálogos' },
+    ],
+  },
+  { id: 'conexoes', label: 'Conexões', items: [{ id: 'zap', label: 'Stronizap' }] },
+  {
+    id: 'base',
+    label: 'Manutenção da base',
+    items: [
       { id: 'transfer', label: 'Migrar leads' },
       { id: 'referral-owners', label: 'Indicações sem dono' },
       { id: 'import', label: 'Importar clientes', soAssumida: true },
     ],
   },
-  {
-    label: 'Como a operação roda',
-    items: [
-      { id: 'pace', label: 'Metas & ritmo' },
-      { id: 'sched', label: 'Agendamento' },
-      { id: 'funnels', label: 'Funis & etapas' },
-    ],
-  },
-  { label: 'Vocabulário do funil', items: [{ id: 'catalogs', label: 'Catálogos' }] },
-  { label: 'Integrações', items: [{ id: 'zap', label: 'Stronizap' }] },
 ]);
 
-// Todos os destinos, achatados, para o teste de contrato com a tabela de
-// endereços.
+// Os destinos que são seção desta tela, achatados, para o teste de contrato com
+// a tabela de endereços. Item de outra tela (`screen`) fica de fora.
 export const SETTINGS_RAIL_IDS = Object.freeze(
-  SETTINGS_RAIL_GROUPS.flatMap((g) => g.items.map((i) => i.id)),
+  SETTINGS_RAIL_GROUPS.flatMap((g) => g.items.filter((i) => !i.screen).map((i) => i.id)),
 );
 
 // A seção de quem abre /configuracoes sem seção. Sai da tabela de endereços
