@@ -356,6 +356,16 @@ const diasParados = param(
   (v) => (DIAS_PARADOS.includes(v) && v !== DIAS_PARADOS_PADRAO ? String(v) : null),
 );
 
+// Ordem da lista de Todos os leads. O cadastro mais novo primeiro é o padrão e
+// não se escreve; 'acao' põe o atrasado na frente e o resto pela data da próxima
+// ação, e 'contato' começa por quem está há mais tempo sem registro.
+export const ORDENS_DE_LEADS = Object.freeze(['cadastro', 'acao', 'contato']);
+const ordemDosLeads = param(
+  'order',
+  (raw) => (ORDENS_DE_LEADS.includes(raw) ? raw : 'cadastro'),
+  (v) => (ORDENS_DE_LEADS.includes(v) && v !== 'cadastro' ? v : null),
+);
+
 // Tabela por tela. A ordem aqui é a ordem no endereço.
 const TABELA = {
   dashOperacional: { mes, comparar, 'comparar-com': compararCom, pessoa },
@@ -363,7 +373,7 @@ const TABELA = {
   dashGerencial: { mes, comparar, 'comparar-com': compararCom },
   kanban: { funil: funilDaTela, mes: mesDoQuadro, resp, atraso: ligado('overdue') },
   clientes: { sit, resp },
-  leads: { funil: funilDaTela, fase, resp, atraso: ligado('overdue'), quente: ligado('hot') },
+  leads: { funil: funilDaTela, fase, resp, origem, ordem: ordemDosLeads },
   aulas: { dia, de: dataDoPeriodo('de'), ate: dataDoPeriodo('ate'), resp, prof },
   visitas: { dia, de: dataDoPeriodo('de'), ate: dataDoPeriodo('ate'), resp },
   dailyGoal: { cat },

@@ -71,7 +71,7 @@ describe('linhas das listas', () => {
     h.items = [lead()];
     const tag = tagDoLink(render(createElement(LeadsView, listaProps)));
     expect(tag).toContain('grid grid-cols-1');
-    expect(tag).toContain('md:grid-cols-[1.7fr_1.15fr_1.25fr_0.75fr]');
+    expect(tag).toContain('md:grid-cols-[minmax(0,1.6fr)_minmax(0,1.25fr)_minmax(0,1.1fr)_120px]');
     expect(tag).toContain('hover:bg-slate-50');
     expect(tag).toContain('focus-visible:ring-inset');
   });
