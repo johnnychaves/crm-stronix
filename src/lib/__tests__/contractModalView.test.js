@@ -54,17 +54,20 @@ describe('confirmBlockOf', () => {
     expect(confirmBlockOf({ ...pronto, hasDiscount: true, reason: 'Campanha' })).toBe('');
   });
 
-  it('diz o primeiro que falta, na ordem plano, trava do contrato, data, motivo', () => {
+  it('diz o primeiro que falta, na ordem trava do contrato, plano, data, motivo', () => {
     expect(confirmBlockOf({ ...pronto, plan: null })).toBe('Escolha um plano.');
     expect(confirmBlockOf({ ...pronto, startsAt: null })).toBe('Escolha a data de início.');
     expect(confirmBlockOf({ ...pronto, startProblem: 'x' })).toBe('Veja o aviso da vigência.');
     // Contrato trancado com a data ainda vazia: escolher a data não libera nada, então o rodapé manda ver o aviso.
     expect(confirmBlockOf({ ...pronto, startsAt: null, startProblem: 'x' })).toBe('Veja o aviso da vigência.');
+    // E sem plano também: a faixa já diz "trancado", e o rodapé não pode pedir outra coisa.
+    expect(confirmBlockOf({ ...pronto, plan: null, startProblem: 'x' })).toBe('Veja o aviso da vigência.');
     expect(confirmBlockOf({ ...pronto, hasDiscount: true })).toBe('Escolha o motivo do desconto.');
   });
 
   it('com várias faltando, vale a ordem da lista', () => {
-    expect(confirmBlockOf({ plan: null, startsAt: null, startProblem: 'x', hasDiscount: true })).toBe('Escolha um plano.');
+    expect(confirmBlockOf({ plan: null, startsAt: null, startProblem: 'x', hasDiscount: true })).toBe('Veja o aviso da vigência.');
+    expect(confirmBlockOf({ plan: null, startsAt: null, hasDiscount: true })).toBe('Escolha um plano.');
     expect(confirmBlockOf({ plan, startsAt: null, startProblem: 'x', hasDiscount: true })).toBe('Veja o aviso da vigência.');
     expect(confirmBlockOf({ plan, startsAt: null, hasDiscount: true })).toBe('Escolha a data de início.');
     expect(confirmBlockOf({ plan, startsAt: D(2026, 10, 16), startProblem: 'x', hasDiscount: true, reason: null }))

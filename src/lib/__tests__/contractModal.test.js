@@ -511,6 +511,127 @@ describe('ContractModal, durante o envio', () => {
   });
 });
 
+describe('ContractModal, falha ao gravar', () => {
+  // Com o modal aberto o Radix põe aria-hidden no #root, e o toast fica fora do que o leitor de tela ouve.
+  it('mostra o aviso dentro do modal, num alerta, além do toast', async () => {
+    const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
+    commitMatricula.mockRejectedValueOnce(new Error('sem rede'));
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    expect(rodape().querySelector('[role="alert"]')).toBeNull();
+
+    await clicar(botao('Confirmar matrícula'));
+
+    const alerta = rodape().querySelector('[role="alert"]');
+    expect(alerta).not.toBeNull();
+    expect(alerta.textContent).toContain('Não foi possível salvar. Tente de novo.');
+    expect(toast.error).toHaveBeenCalledTimes(1);
+    expect(botao('Confirmar matrícula').getAttribute('aria-disabled')).toBeNull();
+    erro.mockRestore();
+  });
+
+  it('o aviso sai quando a pessoa mexe no plano, no início, no desconto ou no motivo', async () => {
+    const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const falhar = async () => {
+      commitMatricula.mockRejectedValueOnce(new Error('sem rede'));
+      await clicar(botao('Confirmar matrícula'));
+      expect(rodape().querySelector('[role="alert"]')).not.toBeNull();
+    };
+    await montar({ lead: leadNovo, mode: 'matricula' });
+
+    await falhar();
+    await clicar(opcao('Musculação Semestral'));
+    expect(rodape().querySelector('[role="alert"]')).toBeNull();
+
+    await falhar();
+    await clicar(opcao('Outra data'));
+    expect(rodape().querySelector('[role="alert"]')).toBeNull();
+
+    await falhar();
+    await clicar(botao('%'));
+    expect(rodape().querySelector('[role="alert"]')).toBeNull();
+
+    await digitar(document.body.querySelector('input[aria-label="Valor do desconto"]'), '10');
+    await clicar(botao('Campanha'));
+    await falhar();
+    await clicar(botao('Indicação'));
+    expect(rodape().querySelector('[role="alert"]')).toBeNull();
+    erro.mockRestore();
+  });
+
+  it('uma nova tentativa limpa o aviso antes de gravar', async () => {
+    const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
+    commitMatricula.mockRejectedValueOnce(new Error('sem rede'));
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    await clicar(botao('Confirmar matrícula'));
+    expect(rodape().querySelector('[role="alert"]')).not.toBeNull();
+
+    commitMatricula.mockImplementationOnce(() => new Promise(() => {}));
+    await clicar(botao('Confirmar matrícula'));
+    expect(commitMatricula).toHaveBeenCalledTimes(2);
+    expect(rodape().querySelector('[role="alert"]')).toBeNull();
+    erro.mockRestore();
+  });
+});
+
+describe('ContractModal, contraste, concordância e largura', () => {
+  it('o tipo de desconto marcado se distingue pelo anel e pela cor da marca', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    const marcadoBtn = botao('Sem desconto');
+    expect(marcadoBtn.getAttribute('aria-pressed')).toBe('true');
+    for (const token of ['ring-1', 'ring-inset', 'ring-brand-600', 'dark:ring-brand-400', 'text-brand-700', 'dark:text-brand-300']) {
+      expect(marcadoBtn.className).toContain(token);
+    }
+    expect(botao('%').className).not.toContain('ring-brand-600');
+  });
+
+  it('o Cancelar usa um tom que passa no contraste', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    expect(botao('Cancelar').className).toContain('text-slate-600');
+  });
+
+  it('o diálogo nunca passa da largura da tela, nem entre 640 e 950 px', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    const classes = document.body.querySelector('[data-slot="dialog-content"]').className;
+    expect(classes).toContain('w-[920px]');
+    expect(classes).toContain('sm:max-w-[calc(100vw-2rem)]');
+    expect(classes).not.toContain('sm:max-w-[920px]');
+  });
+
+  it('o exemplo do campo do valor não se confunde com um valor digitado', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    const exemplo = async (rotulo) => {
+      await clicar(botao(rotulo));
+      return document.body.querySelector('input[inputmode="decimal"]').getAttribute('placeholder');
+    };
+    expect(await exemplo('%')).toBe('ex.: 10');
+    expect(await exemplo('R$')).toBe('ex.: 150');
+    expect(await exemplo('Valor final')).toBe('ex.: 1.240');
+  });
+
+  const inicio = D(2026, 9, 12);
+  const leadCom = (fim) => ({
+    id: 'l2', name: 'Camila Rezende', lifecycleStage: 'cliente', currentContractId: 'c1abcdef', currentPlanName: 'Pilates Trimestral',
+    currentContractValue: 897, currentContractStartsAt: inicio, currentContractEndsAt: fim, currentContractStatus: 'ativo'
+  });
+
+  it('o cabeçalho concorda no singular: "restam 1 dia"', async () => {
+    const fim = D(2026, 10, 17, 10, 20);
+    const atual = { id: 'c1abcdef', leadId: 'l2', planName: 'Pilates Trimestral', value: 897, durationMonths: 3, status: 'ativo', startsAt: inicio, endsAt: fim, createdAt: inicio };
+    await montar({ lead: leadCom(fim), mode: 'renovacao', currentContract: atual, renewedFromId: 'c1abcdef' }, [atual]);
+    expect(document.body.textContent).toContain('restam 1 dia');
+    expect(document.body.textContent).not.toContain('restam 1 dias');
+  });
+
+  it('o cabeçalho concorda no singular: "sem contrato há 1 dia", e no plural com 2', async () => {
+    await montar({ lead: leadCom(D(2026, 10, 15, 10, 20)), mode: 'matricula' });
+    expect(document.body.textContent).toContain('sem contrato há 1 dia');
+    expect(document.body.textContent).not.toContain('sem contrato há 1 dias');
+    await act(async () => { root.unmount(); });
+    await montar({ lead: leadCom(D(2026, 10, 14, 10, 20)), mode: 'matricula' });
+    expect(document.body.textContent).toContain('sem contrato há 2 dias');
+  });
+});
+
 describe('ContractModal, sem plano ativo no catálogo', () => {
   it('o corpo avisa e o rodapé não pede um plano que não existe', async () => {
     await montar({ lead: leadNovo, mode: 'matricula' }, [], D(2026, 10, 16, 10, 20), []);

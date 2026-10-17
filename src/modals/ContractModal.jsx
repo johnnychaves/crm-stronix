@@ -275,6 +275,17 @@ function ContractModal({
   const [discountInput, setDiscountInput] = useState('');
   const [reason, setReason] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  // A falha ao gravar aparece dentro do modal: com ele aberto o Radix esconde o
+  // resto da página do leitor de tela, e o toast fica de fora. Sai assim que a
+  // pessoa mexe em plano, início, desconto ou motivo (ajuste de estado no render,
+  // sem effect) e a cada nova tentativa.
+  const [saveError, setSaveError] = useState(false);
+  const formKey = [planId, startMode, customStart, discountMode, discountInput, reason].join('|');
+  const [seenFormKey, setSeenFormKey] = useState(formKey);
+  if (formKey !== seenFormKey) {
+    setSeenFormKey(formKey);
+    setSaveError(false);
+  }
 
   const plan = activePlans.find(p => p.id === planId) || null;
   const planMonths = Number(plan?.durationMonths) || 0;
@@ -402,6 +413,7 @@ function ContractModal({
     if (startProblem) { toast.warning(startProblem); return; }
     if (hasDiscount && !reason) { toast.warning('Escolha o motivo do desconto.'); return; }
 
+    setSaveError(false);
     setSubmitting(true);
     setSent({ lead, currentContract, renewedFromId, planos, contratos });
     try {
@@ -426,6 +438,7 @@ function ContractModal({
     } catch (e) {
       console.error('Erro ao registrar contrato:', e);
       toast.error('Não foi possível salvar. Tente novamente.');
+      setSaveError(true);
       setSent(null);
     } finally {
       setSubmitting(false);
@@ -475,7 +488,7 @@ function ContractModal({
     : 'Primeira matrícula';
   const headerChip = isRenewal || hadContract
     ? (refDaysLeft != null
-      ? <Chip tone={refDaysLeft < 0 ? 'slate' : 'amber'}>{refDaysLeft < 0 ? `sem contrato há ${Math.abs(refDaysLeft)} dias` : `restam ${refDaysLeft} dias`}</Chip>
+      ? <Chip tone={refDaysLeft < 0 ? 'slate' : 'amber'}>{refDaysLeft < 0 ? `sem contrato há ${daysLabel(Math.abs(refDaysLeft))}` : `restam ${daysLabel(refDaysLeft)}`}</Chip>
       : null)
     : (lead?.status ? <Chip tone="slate">{lead.status}</Chip> : null);
 
@@ -506,7 +519,7 @@ function ContractModal({
         showCloseButton={false}
         aria-describedby={undefined}
         overlayClassName="z-[210]"
-        className="z-[210] block p-0 gap-0 w-[920px] max-w-[calc(100vw-2rem)] sm:max-w-[920px] rounded-2xl overflow-hidden border-border"
+        className="z-[210] block p-0 gap-0 w-[920px] max-w-[calc(100vw-2rem)] sm:max-w-[calc(100vw-2rem)] rounded-2xl overflow-hidden border-border"
       >
         {/* Cabeçalho: o que está sendo fechado, numa linha só */}
         <div className="flex items-center gap-4 px-6 py-[18px] border-b border-border">
@@ -659,7 +672,7 @@ function ContractModal({
                         className={cn(
                           'h-8 rounded-full px-3.5 text-[13px] font-semibold whitespace-nowrap transition focus-visible:outline-none focus-visible:anel-foco',
                           discountMode === d.id
-                            ? 'bg-card text-foreground shadow-card dark:bg-white/[0.14]'
+                            ? 'bg-card text-brand-700 shadow-card ring-1 ring-inset ring-brand-600 dark:bg-white/[0.14] dark:text-brand-300 dark:ring-brand-400'
                             : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
                         )}
                       >{d.label}</button>
@@ -682,9 +695,9 @@ function ContractModal({
                           // Sem desconto, o motivo de antes sai: não volta marcado sozinho quando a pessoa digita outro valor.
                           if (!computeDiscount({ listValue, mode: discountMode, input: next }).hasDiscount) setReason(null);
                         }}
-                        placeholder={discountMode === DISCOUNT_MODES.PERCENT ? '10' : discountMode === DISCOUNT_MODES.REAIS ? '150' : '1.240'}
+                        placeholder={discountMode === DISCOUNT_MODES.PERCENT ? 'ex.: 10' : discountMode === DISCOUNT_MODES.REAIS ? 'ex.: 150' : 'ex.: 1.240'}
                         className={cn(
-                          'num h-10 w-[128px] rounded-[11px] border-[1.5px] border-brand-200 bg-card pr-3 text-[14.5px] font-semibold outline-none transition placeholder:text-slate-500 dark:placeholder:text-slate-400 focus-visible:anel-foco dark:border-brand-500/45 focus:border-brand-600 dark:focus:border-brand-400',
+                          'num h-10 w-[128px] rounded-[11px] border-[1.5px] border-brand-200 bg-card pr-3 text-[14.5px] font-semibold outline-none transition placeholder:text-[13px] placeholder:font-normal placeholder:text-slate-500 dark:placeholder:text-slate-400 focus-visible:anel-foco dark:border-brand-500/45 focus:border-brand-600 dark:focus:border-brand-400',
                           discountMode === DISCOUNT_MODES.PERCENT ? 'pl-7' : 'pl-[38px]'
                         )}
                       />
@@ -856,12 +869,18 @@ function ContractModal({
             {blockText && <AlertTriangle size={15} aria-hidden="true" />}
             {blockText}
           </span>
+          {saveError && (
+            <span role="alert" className="inline-flex items-center gap-1.5 text-[13px] font-medium text-rose-700 dark:text-rose-300">
+              <AlertTriangle size={15} aria-hidden="true" />
+              Não foi possível salvar. Tente de novo.
+            </span>
+          )}
           <div className="flex-1"></div>
           <button
             type="button"
             onClick={() => onClose && onClose()}
             disabled={submitting}
-            className="h-[38px] px-4 rounded-[10px] text-[13px] font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/[0.06] dark:hover:text-white whitespace-nowrap transition disabled:opacity-50 focus-visible:outline-none focus-visible:anel-foco"
+            className="h-[38px] px-4 rounded-[10px] text-[13px] font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/[0.06] dark:hover:text-white whitespace-nowrap transition disabled:opacity-50 focus-visible:outline-none focus-visible:anel-foco"
           >Cancelar</button>
           <button
             type="button"

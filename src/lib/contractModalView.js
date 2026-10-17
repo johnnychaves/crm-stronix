@@ -20,13 +20,14 @@ export function startStatusOf({ problem = null, warning = null, severe = false, 
 }
 
 // O que falta para confirmar, ou texto vazio, dito em frase curta para o rodapé.
-// A ordem é: plano, trava do contrato, data, motivo. A trava do contrato vem
-// antes da data porque escolher a data não a resolve (contrato trancado, por
-// exemplo). O botão fica desligado de qualquer jeito, então a ordem dos avisos
-// do handleConfirm não importa.
+// A ordem é: trava do contrato, plano, data, motivo. A trava do contrato vem
+// primeiro porque nada que a pessoa escolha a resolve (contrato trancado, por
+// exemplo) e a faixa da vigência já a mostra: o rodapé não pode pedir outra
+// coisa. O botão fica desligado de qualquer jeito, então a ordem dos avisos do
+// handleConfirm não importa.
 export function confirmBlockOf({ plan = null, startsAt = null, startProblem = null, hasDiscount = false, reason = null } = {}) {
-  if (!plan) return 'Escolha um plano.';
   if (startProblem) return 'Veja o aviso da vigência.';
+  if (!plan) return 'Escolha um plano.';
   if (!startsAt) return 'Escolha a data de início.';
   if (hasDiscount && !reason) return 'Escolha o motivo do desconto.';
   return '';
