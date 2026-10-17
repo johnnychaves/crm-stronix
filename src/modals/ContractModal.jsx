@@ -75,17 +75,21 @@ const Chip = ({ tone = 'amber', children }) => (
   )}>{children}</span>
 );
 
-// Faixa embaixo das opções de início: a vigência, ou o aviso do encaixe. Reserva
-// três linhas, o máximo que os avisos de sobreposição e da regra dos dois dias
-// ocupam, então o modal não pula quando o texto muda. A faixa visível e o texto do
-// rodapé atualizam na hora, mas ficam escondidos do leitor de tela (aria-hidden) e
-// não são regiões vivas: digitando a data, cada pedaço é uma data válida e o texto
-// muda a cada tecla. Quem fala é um anunciador só, sr-only e sempre montado (o
-// leitor só anuncia a troca de texto de uma região que já existia), que recebe o
-// texto da faixa e o do rodapé, sem repetir, depois de uma pausa: só o final é lido.
+// Faixa embaixo das opções de início: a vigência, ou o aviso do encaixe. Reserva três
+// linhas (79 px: três de 18,85 px, mais o padding e a borda) e, quando a própria seção
+// fica mais estreita que 28rem, quatro (98 px). É uma consulta ao tamanho da seção, não
+// da tela (`@max-md`): medido no Chromium, a regra dos dois dias e o aviso de sobreposição
+// quebram em quatro linhas entre 768 e cerca de 845 px de tela, com duas colunas. Os três
+// tons têm a mesma caixa (o ok leva borda transparente): sem isso o aviso media 78,5 px
+// contra 78. Um aviso mais longo que esses textos ainda cresce a faixa, como no celular.
+// A faixa visível e o texto do rodapé atualizam na hora, mas ficam escondidos do leitor
+// de tela (aria-hidden) e não são regiões vivas: digitando a data, cada pedaço é uma data
+// válida e o texto muda a cada tecla. Quem fala é um anunciador só, sr-only e sempre
+// montado (o leitor só anuncia a troca de texto de uma região que já existia), que recebe
+// o texto da faixa e o do rodapé, sem repetir, depois de uma pausa: só o final é lido.
 const ANNOUNCE_DELAY_MS = 700;
 const STATUS_TONE = {
-  ok: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300',
+  ok: 'border border-transparent bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300',
   warn: 'border border-amber-300/60 bg-amber-50 text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200',
   bad: 'border border-rose-300/60 bg-rose-50 text-rose-700 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-300'
 };
@@ -95,7 +99,7 @@ function StartStatus({ tone, text }) {
     <div
       data-slot="start-status"
       aria-hidden="true"
-      className={cn('mt-2.5 flex min-h-[78px] items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-[13px] leading-[1.45]', STATUS_TONE[tone])}
+      className={cn('mt-2.5 flex min-h-[79px] @max-md:min-h-[98px] items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-[13px] leading-[1.45]', STATUS_TONE[tone])}
     >
       <Icon size={16} className="flex-none" />
       <p className="min-w-0 text-pretty">{text}</p>
@@ -641,7 +645,7 @@ function ContractModal({
               </section>
 
               {/* Início da vigência */}
-              <section>
+              <section className="@container">
                 <SectionHead title="Início da vigência" hint="Quando o contrato novo começa a valer?">
                   {startMode === 'outra' && (
                     <input

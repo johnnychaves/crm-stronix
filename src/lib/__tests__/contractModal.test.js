@@ -338,10 +338,14 @@ describe('ContractModal, matrícula', () => {
     expect(faixa.textContent).not.toContain('—');
   });
 
-  it('a faixa de vigência reserva três linhas e troca de texto e de tom no mesmo nó', async () => {
+  it('a faixa de vigência reserva três linhas, quatro quando fica estreita, e troca de texto e de tom no mesmo nó', async () => {
     await montar({ lead: leadNovo, mode: 'matricula' });
     const faixa = document.body.querySelector('[data-slot="start-status"]');
-    expect(faixa.className).toContain('min-h-[78px]');
+    expect(faixa.className).toContain('min-h-[79px]');
+    expect(faixa.className).toContain('@max-md:min-h-[98px]');
+    // A consulta é ao tamanho da própria seção, não da tela.
+    expect(faixa.parentElement.tagName).toBe('SECTION');
+    expect(faixa.parentElement.className).toContain('@container');
     await clicar(opcao('Outra data'));
     await digitar(document.body.querySelector('input[type="date"]'), '2026-10-20');
     expect(document.body.querySelector('[data-slot="start-status"]')).toBe(faixa);
@@ -1130,6 +1134,31 @@ describe('ContractModal, renovação', () => {
     const faixa = document.body.querySelector('[data-slot="start-status"]');
     expect(faixa.textContent).toContain('antes do previsto');
     expect(faixa.className).toContain('rose');
+  });
+
+  // Medido no Chromium: entre 768 e cerca de 845 px (duas colunas) a regra dos dois dias e o
+  // aviso de sobreposição quebram em quatro linhas (97,4 px), e os tons de aviso tinham uma
+  // borda de 1 px que o tom ok não tinha (79 px contra 78). Todos os tons têm a mesma caixa.
+  it('os três tons da faixa têm a mesma caixa: borda (transparente no ok) e as mesmas alturas reservadas', async () => {
+    await montar(props, [atual]);
+    const faixa = () => document.body.querySelector('[data-slot="start-status"]');
+    const temBorda = (el) => el.className.split(/\s+/).includes('border');
+    expect(faixa().textContent).toContain('Emenda perfeita');
+    expect(faixa().className).toContain('bg-emerald');
+    expect(faixa().className).toContain('border-transparent');
+    expect(temBorda(faixa())).toBe(true);
+    expect(faixa().className).toContain('min-h-[79px] @max-md:min-h-[98px]');
+
+    await clicar(opcao('Hoje'));
+    expect(faixa().className).toContain('border-rose');
+    expect(temBorda(faixa())).toBe(true);
+    expect(faixa().className).toContain('min-h-[79px] @max-md:min-h-[98px]');
+
+    await clicar(opcao('Outra data'));
+    await digitar(document.body.querySelector('input[type="date"]'), '2026-12-20');
+    expect(faixa().className).toContain('border-amber');
+    expect(temBorda(faixa())).toBe(true);
+    expect(faixa().className).toContain('min-h-[79px] @max-md:min-h-[98px]');
   });
 
   describe('o que a renovação grava', () => {
