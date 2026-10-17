@@ -114,3 +114,11 @@ describe('o Reagendar do card só abre o pop-up', () => {
     expect(META).not.toContain('handleSnooze');
   });
 });
+
+// O Concluir do Novo lead trata o lead: sem o newLeadHandledAt, ele voltava
+// como Atrasado quando a janela de 24h fechasse (newLeadDueOf).
+describe('o Concluir do Novo lead marca o lead como tratado', () => {
+  it('handleGoalDone grava o newLeadHandledAt no Novo lead', () => {
+    expect(corpoDe('handleGoalDone')).toContain('categorySlug === DAILY_GOAL_CATEGORIES.NOVO_24H ? { newLeadHandledAt: new Date() } : null');
+  });
+});

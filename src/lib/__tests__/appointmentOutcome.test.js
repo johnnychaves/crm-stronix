@@ -36,6 +36,7 @@ const agendado = new Date(2026, 8, 29, 18);
 const NOVO = {
   id: 'l1', name: 'Ana', funnelId: 'f1', status: 'Novo', statusEnteredAt: entrou,
   consultantId: 'c1', consultantAuthUid: 'a1', appointmentScheduledFor: agendado, nextFollowUp: agendado,
+  nextFollowUpType: 'Visita',
 };
 const PROMOVIDO = {
   ...NOVO,
@@ -227,6 +228,7 @@ describe('writeAppointmentOutcome: o eco do agendamento', () => {
       categorySlug: AULA, appUser: USER, statuses: STATUSES, promote: false,
     });
     expect(m.updates[0].data).toMatchObject({ appointmentScheduledFor: null, appointmentType: null, nextFollowUp: null });
+    expect(m.updates[0].data.newLeadHandledAt).toBeInstanceOf(Date);
   });
 
   it('Compareceu deixa um contato de verdade marcado à parte', async () => {
@@ -237,5 +239,18 @@ describe('writeAppointmentOutcome: o eco do agendamento', () => {
     });
     expect(m.updates[0].data.nextFollowUp).toBeUndefined();
     expect(m.updates[0].data.appointmentScheduledFor).toBeUndefined();
+  });
+});
+
+// O contato do cliente foi concluído de manhã ("Contato feito" apaga o próximo
+// contato e o tipo) e o Compareceu da tarde não tirou nada. A troca para Não
+// compareceu não pode criar um contato no horário da aula.
+describe('correctAppointmentOutcome: só devolve o eco que o Compareceu tirou', () => {
+  it('cliente sem eco: a troca não cria próximo contato', async () => {
+    await correctAppointmentOutcome({
+      db: {}, lead: { ...PROMOVIDO, status: 'Venda', nextFollowUpType: null }, from: 'attended', to: 'no_show',
+      categorySlug: VISITA, appUser: USER, isClient: true,
+    });
+    expect(m.updates[0].data).not.toHaveProperty('nextFollowUp');
   });
 });

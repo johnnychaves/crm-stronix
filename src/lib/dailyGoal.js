@@ -173,11 +173,11 @@ const NEW_LEAD_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 // Quando vence o primeiro contato do lead novo sem próximo passo: o fim da
 // janela de 24h. null para todo o resto: lead com próximo contato ou com
-// agendamento, com o contato concluído pela Meta (contactDoneAt, gravado pelo
-// "Contato feito" e pelo Concluir do Novo lead), cliente, importado, Venda,
-// Perda ou de antes da data.
+// agendamento, já tratado pela Meta (newLeadHandledAt, gravado pelo "Contato
+// feito", pelo Concluir do Novo lead e pelo Cancelou do agendamento), cliente,
+// importado, Venda, Perda ou de antes da data.
 export function newLeadDueOf(lead) {
-  if (!lead || lead.nextFollowUp || lead.contactDoneAt || lead.createdAtMissing) return null;
+  if (!lead || lead.nextFollowUp || lead.newLeadHandledAt || lead.createdAtMissing) return null;
   if (lead.status === 'Venda' || lead.status === 'Perda' || isClientLead(lead)) return null;
   if (lead.importBatchId || lead.importSource) return null;
   const created = getSafeDateOrNull(lead.createdAt);

@@ -386,7 +386,7 @@ export function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE
   // Conta também o lead novo sem próximo passo, que entra aqui sem próximo
   // contato: para ele o card diz por que está atrasado.
   const overdueDays = isOverdue ? overdueDaysOf(task, now) : 0;
-  const untouchedNewLead = isOverdue && !task.nextFollowUp;
+  const newLeadWithoutNextStep = isOverdue && !task.nextFollowUp;
   const note = task.observation || '';
 
   return (
@@ -438,7 +438,7 @@ export function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE
                 Entrou {enteredAtLabel}{age ? <span className="opacity-60"> · {age}</span> : null}
               </TimePill>
             )}
-            {untouchedNewLead && (
+            {newLeadWithoutNextStep && (
               <TimePill icon={<AlertCircle size={11} />} tone="rose">Sem próximo passo desde o cadastro</TimePill>
             )}
             {isOverdue && overdueDays > 0 && (
@@ -1386,8 +1386,8 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
     const taskKey = `${lead.id}:${categorySlug}`;
     if (!claimTask(taskKey)) return;
     try {
-      // O Concluir do Novo lead é o primeiro contato feito: o contactDoneAt
-      // impede que ele vire Atrasado quando a janela de 24h fechar.
+      // O Concluir do Novo lead trata o lead: o newLeadHandledAt impede que ele
+      // vire Atrasado quando a janela de 24h fechar.
       await logInteraction(db, lead, appUser, {
         text: noteText
           ? `✅ ${categoryLabel} — Meta Diária. Obs: ${noteText}`
@@ -1395,7 +1395,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
         type: 'daily_goal_done',
         dailyGoalCategory: categorySlug,
         ...goalOwnerFields(lead, categorySlug)
-      }, categorySlug === DAILY_GOAL_CATEGORIES.NOVO_24H ? { contactDoneAt: new Date() } : null);
+      }, categorySlug === DAILY_GOAL_CATEGORIES.NOVO_24H ? { newLeadHandledAt: new Date() } : null);
       toast.success(`Tarefa "${categoryLabel}" concluída.`);
     } catch (err) {
       console.error(err);

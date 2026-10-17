@@ -25,6 +25,7 @@ import {
 } from '../dailyGoal.js';
 import { DAILY_GOAL_CATEGORIES } from '../leads.js';
 import { contactDone, contactReschedule } from '../contactGoal.js';
+import { consumedFields } from '../outcomeCorrection.js';
 
 // Quarta-feira, 15 de julho de 2026, 10:00 local — "agora" de referência.
 const NOW = new Date(2026, 6, 15, 10, 0, 0);
@@ -1304,8 +1305,24 @@ describe('lead novo sem próximo passo vira Atrasado', () => {
     expect(slugsDe(novo({ lastInteractionAt: new Date(2026, 9, 19, 9, 0) }))).toEqual([DAILY_GOAL_CATEGORIES.ATRASADO]);
   });
 
-  it('o contato concluído pela Meta tira (o contactDoneAt do "Contato feito" e do Concluir)', () => {
+  it('o lead tratado pela Meta sai (o newLeadHandledAt do "Contato feito" e do Concluir)', () => {
     expect(slugsDe(novo({ ...contactDone(new Date(2026, 9, 19, 9, 0)) }))).toEqual([]);
+  });
+
+  // O Cancelou apaga o agendamento e grava o newLeadHandledAt
+  // (consumedFields). Sem ele, o lead cuja visita foi cancelada voltava na hora
+  // para Atrasados, com o atraso contado do cadastro.
+  it('a visita cancelada não devolve o lead a Atrasados', () => {
+    const cancelada = novo({
+      ...consumedFields('cancelled', { nextFollowUpType: 'Visita' }, new Date(2026, 9, 20, 9, 0)),
+      nextFollowUpType: 'Visita',
+    });
+    expect(slugsDe(cancelada)).toEqual([]);
+  });
+
+  it('a visita que aconteceu também tira, porque o agendamento fica', () => {
+    const veio = novo({ appointmentType: 'visita', appointmentScheduledFor: new Date(2026, 9, 19, 18, 0) });
+    expect(slugsDe(veio)).toEqual([]);
   });
 
   it('lead com próximo contato ou com agendamento segue a regra de sempre', () => {
