@@ -41,6 +41,16 @@ async function montar(props, contratos = [], agora = D(2026, 10, 16, 10, 20), ca
   await renderizar(h(GeneralConfigContext.Provider, { value: { planos: catalogo, contratos } }, modal(props)), agora, falsos);
 }
 const anunciador = () => document.body.querySelector('[data-slot="contract-announcer"]');
+const FALSOS = ['Date', 'setTimeout', 'clearTimeout'];
+// Toda região viva do diálogo. Só valem o anunciador, a linha de apoio do Plano e,
+// depois de uma falha ao gravar, o alerta do rodapé.
+const regioesVivas = () => [...document.body.querySelectorAll('[role="dialog"] [aria-live], [role="dialog"] [role="status"], [role="dialog"] [role="alert"]')];
+const regioesVivasAlemDasPermitidas = () => {
+  const apoioDoPlano = [...document.body.querySelectorAll('[role="dialog"] p[aria-live="polite"]')]
+    .find((el) => /mais vendidos|no catálogo ativo/.test(el.textContent));
+  const permitidas = [anunciador(), apoioDoPlano, document.body.querySelector('[role="dialog"] [role="alert"]')].filter(Boolean);
+  return regioesVivas().filter((el) => !permitidas.includes(el));
+};
 afterEach(async () => {
   await act(async () => { root?.unmount(); });
   root = null;
@@ -103,9 +113,34 @@ describe('ContractModal, matrícula', () => {
     const visivel = rodape().querySelector('span[aria-hidden="true"]');
     expect(visivel.textContent).toContain('Escolha o motivo do desconto.');
     expect(visivel.getAttribute('role')).toBeNull();
-    const vivas = document.body.querySelectorAll('[role="status"]');
-    expect(vivas.length).toBe(1);
-    expect(vivas[0]).toBe(anunciador());
+    expect(regioesVivasAlemDasPermitidas()).toEqual([]);
+    expect(regioesVivas().length).toBe(2);
+    expect(document.body.querySelectorAll('[role="status"]').length).toBe(1);
+    expect(document.body.querySelector('[role="status"]')).toBe(anunciador());
+  });
+
+  // O guarda de regiões vivas precisa reprovar quem acrescentar uma: aqui, a pílula do desconto.
+  it('um aria-live novo na pílula do desconto reprova o guarda de regiões vivas', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    await clicar(botao('%'));
+    await digitar(document.body.querySelector('input[aria-label="Valor do desconto"]'), '10');
+    const pilula = [...document.body.querySelectorAll('span')].find((el) => el.textContent.includes('(10%)'));
+    expect(pilula).toBeTruthy();
+    expect(regioesVivasAlemDasPermitidas()).toEqual([]);
+    pilula.setAttribute('aria-live', 'polite');
+    expect(regioesVivasAlemDasPermitidas()).toEqual([pilula]);
+  });
+
+  it('o alerta da falha ao gravar é a única região viva a mais, e só depois da falha', async () => {
+    const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
+    commitMatricula.mockRejectedValueOnce(new Error('sem rede'));
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    expect(document.body.querySelector('[role="alert"]')).toBeNull();
+    await clicar(botao('Confirmar matrícula'));
+    expect(document.body.querySelector('[role="alert"]')).not.toBeNull();
+    expect(regioesVivasAlemDasPermitidas()).toEqual([]);
+    expect(regioesVivas().length).toBe(3);
+    erro.mockRestore();
   });
 
   // WCAG 2.5.3: o nome acessível começa pelo texto visível, para o comando de voz.
@@ -243,6 +278,14 @@ describe('ContractModal, matrícula', () => {
     await digitar(document.body.querySelector('input[type="date"]'), '2026-10-17');
     const faixa = document.body.querySelector('[data-slot="start-status"]');
     expect(faixa.textContent).toContain('A vigência só começa em 17/10/2026. Até lá');
+  });
+
+  it('outra data ontem avisa que a matrícula é retroativa em 1 dia, no singular', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' }, [], D(2026, 10, 16, 15, 40));
+    await clicar(opcao('Outra data'));
+    await digitar(document.body.querySelector('input[type="date"]'), '2026-10-15');
+    const faixa = document.body.querySelector('[data-slot="start-status"]');
+    expect(faixa.textContent).toContain('Matrícula retroativa. A vigência começa em 15/10/2026, então 1 dia já terá passado quando o contrato for criado.');
   });
 
   it('outra data no passado avisa que a matrícula é retroativa', async () => {
@@ -537,6 +580,95 @@ describe('ContractModal, nomes e leitura', () => {
   });
 });
 
+describe('ContractModal, o que se grava sem desconto', () => {
+  const nenhum = { discountMode: 'nenhum', discountValue: 0, discountReason: null };
+  const gravado = () => commitMatricula.mock.calls[0][0];
+
+  it.each([['vazio', null], ['zero', '0']])('"%" com o campo %s grava como sem desconto', async (_nome, valor) => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    await clicar(botao('%'));
+    if (valor !== null) await digitar(document.body.querySelector('input[aria-label="Valor do desconto"]'), valor);
+    await clicar(botao('Confirmar matrícula'));
+    expect(commitMatricula).toHaveBeenCalledTimes(1);
+    expect(gravado().contractExtra).toEqual(nenhum);
+    expect(gravado().value).toBe(510);
+  });
+
+  it('"Valor final" acima da tabela não é desconto: grava como sem desconto, pelo valor digitado', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    await clicar(botao('Valor final'));
+    await digitar(document.body.querySelector('input[aria-label="Valor final do contrato"]'), '600');
+    await clicar(botao('Confirmar matrícula'));
+    expect(gravado().contractExtra).toEqual(nenhum);
+    expect(gravado().value).toBe(600);
+  });
+
+  // A tabela pode ser reajustada para baixo com o modal aberto. O desconto some e o motivo
+  // escolhido antes fica no estado: o que se grava não pode levá-lo.
+  it('se a tabela cai e o desconto some, o motivo de antes não é gravado', async () => {
+    let mudarCatalogo;
+    function Casca() {
+      const [lista, setLista] = useState(planos);
+      mudarCatalogo = setLista;
+      return h(GeneralConfigContext.Provider, { value: { planos: lista, contratos: [] } }, modal({ lead: leadNovo, mode: 'matricula' }));
+    }
+    await renderizar(h(Casca), D(2026, 10, 16, 10, 20));
+    await clicar(botao('Valor final'));
+    await digitar(document.body.querySelector('input[aria-label="Valor final do contrato"]'), '400');
+    await clicar(botao('Campanha'));
+    expect(botao('Campanha').getAttribute('aria-pressed')).toBe('true');
+
+    await act(async () => { mudarCatalogo(planos.map((p) => (p.id === 'p1' ? { ...p, value: 300 } : p))); });
+    expect(botao('Campanha').disabled).toBe(true);
+    await clicar(botao('Confirmar matrícula'));
+
+    expect(gravado().contractExtra).toEqual(nenhum);
+    expect(gravado().value).toBe(400);
+  });
+});
+
+describe('ContractModal, fechar', () => {
+  const esc = async () => {
+    await act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
+  };
+
+  it('Esc fecha o modal quando nada está sendo enviado', async () => {
+    const onClose = vi.fn();
+    await montar({ lead: leadNovo, mode: 'matricula', onClose });
+    await esc();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('Esc durante o envio não fecha o modal', async () => {
+    const onClose = vi.fn();
+    commitMatricula.mockImplementationOnce(() => new Promise(() => {}));
+    await montar({ lead: leadNovo, mode: 'matricula', onClose });
+    await clicar(botao('Confirmar matrícula'));
+    expect(commitMatricula).toHaveBeenCalledTimes(1);
+    await esc();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('clicar fora durante o envio não fecha o modal, e fora do envio fecha', async () => {
+    const fora = async () => {
+      await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+      await act(async () => {
+        document.body.querySelector('[data-slot="dialog-overlay"]').dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true }));
+      });
+    };
+    const onClose = vi.fn();
+    commitMatricula.mockImplementationOnce(() => new Promise(() => {}));
+    await montar({ lead: leadNovo, mode: 'matricula', onClose });
+    await fora();
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    onClose.mockClear();
+    await clicar(botao('Confirmar matrícula'));
+    await fora();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
 describe('ContractModal, durante o envio', () => {
   it('o Confirmar não perde o foco, um segundo clique não grava de novo e o X do cabeçalho fica desligado', async () => {
     commitMatricula.mockImplementationOnce(() => new Promise(() => {}));
@@ -568,7 +700,6 @@ describe('ContractModal, durante o envio', () => {
 });
 
 describe('ContractModal, anunciador único', () => {
-  const FALSOS = ['Date', 'setTimeout', 'clearTimeout'];
   const passar = async (ms) => { await act(async () => { vi.advanceTimersByTime(ms); }); };
   const vezes = (texto, trecho) => texto.split(trecho).length - 1;
 
