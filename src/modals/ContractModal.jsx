@@ -74,8 +74,10 @@ const Chip = ({ tone = 'amber', children }) => (
   )}>{children}</span>
 );
 
-// Faixa de altura fixa embaixo das opções de início: a vigência, ou o aviso do
-// encaixe. Sempre ocupa o mesmo espaço, então o modal não pula quando o texto muda.
+// Faixa embaixo das opções de início: a vigência, ou o aviso do encaixe. Reserva
+// três linhas, o máximo que os avisos de sobreposição e da regra dos dois dias
+// ocupam, então o modal não pula quando o texto muda. É uma região viva sempre
+// montada: o leitor de tela só anuncia a troca de texto de uma região que já existia.
 const STATUS_TONE = {
   ok: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300',
   warn: 'border border-amber-300/60 bg-amber-50 text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200',
@@ -86,8 +88,8 @@ function StartStatus({ tone, text }) {
   return (
     <div
       data-slot="start-status"
-      role={tone === 'ok' ? undefined : 'status'}
-      className={cn('mt-2.5 flex min-h-[52px] items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-[13px] leading-[1.45]', STATUS_TONE[tone])}
+      role="status"
+      className={cn('mt-2.5 flex min-h-[78px] items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-[13px] leading-[1.45]', STATUS_TONE[tone])}
     >
       <Icon size={16} className="flex-none" aria-hidden="true" />
       <p className="min-w-0 text-pretty">{text}</p>
@@ -277,9 +279,9 @@ function ContractModal({
       ? `O contrato atual continua até ${fmtDate(refEnd)}, e os dois valem juntos por ${daysLabel(seam.overlapDays)}.`
       : seamWarning(seam, startsAt)
     : offsetDays < 0
-      ? `Matrícula retroativa — a vigência começa em ${fmtDate(startsAt)}, então ${Math.abs(offsetDays)} ${Math.abs(offsetDays) === 1 ? 'dia já terá passado' : 'dias já terão passado'} quando o contrato for criado.`
+      ? `Matrícula retroativa. A vigência começa em ${fmtDate(startsAt)}, então ${Math.abs(offsetDays)} ${Math.abs(offsetDays) === 1 ? 'dia já terá passado' : 'dias já terão passado'} quando o contrato for criado.`
       : offsetDays > 0
-        ? `A vigência só começa em ${fmtDate(startsAt)} — até lá o cliente não conta como ativo nos relatórios.`
+        ? `A vigência só começa em ${fmtDate(startsAt)}. Até lá, o cliente não conta como ativo nos relatórios.`
         : null;
   const warningIsSevere = isRenewal && seam?.kind === SEAM_KIND.SOBREPOSICAO;
 
@@ -326,6 +328,7 @@ function ContractModal({
     problem: startProblem, warning, severe: warningIsSevere, startsAt, endsAt, seam, planMonths
   });
   const blockText = confirmBlockOf({ plan, startsAt, startProblem, hasDiscount, reason });
+  const reasonHint = reasonHintOf({ hasDiscount, reason });
 
   const pickPlan = (id) => {
     setPlanId(id);
@@ -509,7 +512,7 @@ function ContractModal({
                         onClick={() => setPlanSearch('')}
                         title="Limpar"
                         aria-label="Limpar busca"
-                        className="absolute right-1.5 top-1.5 size-5 rounded-full grid place-items-center text-slate-400 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-white/[0.06] dark:hover:text-white transition"
+                        className="absolute right-1.5 top-1.5 size-5 rounded-full grid place-items-center text-muted-foreground hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-white/[0.06] dark:hover:text-white transition focus-visible:outline-none focus-visible:anel-foco"
                       >
                         <X size={12} />
                       </button>
@@ -573,14 +576,15 @@ function ContractModal({
                   <div className="flex gap-0.5 rounded-full bg-slate-100 p-[3px] dark:bg-white/[0.06]" role="group" aria-label="Tipo de desconto">
                     {[
                       { id: DISCOUNT_MODES.NENHUM, label: 'Sem desconto' },
-                      { id: DISCOUNT_MODES.PERCENT, label: '%' },
-                      { id: DISCOUNT_MODES.REAIS, label: 'R$' },
+                      { id: DISCOUNT_MODES.PERCENT, label: '%', name: 'Desconto em porcentagem' },
+                      { id: DISCOUNT_MODES.REAIS, label: 'R$', name: 'Desconto em reais' },
                       { id: DISCOUNT_MODES.FINAL, label: 'Valor final' }
                     ].map(d => (
                       <button
                         key={d.id}
                         type="button"
                         aria-pressed={discountMode === d.id}
+                        aria-label={d.name}
                         onClick={() => { setDiscountMode(d.id); setDiscountInput(''); setReason(null); }}
                         className={cn(
                           'h-8 rounded-full px-3.5 text-[13px] font-semibold whitespace-nowrap transition focus-visible:outline-none focus-visible:anel-foco',
@@ -605,7 +609,7 @@ function ContractModal({
                         onChange={e => setDiscountInput(e.target.value)}
                         placeholder={discountMode === DISCOUNT_MODES.PERCENT ? '10' : discountMode === DISCOUNT_MODES.REAIS ? '150' : '1.240'}
                         className={cn(
-                          'num h-10 w-[128px] rounded-[11px] border-[1.5px] border-brand-200 bg-card pr-3 text-[14.5px] font-semibold outline-none transition dark:border-brand-500/45 focus:border-brand-600 dark:focus:border-brand-400',
+                          'num h-10 w-[128px] rounded-[11px] border-[1.5px] border-brand-200 bg-card pr-3 text-[14.5px] font-semibold outline-none transition focus-visible:anel-foco dark:border-brand-500/45 focus:border-brand-600 dark:focus:border-brand-400',
                           discountMode === DISCOUNT_MODES.PERCENT ? 'pl-7' : 'pl-[38px]'
                         )}
                       />
@@ -616,9 +620,9 @@ function ContractModal({
                 <div className="mt-3.5">
                   <span className="text-[12.5px] text-muted-foreground">
                     Motivo do desconto
-                    {reasonHintOf({ hasDiscount, reason }) && (
-                      <span className={cn('ml-1', hasDiscount ? 'font-semibold text-amber-700 dark:text-amber-300' : 'text-slate-400 dark:text-slate-500')}>
-                        ({reasonHintOf({ hasDiscount, reason })})
+                    {reasonHint && (
+                      <span className={cn('ml-1', hasDiscount ? 'font-semibold text-amber-700 dark:text-amber-300' : 'text-muted-foreground')}>
+                        ({reasonHint})
                       </span>
                     )}
                   </span>
@@ -628,14 +632,14 @@ function ContractModal({
                         key={r}
                         type="button"
                         disabled={!hasDiscount}
-                        aria-pressed={r === reason}
+                        aria-pressed={hasDiscount && r === reason}
                         onClick={() => setReason(r)}
                         className={cn(
                           'h-[34px] rounded-full border px-3.5 text-[13px] font-medium whitespace-nowrap transition focus-visible:outline-none focus-visible:anel-foco',
                           'disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-45 dark:disabled:bg-white/[0.03]',
                           r === reason
                             ? 'border-brand-600 bg-brand-50 font-semibold text-brand-700 dark:border-brand-500 dark:bg-brand-500/15 dark:text-brand-300'
-                            : 'border-border bg-card hover:border-brand-200 dark:hover:border-brand-500/45'
+                            : 'border-border bg-card enabled:hover:border-brand-200 dark:enabled:hover:border-brand-500/45'
                         )}
                       >{r}</button>
                     ))}
@@ -665,7 +669,7 @@ function ContractModal({
                       <div>
                         <div className="flex items-baseline justify-between gap-2">
                           <span className="truncate text-[12.5px] text-muted-foreground">Atual, {lead?.currentPlanName || '—'}</span>
-                          <span className="num flex-none text-[12px] text-slate-400 dark:text-slate-500">até {fmtDate(shortenTo || refEnd)}</span>
+                          <span className="num flex-none text-[12px] text-muted-foreground">até {fmtDate(shortenTo || refEnd)}</span>
                         </div>
                         <div className="relative mt-1 h-2 rounded-full bg-slate-200/70 dark:bg-white/[0.06]">
                           {bars && (
@@ -773,12 +777,10 @@ function ContractModal({
 
         {/* Rodapé: o que falta, à esquerda; as ações, à direita */}
         <div data-slot="contract-footer" className="flex min-h-[62px] items-center gap-2.5 border-t border-border px-6 py-3.5">
-          {blockText && (
-            <span role="status" className="inline-flex items-center gap-1.5 text-[13px] font-medium text-amber-700 dark:text-amber-300">
-              <AlertTriangle size={15} aria-hidden="true" />
-              {blockText}
-            </span>
-          )}
+          <span role="status" className="inline-flex items-center gap-1.5 text-[13px] font-medium text-amber-700 dark:text-amber-300">
+            {blockText && <AlertTriangle size={15} aria-hidden="true" />}
+            {blockText}
+          </span>
           <div className="flex-1"></div>
           <button
             type="button"

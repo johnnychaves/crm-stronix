@@ -78,6 +78,37 @@ describe('ContractModal, matrícula', () => {
     expect(motivos().every((b) => b.disabled)).toBe(true);
     expect(document.body.textContent).toContain('escolha quando houver desconto');
     expect(rodape().textContent).not.toContain('motivo');
+    expect(motivos().every((b) => b.getAttribute('aria-pressed') === 'false')).toBe(true);
+  });
+
+  it('a região viva do rodapé existe mesmo quando não falta nada, para o leitor de tela anunciar o que entra', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    const regiao = rodape().querySelector('[role="status"]');
+    expect(regiao).not.toBeNull();
+    expect(regiao.textContent.trim()).toBe('');
+    await clicar(botao('%'));
+    await digitar(document.body.querySelector('input[aria-label="Valor do desconto"]'), '10');
+    expect(rodape().querySelector('[role="status"]')).toBe(regiao);
+    expect(regiao.textContent).toContain('Escolha o motivo do desconto.');
+  });
+
+  it('os botões do tipo de desconto têm nome por extenso', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    expect(document.body.querySelector('button[aria-label="Desconto em porcentagem"]')).not.toBeNull();
+    expect(document.body.querySelector('button[aria-label="Desconto em reais"]')).not.toBeNull();
+  });
+
+  it('o motivo escolhido não fica pressionado quando o desconto some', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    await clicar(botao('%'));
+    const campo = document.body.querySelector('input[aria-label="Valor do desconto"]');
+    await digitar(campo, '10');
+    await clicar(botao('Campanha'));
+    expect(botao('Campanha').getAttribute('aria-pressed')).toBe('true');
+
+    await digitar(campo, '');
+    expect(botao('Campanha').disabled).toBe(true);
+    expect(botao('Campanha').getAttribute('aria-pressed')).toBe('false');
   });
 
   it('aplicar desconto liga os motivos e o rodapé pede o motivo até ele ser escolhido', async () => {
@@ -141,6 +172,37 @@ describe('ContractModal, matrícula', () => {
     await clicar(opcao('Outra data'));
     expect(document.body.querySelector('input[type="date"]')).not.toBeNull();
   });
+
+  it('outra data no futuro avisa que o cliente só conta como ativo a partir dela', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    await clicar(opcao('Outra data'));
+    await digitar(document.body.querySelector('input[type="date"]'), '2026-10-20');
+    const faixa = document.body.querySelector('[data-slot="start-status"]');
+    expect(faixa.textContent).toContain('A vigência só começa em 20/10/2026. Até lá');
+    expect(faixa.textContent).not.toContain('—');
+    expect(faixa.className).toContain('amber');
+  });
+
+  it('outra data no passado avisa que a matrícula é retroativa', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    await clicar(opcao('Outra data'));
+    await digitar(document.body.querySelector('input[type="date"]'), '2026-10-14');
+    const faixa = document.body.querySelector('[data-slot="start-status"]');
+    expect(faixa.textContent).toContain('Matrícula retroativa. A vigência começa em 14/10/2026, então 2 dias já terão passado');
+    expect(faixa.textContent).not.toContain('—');
+  });
+
+  it('a faixa de vigência é uma região viva sempre montada e reserva três linhas', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    const faixa = document.body.querySelector('[data-slot="start-status"]');
+    expect(faixa.getAttribute('role')).toBe('status');
+    expect(faixa.className).toContain('min-h-[78px]');
+    await clicar(opcao('Outra data'));
+    await digitar(document.body.querySelector('input[type="date"]'), '2026-10-20');
+    // O mesmo nó troca de texto e de tom, sem desmontar.
+    expect(document.body.querySelector('[data-slot="start-status"]')).toBe(faixa);
+    expect(faixa.getAttribute('role')).toBe('status');
+  });
 });
 
 describe('ContractModal, início "Hoje"', () => {
@@ -171,6 +233,7 @@ describe('ContractModal, renovação', () => {
     await montar(props, [atual]);
     const faixa = document.body.querySelector('[data-slot="start-status"]');
     expect(faixa.textContent).toContain('Emenda perfeita, nenhum dia sem contrato.');
+    expect(faixa.getAttribute('role')).toBe('status');
     expect(document.body.textContent).toContain('Renovar contrato');
     expect(botao('Confirmar renovação').disabled).toBe(false);
   });
