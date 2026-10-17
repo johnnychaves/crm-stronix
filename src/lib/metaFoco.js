@@ -66,7 +66,9 @@ const isAppt = (slug) => slug === C.VISITA_HOJE || slug === C.AULA_HOJE;
 // Milissegundos até o prazo da tarefa (negativo = já passou), ou null quando a
 // tarefa não tem prazo: atrasado, renovação e vencido não têm hora.
 // O lead novo só entra na Meta no dia seguinte ao cadastro e sai 24h depois do
-// cadastro (dailyGoal.js, categoria 1), então esse é o prazo dele.
+// cadastro (dailyGoal.js, categoria 1), então esse é o prazo dele. Passada a
+// janela sem próximo passo, ele volta como Atrasado sem nextFollowUp
+// (newLeadDueOf), e os dias de atraso saem do overdueDaysOf, desse prazo.
 function deadlineMs(entry, now) {
   const { slug, lead } = entry;
   let at = null;

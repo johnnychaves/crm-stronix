@@ -293,3 +293,24 @@ describe('pendências do dia', () => {
     expect(pendingEntries(undefined)).toEqual([]);
   });
 });
+
+// O lead novo sem próximo passo vira Atrasado quando a janela de 24h fecha
+// (newLeadDueOf, em dailyGoal.js, regra de 17/10/2026). Ele chega ao Foco sem
+// nextFollowUp, e os dias de atraso contam do fim da janela, como no card da Meta.
+describe('lead novo que virou Atrasado sem próximo passo', () => {
+  const AGORA = new Date(2026, 9, 20, 10, 0);
+  const novoAtrasado = (id, criado) => entry({ id, createdAt: criado, nextFollowUp: null }, C.ATRASADO);
+
+  it('entra com os atrasados, pelos dias desde o fim da janela', () => {
+    const fechouHoje = novoAtrasado('n0', new Date(2026, 9, 19, 8, 0));
+    const fechouHaDois = novoAtrasado('n2', new Date(2026, 9, 17, 8, 0));
+    const comData = entry({ id: 'c1', nextFollowUp: new Date(2026, 9, 19, 9, 0) }, C.ATRASADO);
+    expect(klassOf(fechouHoje, AGORA, { sla: 3 })).toBe(4);
+    expect(ids(rankFoco([fechouHoje, comData, fechouHaDois], AGORA, { sla: 3 }))).toEqual(['n2', 'c1', 'n0']);
+  });
+
+  it('passa do SLA e vira crítico como qualquer atrasado', () => {
+    const fechouHaTres = novoAtrasado('n3', new Date(2026, 9, 17, 8, 0));
+    expect(klassOf(fechouHaTres, new Date(2026, 9, 21, 10, 0), { sla: 3 })).toBe(2);
+  });
+});
