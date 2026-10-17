@@ -51,6 +51,16 @@ const regioesVivasAlemDasPermitidas = () => {
   const permitidas = [anunciador(), apoioDoPlano, document.body.querySelector('[role="dialog"] [role="alert"]')].filter(Boolean);
   return regioesVivas().filter((el) => !permitidas.includes(el));
 };
+// O jsdom não implementa o inert (o clique passa por cima). Este dublê faz o que o
+// navegador faz: descarta clique, digitação e teclas dentro de um [inert].
+function emularInert() {
+  const tipos = ['click', 'input', 'change', 'keydown', 'pointerdown'];
+  const barrar = (e) => {
+    if (e.target instanceof Element && e.target.closest('[inert]')) { e.stopPropagation(); e.preventDefault(); }
+  };
+  tipos.forEach((t) => document.addEventListener(t, barrar, true));
+  return () => tipos.forEach((t) => document.removeEventListener(t, barrar, true));
+}
 afterEach(async () => {
   await act(async () => { root?.unmount(); });
   root = null;
@@ -666,6 +676,73 @@ describe('ContractModal, fechar', () => {
     await clicar(botao('Confirmar matrícula'));
     await fora();
     expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
+describe('ContractModal, durante o envio o formulário', () => {
+  it('fica travado: o recibo, a faixa, o anunciador e a gravação não mudam; depois de uma falha volta a editar', async () => {
+    const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let rejeitar;
+    commitMatricula.mockImplementationOnce(() => new Promise((_, rej) => { rejeitar = rej; }));
+    await montar({ lead: leadNovo, mode: 'matricula' }, [], D(2026, 10, 16, 10, 20), planos, FALSOS);
+    await clicar(botao('%'));
+    await digitar(document.body.querySelector('input[aria-label="Valor do desconto"]'), '10');
+    await clicar(botao('Campanha'));
+    const recibo = () => document.body.querySelector('aside[aria-label="Recibo"]').textContent;
+    const faixa = () => document.body.querySelector('[data-slot="start-status"]').textContent;
+    const confirmar = botao('Confirmar matrícula');
+    confirmar.focus();
+    expect(document.body.querySelector('[inert]')).toBeNull();
+
+    await clicar(confirmar);
+
+    // A coluna de decisões inteira fica inert; o Confirmar, o Cancelar e o X ficam de fora.
+    const travado = document.body.querySelector('[inert]');
+    expect(travado).not.toBeNull();
+    for (const dentro of [opcao('Musculação Semestral'), opcao('Hoje'), botao('%'), botao('Campanha'),
+      document.body.querySelector('input[placeholder="Buscar outro plano"]'), document.body.querySelector('input[aria-label="Valor do desconto"]')]) {
+      expect(travado.contains(dentro)).toBe(true);
+    }
+    for (const fora of [confirmar, botao('Cancelar'), document.body.querySelector('button[aria-label="Fechar"]')]) {
+      expect(travado.contains(fora)).toBe(false);
+    }
+    expect(document.activeElement).toBe(confirmar);
+
+    const reciboAntes = recibo();
+    const faixaAntes = faixa();
+    const vozAntes = anunciador().textContent;
+    expect(reciboAntes).toContain('Musculação Trimestral');
+    expect(reciboAntes).toContain('R$ 459,00');
+
+    const desfazer = emularInert();
+    try {
+      await clicar(opcao('Musculação Semestral'));
+      await clicar(botao('R$'));
+      await clicar(botao('Sem desconto'));
+      await clicar(botao('Indicação'));
+      await clicar(opcao('Outra data'));
+      await act(async () => { vi.advanceTimersByTime(800); });
+
+      expect(recibo()).toBe(reciboAntes);
+      expect(faixa()).toBe(faixaAntes);
+      expect(anunciador().textContent).toBe(vozAntes);
+      expect(anunciador().textContent).not.toContain('6 meses');
+      expect(commitMatricula).toHaveBeenCalledTimes(1);
+      const arg = commitMatricula.mock.calls[0][0];
+      expect(arg.plan.id).toBe('p1');
+      expect(arg.value).toBe(459);
+      expect(arg.contractExtra).toEqual({ discountMode: 'percent', discountValue: 51, discountReason: 'Campanha' });
+
+      // Falhou: o formulário volta a ser editável.
+      await act(async () => { rejeitar(new Error('sem rede')); });
+      expect(document.body.querySelector('[inert]')).toBeNull();
+      await clicar(opcao('Musculação Semestral'));
+      expect(recibo()).toContain('Musculação Semestral');
+      expect(recibo()).toContain('R$ 960,00');
+    } finally {
+      desfazer();
+      erro.mockRestore();
+    }
   });
 });
 

@@ -586,7 +586,8 @@ function ContractModal({
         ) : (
           <div className="grid max-h-[70vh] grid-cols-1 overflow-y-auto md:grid-cols-[minmax(0,1fr)_320px]">
             {/* ===== Decisões ===== */}
-            <div className="flex min-w-0 flex-col gap-[22px] px-6 py-[22px]">
+            {/* Durante o envio a coluna fica inert: o que a pessoa mexer agora mudaria o recibo e o anúncio, mas não o que está sendo gravado. O Confirmar fica fora dela e mantém o foco. */}
+            <div inert={submitting} className="flex min-w-0 flex-col gap-[22px] px-6 py-[22px]">
               {/* Plano */}
               <section>
                 <SectionHead
