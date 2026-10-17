@@ -37,6 +37,8 @@ export const SETTINGS_SECTIONS = Object.freeze({
   funnels: 'funis',
   catalogs: 'catalogos',
   zap: 'stronizap',
+  profile: 'perfil-da-academia',
+  billing: 'plano-e-faturas',
 });
 export const FICHA_TABS = Object.freeze({
   timeline: 'linha-do-tempo',

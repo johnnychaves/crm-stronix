@@ -85,7 +85,8 @@ function GymProfileTab() {
 
   const cityUf = [form.city, form.state].filter(Boolean).join(' · ');
   return (
-    <div className="space-y-5">
+    // @container: os campos quebram pelo espaço da coluna, e não pela largura da janela. Dentro das Configurações o trilho ocupa a lateral.
+    <div className="@container space-y-5">
       <div className="rounded-2xl border border-border bg-card shadow-card overflow-hidden">
         <div className="h-1 bg-brand-600" />
         <div className="p-5 flex items-center gap-4">
