@@ -10,9 +10,10 @@ import {
   contactOwnerId,
   appointmentTaskOwnerId,
   TASK_OWNER_GOAL_CATEGORIES,
-  isTaskOwnerGoalCategory
+  isTaskOwnerGoalCategory,
+  isClientLead
 } from './leads.js';
-import { normalizeAppointmentType } from './dates.js';
+import { getSafeDateOrNull, normalizeAppointmentType } from './dates.js';
 import { shouldPromptRenewal, DEFAULT_RENEWAL_CHECKPOINTS, DEFAULT_RENEWAL_GRACE_DAYS } from './renewalGoal.js';
 import { shouldPromptExpired } from './expiredGoal.js';
 
@@ -159,14 +160,48 @@ export function volumeTargetFor(user) {
   return Number.isFinite(own) && own > 0 ? Math.min(own, 500) : 0;
 }
 
+// ── Lead novo que ninguém tocou ────────────────────────────────────────────
+// O lead novo nasce sem próximo contato (newLead.js), e o Atrasado só olhava o
+// nextFollowUp: quem passava da janela de 24h do Novo lead sem ser tratado saía
+// de toda categoria da Meta para sempre. Decisão do Johnny, 17/10/2026: passada
+// a janela, ele vira Atrasado até alguém mexer nele ou marcar o próximo passo.
+// Vale só para lead cadastrado a partir dessa data, para não encher a Meta com
+// os leads antigos sem próximo passo.
+export const NEW_LEAD_OVERDUE_SINCE = new Date(2026, 9, 17);
+const NEW_LEAD_WINDOW_MS = 24 * 60 * 60 * 1000;
+// "Ninguém mexeu" é o lastInteractionAt (toda interação do logInteraction o
+// atualiza) parado no cadastro. A folga cobre o registro do próprio cadastro,
+// que grava logo depois do lead: a observação do Novo lead, o marco do
+// Stronizap e a indicação pela página pública.
+const REGISTRATION_SLACK_MS = 2 * 60 * 1000;
+
+// Quando vence o primeiro contato do lead novo que ninguém tocou: o fim da
+// janela de 24h. null para todo o resto (lead com próximo contato ou com
+// agendamento, já tocado, cliente, importado, Venda, Perda ou de antes da data).
+export function newLeadDueOf(lead) {
+  if (!lead || lead.nextFollowUp || lead.createdAtMissing) return null;
+  if (lead.status === 'Venda' || lead.status === 'Perda' || isClientLead(lead)) return null;
+  if (lead.importBatchId || lead.importSource) return null;
+  const created = getSafeDateOrNull(lead.createdAt);
+  if (!created || created < NEW_LEAD_OVERDUE_SINCE) return null;
+  if (getLeadAppointmentDate(lead)) return null;
+  const last = getSafeDateOrNull(lead.lastInteractionAt);
+  if (last && last.getTime() - created.getTime() > REGISTRATION_SLACK_MS) return null;
+  return new Date(created.getTime() + NEW_LEAD_WINDOW_MS);
+}
+
+// O prazo do próximo contato: o nextFollowUp, ou o do lead novo que ninguém tocou.
+export const followUpDueOf = (lead) => lead?.nextFollowUp || newLeadDueOf(lead);
+
 // Dias de atraso de um lead (follow-up vencido antes de hoje). 0 = em dia.
 // Mesma régua do card da Meta: dia parcial não conta, mínimo 1.
 export function overdueDaysOf(lead, refDate = new Date()) {
-  if (!lead?.nextFollowUp) return 0;
+  const due = followUpDueOf(lead);
+  if (!due) return 0;
   const todayStart = new Date(refDate);
   todayStart.setHours(0, 0, 0, 0);
-  if (!(lead.nextFollowUp < todayStart)) return 0;
-  return Math.max(1, Math.ceil((todayStart - lead.nextFollowUp) / 86400000));
+  if (!(due < todayStart)) return 0;
+  return Math.max(1, Math.ceil((todayStart - due) / 86400000));
 }
 
 // Índice de interações por leadId — varrer TODAS as interações por lead é
@@ -188,16 +223,18 @@ export function buildInteractionsByLead(interactions) {
 // renewalGraceDays: hoje governa o funil VENCIDOS (por quantos dias o cliente
 // vencido continua sendo cobrado), não mais a Renovação — essa parou no
 // vencimento (corte limpo, ver src/lib/renewalGoal.js).
-export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, renewalCheckpoints = DEFAULT_RENEWAL_CHECKPOINTS, renewalGraceDays = DEFAULT_RENEWAL_GRACE_DAYS) {
-  const todayStart = new Date();
+// `now` é o relógio da tela. Sem ele vale o relógio de agora; com ele, a tela que
+// recalcula a cada minuto vê a janela do lead novo fechar na hora certa.
+export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, renewalCheckpoints = DEFAULT_RENEWAL_CHECKPOINTS, renewalGraceDays = DEFAULT_RENEWAL_GRACE_DAYS, now = new Date()) {
+  const todayStart = new Date(now);
   todayStart.setHours(0, 0, 0, 0);
-  const todayEnd = new Date();
+  const todayEnd = new Date(now);
   todayEnd.setHours(23, 59, 59, 999);
-  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const oneDayAgo = new Date(now.getTime() - NEW_LEAD_WINDOW_MS);
   // Horário REAL, não meia-noite: a regra de vencidos compara a vigência com o
   // instante atual (ver o cabeçalho de shouldPromptExpired). Passar todayStart
   // atrasaria em um dia a entrada de quem vence hoje.
-  const nowRef = new Date();
+  const nowRef = new Date(now);
 
   const myLeads = (leads || []).filter(l => l.consultantId === consultantId);
   // Contato DELEGADO: lead de OUTRO consultor cuja tarefa de contato foi
@@ -304,8 +341,14 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
       addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.novo_24h, DAILY_GOAL_CATEGORIES.NOVO_24H);
     }
 
-    // 2. Atrasados
-    if (lead.status !== 'Venda' && lead.status !== 'Perda' && lead.nextFollowUp && lead.nextFollowUp < todayStart) {
+    // 2. Atrasados: o próximo contato venceu antes de hoje, ou o lead novo
+    // passou da janela de 24h sem ninguém mexer nele (newLeadDueOf). O lead
+    // novo entra assim que a janela fecha, então ele nunca fica sem categoria.
+    const newLeadDue = newLeadDueOf(lead);
+    if (
+      lead.status !== 'Venda' && lead.status !== 'Perda' &&
+      ((lead.nextFollowUp && lead.nextFollowUp < todayStart) || (newLeadDue && newLeadDue < nowRef))
+    ) {
       addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.atrasado, DAILY_GOAL_CATEGORIES.ATRASADO);
     }
 
@@ -327,9 +370,11 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
     // src/lib/renewalGoal.js). Legados sem endsAt nunca entram aqui.
     // A tarefa fecha por daily_goal_done (isCategoryDone) OU some quando o
     // marco é tratado / o cliente renova (shouldPromptRenewal volta a false).
+    // O horário real, como no Vencidos: com a meia-noite, no dia do vencimento
+    // o contrato ainda não lia como vencido e o cliente entrava nos dois funis.
     if (
       lead.lifecycleStage === 'cliente' &&
-      shouldPromptRenewal(lead, todayStart, renewalCheckpoints, renewalGraceDays)
+      shouldPromptRenewal(lead, nowRef, renewalCheckpoints)
     ) {
       addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.renovacao, DAILY_GOAL_CATEGORIES.RENOVACAO);
     }

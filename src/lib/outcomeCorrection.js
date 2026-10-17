@@ -40,6 +40,19 @@ export function planPromotion({ lead, outcome, categorySlug, statuses, promote =
   };
 }
 
+// O que o desfecho tira do lead. O Compareceu e o Cancelou limpam o próximo
+// contato, o que tira o lead de Atrasado e de Contato Hoje, e o Cancelou apaga
+// também o agendamento. O Compareceu o preserva, para a pessoa não sumir de
+// Visitas e Aulas. O cliente não perde nada: ele está na agenda para upsell, e
+// limpar o próximo contato apagava o contato de renovação dele. Regra única do
+// card da Meta (handleOutcome) e da Agenda de hoje (writeAppointmentOutcome).
+export function consumedFields(outcome, { client = false } = {}) {
+  if (client || (outcome !== 'attended' && outcome !== 'cancelled')) return {};
+  return outcome === 'cancelled'
+    ? { nextFollowUp: null, appointmentScheduledFor: null, appointmentType: null }
+    : { nextFollowUp: null };
+}
+
 // Etapa para onde a correção devolve o lead, ou null. Só devolve quando o lead
 // continua onde o Compareceu o deixou: mesma etapa e mesmo funil. Se alguém o
 // moveu depois, a escolha dessa pessoa vale mais que a correção.

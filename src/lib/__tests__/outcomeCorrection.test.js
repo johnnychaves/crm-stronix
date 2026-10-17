@@ -9,6 +9,7 @@ import {
   correctableOutcome,
   correctionText,
   revertStageText,
+  consumedFields,
 } from '../outcomeCorrection.js';
 import { DAILY_GOAL_CATEGORIES } from '../leads.js';
 
@@ -153,5 +154,28 @@ describe('textos', () => {
 
   it('a volta de etapa diz para onde', () => {
     expect(revertStageText('Novo')).toBe('Fase voltou para [Novo] após correção do desfecho.');
+  });
+});
+
+// O que o desfecho tira do lead, regra única do card da Meta e da Agenda de
+// hoje. O card limpava o próximo contato também de cliente, e o aluno com
+// etapa de matrícula própria ("Matriculado") perdia o contato de renovação.
+describe('consumedFields', () => {
+  it('Compareceu limpa só o próximo contato e preserva o agendamento', () => {
+    expect(consumedFields('attended')).toEqual({ nextFollowUp: null });
+  });
+
+  it('Cancelou limpa o próximo contato e o agendamento', () => {
+    expect(consumedFields('cancelled')).toEqual({ nextFollowUp: null, appointmentScheduledFor: null, appointmentType: null });
+  });
+
+  it('Não compareceu e Remarcou não tiram nada', () => {
+    expect(consumedFields('no_show')).toEqual({});
+    expect(consumedFields('rescheduled')).toEqual({});
+  });
+
+  it('cliente não perde nada, em nenhum desfecho', () => {
+    expect(consumedFields('attended', { client: true })).toEqual({});
+    expect(consumedFields('cancelled', { client: true })).toEqual({});
   });
 });

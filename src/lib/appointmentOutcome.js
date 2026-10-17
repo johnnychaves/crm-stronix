@@ -43,7 +43,7 @@ import {
 import { applyOutcomeToAula, clearAulaOutcome } from './aulasWrites.js';
 import { logInteraction } from './interactions.js';
 import { withBucket } from './leadDerived.js';
-import { planPromotion, planAttendedUndo, correctionText, revertStageText } from './outcomeCorrection.js';
+import { planPromotion, planAttendedUndo, correctionText, revertStageText, consumedFields } from './outcomeCorrection.js';
 
 const leadRef = (db, id) => doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, id);
 
@@ -102,13 +102,7 @@ export async function writeAppointmentOutcome({
   // para a pessoa NUNCA sumir da tela Visitas/Aulas e o desfecho refletir lá e na
   // Meta (regra do Johnny). Limpa só o nextFollowUp — o que já tira de "Atrasado"/
   // "Contato Hoje". Cancelamento remove o compromisso de vez.
-  if (consumeAppointment && (outcome === 'attended' || outcome === 'cancelled')) {
-    leadUpdate.nextFollowUp = null;
-    if (outcome === 'cancelled') {
-      leadUpdate.appointmentScheduledFor = null;
-      leadUpdate.appointmentType = null;
-    }
-  }
+  Object.assign(leadUpdate, consumedFields(outcome, { client: !consumeAppointment }));
   await updateDoc(leadRef(db, lead.id), leadUpdate);
   // Dual-write best-effort: SÓ desfecho de aula toca o histórico de aulas
   // (guarda #1 — desfecho de visita não pode mexer numa aula antiga do lead).

@@ -40,10 +40,11 @@ describe('a marca do dia da Meta leva o dono da tarefa', () => {
     expect(corpoDe(nome)).toContain('goalOwnerFields(lead, categorySlug)');
   });
 
-  // O "Contato feito" e o Reagendar do contato gravam a marca dentro do modal,
-  // cada um numa chamada do logInteraction.
+  // O "Contato feito" e o Reagendar do contato gravam a marca dentro do modal:
+  // o primeiro pelo logInteraction, o segundo pelo logInteractions, junto da
+  // nota do motivo.
   it('o ContactOutcomeModal grava o goalOwnerFields em toda marca', () => {
-    const chamadas = [...MODAL_DO_CONTATO.matchAll(/logInteraction\(([\s\S]*?)\);\n/g)].map((m) => m[1]);
+    const chamadas = [...MODAL_DO_CONTATO.matchAll(/logInteractions?\(([\s\S]*?)\);\n/g)].map((m) => m[1]);
     const comMarcaNoModal = chamadas.filter((c) => c.includes("type: 'daily_goal_done'"));
     expect(comMarcaNoModal).toHaveLength(2);
     comMarcaNoModal.forEach((c) => expect(c).toContain('goalOwnerFields(lead, categorySlug)'));
@@ -57,5 +58,40 @@ describe('a marca do dia da Meta leva o dono da tarefa', () => {
     expect(agenda).toContain('hasGoalDoneTodayFor(');
     expect(agenda).toContain('appointmentTaskOwnerId(row)');
     expect(agenda).not.toMatch(/hasGoalDoneToday\(/);
+  });
+});
+
+// Dois cliques antes de o card sumir gravavam a marca duas vezes. O desfecho de
+// visita ou aula e o Concluir seguram a tarefa enquanto gravam.
+describe('a marca do dia não repete no clique duplo', () => {
+  it.each(['handleOutcome', 'handleGoalDone'])('%s segura a tarefa enquanto grava', (nome) => {
+    const corpo = corpoDe(nome);
+    expect(corpo).toContain('claimTask(taskKey)');
+    expect(corpo).toContain('releaseTask(taskKey)');
+  });
+});
+
+// O botão de reagendar do card (o antigo "Adiar p/ amanhã") só abre o pop-up de
+// desfecho no Reagendar, que pede o motivo e grava a marca. Até 17/10/2026 ele
+// gravava o próximo contato direto: a tarefa saía da Meta sem marca e sem
+// motivo, o atrasado de uma visita perdida virava visita falsa no dia seguinte
+// e o agendamento do aluno era apagado.
+describe('o Reagendar do card só abre o pop-up', () => {
+  const inicio = META.indexOf('const handleRescheduleTask = ');
+  const corpo = META.slice(inicio, META.indexOf('\n  };\n', inicio));
+
+  it('abre o pop-up de desfecho no Reagendar', () => {
+    expect(inicio).toBeGreaterThan(-1);
+    expect(corpo).toContain("openOutcomePopup(lead, categorySlug, 'reagendar')");
+  });
+
+  it('não grava nada sozinho', () => {
+    expect(corpo).not.toMatch(/logInteraction|updateDoc|nextFollowUp|appointmentScheduledFor/);
+  });
+
+  it('o card passa a categoria e a tela liga o botão a ele', () => {
+    expect(META).toContain('onPostpone(task, slug)');
+    expect(META).toContain('onPostpone={handleRescheduleTask}');
+    expect(META).not.toContain('handleSnooze');
   });
 });

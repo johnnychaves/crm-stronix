@@ -9,7 +9,8 @@ import { isMetaParticipant } from '../lib/acesso.js';
 import { logInteraction } from '../lib/interactions.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { stageChangeFields } from '../lib/stageMove.js';
-import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, computeVolumeInRange, countMetaDaysInMonth, volumeTargetFor, volumeBreakdownLabel, tomorrowAppointmentsOf } from '../lib/dailyGoal.js';
+import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, computeVolumeInRange, countMetaDaysInMonth, volumeTargetFor, volumeBreakdownLabel, tomorrowAppointmentsOf, slotTotals } from '../lib/dailyGoal.js';
+import { followUpChannelOf } from '../lib/contactGoal.js';
 import { computeDayAgenda } from '../lib/dayAgenda.js';
 import { useDayAgenda } from '../hooks/useDayAgenda.js';
 import { useScreenParams } from '../hooks/useScreenParams.js';
@@ -17,7 +18,7 @@ import { DayAgendaCard } from '../components/dailygoal/DayAgendaCard.jsx';
 import { RoutineCard } from '../components/dailygoal/RoutineCard.jsx';
 import { OutcomePopover } from '../components/dailygoal/OutcomePopover.jsx';
 import { writeAppointmentOutcome, correctAppointmentOutcome } from '../lib/appointmentOutcome.js';
-import { planPromotion, correctableOutcome } from '../lib/outcomeCorrection.js';
+import { planPromotion, correctableOutcome, consumedFields } from '../lib/outcomeCorrection.js';
 import { applyOutcomeToAula, closeOpenAppointment, upsertScheduledAppointment, upsertScheduledAula } from '../lib/aulasWrites.js';
 import { recordPlanFor } from '../lib/aulas.js';
 import { daysToExpiryOf, activeRenewalCheckpoint } from '../lib/renewalGoal.js';
@@ -350,7 +351,7 @@ function DgSection({ slug, tasks, render }) {
 // Renders a single (lead × categorySlug) task card.
 // Same lead with two pending categories renders TWICE — once per slug — with independent actions per main's per-category status model.
 // Exportado para o teste em node conferir os links sem montar a tela inteira.
-export function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, onSnooze, onOutcome, onReschedule, onGoalDone, onWhatsapp, onCall }) {
+export function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, onPostpone, onOutcome, onReschedule, onGoalDone, onWhatsapp, onCall }) {
   const m = DG_CATEGORY_META[slug];
   if (!m) return null;
   const t = COLOR_TONES[m.color];
@@ -380,14 +381,11 @@ export function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE
   const appointmentLabel = (isAppt && apptDate) ? `Hoje · ${formatHourLabel(apptDate)}` : null;
   const enteredAtLabel = (isNovo && task.createdAt) ? formatHourLabel(task.createdAt) : null;
   const age = isNovo ? humanizeAge(task.createdAt, now) : null;
-  // TODO: substituir por critério Hot/Cold real (src/lib/leads) quando integrado aqui
-  // Relógio vem da prop `now` (atualizada por minuto) — não de Date.now() no
-  // render, que é instável entre re-renders e viola a pureza do componente.
-  const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
-  const isHot = isNovo && task.createdAt && task.createdAt >= oneHourAgo;
-  const overdueDays = (isOverdue && task.nextFollowUp)
-    ? Math.max(1, Math.ceil((new Date(now).setHours(0, 0, 0, 0) - task.nextFollowUp) / 86400000))
-    : 0;
+  // A régua da lib (overdueDaysOf), a mesma da ordem da lista e dos Relatórios.
+  // Conta também o lead novo que ninguém tocou, que entra aqui sem próximo
+  // contato: para ele o card diz por que está atrasado.
+  const overdueDays = isOverdue ? overdueDaysOf(task, now) : 0;
+  const untouchedNewLead = isOverdue && !task.nextFollowUp;
   const note = task.observation || '';
 
   return (
@@ -413,11 +411,6 @@ export function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE
             >
               {task.name}
             </LeadLink>
-            {isHot && (
-              <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-300">
-                <Flame size={11} /> Quente
-              </span>
-            )}
           </div>
           <div className="flex items-center gap-2 mt-0.5 text-[12px] text-slate-500 dark:text-slate-400 num flex-wrap">
             <ContactPhone lead={task} showName />
@@ -443,6 +436,9 @@ export function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE
               <TimePill icon={<Clock size={11} />}>
                 Entrou {enteredAtLabel}{age ? <span className="opacity-60"> · {age}</span> : null}
               </TimePill>
+            )}
+            {untouchedNewLead && (
+              <TimePill icon={<AlertCircle size={11} />} tone="rose">Sem contato desde o cadastro</TimePill>
             )}
             {isOverdue && overdueDays > 0 && (
               overdueDays >= slaOverdueDays ? (
@@ -500,7 +496,7 @@ export function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE
           <Btn kind="soft" icon={<WhatsappGlyph size={14} />} onClick={() => onWhatsapp && onWhatsapp(task)}>WhatsApp</Btn>
           <IconBtn icon={<Phone size={15} />} title="Ligar" onClick={() => onCall && onCall(task)} />
           {!isAppt && (
-            <IconBtn icon={<Calendar size={15} />} title="Adiar p/ amanhã" onClick={() => onSnooze && onSnooze(task)} />
+            <IconBtn icon={<Calendar size={15} />} title="Reagendar" onClick={() => onPostpone && onPostpone(task, slug)} />
           )}
         </div>
         <div className="flex items-center gap-1.5 flex-wrap justify-end">
@@ -642,7 +638,8 @@ function RescheduleTypeBtn({ active, label, onClick }) {
   );
 }
 
-function RescheduleModal({ lead, categorySlug, currentDate, currentType, flow = 'manual', onConfirm, onClose }) {
+// Exportado para o teste da trava de data futura (rescheduleModal.test.js).
+export function RescheduleModal({ lead, categorySlug, currentDate, currentType, flow = 'manual', onConfirm, onClose }) {
   const isAfterNoShow = flow === 'after_no_show';
   const { modalities, trialClassOptions, professores } = useGeneralConfig();
 
@@ -678,11 +675,24 @@ function RescheduleModal({ lead, categorySlug, currentDate, currentType, flow = 
     return base.includes(qty) ? base : [...base, qty].sort((a, b) => a - b);
   }, [trialClassOptions, qty]);
 
+  // Só data e hora futuras. Antes o campo aceitava o passado: um dia digitado
+  // errado virava Atrasado e ainda fechava a tarefa de hoje. O instante fica
+  // fixo na montagem para o render seguir puro, e o envio confere de novo no
+  // relógio, como no ContactOutcomeModal.
+  const toast = useToast();
+  const [nowMs] = useState(() => Date.now());
+  const parsedDate = dateValue ? new Date(dateValue) : null;
+  const isFuture = Boolean(parsedDate) && !isNaN(parsedDate.getTime()) && parsedDate.getTime() > nowMs;
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!dateValue || submitting) return;
     const newDate = new Date(dateValue);
     if (isNaN(newDate.getTime())) return;
+    if (newDate.getTime() <= Date.now()) {
+      toast.warning('Escolha uma data e hora futuras.');
+      return;
+    }
     const isAula = apptType === 'aula_experimental';
     const finalQty = Number(qty) > 0 ? Math.floor(Number(qty)) : ((trialClassOptions && trialClassOptions[0]) || 1);
     const isSolo = professorSel === SOLO_TRAINING;
@@ -743,11 +753,15 @@ function RescheduleModal({ lead, categorySlug, currentDate, currentType, flow = 
               <input
                 type="datetime-local"
                 value={dateValue}
+                min={toDatetimeLocalValue(new Date(nowMs))}
                 onChange={(e) => setDateValue(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[14px] num focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500"
                 required
                 autoFocus
               />
+              {dateValue && !isFuture && (
+                <p className="text-[11.5px] text-rose-600 dark:text-rose-400 mt-1.5">Escolha uma data e hora futuras.</p>
+              )}
             </div>
             {apptType === 'aula_experimental' && (
               <>
@@ -820,7 +834,7 @@ function RescheduleModal({ lead, categorySlug, currentDate, currentType, flow = 
             </Btn>
             <button
               type="submit"
-              disabled={submitting || !dateValue}
+              disabled={submitting || !isFuture}
               className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12px] font-semibold whitespace-nowrap transition active:scale-[.98] bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Check size={14} />
@@ -973,6 +987,15 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
   const [rescheduleTarget, setRescheduleTarget] = useState(null);
   const [nextContactTarget, setNextContactTarget] = useState(null);
   const prevProgress = useRef(null); // null = ainda sem cálculo nesta montagem
+  // Tarefas com gravação em andamento (lead e categoria). O card só some quando
+  // o snapshot chega, e o segundo clique nesse meio gravava a marca de novo.
+  const savingTasks = useRef(new Set());
+  const claimTask = (key) => {
+    if (savingTasks.current.has(key)) return false;
+    savingTasks.current.add(key);
+    return true;
+  };
+  const releaseTask = (key) => savingTasks.current.delete(key);
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 60_000);
@@ -1033,10 +1056,12 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
 
   // Slots da MINHA meta — regra única em src/lib/dailyGoal.js (Meta-only:
   // só Venda/Perda hoje ou daily_goal_done marcam tarefa).
-  const processedLeads = useMemo(() => {
-    void todayKey; // recategoriza na virada do dia (A5)
-    return computeDailyGoalSlots(leads, buildInteractionsByLead(interactions), appUser.id, renewalCheckpoints, renewalGraceDays);
-  }, [leads, appUser, interactions, todayKey, renewalCheckpoints, renewalGraceDays]);
+  // Com o relógio da tela (`now`, por minuto): a janela de 24h do lead novo
+  // fecha na hora certa, e não só quando chega dado novo.
+  const processedLeads = useMemo(
+    () => computeDailyGoalSlots(leads, buildInteractionsByLead(interactions), appUser.id, renewalCheckpoints, renewalGraceDays, now),
+    [leads, appUser, interactions, now, renewalCheckpoints, renewalGraceDays]
+  );
 
   // Agenda do dia (painel compartilhado): todas as visitas e aulas de HOJE na
   // academia, de qualquer consultor. Calculada à parte — NÃO entra em
@@ -1143,16 +1168,10 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
   const isLeadDoneForCategory = (lead, categorySlug) =>
     Boolean(lead.categoryStatus?.[categorySlug]);
 
-  // Agora cada lead pode estar em múltiplas categorias e cada uma
-  // tem status independente. Total de "slots" = soma das categorias
-  // de cada lead. Done = slots concluídos.
-  const totalSlots = processedLeads.reduce((acc, l) => acc + l.categorySlugs.length, 0);
-  const doneSlots = processedLeads.reduce(
-    (acc, l) => acc + l.categorySlugs.filter(s => isLeadDoneForCategory(l, s)).length,
-    0
-  );
+  // Cada lead pode estar em várias categorias, cada uma com status próprio. A
+  // conta é a mesma do selo do menu (slotTotals, em lib/dailyGoal.js).
+  const { totalSlots, doneSlots, progress } = slotTotals(processedLeads);
   const total = totalSlots;
-  const progress = totalSlots > 0 ? Math.round((doneSlots / totalSlots) * 100) : 100;
 
   // ── Meta por VOLUME (piso de esforço) ──────────────────────────────────
   // Alvo: definido por consultor (doc do usuário); sem alvo = sem régua.
@@ -1203,28 +1222,47 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
     prevProgress.current = progress;
   }, [progress, total, volumeCount, volumeTarget, recordGoalHit]);
 
-  const handleSnooze = async (lead) => {
-    if (!window.confirm("Adiar o contato deste lead para amanhã?")) return;
-    try {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      await logInteraction(db, lead, appUser,
-        { text: `Contato adiado para amanhã via Meta Diária.`, type: 'note' },
-        {
-          nextFollowUp: tomorrow,
-          // A3: limpa o agendamento formal antigo (visita/aula que já passou e
-          // virou "Atrasado") para o lead não ficar preso com a data velha em
-          // getLeadAppointmentDate — assim ele aparece corretamente em "Amanhã".
-          // O tipo de contato (nextFollowUpType: Ligação/Mensagem) é preservado.
-          appointmentScheduledFor: null,
-          appointmentType: null
-        }
-      );
-    } catch(err) { console.error(err); toast.error('Não foi possível adiar o lead. Tente novamente.'); }
+  // Abre o pop-up de desfecho da categoria, já no desfecho pedido (o Reagendar
+  // do card passa 'reagendar'). Devolve false quando a categoria não tem
+  // pop-up: o Novo lead conclui direto.
+  // - Renovação e Vencidos: RenewalOutcomeModal (regra em renewalGoal.js e
+  //   expiredGoal.js), com o marco ativo na Renovação.
+  // - Contato e Atrasado: ContactOutcomeModal (regra em contactGoal.js), que
+  //   obriga data futura no Reagendar.
+  const openOutcomePopup = (lead, categorySlug, initialOutcome = null) => {
+    if (categorySlug === DAILY_GOAL_CATEGORIES.RENOVACAO) {
+      const checkpoint = activeRenewalCheckpoint(daysToExpiryOf(lead.currentContractEndsAt, now), renewalCheckpoints);
+      setRenewalTarget({ lead, activeCheckpoint: checkpoint, initialOutcome });
+      return true;
+    }
+    if (categorySlug === DAILY_GOAL_CATEGORIES.VENCIDO) {
+      setRenewalTarget({ lead, activeCheckpoint: null, variant: 'vencido', initialOutcome });
+      return true;
+    }
+    if (categorySlug === DAILY_GOAL_CATEGORIES.CONTATO_HOJE || categorySlug === DAILY_GOAL_CATEGORIES.ATRASADO) {
+      setContactTarget({ lead, categorySlug, initialOutcome });
+      return true;
+    }
+    return false;
+  };
+
+  // O botão de reagendar do card (o antigo "Adiar p/ amanhã"). Abre o pop-up de
+  // desfecho já no Reagendar, com amanhã preenchido e o motivo obrigatório, e a
+  // tarefa conta como feita, como no Reagendar do Concluir. Até 17/10/2026 ele
+  // gravava o próximo contato direto: a tarefa sumia sem marca e sem motivo (dava
+  // para bater o dia adiando tudo), o atrasado de uma visita perdida virava uma
+  // visita falsa no dia seguinte e o agendamento do aluno era apagado. O Novo
+  // lead usa o pop-up do contato.
+  const handleRescheduleTask = (lead, categorySlug) => {
+    if (!openOutcomePopup(lead, categorySlug, 'reagendar')) {
+      setContactTarget({ lead, categorySlug, initialOutcome: 'reagendar' });
+    }
   };
 
   const handleOutcome = async (lead, outcome, categorySlug) => {
     if (!APPOINTMENT_OUTCOMES.includes(outcome)) return;
+    const taskKey = `${lead.id}:${categorySlug}`;
+    if (!claimTask(taskKey)) return;
     const meta = getAppointmentOutcomeMeta(outcome);
     // Auto-move "Compareceu" em visita/aula → Negociação no mesmo funil. A
     // regra e o registro de onde o lead saiu (para a correção poder voltar)
@@ -1246,17 +1284,9 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
         leadUpdate.status = promoteTo;
         leadUpdate.statusEnteredAt = serverTimestamp();
       }
-      // Comparecimento PRESERVA o agendamento (appointmentScheduledFor+
-      // appointmentType) → a pessoa nunca some da tela Visitas/Aulas e o desfecho
-      // reflete lá e na Meta. Limpa só o nextFollowUp (tira de "Atrasado" no dia
-      // seguinte). Cancelou remove o compromisso; "Não veio" segue p/ remarcação.
-      if (outcome === 'attended' || outcome === 'cancelled') {
-        leadUpdate.nextFollowUp = null;
-        if (outcome === 'cancelled') {
-          leadUpdate.appointmentScheduledFor = null;
-          leadUpdate.appointmentType = null;
-        }
-      }
+      // O que o desfecho tira do lead, na mesma regra da Agenda de hoje
+      // (consumedFields): o cliente não perde o próximo contato.
+      Object.assign(leadUpdate, consumedFields(outcome, { client: isClientLead(lead) }));
       // Marca a tarefa da Meta como concluída para essa categoria
       // específica. Type='daily_goal_done' é a fonte ÚNICA de verdade
       // para "tarefa cumprida" no fluxo da Meta Diária. O leadUpdate acompanha
@@ -1305,6 +1335,8 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
     } catch (err) {
       console.error(err);
       toast.error('Não foi possível registrar o comparecimento. Tente novamente.');
+    } finally {
+      releaseTask(taskKey);
     }
   };
 
@@ -1341,45 +1373,15 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
 
   const handleGoalDone = async (lead, categorySlug, note) => {
     if (!Object.values(DAILY_GOAL_CATEGORIES).includes(categorySlug)) return;
-    // Renovação: concluir abre o popup de desfecho (Renovou/Não vai
-    // renovar/Reagendar) em vez do window.confirm genérico — a gravação
-    // (patch + timeline + daily_goal_done) acontece dentro do próprio modal
-    // (src/modals/RenewalOutcomeModal.jsx), que usa a regra pura de
-    // src/lib/renewalGoal.js.
-    if (categorySlug === DAILY_GOAL_CATEGORIES.RENOVACAO) {
-      const daysToExpiry = daysToExpiryOf(lead.currentContractEndsAt, now);
-      const checkpoint = activeRenewalCheckpoint(daysToExpiry, renewalCheckpoints);
-      setRenewalTarget({ lead, activeCheckpoint: checkpoint });
-      return;
-    }
-    // Vencidos: mesmo popup de desfecho da Renovação, na variante 'vencido'
-    // (Reativou / Não vai voltar / Reagendar contato). Não há marco a tratar —
-    // a saída do funil vem do nextFollowUp e do renewalDeclined.
-    if (categorySlug === DAILY_GOAL_CATEGORIES.VENCIDO) {
-      setRenewalTarget({ lead, activeCheckpoint: null, variant: 'vencido' });
-      return;
-    }
-    // Contato Hoje: concluir abre o popup de desfecho (Contato feito /
-    // Reagendar) — mesmo visual da renovação. A gravação (patch + timeline +
-    // daily_goal_done) acontece dentro do ContactOutcomeModal (regra pura em
-    // src/lib/contactGoal.js). Substitui o "Próximo contato?" só nesta categoria.
-    if (categorySlug === DAILY_GOAL_CATEGORIES.CONTATO_HOJE) {
-      setContactTarget({ lead, categorySlug });
-      return;
-    }
-    // Atrasado: usa o MESMO popup de desfecho do Contato (ContactOutcomeModal),
-    // que OBRIGA data futura ao reagendar. Antes abria o "Próximo contato?"
-    // antigo (NextContactModal) SEM essa trava, então dava para gravar um
-    // nextFollowUp no passado/hoje — o lead voltava para Atrasados no mesmo dia
-    // com a tarefa pendente (a marca daily_goal_done era carimbada 'atrasado',
-    // não casava com a nova categoria). A regra pura de conclusão/reagendamento
-    // (contactDone/contactReschedule) é a mesma; muda só o popup.
-    if (categorySlug === DAILY_GOAL_CATEGORIES.ATRASADO) {
-      setContactTarget({ lead, categorySlug });
-      return;
-    }
+    // Renovação, Vencidos, Contato e Atrasado concluem pelo pop-up de desfecho,
+    // que grava o patch, a linha do tempo e a marca do dia. O Atrasado usa o do
+    // contato porque ele obriga data futura no Reagendar: o "Próximo contato?"
+    // antigo deixava gravar o próximo contato no passado.
+    if (openOutcomePopup(lead, categorySlug)) return;
     const categoryLabel = DAILY_GOAL_CATEGORY_LABEL[categorySlug] || categorySlug;
     if (!window.confirm(`Concluir a tarefa "${categoryLabel}" deste lead?`)) return;
+    const taskKey = `${lead.id}:${categorySlug}`;
+    if (!claimTask(taskKey)) return;
     const noteText = (note || '').trim();
     try {
       await logInteraction(db, lead, appUser, {
@@ -1394,6 +1396,8 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
     } catch (err) {
       console.error(err);
       toast.error('Não foi possível concluir a tarefa. Tente novamente.');
+    } finally {
+      releaseTask(taskKey);
     }
   };
 
@@ -1408,9 +1412,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
     const formattedDate = newDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
     const formattedTime = newDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     // Preserva o tipo de contato do lead (Ligação/Mensagem); default Mensagem.
-    const isLigacao = String(lead.nextFollowUpType || '').toLowerCase().includes('liga');
-    const followUpTypeLabel = isLigacao ? 'Ligação' : 'Mensagem';
-    const volumeKind = isLigacao ? 'ligacao' : 'mensagem';
+    const { type: followUpTypeLabel, volumeKind } = followUpChannelOf(lead);
     const closeTask = flow === 'complete';
     try {
       // Agendar o próximo CONTATO não encosta no compromisso formal. Até
@@ -1668,12 +1670,12 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
     });
     // SLA: na seção Atrasados, o atraso mais antigo vem primeiro — o consultor
     // ataca o lead mais crônico antes de o gestor precisar cobrar.
-    groups[DAILY_GOAL_CATEGORIES.ATRASADO].sort((a, b) => overdueDaysOf(b) - overdueDaysOf(a));
+    groups[DAILY_GOAL_CATEGORIES.ATRASADO].sort((a, b) => overdueDaysOf(b, now) - overdueDaysOf(a, now));
     // Vencidos: o vencimento mais RECENTE primeiro — o inverso dos Atrasados,
     // de propósito: a chance de reativação cai a cada dia fora da academia.
     groups[DAILY_GOAL_CATEGORIES.VENCIDO].sort((a, b) => expiredSortKey(b) - expiredSortKey(a));
     return groups;
-  }, [processedLeads]);
+  }, [processedLeads, now]);
 
   const counts = Object.fromEntries(
     DG_CATEGORY_ORDER.map(slug => [slug, (pendingBySlug[slug] || []).length])
@@ -1726,7 +1728,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
       slug={slug}
       now={now}
       slaOverdueDays={slaOverdueDays}
-      onSnooze={handleSnooze}
+      onPostpone={handleRescheduleTask}
       onOutcome={handleOutcome}
       onReschedule={(t, s) => setRescheduleTarget({ lead: t, categorySlug: s })}
       onGoalDone={handleGoalDone}
@@ -1939,6 +1941,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
           db={db}
           activeCheckpoint={renewalTarget.activeCheckpoint}
           variant={renewalTarget?.variant || 'renovacao'}
+          initialOutcome={renewalTarget.initialOutcome}
           onDone={handleRenewalOutcomeDone}
           onClose={() => setRenewalTarget(null)}
         />
@@ -1961,6 +1964,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
           open
           lead={contactTarget.lead}
           categorySlug={contactTarget.categorySlug}
+          initialOutcome={contactTarget.initialOutcome}
           appUser={appUser}
           db={db}
           onDone={() => setContactTarget(null)}
