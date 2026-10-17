@@ -25,6 +25,18 @@ describe('startStatusOf', () => {
     expect(s).toEqual({ tone: 'ok', text: 'Emenda perfeita, nenhum dia sem contrato.' });
   });
 
+  it('com a data mas sem plano, pede o plano em vez de mostrar uma vigência vazia', () => {
+    expect(startStatusOf({ startsAt: D(2026, 10, 16), planMonths: 0 }))
+      .toEqual({ tone: 'warn', text: 'Escolha um plano para ver a vigência.' });
+  });
+
+  it('o aviso de encaixe ganha da falta da data e da emenda', () => {
+    expect(startStatusOf({ warning: 'aviso' })).toEqual({ tone: 'warn', text: 'aviso' });
+    const seam = computeSeam(D(2026, 12, 12), D(2026, 12, 13));
+    expect(startStatusOf({ warning: 'aviso', startsAt: D(2026, 12, 13), endsAt: D(2027, 3, 13), seam, planMonths: 3 }))
+      .toEqual({ tone: 'warn', text: 'aviso' });
+  });
+
   it('sem aviso nem emenda, diz a vigência e quantos meses', () => {
     const s = startStatusOf({ startsAt: D(2026, 10, 16), endsAt: D(2027, 1, 16), planMonths: 3 });
     expect(s).toEqual({ tone: 'ok', text: 'Vigência de 16/10/2026 a 16/01/2027, 3 meses.' });
@@ -47,6 +59,13 @@ describe('confirmBlockOf', () => {
     expect(confirmBlockOf({ ...pronto, startsAt: null })).toBe('Escolha a data de início.');
     expect(confirmBlockOf({ ...pronto, startProblem: 'x' })).toBe('Corrija o início da vigência.');
     expect(confirmBlockOf({ ...pronto, hasDiscount: true })).toBe('Escolha o motivo do desconto.');
+  });
+
+  it('com várias faltando, vale a ordem da lista', () => {
+    expect(confirmBlockOf({ plan: null, startsAt: null, startProblem: 'x', hasDiscount: true })).toBe('Escolha um plano.');
+    expect(confirmBlockOf({ plan, startsAt: null, startProblem: 'x', hasDiscount: true })).toBe('Escolha a data de início.');
+    expect(confirmBlockOf({ plan, startsAt: D(2026, 10, 16), startProblem: 'x', hasDiscount: true, reason: null }))
+      .toBe('Corrija o início da vigência.');
   });
 });
 

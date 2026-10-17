@@ -8,12 +8,14 @@ const monthsLabel = (n) => (Number(n) === 1 ? '1 mês' : `${Number(n) || 0} mese
 // A faixa fixa embaixo das opções de início. Sempre diz alguma coisa, para a
 // altura do modal não mudar quando um aviso entra ou sai. Ordem: a regra dos dois
 // dias, o aviso de encaixe (vermelho na sobreposição, âmbar no resto), a falta da
-// data, a emenda perfeita e, por fim, a vigência.
+// data, a emenda perfeita, a falta do plano (sem plano não há fim) e, por fim, a
+// vigência.
 export function startStatusOf({ problem = null, warning = null, severe = false, startsAt = null, endsAt = null, seam = null, planMonths = 0 } = {}) {
   if (problem) return { tone: 'bad', text: problem };
   if (warning) return { tone: severe ? 'bad' : 'warn', text: warning };
   if (!startsAt) return { tone: 'warn', text: 'Escolha a data de início.' };
   if (seam?.kind === SEAM_KIND.EMENDA) return { tone: 'ok', text: seamLabel(seam) };
+  if (!endsAt) return { tone: 'warn', text: 'Escolha um plano para ver a vigência.' };
   return { tone: 'ok', text: `Vigência de ${fmtDate(startsAt)} a ${fmtDate(endsAt)}, ${monthsLabel(planMonths)}.` };
 }
 
