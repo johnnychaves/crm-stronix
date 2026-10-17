@@ -51,6 +51,24 @@ const CAT_POR_CODIGO = Object.freeze({
 });
 const CODIGO_POR_CAT = Object.freeze(Object.fromEntries(Object.entries(CAT_POR_CODIGO).map(([c, v]) => [v, c])));
 
+// A tela nova da Meta (Foco agora) passa `foco: true` no ctx. Ali o `cat` é o
+// grupo da barra "Foco em": visitas e aulas viram `compromissos`, o resto
+// segue as categorias do dia. Os links de antes continuam valendo (visita_hoje
+// e aula_hoje caem em compromissos) e `amanha`, que deixou de ser filtro, cai em
+// "tudo". A tela de hoje não passa o `foco` e segue com as tabelas de cima.
+const CAT_FOCO_POR_CODIGO = Object.freeze({
+  compromissos: 'compromissos',
+  [DAILY_GOAL_CATEGORIES.VISITA_HOJE]: 'compromissos',
+  [DAILY_GOAL_CATEGORIES.AULA_HOJE]: 'compromissos',
+  ...Object.fromEntries([
+    DAILY_GOAL_CATEGORIES.NOVO_24H, DAILY_GOAL_CATEGORIES.CONTATO_HOJE, DAILY_GOAL_CATEGORIES.ATRASADO,
+    DAILY_GOAL_CATEGORIES.RENOVACAO, DAILY_GOAL_CATEGORIES.VENCIDO,
+  ].map((s) => [s, s])),
+});
+const CODIGO_FOCO_POR_CAT = Object.freeze(Object.fromEntries(
+  Object.values(CAT_FOCO_POR_CODIGO).map((v) => [v, v]),
+));
+
 // Definição de um parâmetro: em que campo da tela ele cai, como se lê um valor
 // cru (null quando o nome não está no endereço) e como se escreve de volta
 // (null quando é o padrão, ou quando não vale). As duas funções recebem o ctx
@@ -228,8 +246,14 @@ const dataDoPeriodo = (campo) => param(
 
 const cat = param(
   'cat',
-  (raw) => (own(CAT_POR_CODIGO, raw) ? CAT_POR_CODIGO[raw] : 'all'),
-  (v) => (v && v !== 'all' && own(CODIGO_POR_CAT, v) ? CODIGO_POR_CAT[v] : null),
+  (raw, ctx) => {
+    const tabela = ctx.foco ? CAT_FOCO_POR_CODIGO : CAT_POR_CODIGO;
+    return own(tabela, raw) ? tabela[raw] : 'all';
+  },
+  (v, ctx) => {
+    const tabela = ctx.foco ? CODIGO_FOCO_POR_CAT : CODIGO_POR_CAT;
+    return v && v !== 'all' && own(tabela, v) ? tabela[v] : null;
+  },
 );
 
 // Um dia em milissegundos, para o teto de largura do período. As datas são
