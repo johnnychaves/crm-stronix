@@ -18,6 +18,7 @@
 
 import { CONTRACT_STATUS } from './contracts.js';
 import { DAILY_GOAL_CATEGORIES } from './leads.js';
+import { FOCO_ORDER, FOCO_GRUPOS } from './metaFocoCodes.js';
 import { SOLO_TRAINING } from './professores.js';
 import { addMonthsToKey, compareOptions } from './operacional/month.js';
 import { PERIOD_SHORTCUTS, intervalRefusal } from './period.js';
@@ -50,6 +51,18 @@ const CAT_POR_CODIGO = Object.freeze({
   amanha: 'tomorrow',
 });
 const CODIGO_POR_CAT = Object.freeze(Object.fromEntries(Object.entries(CAT_POR_CODIGO).map(([c, v]) => [v, c])));
+
+// A tela nova da Meta (Foco agora) passa `foco: true` no ctx. Ali o `cat` é o
+// grupo da barra "Foco em": visitas e aulas viram `compromissos`, o resto
+// segue as categorias do dia. Os links de antes continuam valendo (visita_hoje
+// e aula_hoje caem em compromissos) e `amanha`, que deixou de ser filtro, cai em
+// "tudo". A tela de hoje não passa o `foco` e segue com as tabelas de cima.
+// Os códigos vêm de metaFocoCodes.js, o único lugar que lista os grupos.
+const CAT_FOCO_POR_CODIGO = Object.freeze({
+  ...Object.fromEntries(FOCO_ORDER.filter((v) => v !== 'all').map((v) => [v, v])),
+  ...Object.fromEntries(Object.entries(FOCO_GRUPOS).flatMap(([grupo, slugs]) => slugs.map((s) => [s, grupo]))),
+});
+const FOCO_VALIDOS = new Set(Object.values(CAT_FOCO_POR_CODIGO));
 
 // Definição de um parâmetro: em que campo da tela ele cai, como se lê um valor
 // cru (null quando o nome não está no endereço) e como se escreve de volta
@@ -228,8 +241,14 @@ const dataDoPeriodo = (campo) => param(
 
 const cat = param(
   'cat',
-  (raw) => (own(CAT_POR_CODIGO, raw) ? CAT_POR_CODIGO[raw] : 'all'),
-  (v) => (v && v !== 'all' && own(CODIGO_POR_CAT, v) ? CODIGO_POR_CAT[v] : null),
+  (raw, ctx) => {
+    const tabela = ctx.foco ? CAT_FOCO_POR_CODIGO : CAT_POR_CODIGO;
+    return own(tabela, raw) ? tabela[raw] : 'all';
+  },
+  (v, ctx) => {
+    if (ctx.foco) return FOCO_VALIDOS.has(v) ? v : null;
+    return v && v !== 'all' && own(CODIGO_POR_CAT, v) ? CODIGO_POR_CAT[v] : null;
+  },
 );
 
 // Um dia em milissegundos, para o teto de largura do período. As datas são
