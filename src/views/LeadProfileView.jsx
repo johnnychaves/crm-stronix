@@ -1840,7 +1840,8 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
           currentContract={currentContract}
           renewedFromId={matriculaMode === 'renovacao' ? lead.currentContractId : null}
           onClose={() => setMatriculaOpen(false)}
-          onDone={() => setMatriculaOpen(false)}
+          // `stale`: o modal já foi fechado pelo X (gravação pendente sem internet) e pode ter sido reaberto; não fecha o de agora.
+          onDone={({ stale } = {}) => { if (!stale) setMatriculaOpen(false); }}
         />
       )}
     </div>

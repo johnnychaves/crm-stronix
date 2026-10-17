@@ -306,6 +306,16 @@ function ContractModal({
   const [discountInput, setDiscountInput] = useState('');
   const [reason, setReason] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  // Com a internet fora o commit fica pendente, e o X é a saída. O modal fechado por ele pode
+  // ser reaberto antes de o commit resolver, e o onDone do primeiro fecharia o segundo.
+  // Quem fecha é o chamador, então o modal diz a ele se já saiu da tela (`stale`): o chamador
+  // continua fazendo o resto (o Kanban recarrega o quadro) e só não fecha o modal de agora.
+  // Ref de montado que funciona no StrictMode: o efeito religa depois do cleanup simulado.
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
   // A falha ao gravar aparece dentro do modal: com ele aberto o Radix esconde o
   // resto da página do leitor de tela, e o toast fica de fora. Sai assim que a
   // pessoa mexe em plano, início, desconto ou motivo (ajuste de estado no render,
@@ -470,7 +480,7 @@ function ContractModal({
         }
       });
       toast.success(isRenewal ? 'Renovação registrada!' : 'Matrícula realizada!');
-      onDone && onDone();
+      onDone && onDone({ stale: !mountedRef.current });
     } catch (e) {
       console.error('Erro ao registrar contrato:', e);
       toast.error('Não foi possível salvar. Tente novamente.');

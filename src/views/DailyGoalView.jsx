@@ -1959,7 +1959,8 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
           mode="renovacao"
           renewedFromId={matriculaTarget.currentContractId || null}
           onClose={() => setMatriculaTarget(null)}
-          onDone={() => setMatriculaTarget(null)}
+          // `stale`: o modal já foi fechado pelo X (gravação pendente sem internet) e pode ter sido reaberto; não fecha o de agora.
+          onDone={({ stale } = {}) => { if (!stale) setMatriculaTarget(null); }}
         />
       )}
 

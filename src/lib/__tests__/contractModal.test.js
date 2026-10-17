@@ -3,7 +3,7 @@
 // modal é montado em jsdom e clicado; o commitMatricula, aqui um dublê, recebe o
 // que o modal gravaria.
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { createElement as h, act, useState } from 'react';
+import { createElement as h, act, useState, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ToastContext } from '../../contexts/ToastContext.jsx';
 import { GeneralConfigContext } from '../../contexts/GeneralConfigContext.jsx';
@@ -1015,6 +1015,73 @@ describe('ContractModal, gravação bem-sucedida', () => {
     expect(onDone).not.toHaveBeenCalled();
     expect(toast.success).not.toHaveBeenCalled();
     erro.mockRestore();
+  });
+});
+
+// Já existia na main: com a internet fora o commit fica pendente, a pessoa fecha pelo X e abre o
+// modal de novo; quando o primeiro commit resolve, o onDone do primeiro fechava o segundo.
+// O modal diz aos chamadores se já foi fechado (`stale`), para eles não fecharem o modal de agora
+// e continuarem fazendo o resto (o Kanban recarrega o quadro mesmo assim).
+describe('ContractModal, onDone depois de o modal ser fechado', () => {
+  it('na gravação normal o onDone recebe stale falso, também no StrictMode', async () => {
+    const onDone = vi.fn();
+    await renderizar(h(StrictMode, null, h(GeneralConfigContext.Provider, { value: { planos, contratos: [] } }, modal({ lead: leadNovo, mode: 'matricula', onDone }))), D(2026, 10, 16, 10, 20));
+    await clicar(botao('Confirmar matrícula'));
+    expect(onDone).toHaveBeenCalledTimes(1);
+    expect(onDone).toHaveBeenCalledWith({ stale: false });
+  });
+
+  it('fechado pelo X com o commit pendente: ao resolver, o onDone diz stale e o toast de sucesso continua', async () => {
+    let resolver;
+    commitMatricula.mockImplementationOnce(() => new Promise((res) => { resolver = res; }));
+    const onDone = vi.fn();
+    await montar({ lead: leadNovo, mode: 'matricula', onDone });
+    await clicar(botao('Confirmar matrícula'));
+    // O chamador fecha o modal quando o X chama o onClose: ele sai da tela.
+    await act(async () => { root.unmount(); });
+    root = null;
+
+    await act(async () => { resolver(); });
+
+    expect(onDone).toHaveBeenCalledTimes(1);
+    expect(onDone).toHaveBeenCalledWith({ stale: true });
+    expect(toast.success).toHaveBeenCalledWith('Matrícula realizada!');
+  });
+
+  it('o commit atrasado do primeiro modal não fecha o segundo, aberto depois', async () => {
+    let resolver;
+    commitMatricula.mockImplementationOnce(() => new Promise((res) => { resolver = res; }));
+    let abrir;
+    // O chamador como a ficha, a Meta Diária e o Kanban: fecha no X e, no onDone, só se não for atrasado.
+    function Chamador() {
+      const [aberto, setAberto] = useState(true);
+      abrir = () => setAberto(true);
+      return h(GeneralConfigContext.Provider, { value: { planos, contratos: [] } },
+        aberto ? modal({ lead: leadNovo, mode: 'matricula', onClose: () => setAberto(false), onDone: ({ stale } = {}) => { if (!stale) setAberto(false); } }) : null);
+    }
+    await renderizar(h(Chamador), D(2026, 10, 16, 10, 20));
+    await clicar(botao('Confirmar matrícula'));
+    await clicar(document.body.querySelector('button[aria-label="Fechar"]'));
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+
+    await act(async () => { abrir(); });
+    expect(document.body.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(botao('Confirmar matrícula').getAttribute('aria-disabled')).toBeNull();
+
+    await act(async () => { resolver(); });
+
+    expect(document.body.querySelector('[role="dialog"]')).not.toBeNull();
+  });
+
+  it('com o modal ainda aberto, o onDone não atrasado fecha o chamador', async () => {
+    function Chamador() {
+      const [aberto, setAberto] = useState(true);
+      return h(GeneralConfigContext.Provider, { value: { planos, contratos: [] } },
+        aberto ? modal({ lead: leadNovo, mode: 'matricula', onClose: () => setAberto(false), onDone: ({ stale } = {}) => { if (!stale) setAberto(false); } }) : null);
+    }
+    await renderizar(h(Chamador), D(2026, 10, 16, 10, 20));
+    await clicar(botao('Confirmar matrícula'));
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
   });
 });
 

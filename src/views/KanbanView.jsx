@@ -1717,7 +1717,10 @@ const handleKanbanMouseMove = (e) => {
           appUser={appUser}
           db={db}
           onClose={() => setMatriculaLead(null)}
-          onDone={() => {
+          onDone={({ stale } = {}) => {
+            // `stale`: o modal já foi fechado pelo X (gravação pendente sem internet) e pode
+            // ter sido reaberto. O quadro recarrega do mesmo jeito, porque a gravação valeu,
+            // mas o modal de agora não fecha.
             // Matricular um lead que estava na Perda tira ele do bucket 'perda':
             // como a coluna Perda não é ao vivo, refaz a query+contagem senão
             // fica card fantasma / total inflado. Só quando veio da Perda.
@@ -1734,7 +1737,7 @@ const handleKanbanMouseMove = (e) => {
             // Fechou pelo Upgrade: o contrato novo tirou o cliente do funil
             // (buildMatriculaWrites), então o board precisa recarregar.
             const wasUpgrade = Boolean(matriculaLead?._upgradeCard);
-            setMatriculaLead(null);
+            if (!stale) setMatriculaLead(null);
             if (wasPerda) refreshLost();
             if (wasRenewal) renewalReload();
             if (wasUpgrade) upgradeReload();
