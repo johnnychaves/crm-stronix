@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildContextPatch, CONTEXT_FIELDS } from '../contextPatch.js';
+import { buildContextPatch, CONTEXT_FIELDS, tagsDiff } from '../contextPatch.js';
 
 const usersList = [
   { id: 'u1', name: 'Júlia Andrade', authUid: 'auth-1' },
@@ -15,13 +15,22 @@ describe('buildContextPatch', () => {
   it('dor e modalidade gravam o nome, ou null quando limpa', () => {
     expect(buildContextPatch('dor', 'Emagrecimento')).toEqual({ dor: 'Emagrecimento' });
     expect(buildContextPatch('dor', null)).toEqual({ dor: null });
-    expect(buildContextPatch('modalidade', '  Musculação ')).toEqual({ modalidade: 'Musculação' });
     expect(buildContextPatch('modalidade', '')).toEqual({ modalidade: null });
+    expect(buildContextPatch('modalidade', '   ')).toEqual({ modalidade: null });
   });
 
   it('origem grava o texto, vazio quando limpa (como o cadastro completo)', () => {
     expect(buildContextPatch('source', 'Instagram')).toEqual({ source: 'Instagram' });
     expect(buildContextPatch('source', null)).toEqual({ source: '' });
+    expect(buildContextPatch('source', '  ')).toEqual({ source: '' });
+  });
+
+  it('o nome do catálogo vai como está, com o espaço do fim, para casar com o catálogo', () => {
+    // Há catálogo gravado com espaço no fim. A tela de Todos os leads e as
+    // Configurações comparam o nome exato (l.source === item.name).
+    expect(buildContextPatch('source', 'Site ')).toEqual({ source: 'Site ' });
+    expect(buildContextPatch('dor', 'Saúde ')).toEqual({ dor: 'Saúde ' });
+    expect(buildContextPatch('modalidade', 'Pilates ')).toEqual({ modalidade: 'Pilates ' });
   });
 
   it('professor grava o id e o nome do catálogo, ou os dois nulos', () => {
@@ -34,9 +43,15 @@ describe('buildContextPatch', () => {
     expect(buildContextPatch('observation', '')).toEqual({ observation: '' });
   });
 
-  it('etiquetas gravam a lista sem vazio nem repetido, na ordem', () => {
-    expect(buildContextPatch('tags', ['vip', ' vip ', '', 'noite'])).toEqual({ tags: ['vip', 'noite'] });
+  it('etiquetas gravam a lista sem vazio nem repetido, na ordem, com o nome como veio', () => {
+    expect(buildContextPatch('tags', ['vip', 'vip', '', '  ', 'noite', 'Aluna '])).toEqual({ tags: ['vip', 'noite', 'Aluna '] });
     expect(buildContextPatch('tags', null)).toEqual({ tags: [] });
+  });
+
+  it('tagsDiff diz o que entrou e o que saiu desde a abertura', () => {
+    expect(tagsDiff(['a', 'b'], ['b', 'c'])).toEqual({ added: ['c'], removed: ['a'] });
+    expect(tagsDiff(['a'], ['a'])).toEqual({ added: [], removed: [] });
+    expect(tagsDiff(null, ['a', 'a'])).toEqual({ added: ['a'], removed: [] });
   });
 
   it('consultor grava os três campos juntos, com o authUid do cadastro', () => {
