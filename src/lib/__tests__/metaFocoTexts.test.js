@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest';
 import { durationText, whyOf, factsOf, focoTabs, focoRules, morningText, FOCO_LABEL } from '../metaFocoTexts.js';
 import { taskKey } from '../metaFoco.js';
 import { DAILY_GOAL_CATEGORIES as C } from '../leads.js';
+import { overdueDaysOf } from '../dailyGoal.js';
 
 const NOW = new Date(2026, 9, 16, 14, 32);
 const at = (h, m = 0, dias = 0) => new Date(2026, 9, 16 + dias, h, m);
@@ -36,9 +37,19 @@ describe('whyOf', () => {
     expect(whyOf(entry({ id: 'n2', createdAt: at(21, 10, -1) }, C.NOVO_24H), NOW)).toEqual({ text: 'Fecha às 21:10', tone: 'calm' });
   });
 
-  it('atrasado é âmbar até o prazo da academia e vermelho dali em diante', () => {
+  it('atrasado é âmbar até o prazo da academia, e dali em diante é vermelho e diz crítico', () => {
     expect(whyOf(entry({ id: 'x', nextFollowUp: at(9, 0, -1) }, C.ATRASADO), NOW, { sla: 3 })).toEqual({ text: '1 dia de atraso', tone: 'warn' });
-    expect(whyOf(entry({ id: 'y', nextFollowUp: at(9, 0, -5) }, C.ATRASADO), NOW, { sla: 3 })).toEqual({ text: '5 dias de atraso', tone: 'late' });
+    // O crítico vai escrito, para não depender só da cor.
+    expect(whyOf(entry({ id: 'y', nextFollowUp: at(9, 0, -5) }, C.ATRASADO), NOW, { sla: 3 })).toEqual({ text: '5 dias de atraso, crítico', tone: 'late' });
+  });
+
+  it('o lead novo que segue sem próximo passo continua dizendo isso depois do primeiro dia', () => {
+    const agora = new Date(2026, 9, 24, 10, 0);
+    const novo = { id: 'n3', createdAt: new Date(2026, 9, 19, 8, 0) };
+    const dias = overdueDaysOf(novo, agora);
+    expect(dias).toBeGreaterThan(0);
+    expect(whyOf(entry(novo, C.ATRASADO), agora, { sla: 30 })).toEqual({ text: `${dias} dias sem próximo passo`, tone: 'warn' });
+    expect(factsOf(entry(novo, C.ATRASADO), agora)).toContainEqual(['Próximo passo', 'Nenhum desde o cadastro']);
   });
 
   it('o lead novo que acabou de virar Atrasado diz que está sem próximo passo', () => {
@@ -67,8 +78,14 @@ describe('factsOf', () => {
     const cliente = { id: 'r', currentPlanName: 'Anual Musculação', currentContractEndsAt: at(14, 32, 88), source: 'Instagram' };
     expect(factsOf(entry(cliente, C.RENOVACAO), NOW, { renewalCheckpoints: [90, 60, 30] })).toEqual([
       ['Plano', 'Anual Musculação'],
-      ['Vence em', '88 dias, marco de 90'],
+      ['Vence', 'em 88 dias, marco de 90'],
     ]);
+  });
+
+  it('a renovação que vence hoje diz hoje nos fatos, como no motivo', () => {
+    const cliente = { id: 'r2', currentPlanName: 'Mensal', currentContractEndsAt: at(14, 0) };
+    expect(whyOf(entry(cliente, C.RENOVACAO), NOW).text).toBe('Vence hoje');
+    expect(factsOf(entry(cliente, C.RENOVACAO), NOW, { renewalCheckpoints: [90, 60, 30] })).toContainEqual(['Vence', 'hoje, marco de 30']);
   });
 
   it('nunca passa de quatro', () => {

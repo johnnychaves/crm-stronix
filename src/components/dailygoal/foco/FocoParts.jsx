@@ -32,7 +32,7 @@ export function FocoBar({ tabs, value, onChange, children }) {
         <span className="text-[13px] whitespace-nowrap text-muted-foreground">Foco em</span>
         <TabsList
           aria-label="Foco em"
-          className="h-auto w-auto min-w-0 justify-start gap-0.5 overflow-x-auto overscroll-x-contain rounded-xl bg-slate-200/60 p-[3px] [scrollbar-width:none] group-data-[orientation=horizontal]/tabs:h-auto dark:bg-white/[0.06]"
+          className="h-auto w-auto min-w-0 justify-start gap-0.5 overflow-x-auto overscroll-x-contain rounded-xl bg-muted p-[3px] [scrollbar-width:none] group-data-[orientation=horizontal]/tabs:h-auto"
         >
           {tabs.map((t) => (
             <TabsTrigger
@@ -41,8 +41,11 @@ export function FocoBar({ tabs, value, onChange, children }) {
               aria-label={`${t.label}: ${t.pending} pendentes${t.why ? `. ${t.why}` : ''}`}
               title={t.why || undefined}
               className={cn(
-                'h-8 flex-none gap-1.5 rounded-[9px] border-0 px-2 text-[13px] font-medium text-slate-700 shadow-none hover:bg-white/70 dark:text-slate-200 dark:hover:bg-white/[0.06]',
-                'focus-visible:border-0 focus-visible:outline-none focus-visible:ring-inset focus-visible:anel-foco',
+                'h-8 flex-none gap-1.5 rounded-[9px] border-0 px-2 text-[13px] font-medium text-foreground/80 shadow-none hover:bg-accent',
+                // O primitivo traz o anel de 3 px a 50% (ring-ring/50), e o cn
+                // não junta o anel-foco com ele. O ring-2 e o ring-ring repetem o
+                // anel-foco em classes que o cn sabe trocar, para o anel ficar sólido.
+                'focus-visible:border-0 focus-visible:outline-none focus-visible:ring-inset focus-visible:anel-foco focus-visible:ring-2 focus-visible:ring-ring',
                 'data-[state=active]:bg-ink-900 data-[state=active]:text-white data-[state=active]:shadow-none dark:data-[state=active]:border-0 dark:data-[state=active]:bg-ink-700 dark:data-[state=active]:text-white',
               )}
             >
@@ -62,7 +65,7 @@ export function FocoBar({ tabs, value, onChange, children }) {
 // a tarefa precisa ser fechada pela Meta para contar.
 export function InteractedTag({ className }) {
   return (
-    <span className={cn('rounded-full bg-slate-100 px-2 py-px text-[11.5px] font-semibold text-slate-600 dark:bg-white/[0.06] dark:text-slate-300', className)}>
+    <span className={cn('rounded-full bg-muted px-2 py-px text-[11.5px] font-semibold text-muted-foreground', className)}>
       Já interagido. Feche pela Meta
     </span>
   );
@@ -81,11 +84,11 @@ export function FilaDepois({ items, sla, onPick, whyOf }) {
       <div className="flex flex-wrap items-baseline gap-2.5 px-5 pb-2 pt-[18px]">
         <h2 id="meta-fila-titulo" className="font-display text-[17px] font-bold">Depois</h2>
         <span className="num font-semibold text-muted-foreground">{items.length}</span>
-        <details className="group ml-auto text-[12.5px] open:ml-0 open:mt-1.5 open:basis-full open:rounded-xl open:bg-slate-50 open:px-4 open:py-3 dark:open:bg-white/[0.04]">
+        <details className="group ml-auto text-[12.5px] open:ml-0 open:mt-1.5 open:basis-full open:rounded-xl open:bg-muted open:px-4 open:py-3">
           <summary className="cursor-pointer list-none rounded font-semibold text-brand-700 outline-none focus-visible:anel-foco group-open:mb-2 dark:text-brand-300 [&::-webkit-details-marker]:hidden">
             Como a ordem é definida
           </summary>
-          <ol className="grid list-decimal gap-1 pl-5 text-slate-700 dark:text-slate-300">
+          <ol className="grid list-decimal gap-1 pl-5 text-foreground/80">
             {focoRules(sla).map((r) => <li key={r}>{r}</li>)}
           </ol>
         </details>
@@ -105,7 +108,7 @@ export function FilaDepois({ items, sla, onPick, whyOf }) {
                   <button
                     type="button"
                     onClick={() => onPick(e)}
-                    className="group grid w-full grid-cols-[34px_minmax(0,1fr)_auto_16px] items-center gap-3.5 px-5 py-[9px] text-left transition hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-none focus-visible:ring-inset focus-visible:anel-foco dark:hover:bg-white/[0.04] dark:focus-visible:bg-white/[0.04]"
+                    className="group grid w-full grid-cols-[34px_minmax(0,1fr)_auto_16px] items-center gap-3.5 px-5 py-[9px] text-left transition hover:bg-muted focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-inset focus-visible:anel-foco"
                   >
                     <Avatar name={e.lead.name} size={34} photoUrl={e.lead.photoUrl || null} />
                     <span className="min-w-0">
@@ -127,7 +130,7 @@ export function FilaDepois({ items, sla, onPick, whyOf }) {
           </ul>
           {items.length > QUEUE_SHOWN && (
             <div className="flex justify-center p-3.5">
-              <button type="button" onClick={() => setAll((v) => !v)} className="h-9 rounded-lg border border-border px-3.5 text-[13px] font-semibold hover:bg-slate-50 focus-visible:outline-none focus-visible:anel-foco dark:hover:bg-white/[0.04]">
+              <button type="button" onClick={() => setAll((v) => !v)} className="h-9 rounded-lg border border-border px-3.5 text-[13px] font-semibold hover:bg-muted focus-visible:outline-none focus-visible:anel-foco">
                 {all ? 'Mostrar menos' : `Mostrar as outras ${items.length - QUEUE_SHOWN}`}
               </button>
             </div>
@@ -177,7 +180,7 @@ export function RitmoCard({ ritmo, expected, volumeMonth }) {
                 state === 'hit' && 'bg-emerald-500/90 text-white',
                 state === 'miss' && 'bg-rose-50 text-rose-700 ring-[1.5px] ring-inset ring-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-500/30',
                 state === 'today' && (d.hit ? 'bg-emerald-500/90 text-white ring-2 ring-inset ring-brand-600' : 'ring-2 ring-inset ring-brand-600'),
-                state === 'off' && 'bg-slate-100 dark:bg-white/[0.05]',
+                state === 'off' && 'bg-muted',
               )}
             >
               <span className="sr-only">{d.label}, {label}</span>
@@ -251,7 +254,7 @@ export function FocoVazio({ label, onAll }) {
       <span className="mb-3 grid size-12 place-items-center rounded-full bg-emerald-50 dark:bg-emerald-500/10"><CheckCircle size={22} className="text-emerald-600 dark:text-emerald-400" aria-hidden="true" /></span>
       <h2 className="text-[15px] font-semibold">Nada pendente em {label.toLowerCase()}</h2>
       <p className="mt-1 text-[13px] text-muted-foreground">Escolha outro foco ou volte para Todos.</p>
-      <button type="button" onClick={onAll} className="mt-4 h-9 rounded-lg border border-border px-3.5 text-[13px] font-semibold hover:bg-slate-50 focus-visible:outline-none focus-visible:anel-foco dark:hover:bg-white/[0.04]">
+      <button type="button" onClick={onAll} className="mt-4 h-9 rounded-lg border border-border px-3.5 text-[13px] font-semibold hover:bg-muted focus-visible:outline-none focus-visible:anel-foco">
         Ver todos
       </button>
     </div>

@@ -12,6 +12,8 @@ import { LeadProfileContext } from '../../contexts/LeadProfileContext.jsx';
 import { hrefFor } from '../routes.js';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+// O menu "Mais" (Radix) mede o gatilho, e o jsdom não tem ResizeObserver.
+globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} };
 
 vi.mock('../firebase.js', () => ({
   appId: 'acad', LEADS_PATH: 'leads', INTERACTIONS_PATH: 'inter', DAILY_GOAL_HISTORY_PATH: 'hist', db: {}, auth: {}, storage: {},
@@ -36,7 +38,7 @@ beforeEach(() => {
   host = document.createElement('div');
   document.body.appendChild(host);
   root = createRoot(host);
-  handlers = { onOutcome: vi.fn(), onReschedule: vi.fn(), onGoalDone: vi.fn(), onWhatsapp: vi.fn(), onCall: vi.fn() };
+  handlers = { onOutcome: vi.fn(), onReschedule: vi.fn(), onPostpone: vi.fn(), onGoalDone: vi.fn(), onWhatsapp: vi.fn(), onCall: vi.fn() };
 });
 afterEach(() => {
   act(() => root.unmount());
@@ -94,9 +96,14 @@ describe('Meta nova: o Agora e a fila', () => {
     expect(agoraName()).toBe('Carla Contato');
     expect(agora().textContent).toContain('Você escolheu esta tarefa.');
     expect(document.activeElement).toBe(agora());
-    click(button('Voltar à ordem sugerida'));
+    // Como no teclado: o foco está no botão quando ele é acionado.
+    const voltar = button('Voltar à ordem sugerida');
+    act(() => voltar.focus());
+    click(voltar);
     expect(agoraName()).toBe('Ana Critica');
     expect(agora().textContent).not.toContain('Você escolheu esta tarefa.');
+    // O botão some com o clique: o foco vai para o Agora, e não para o body.
+    expect(document.activeElement).toBe(agora());
   });
 
   it('pular manda a tarefa para o fim e traz a seguinte', () => {
@@ -104,6 +111,43 @@ describe('Meta nova: o Agora e a fila', () => {
     click(button('Pular por agora'));
     expect(agoraName()).toBe('Bruno Visita');
     expect(filaNames()).toEqual(['Carla Contato', 'Davi Atraso', 'Ana Critica']);
+  });
+
+  it('pular vale só no dia: no dia seguinte a tarefa volta ao lugar dela na fila', () => {
+    render({ leads: LEADS, now: NOW });
+    click(button('Pular por agora'));
+    expect(filaNames().at(-1)).toBe('Ana Critica');
+    // O Agora continua parado na virada do dia; quem muda é a fila.
+    render({ leads: LEADS, now: at(9, 0, 1) });
+    expect(agoraName()).toBe('Bruno Visita');
+    expect(filaNames().at(-1)).not.toBe('Ana Critica');
+  });
+
+  it('o menu Mais fecha quando o Agora troca de lead, e não age no lead seguinte', () => {
+    const passou = lead('v1', 'Vera Passou', 'visita_hoje', { appointmentType: 'visita', appointmentScheduledFor: at(13, 30) });
+    render({ leads: [passou, VISITA], now: NOW });
+    expect(agoraName()).toBe('Vera Passou');
+    const mais = button('Mais', agora());
+    act(() => { mais.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); });
+    expect(document.querySelector('[role="menu"]')).not.toBeNull();
+    // O desfecho da Vera chega por outra tela, com o menu aberto.
+    render({ leads: [{ ...passou, categoryStatus: { visita_hoje: true } }, VISITA], now: NOW });
+    expect(agoraName()).toBe('Bruno Visita');
+    expect(document.querySelector('[role="menu"]')).toBeNull();
+  });
+
+  it('o painel da aba não é uma parada do Tab sem anel', () => {
+    render({ leads: LEADS, now: NOW });
+    expect(host.querySelector('[role="tabpanel"]').getAttribute('tabindex')).toBe('-1');
+  });
+
+  it('o anel de foco das abas é o sólido, e não o de 50% do primitivo', () => {
+    render({ leads: LEADS, now: NOW });
+    const cls = host.querySelector('[role="tab"]').className.split(/\s+/);
+    expect(cls).toContain('focus-visible:ring-ring');
+    expect(cls).toContain('focus-visible:ring-2');
+    expect(cls).not.toContain('focus-visible:ring-ring/50');
+    expect(cls).not.toContain('focus-visible:ring-[3px]');
   });
 
   it('quando a tarefa do Agora sai da lista, o primeiro da ordem assume', () => {
@@ -154,6 +198,15 @@ describe('Meta nova: as ações do Agora', () => {
     click(button('Concluir', agora()));
     expect(handlers.onGoalDone).toHaveBeenCalledWith(expect.objectContaining({ id: 'c' }), 'contato_hoje', '');
   });
+
+  it('as tarefas que não são visita nem aula têm o Reagendar do card de hoje', () => {
+    const novo = lead('n', 'Nina Nova', 'novo_24h', { createdAt: at(15, 20, -1) });
+    render({ leads: [novo], now: NOW });
+    click(button('Reagendar', agora()));
+    expect(handlers.onPostpone).toHaveBeenCalledWith(expect.objectContaining({ id: 'n' }), 'novo_24h');
+    render({ leads: [VISITA], now: NOW });
+    expect(button('Reagendar', agora())).toBeUndefined();
+  });
 });
 
 describe('Meta nova: Foco em e os estados do dia', () => {
@@ -175,8 +228,11 @@ describe('Meta nova: Foco em e os estados do dia', () => {
   it('foco sem nada pendente diz isso e volta para Todos', () => {
     render({ leads: LEADS, now: NOW, startFoco: 'renovacao' });
     expect(host.textContent).toContain('Nada pendente em renovações');
-    click(button('Ver todos'));
+    const todos = button('Ver todos');
+    act(() => todos.focus());
+    click(todos);
     expect(agoraName()).toBe('Ana Critica');
+    expect(document.activeElement).toBe(agora());
   });
 
   it('meta vazia e dia fechado', () => {

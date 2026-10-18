@@ -19,7 +19,13 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 //
 // Visita e aula: Compareceu e Não compareceu a qualquer hora, antes ou depois
 // do horário, e o "Mais" com Remarcar e Cancelou (decisão do Johnny, 16/10/2026).
-// Só a que já passou da hora mantém o WhatsApp, para falar com quem faltou.
+// Só a que já passou da hora mantém o WhatsApp, para falar com quem faltou. As
+// outras tarefas têm o Reagendar do card de hoje (handleRescheduleTask), que é
+// o único jeito de reagendar um Novo lead.
+//
+// O menu "Mais" leva a chave da tarefa: quando o Agora troca de lead com ele
+// aberto (o desfecho chegou por outra tela), o menu fecha, em vez de aplicar o
+// Cancelou ao lead seguinte.
 
 const TONE = {
   late: 'bg-rose-500/25 text-[#FFC2CC]',
@@ -35,7 +41,7 @@ const ACT_MAIN = 'border-accent-500 bg-accent-500 text-ink-900 hover:border-acce
 const TAG = 'rounded-full bg-white/[0.12] px-2.5 py-0.5 text-[12px] font-semibold text-white/85';
 
 export const AgoraCard = forwardRef(function AgoraCard(
-  { entry, why, facts, now, meId, pinned, onUnpin, onSkip, onOutcome, onReschedule, onGoalDone, onWhatsapp, onCall },
+  { entry, why, facts, now, meId, pinned, onUnpin, onSkip, onOutcome, onReschedule, onPostpone, onGoalDone, onWhatsapp, onCall },
   ref
 ) {
   const { slug, lead } = entry;
@@ -70,7 +76,7 @@ export const AgoraCard = forwardRef(function AgoraCard(
       ref={ref}
       tabIndex={-1}
       aria-label={`Agora: ${lead.name || 'lead sem nome'}`}
-      className="relative mt-3.5 scroll-mt-32 rounded-[22px] bg-ink-900 px-[30px] pb-5 pt-[26px] text-white shadow-[0_20px_44px_-26px_rgba(14,26,64,0.6)] outline-none dark:bg-ink-700 dark:ring-1 dark:ring-white/10"
+      className="relative mt-3.5 scroll-mt-48 rounded-[22px] bg-ink-900 px-[30px] pb-5 pt-[26px] text-white shadow-[0_20px_44px_-26px_rgba(14,26,64,0.6)] outline-none dark:bg-ink-700 dark:ring-1 dark:ring-white/10"
     >
       <div className="flex flex-wrap items-center gap-3">
         <span className={cn('inline-flex h-7 items-center gap-[7px] rounded-full px-3 text-[13px] font-semibold', TONE[why.tone])}>
@@ -133,7 +139,7 @@ export const AgoraCard = forwardRef(function AgoraCard(
               <X size={18} aria-hidden="true" /> Não compareceu
             </button>
             {passou && whatsapp(false)}
-            <DropdownMenu>
+            <DropdownMenu key={entry.key}>
               <DropdownMenuTrigger asChild>
                 <button type="button" className={ACT}>Mais <ChevronDown size={14} aria-hidden="true" /></button>
               </DropdownMenuTrigger>
@@ -149,6 +155,9 @@ export const AgoraCard = forwardRef(function AgoraCard(
             {ligacao ? whatsapp(false) : ligar(false)}
             <button type="button" className={ACT} onClick={() => onGoalDone(lead, slug, '')}>
               <Check size={18} aria-hidden="true" /> Concluir
+            </button>
+            <button type="button" className={ACT} onClick={() => onPostpone(lead, slug)}>
+              <Calendar size={18} aria-hidden="true" /> Reagendar
             </button>
           </>
         )}

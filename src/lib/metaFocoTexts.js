@@ -90,9 +90,14 @@ export function whyOf({ slug, lead }, now, opts = {}) {
   }
   if (slug === C.ATRASADO) {
     const days = overdueDaysOf(lead, now);
-    // O lead novo que acabou de passar da janela de 24h ainda não tem dia de atraso.
+    // O lead novo que acabou de passar da janela de 24h ainda não tem dia de
+    // atraso. Depois, o texto continua dizendo que ele nunca teve próximo passo.
     if (days === 0) return { text: 'Sem próximo passo', tone: 'warn' };
-    return { text: `${plural(days, 'dia', 'dias')} de atraso`, tone: days >= slaOf(opts) ? 'late' : 'warn' };
+    const semPasso = !getSafeDateOrNull(lead?.nextFollowUp);
+    // O crítico vai escrito, e não só na cor (o card de hoje dizia "crítico").
+    const critico = days >= slaOf(opts);
+    const base = `${plural(days, 'dia', 'dias')} ${semPasso ? 'sem próximo passo' : 'de atraso'}`;
+    return { text: critico ? `${base}, crítico` : base, tone: critico ? 'late' : 'warn' };
   }
   if (slug === C.RENOVACAO) {
     const d = daysToExpiryOf(lead?.currentContractEndsAt, now);
@@ -127,14 +132,17 @@ export function factsOf({ slug, lead }, now, opts = {}) {
     if (closes) out.push(['Sai desta lista', `às ${formatHourLabel(closes)}`]);
   } else if (slug === C.ATRASADO) {
     const days = overdueDaysOf(lead, now);
+    const semPasso = !getSafeDateOrNull(lead?.nextFollowUp);
     out.push(['Atraso', days ? plural(days, 'dia', 'dias') : 'Sem próximo passo desde o cadastro']);
+    if (days && semPasso) out.push(['Próximo passo', 'Nenhum desde o cadastro']);
     const created = getSafeDateOrNull(lead?.createdAt);
     if (created && !lead?.createdAtMissing) out.push(['Cadastro', fullDate(created)]);
   } else if (slug === C.RENOVACAO) {
     if (lead?.currentPlanName) out.push(['Plano', lead.currentPlanName]);
     const d = daysToExpiryOf(lead?.currentContractEndsAt, now);
     const cp = d == null ? null : activeRenewalCheckpoint(d, opts.renewalCheckpoints || DEFAULT_RENEWAL_CHECKPOINTS);
-    if (d != null) out.push(['Vence em', `${plural(Math.max(0, d), 'dia', 'dias')}${cp != null ? `, marco de ${cp}` : ''}`]);
+    // "Vence hoje", como no motivo, e não "em 0 dias".
+    if (d != null) out.push(['Vence', `${d <= 0 ? 'hoje' : `em ${plural(d, 'dia', 'dias')}`}${cp != null ? `, marco de ${cp}` : ''}`]);
   } else if (slug === C.VENCIDO) {
     if (lead?.currentPlanName) out.push(['Plano', lead.currentPlanName]);
     const endsAt = getSafeDateOrNull(lead?.currentContractEndsAt);

@@ -1315,6 +1315,8 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
     // tarefa de Renovação ser descartada silenciosamente (groups[slug]
     // undefined no push abaixo).
     const groups = Object.fromEntries(DG_CATEGORY_ORDER.map(slug => [slug, []]));
+    // A tela nova monta a própria fila (metaFoco.js), então não paga por esta.
+    if (metaNova) return groups;
     processedLeads.forEach(lead => {
       (lead.categorySlugs || []).forEach(slug => {
         if (!isLeadDoneForCategory(lead, slug) && groups[slug]) groups[slug].push(lead);
@@ -1327,7 +1329,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
     // de propósito: a chance de reativação cai a cada dia fora da academia.
     groups[DAILY_GOAL_CATEGORIES.VENCIDO].sort((a, b) => expiredSortKey(b) - expiredSortKey(a));
     return groups;
-  }, [processedLeads, now]);
+  }, [processedLeads, now, metaNova]);
 
   const counts = Object.fromEntries(
     DG_CATEGORY_ORDER.map(slug => [slug, (pendingBySlug[slug] || []).length])
@@ -1496,6 +1498,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
           )}
           onOutcome={handleOutcome}
           onReschedule={(l, s) => setRescheduleTarget({ lead: l, categorySlug: s })}
+          onPostpone={handleRescheduleTask}
           onGoalDone={handleGoalDone}
           onWhatsapp={handleWhatsapp}
           onCall={handleCall}
