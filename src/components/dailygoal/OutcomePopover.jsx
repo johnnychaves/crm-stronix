@@ -17,6 +17,21 @@ import { outcomeMenuItems, outcomeTriggerLabel } from '../../lib/outcomeMenu.js'
 // desfecho vira um selo redondo cheio, verde ou vermelho, sem seta (escolha do
 // Johnny, 30/09/2026). O texto inteiro continua no aria-label e na dica do
 // mouse.
+//
+// `tag` é para a Agenda da tela nova (mockup B): o gatilho é a etiqueta de
+// texto do desfecho ("Compareceu", "Não veio", ou "Sem desfecho" em âmbar), e
+// o mesmo balão marca ou corrige. Com `upcoming` (o horário ainda não chegou),
+// a etiqueta sem desfecho diz só "Marcar", em cinza: quem chega antes da hora
+// também é confirmado. O preenchimento com margem negativa aumenta a área do
+// clique sem tirar o texto do lugar.
+
+const TAG_TONE = {
+  attended: 'text-emerald-700 dark:text-emerald-300',
+  no_show: 'text-rose-700 dark:text-rose-300',
+  none: 'text-amber-700 dark:text-amber-300',
+  upcoming: 'text-muted-foreground hover:text-foreground',
+};
+const TAG_LABEL = { attended: 'Compareceu', no_show: 'Não veio' };
 
 const SEAL_TONE = {
   attended: 'bg-emerald-500 text-white hover:bg-emerald-600',
@@ -45,6 +60,8 @@ export function OutcomePopover({
   saving = false,
   size = 'md',
   compact = false,
+  tag = false,
+  upcoming = false,
   className,
   onPick,
 }) {
@@ -52,8 +69,11 @@ export function OutcomePopover({
   const marked = outcome === 'attended' || outcome === 'no_show' ? outcome : null;
   const items = outcomeMenuItems({ outcome: marked, withMore, canUndo });
   const label = outcomeTriggerLabel(marked);
-  const seal = compact && Boolean(marked);
-  const shownLabel = compact ? (marked ? null : 'Marcar') : label;
+  const seal = !tag && compact && Boolean(marked);
+  const shownLabel = tag
+    ? (marked ? TAG_LABEL[marked] : upcoming ? 'Marcar' : 'Sem desfecho')
+    : compact ? (marked ? null : 'Marcar') : label;
+  const tagTone = TAG_TONE[marked || (upcoming ? 'upcoming' : 'none')];
   const iconSize = seal ? 15 : 13;
   const iconStroke = seal ? 2.75 : 2;
 
@@ -69,22 +89,23 @@ export function OutcomePopover({
         disabled={saving}
         // Com o título, o leitor de tela diferencia um botão do outro na lista.
         aria-label={marked ? `${label}. Abrir para corrigir` : (title ? `Marcar desfecho: ${title}` : 'Marcar desfecho')}
-        title={compact ? (marked ? label : 'Marcar desfecho') : undefined}
+        title={compact || tag ? (marked ? label : 'Marcar desfecho') : undefined}
         className={cn(
           'inline-flex items-center font-semibold whitespace-nowrap transition active:scale-[.98] disabled:opacity-60 disabled:cursor-default',
           'focus:outline-none focus-visible:anel-foco',
+          tag && cn('-m-1.5 rounded-md p-1.5 text-[11.5px] underline-offset-2 hover:underline', tagTone),
           seal && 'size-7 shrink-0 justify-center rounded-full',
-          !seal && compact && 'h-7 px-2.5 rounded-full border text-[11.5px]',
-          !compact && 'gap-1.5 rounded-lg border',
-          !compact && (size === 'sm' ? 'h-7 px-2 text-[11.5px]' : 'h-8 px-3 text-[12px]'),
-          seal ? SEAL_TONE[marked] : TRIGGER_TONE[marked || 'none'],
+          !tag && !seal && compact && 'h-7 px-2.5 rounded-full border text-[11.5px]',
+          !tag && !compact && 'gap-1.5 rounded-lg border',
+          !tag && !compact && (size === 'sm' ? 'h-7 px-2 text-[11.5px]' : 'h-8 px-3 text-[12px]'),
+          !tag && (seal ? SEAL_TONE[marked] : TRIGGER_TONE[marked || 'none']),
           className
         )}
       >
-        {marked === 'attended' && <Check size={iconSize} strokeWidth={iconStroke} />}
-        {marked === 'no_show' && <X size={iconSize} strokeWidth={iconStroke} />}
+        {!tag && marked === 'attended' && <Check size={iconSize} strokeWidth={iconStroke} />}
+        {!tag && marked === 'no_show' && <X size={iconSize} strokeWidth={iconStroke} />}
         {shownLabel && <span>{shownLabel}</span>}
-        {!compact && <ChevronDown size={13} className="opacity-60" />}
+        {!compact && !tag && <ChevronDown size={13} className="opacity-60" />}
       </PopoverTrigger>
       <PopoverContent align="end" sideOffset={6} aria-label={title || 'Desfecho'} className="w-56 p-2 rounded-xl border-border">
         {title && (

@@ -31,7 +31,7 @@ describe('tabela de parâmetros', () => {
     expect(SCREEN_PARAM_NAMES.leads).toEqual(['funil', 'fase', 'resp', 'origem', 'ordem']);
     expect(SCREEN_PARAM_NAMES.aulas).toEqual(['dia', 'de', 'ate', 'resp', 'prof']);
     expect(SCREEN_PARAM_NAMES.visitas).toEqual(['dia', 'de', 'ate', 'resp']);
-    expect(SCREEN_PARAM_NAMES.dailyGoal).toEqual(['cat']);
+    expect(SCREEN_PARAM_NAMES.dailyGoal).toEqual(['meta', 'cat']);
     const proibidos = ['invite', 't', 'ref'];
     for (const nomes of Object.values(SCREEN_PARAM_NAMES)) {
       for (const n of nomes) expect(proibidos, n).not.toContain(n);
@@ -53,7 +53,7 @@ describe('tabela de parâmetros', () => {
   it('endereço limpo devolve o padrão de cada tela', () => {
     expect(ler('dashOperacional', '', dash)).toEqual({ monthKey: HOJE, compareOn: true, compareKey: null, person: 'all' });
     expect(ler('clientes', '', { users, situacoes, podeResp: true, respPadrao: [] })).toEqual({ status: [], resp: [] });
-    expect(ler('dailyGoal', '', {})).toEqual({ cat: 'all' });
+    expect(ler('dailyGoal', '', {})).toEqual({ metaNova: false, cat: 'all' });
   });
 
   it('o padrão nunca é escrito no endereço', () => {
@@ -343,7 +343,7 @@ describe('ida e volta de tudo', () => {
   });
 
   it('nome que a tela não conhece é ignorado, e some na próxima montagem', () => {
-    expect(ler('dailyGoal', '?cat=vencido&mes=2026-08&invite=x', {})).toEqual({ cat: 'vencido' });
+    expect(ler('dailyGoal', '?cat=vencido&mes=2026-08&invite=x', {})).toEqual({ metaNova: false, cat: 'vencido' });
     expect(volta('dailyGoal', '?cat=vencido&mes=2026-08&invite=x', {})).toBe('?cat=vencido');
   });
 });
@@ -541,9 +541,9 @@ describe('contrato do contexto de Todos os leads e da Meta', () => {
     }
   });
 
-  it('a Meta guarda só a categoria no endereço, e parâmetro desconhecido cai no padrão', () => {
-    expect(SCREEN_PARAM_NAMES.dailyGoal).toEqual(['cat']);
-    expect(ler('dailyGoal', '?visao=equipe&dia=14', {})).toEqual({ cat: 'all' });
+  it('a Meta guarda só a tela nova e a categoria no endereço, e parâmetro desconhecido cai no padrão', () => {
+    expect(SCREEN_PARAM_NAMES.dailyGoal).toEqual(['meta', 'cat']);
+    expect(ler('dailyGoal', '?visao=equipe&dia=14', {})).toEqual({ metaNova: false, cat: 'all' });
   });
 });
 
@@ -706,30 +706,34 @@ describe('Relatórios', () => {
   });
 });
 
-// A tela nova da Meta (Foco agora) passa `foco: true` no ctx. A de hoje não passa,
+// A tela nova da Meta (Foco agora) liga com o ?meta=nova. A de hoje não o tem,
 // e por isso nada muda para ela: o valor novo só vale onde a tela o conhece.
 describe('categoria da Meta na tela nova (Foco agora)', () => {
-  const foco = { foco: true };
+  const nova = (cat) => `?meta=nova&cat=${cat}`;
 
   it('aceita todos os grupos do Foco em, e cada um volta pelo mesmo código', () => {
     for (const v of FOCO_ORDER) {
-      expect(ler('dailyGoal', `?cat=${v}`, foco).cat, v).toBe(v);
-      expect(volta('dailyGoal', `?cat=${v}`, foco), v).toBe(v === 'all' ? '' : `?cat=${v}`);
+      expect(ler('dailyGoal', nova(v), {}).cat, v).toBe(v);
+      expect(volta('dailyGoal', nova(v), {}), v).toBe(v === 'all' ? '?meta=nova' : nova(v));
     }
   });
 
   it('os links antigos de visita e de aula caem em compromissos, e o de amanhã cai em todos', () => {
-    expect(ler('dailyGoal', '?cat=visita_hoje', foco).cat).toBe('compromissos');
-    expect(ler('dailyGoal', '?cat=aula_hoje', foco).cat).toBe('compromissos');
-    expect(volta('dailyGoal', '?cat=visita_hoje', foco)).toBe('?cat=compromissos');
-    expect(ler('dailyGoal', '?cat=amanha', foco).cat).toBe('all');
-    expect(ler('dailyGoal', '?cat=banana', foco).cat).toBe('all');
+    expect(ler('dailyGoal', nova('visita_hoje'), {}).cat).toBe('compromissos');
+    expect(ler('dailyGoal', nova('aula_hoje'), {}).cat).toBe('compromissos');
+    expect(volta('dailyGoal', nova('visita_hoje'), {})).toBe(nova('compromissos'));
+    expect(ler('dailyGoal', nova('amanha'), {}).cat).toBe('all');
+    expect(ler('dailyGoal', nova('banana'), {}).cat).toBe('all');
   });
 
   it('o que a tela nova não conhece não é escrito', () => {
-    expect(montar('dailyGoal', { cat: 'tomorrow' }, foco)).toBe('');
-    expect(montar('dailyGoal', { cat: 'visita_hoje' }, foco)).toBe('');
-    expect(montar('dailyGoal', { cat: 'all' }, foco)).toBe('');
+    expect(montar('dailyGoal', { metaNova: true, cat: 'tomorrow' }, {})).toBe('?meta=nova');
+    expect(montar('dailyGoal', { metaNova: true, cat: 'visita_hoje' }, {})).toBe('?meta=nova');
+    expect(montar('dailyGoal', { metaNova: true, cat: 'all' }, {})).toBe('?meta=nova');
+  });
+
+  it('o ctx da tela não liga a tabela nova: só o ?meta=nova liga', () => {
+    expect(ler('dailyGoal', '?cat=compromissos', { foco: true }).cat).toBe('all');
   });
 
   it('na tela de hoje, compromissos não vale e o resto continua como era', () => {
@@ -737,5 +741,30 @@ describe('categoria da Meta na tela nova (Foco agora)', () => {
     expect(montar('dailyGoal', { cat: 'compromissos' }, {})).toBe('');
     expect(ler('dailyGoal', '?cat=visita_hoje', {}).cat).toBe('visita_hoje');
     expect(ler('dailyGoal', '?cat=amanha', {}).cat).toBe('tomorrow');
+  });
+});
+
+// O ?meta=nova liga a tela nova da Meta até a virada (PR 5). Ele vem antes do
+// `cat` no endereço, e com ele o `cat` aceita os grupos do Foco em, sem a tela
+// precisar passar o `foco` no ctx.
+describe('a tela nova da Meta atrás do ?meta=nova', () => {
+  it('liga só com o valor nova e volta igual', () => {
+    expect(ler('dailyGoal', '?meta=nova', {}).metaNova).toBe(true);
+    expect(ler('dailyGoal', '?meta=velha', {}).metaNova).toBe(false);
+    expect(ler('dailyGoal', '', {}).metaNova).toBe(false);
+    expect(volta('dailyGoal', '?meta=nova', {})).toBe('?meta=nova');
+    expect(volta('dailyGoal', '?meta=velha', {})).toBe('');
+  });
+
+  it('com ele, o cat aceita os grupos do Foco e trocar de grupo mantém a tela nova', () => {
+    expect(ler('dailyGoal', '?meta=nova&cat=compromissos', {}).cat).toBe('compromissos');
+    expect(ler('dailyGoal', '?meta=nova&cat=visita_hoje', {}).cat).toBe('compromissos');
+    expect(montar('dailyGoal', { metaNova: true, cat: 'atrasado' }, {})).toBe('?meta=nova&cat=atrasado');
+    expect(montar('dailyGoal', { metaNova: true, cat: 'all' }, {})).toBe('?meta=nova');
+  });
+
+  it('sem ele, a tela de hoje continua como era', () => {
+    expect(ler('dailyGoal', '?cat=compromissos', {}).cat).toBe('all');
+    expect(montar('dailyGoal', { metaNova: false, cat: 'visita_hoje' }, {})).toBe('?cat=visita_hoje');
   });
 });
