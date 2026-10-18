@@ -11,6 +11,7 @@ import { getDefaultFunnel, isItemInFunnel } from '../lib/funnels.js';
 import { isClientFunnel } from '../lib/crm/scope.js';
 import { buildInteractionIndex, lastInteractionDateOf } from '../lib/leadStatus.js';
 import { usePagedLeads } from '../hooks/usePagedLeads.js';
+import { useLatestRef } from '../hooks/useLatestRef.js';
 import { useRenewalBoard } from '../hooks/useRenewalBoard.js';
 import { useLeadCount } from '../hooks/useLeadCount.js';
 import { getExpiredFunnel, splitExpiredForBoard } from '../lib/expiredFunnel.js';
@@ -862,6 +863,11 @@ const [isPanning, setIsPanning] = useState(false);
     lostReload();
     setCountEpoch((e) => e + 1);
   }, [lostReload]);
+  // As recargas que o `onDone` do ContractModal chama. O `onDone` é o da renderização em que a
+  // pessoa clicou em Confirmar, e com a internet fora a gravação pode terminar depois de o mês ou
+  // o funil do quadro terem mudado: pelo closure, as recargas buscariam a consulta velha e
+  // poriam os leads dela na coluna de agora. Por este ref são sempre as da última renderização.
+  const reloadsRef = useLatestRef({ refreshLost, renewalReload, upgradeReload, wonReload });
   // Total no header da Perda: a contagem do servidor vale quando NÃO há refino
   // client-side (respFilter/onlyOverdue). Com refino, cai no tamanho da página
   // refinada (undefined → a coluna usa columnLeads.length), como era antes.
@@ -1738,13 +1744,13 @@ const handleKanbanMouseMove = (e) => {
             // (buildMatriculaWrites), então o board precisa recarregar.
             const wasUpgrade = Boolean(matriculaLead?._upgradeCard);
             if (!stale) setMatriculaLead(null);
-            if (wasPerda) refreshLost();
-            if (wasRenewal) renewalReload();
-            if (wasUpgrade) upgradeReload();
+            if (wasPerda) reloadsRef.current.refreshLost();
+            if (wasRenewal) reloadsRef.current.renewalReload();
+            if (wasUpgrade) reloadsRef.current.upgradeReload();
             if (wasUpgrade) setUpgradeCountEpoch((e) => e + 1);
             // A venda recém-fechada precisa aparecer na coluna do mês, que
             // também não é ao vivo.
-            wonReload();
+            reloadsRef.current.wonReload();
           }}
         />
       )}

@@ -109,13 +109,20 @@ describe('os chamadores do ContractModal só fecham o modal quando o onDone não
     exigeFecharSoSeNaoAtrasado(corpoDoOnDone(ler('../../views/DailyGoalView.jsx')), 'setMatriculaTarget(null)');
   });
 
-  it('o Kanban fecha só se não for atrasado, e recarrega o quadro de qualquer jeito', () => {
-    const resto = exigeFecharSoSeNaoAtrasado(corpoDoOnDone(ler('../../views/KanbanView.jsx')), 'setMatriculaLead(null)');
+  it('o Kanban fecha só se não for atrasado, e recarrega o quadro de qualquer jeito, pelas funções de agora', () => {
+    const fonte = ler('../../views/KanbanView.jsx');
+    const resto = exigeFecharSoSeNaoAtrasado(corpoDoOnDone(fonte), 'setMatriculaLead(null)');
     // O que a gravação muda no quadro continua acontecendo com `stale`: nada disso fica dentro de um `if (!stale)`.
-    for (const recarga of ['if (wasPerda) refreshLost();', 'if (wasRenewal) renewalReload();', 'if (wasUpgrade) upgradeReload();',
-      'if (wasUpgrade) setUpgradeCountEpoch((e) => e + 1);', 'wonReload();']) {
+    // As recargas vêm do ref, não do closure: o `onDone` é o da renderização em que a pessoa clicou em
+    // Confirmar, e a consulta daquela hora (mês ou funil já trocados) é a velha.
+    for (const recarga of ['if (wasPerda) reloadsRef.current.refreshLost();', 'if (wasRenewal) reloadsRef.current.renewalReload();',
+      'if (wasUpgrade) reloadsRef.current.upgradeReload();', 'if (wasUpgrade) setUpgradeCountEpoch((e) => e + 1);',
+      'reloadsRef.current.wonReload();']) {
       expect(resto).toContain(recarga);
     }
+    expect(resto).not.toMatch(/(^|[^.\w])(refreshLost|renewalReload|upgradeReload|wonReload)\(/);
+    // O ref guarda as quatro funções da última renderização.
+    expect(semComentarios(fonte)).toContain('const reloadsRef = useLatestRef({ refreshLost, renewalReload, upgradeReload, wonReload });');
     // O que decide cada recarga vem do lead da abertura do modal (o closure), não do estado de agora.
     expect(resto).toContain("const wasPerda = matriculaLead?.status === 'Perda';");
     expect(resto).toContain('const wasRenewal = Boolean(matriculaLead?._renewalCard);');
