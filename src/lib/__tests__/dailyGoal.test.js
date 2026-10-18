@@ -26,7 +26,7 @@ import {
   isMetaOverdue
 } from '../dailyGoal.js';
 import { DAILY_GOAL_CATEGORIES } from '../leads.js';
-import { contactDone, contactReschedule } from '../contactGoal.js';
+import { contactDone, contactReschedule, followUpChannelOf } from '../contactGoal.js';
 import { consumedFields } from '../outcomeCorrection.js';
 import { buildSchedulePatch } from '../schedulePatch.js';
 
@@ -994,6 +994,37 @@ describe('o contato feito fica com quem tinha a tarefa na marcação', () => {
       const reagendado = { ...antigo, ...contactReschedule(antigo, as16) };
       expect(slotsDe(BRUNO, [reagendado])).toEqual([]);
       expect(byId(slotsDe(ANA, [reagendado]), reagendado.id)?.categorySlugs).toContain(CONTATO);
+    });
+
+    // O "Próximo contato?" que a Meta abre depois do Compareceu e do Cancelou
+    // (commitNextContact, no DailyGoalView) grava só a data e o tipo. O dono do
+    // contato antigo sai antes, junto com o eco, no desfecho (consumedFields).
+    describe('o "Próximo contato?" depois do desfecho, no lead antigo', () => {
+      const as9 = new Date(2026, 6, 15, 9, 0);
+      const antigoDeHoje = () => delegadoAoBruno({
+        appointmentType: 'visita', appointmentScheduledFor: as9, nextFollowUp: as9, nextFollowUpType: 'Visita',
+      });
+      // O que o commitNextContact grava, com o lead de antes do desfecho.
+      const proximoContato = (l, when) => ({ nextFollowUp: when, nextFollowUpType: followUpChannelOf(l).type });
+
+      for (const outcome of ['attended', 'cancelled']) {
+        it(`${outcome}: o contato novo fica na Meta da Ana, e não na do Bruno`, () => {
+          const antes = antigoDeHoje();
+          const desfecho = { ...antes, appointmentOutcome: outcome, ...consumedFields(outcome, antes) };
+          const depois = { ...desfecho, ...proximoContato(antes, as16) };
+          expect(slotsDe(BRUNO, [depois])).toEqual([]);
+          expect(byId(slotsDe(ANA, [depois]), depois.id)?.categorySlugs).toContain(CONTATO);
+        });
+      }
+
+      it('o contato delegado de verdade, marcado à parte, continua com o Bruno depois do Compareceu', () => {
+        const antes = delegadoAoBruno({
+          appointmentType: 'visita', appointmentScheduledFor: as9, nextFollowUp: as16, nextFollowUpType: 'Mensagem',
+        });
+        const depois = { ...antes, appointmentOutcome: 'attended', ...consumedFields('attended', antes) };
+        expect(byId(slotsDe(BRUNO, [depois]), depois.id)?.categorySlugs).toEqual([CONTATO]);
+        expect(byId(slotsDe(ANA, [depois]), depois.id)?.categorySlugs ?? []).not.toContain(CONTATO);
+      });
     });
   });
 });

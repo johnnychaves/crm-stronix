@@ -51,8 +51,18 @@ export const isAppointmentEcho = (lead) => {
   return Boolean(next && appt && next.getTime() === appt.getTime());
 };
 
+// O eco tomou o lugar do contato que estava no nextFollowUp, então o dono
+// daquele contato (nextFollowUpOwnerId) não vale mais. Quem tira o eco ou o
+// troca por um contato novo leva junto os dois null, e o contato novo fica com o
+// dono do lead: o desfecho (consumedFields, antes do "Próximo contato?") e o
+// Reagendar (contactReschedule). Acerta sem script o lead de antes de
+// 18/10/2026, quando agendar a visita ainda deixava o dono para trás.
+export const echoContactOwnerCleared = (lead) =>
+  (isAppointmentEcho(lead) ? { nextFollowUpOwnerId: null, nextFollowUpOwnerName: null } : {});
+
 // O que o desfecho tira do lead. O Compareceu e o Cancelou tiram o eco do
-// agendamento, senão o lead amanhecia em Atrasados pelo compromisso que já
+// agendamento (com o dono do contato que ele cobria, echoContactOwnerCleared),
+// senão o lead amanhecia em Atrasados pelo compromisso que já
 // aconteceu, e o Cancelou apaga também o agendamento. O Compareceu preserva o
 // agendamento, para a pessoa não sumir de Visitas e Aulas. Um contato de
 // verdade marcado à parte (o de renovação do aluno, por exemplo) fica. Vale
@@ -74,7 +84,7 @@ export function consumedFields(outcome, lead, at = new Date()) {
   if (outcome !== 'attended' && outcome !== 'cancelled') return {};
   const patch = {};
   if (isAppointmentEcho(lead)) {
-    patch.nextFollowUp = null;
+    Object.assign(patch, { nextFollowUp: null }, echoContactOwnerCleared(lead));
     const label = ECHO_TYPE_LABEL[lead?.appointmentType];
     if (outcome === 'attended' && label && !normalizeAppointmentType(lead?.nextFollowUpType)) patch.nextFollowUpType = label;
   }
