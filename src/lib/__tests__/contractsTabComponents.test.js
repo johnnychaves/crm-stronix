@@ -63,7 +63,7 @@ describe('ContractHistoryTable', () => {
     const html = renderToString(createElement(ContractHistoryTable, { rows, firstName: 'Ana', hasContract: true }));
     expect(html).toContain('>Histórico<');
     expect(html).toContain('>2 anteriores<');
-    ['>Contrato<', '>Início<', '>Fim previsto<', '>Fim de fato<', '>Trancado<', '>Valor<', '>Média/mês<', '>Situação<'].forEach((th) => expect(html).toContain(th));
+    ['>Contrato<', '>Início<', '>Fim previsto<', '>Fim de fato<', '>Trancado<', '>Valor<', '>Média por mês<', '>Situação<'].forEach((th) => expect(html).toContain(th));
     expect(html).toContain('retorno, 89 dias depois');
     expect(html).toContain('>20/09/2024<');
     expect(html).toContain('>20/09/2025<');

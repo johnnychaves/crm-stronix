@@ -6,20 +6,20 @@ import { CONTRACT_ORIGIN, HISTORY_STATUS_LABEL } from '../../../lib/contractHist
 import { cn } from '../../../lib/utils.js';
 import { CONTRACT_TONE } from './tone.js';
 
-// Rótulo em versalete das células. Sempre no tom `muted`: a 9.5px ele faz
-// trabalho estrutural, é o que faz a faixa ler como células.
-export const CapsLabel = ({ children }) => (
-  <div className="text-[9.5px] font-bold uppercase tracking-[.08em] text-muted-foreground whitespace-nowrap">
+// Rótulo de dado, em minúsculas. Sempre no tom `muted`: 12,5 px passa contraste
+// sobre o card e sobre o cinza da tabela, e é o que faz a faixa ler como colunas.
+export const FieldLabel = ({ children }) => (
+  <div className="text-[12.5px] font-medium text-muted-foreground whitespace-nowrap">
     {children}
   </div>
 );
 
-// Selo de situação: o status do contrato ou o selo do Histórico (Em uso,
-// Renovado), no tom da situação.
+// Selo de situação, em pílula: o status do contrato ou o selo do Histórico (Em
+// uso, Renovado), no tom da situação.
 export function StatusChip({ status, className }) {
   const tone = CONTRACT_TONE[status] || CONTRACT_TONE[CONTRACT_STATUS.VENCIDO];
   return (
-    <span className={cn('inline-flex items-center h-5 px-2 rounded-md text-[10px] font-bold uppercase tracking-[.05em] whitespace-nowrap', tone.block, tone.fg, className)}>
+    <span className={cn('inline-flex h-6 items-center rounded-full px-2.5 text-[12px] font-semibold whitespace-nowrap', tone.block, tone.fg, className)}>
       {CONTRACT_STATUS_LABEL[status] || HISTORY_STATUS_LABEL[status]}
     </span>
   );

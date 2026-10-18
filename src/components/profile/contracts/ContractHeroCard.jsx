@@ -5,6 +5,8 @@
 // ativa agora. O aviso dos marcos que passaram sem contato fica no rodapé e
 // some com próximo, porque o cliente já renovou. A régua de vigência que
 // ficava no rodapé virou a linha do tempo, acima do card.
+// O desenho A2 (16/10/2026) põe o plano como título e três dados embaixo
+// (valor, origem, fechado por), com rótulos em minúsculas.
 // Mockup: docs/superpowers/specs/mockups/2026-09-30-aba-contratos-em-uso.html
 import { Fragment } from 'react';
 import { PauseCircle, Play, PlayCircle, RefreshCw } from 'lucide-react';
@@ -16,7 +18,7 @@ import { cn } from '../../../lib/utils.js';
 import { Avatar } from '../../ui/Avatar.jsx';
 import { Btn } from '../../ui/Btn.jsx';
 import { CONTRACT_TONE, DIVIDER, LINK_BTN, LINK_BTN_DANGER } from './tone.js';
-import { CapsLabel } from './shared.jsx';
+import { FieldLabel } from './shared.jsx';
 
 const fmtDia = (d) => (d ? d.toLocaleDateString('pt-BR') : '—');
 
@@ -28,9 +30,9 @@ function OriginCell({ origin }) {
   if (kind === CONTRACT_ORIGIN.RENOVACAO) {
     return (
       <>
-        <CapsLabel>Renovado de</CapsLabel>
-        <div className="text-[13px] font-semibold mt-[7px] truncate" title={prev?.planName || undefined}>{prev?.planName || '—'}</div>
-        <div className="num text-[11.5px] text-muted-foreground mt-[3px]">
+        <FieldLabel>Renovado de</FieldLabel>
+        <div className="mt-1 text-[15.5px] font-semibold leading-tight" title={prev?.planName || undefined}>{prev?.planName || '—'}</div>
+        <div className="num mt-[3px] text-[12.5px] text-muted-foreground">
           {prev ? `#${shortContractId(prev.id)} · ` : ''}<span className="whitespace-nowrap">{`${origin.ordinal}ª renovação`}</span>
         </div>
       </>
@@ -47,18 +49,18 @@ function OriginCell({ origin }) {
     const detail = [endText, gap].filter(Boolean).join(' · ');
     return (
       <>
-        <CapsLabel>{kind === CONTRACT_ORIGIN.UPGRADE ? 'Upgrade' : 'Retorno'}</CapsLabel>
-        <div className="text-[13px] font-semibold mt-[7px] truncate" title={detail ? `${main} · ${detail}` : main}>{main}</div>
-        {endText && <div className="num text-[11.5px] text-muted-foreground mt-[3px]">{endText}</div>}
-        {gap && <div className="text-[11.5px] text-muted-foreground">{gap}</div>}
+        <FieldLabel>{kind === CONTRACT_ORIGIN.UPGRADE ? 'Upgrade' : 'Retorno'}</FieldLabel>
+        <div className="mt-1 text-[15.5px] font-semibold leading-tight" title={detail ? `${main} · ${detail}` : main}>{main}</div>
+        {endText && <div className="num mt-[3px] text-[12.5px] text-muted-foreground">{endText}</div>}
+        {gap && <div className="text-[12.5px] text-muted-foreground">{gap}</div>}
       </>
     );
   }
   return (
     <>
-      <CapsLabel>Renovado de</CapsLabel>
-      <div className="text-[13px] font-semibold mt-[7px]">Matrícula inicial</div>
-      <div className="text-[11.5px] text-muted-foreground mt-[3px]">primeiro contrato</div>
+      <FieldLabel>Renovado de</FieldLabel>
+      <div className="mt-1 text-[15.5px] font-semibold leading-tight">Matrícula inicial</div>
+      <div className="mt-[3px] text-[12.5px] text-muted-foreground">primeiro contrato</div>
     </>
   );
 }
@@ -93,77 +95,80 @@ export function ContractHeroCard({
   const closedBy = facts.closedBy || lead.consultantName;
 
   return (
-    <section className="rounded-2xl border border-border bg-card shadow-card overflow-hidden">
-      <div className="flex items-stretch flex-wrap">
+    // As colunas quebram pela largura do card (@container), não da tela: na
+    // ficha, o menu e o recuo comem uns 140 px, e a 881 px de tela o card tem
+    // 745. Três colunas só a partir de 1024 px de card; abaixo disso, a
+    // contagem e o plano ficam lado a lado e as ações descem para uma faixa.
+    <section className="@container rounded-2xl border border-border bg-card shadow-card overflow-hidden">
+      <div className="grid grid-cols-1 @2xl:grid-cols-[208px_minmax(0,1fr)] @5xl:grid-cols-[208px_minmax(0,1fr)_auto]">
         {/* A contagem é o que importa */}
-        <div className={cn('w-[186px] flex-none px-[22px] py-5', tone.block)}>
-          <div className={cn('flex items-center gap-1 text-[9.5px] font-bold uppercase tracking-[.08em]', tone.fg)}>
-            {paused && <PauseCircle size={11} aria-hidden="true" />}
+        <div className={cn('flex flex-col justify-center px-6 py-6', tone.block)}>
+          <div className={cn('flex items-center gap-1.5 text-[13px] font-semibold', tone.fg)}>
+            {paused && <PauseCircle size={13} aria-hidden="true" />}
             {countdown.label}
           </div>
-          <div className="flex items-baseline gap-1.5 mt-1.5">
-            <span className={cn('num font-display text-[40px] font-bold leading-none tracking-[-.03em]', tone.fg)}>{countdown.days}</span>
-            <span className={cn('text-[13px] font-semibold', tone.fg)}>{countdown.days === 1 ? 'dia' : 'dias'}</span>
+          <div className="mt-1.5 flex items-baseline gap-2">
+            <span className={cn('num font-display text-[48px] font-bold leading-none tracking-[-.035em]', tone.fg)}>{countdown.days}</span>
+            <span className={cn('text-[15px] font-semibold', tone.fg)}>{countdown.days === 1 ? 'dia' : 'dias'}</span>
           </div>
-          <div className="num text-[11.5px] text-slate-600 dark:text-slate-300 mt-[7px]">{countdown.note}</div>
+          <div className="num mt-2 text-[13px] text-slate-600 dark:text-slate-300">{countdown.note}</div>
         </div>
 
-        {/* Quatro células divididas por régua */}
-        <div className="flex-1 min-w-0 flex items-stretch flex-wrap">
-          <div className="flex-[1.2] min-w-[160px] px-[22px] py-5">
-            <CapsLabel>Plano</CapsLabel>
-            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-              <span className="font-display text-[18px] font-bold tracking-tight">{facts.planName || 'Plano'}</span>
-              <span className={cn('inline-flex items-center h-[19px] px-[7px] rounded-[5px] text-[9.5px] font-bold uppercase tracking-[.05em]', chipTone.block, chipTone.fg)}>
-                {hasNext ? 'Em uso' : CONTRACT_STATUS_LABEL[status]}
-              </span>
-            </div>
-            <div className="num text-[11.5px] text-muted-foreground mt-[5px]">
-              {`#${facts.shortId}${facts.months ? ` · ${facts.months === 1 ? '1 mês' : `${facts.months} meses`}` : ''}`}
-            </div>
+        {/* O plano como título e, embaixo, três dados */}
+        <div className="min-w-0 px-7 py-[22px]">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span className="font-display text-[20px] font-bold tracking-tight">{facts.planName || 'Plano'}</span>
+            <span className={cn('inline-flex h-6 items-center rounded-full px-2.5 text-[12px] font-semibold whitespace-nowrap', chipTone.block, chipTone.fg)}>
+              {hasNext ? 'Em uso' : CONTRACT_STATUS_LABEL[status]}
+            </span>
+            <span className="num text-[13px] text-muted-foreground">
+              {`#${facts.shortId}${facts.months ? `, ${facts.months === 1 ? '1 mês' : `${facts.months} meses`}` : ''}`}
+            </span>
           </div>
 
-          <div className="flex-1 min-w-[130px] px-[22px] py-5 border-l border-slate-100 dark:border-white/[0.06]">
-            <CapsLabel>Valor</CapsLabel>
-            <div className="num font-display text-[18px] font-bold tracking-tight mt-1.5">{facts.value != null ? fmtBRL(facts.value) : '—'}</div>
-            <div className="num text-[11.5px] text-muted-foreground mt-[5px]">
-              {facts.monthly != null ? `${fmtBRL(facts.monthly)}/mês` : '—'}
-            </div>
-            {/* Só o desconto e o motivo: a célula não comporta o valor de
-                tabela junto sem truncar. Ele fica no title. */}
-            {facts.discount > 0.005 && facts.listValue > 0 && (
-              <div
-                className="text-[11.5px] text-emerald-700 dark:text-emerald-400 mt-[3px] truncate"
-                title={`Tabela ${fmtBRL(facts.listValue)} · desconto de ${fmtBRL(facts.discount)}`}
-              >
-                <span className="num">{`−${fmtBRL(facts.discount)}`}</span>
-                {facts.discountReason ? ` · ${facts.discountReason.toLowerCase()}` : ' de desconto'}
+          <div className="mt-5 grid grid-cols-1 gap-[22px] @md:grid-cols-3">
+            <div className="min-w-0">
+              <FieldLabel>Valor</FieldLabel>
+              <div className="num mt-1 font-display text-[18px] font-bold leading-tight tracking-tight">{facts.value != null ? fmtBRL(facts.value) : '—'}</div>
+              <div className="num mt-[3px] text-[12.5px] text-muted-foreground">
+                {facts.monthly != null ? `${fmtBRL(facts.monthly)} por mês` : '—'}
               </div>
-            )}
-          </div>
-
-          <div className="flex-1 min-w-[130px] px-[22px] py-5 border-l border-slate-100 dark:border-white/[0.06]">
-            <OriginCell origin={facts.origin} />
-          </div>
-
-          <div className="flex-1 min-w-[140px] px-[22px] py-5 border-l border-slate-100 dark:border-white/[0.06]">
-            <CapsLabel>Fechado por</CapsLabel>
-            <div className="flex items-center gap-[7px] mt-[7px] min-w-0">
-              {closedBy ? (
-                <>
-                  <Avatar name={closedBy} size={19} />
-                  <span className="text-[13px] font-semibold truncate">{closedBy}</span>
-                </>
-              ) : <span className="text-[13px] text-slate-400 dark:text-slate-500">—</span>}
+              {/* Só o desconto e o motivo, que quebram linha como no mockup.
+                  O valor de tabela fica no title. */}
+              {facts.discount > 0.005 && facts.listValue > 0 && (
+                <div
+                  className="mt-[3px] text-[12.5px] text-emerald-700 dark:text-emerald-400"
+                  title={`Tabela ${fmtBRL(facts.listValue)} · desconto de ${fmtBRL(facts.discount)}`}
+                >
+                  <span className="num">{`−${fmtBRL(facts.discount)}`}</span>
+                  {facts.discountReason ? ` · ${facts.discountReason.toLowerCase()}` : ' de desconto'}
+                </div>
+              )}
             </div>
-            {facts.closedAt && <div className="num text-[11.5px] text-muted-foreground mt-[3px]">{`em ${fmtDia(facts.closedAt)}`}</div>}
+
+            <div className="min-w-0">
+              <OriginCell origin={facts.origin} />
+            </div>
+
+            <div className="min-w-0">
+              <FieldLabel>Fechado por</FieldLabel>
+              <div className="mt-1.5 flex min-w-0 items-center gap-2">
+                {closedBy ? (
+                  <>
+                    <Avatar name={closedBy} size={21} />
+                    <span className="truncate text-[15.5px] font-semibold">{closedBy}</span>
+                  </>
+                ) : <span className="text-[15.5px] text-slate-400 dark:text-slate-500">—</span>}
+              </div>
+              {facts.closedAt && <div className="num mt-[3px] text-[12.5px] text-muted-foreground">{`em ${fmtDia(facts.closedAt)}`}</div>}
+            </div>
           </div>
         </div>
 
-        {/* As ações da situação. Com próximo, só os botões pequenos, em
-            coluna, como no mockup. */}
+        {/* As ações da situação. Na coluna da direita, com próximo, só os
+            botões pequenos, em coluna; no card mais estreito, numa faixa. */}
         {!isReadOnly && (
-          <div className="flex-none flex flex-col justify-center gap-2 px-[22px] py-[18px] border-l border-slate-100 dark:border-white/[0.06]">
+          <div className="flex flex-col justify-center gap-2 border-t border-border px-6 py-[22px] @2xl:col-span-2 @2xl:flex-row @2xl:items-center @2xl:justify-end @2xl:py-3 @5xl:col-span-1 @5xl:flex-col @5xl:items-stretch @5xl:justify-center @5xl:border-l @5xl:border-t-0 @5xl:py-[22px]">
             {actions.primary === 'renovar' && (
               <Btn kind="brand" icon={<RefreshCw size={14} />} onClick={onRenew} disabled={loading}>Renovar contrato</Btn>
             )}
@@ -173,7 +178,7 @@ export function ContractHeroCard({
             {actions.primary === 'ativar' && (
               <Btn kind="brand" icon={<Play size={13} />} onClick={() => onActivate(hero)} disabled={loading}>Ativar agora</Btn>
             )}
-            <div className={cn('flex gap-0.5', hasNext ? 'flex-col items-stretch' : 'items-center')}>
+            <div className={cn('flex gap-0.5', hasNext ? 'items-center @5xl:flex-col @5xl:items-stretch' : 'items-center justify-center')}>
               {actions.actions.map((action, i) => (
                 <Fragment key={action}>
                   {i > 0 && !hasNext && <span className={DIVIDER}></span>}
@@ -193,8 +198,8 @@ export function ContractHeroCard({
       </div>
 
       {missed && (
-        <div className="flex items-center gap-2.5 px-[22px] py-[9px] border-t border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-white/[0.03]">
-          <span className="text-[11.5px] text-muted-foreground">{missed}</span>
+        <div className="flex items-center gap-2.5 border-t border-border bg-slate-50 px-7 py-[11px] dark:bg-white/[0.03]">
+          <span className="text-[13px] text-amber-700 dark:text-amber-300">{missed}</span>
         </div>
       )}
     </section>
