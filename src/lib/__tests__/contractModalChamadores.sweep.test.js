@@ -180,9 +180,19 @@ describe('os chamadores do ContractModal só fecham o modal quando o onDone não
   it('no Kanban, toda recarga do quadro passa pelo ref, também nos handlers que esperam uma gravação', () => {
     // Mover de etapa, recusar o upgrade e marcar perda recarregam depois de um `await` da gravação,
     // que sem internet só termina quando a rede volta. Pelo closure, a recarga buscaria o mês ou o
-    // funil de antes de a pessoa trocar o quadro. Chamada solta de uma das quatro é recusada.
+    // funil de antes de a pessoa trocar o quadro. Chamada solta de uma das quatro é recusada, e
+    // também passar uma delas como argumento (`.then(upgradeReload)`), que dá no mesmo closure.
+    // O `lostReload` só pode rodar dentro do `refreshLost`. Fica fora do alcance de uma varredura de
+    // texto ler o ref ANTES do `await` (`const r = reloadsRef.current; await ...; r.refreshLost()`),
+    // que também devolve o closure velho: leia `reloadsRef.current` depois da gravação.
     const limpo = semStrings(semComentarios(ler('../../views/KanbanView.jsx')));
     const soltas = limpo.match(/(^|[^.\w])(refreshLost|renewalReload|upgradeReload|wonReload)\(/g) || [];
     expect(soltas).toEqual([]);
+    const semORef = limpo.replace('const reloadsRef = useLatestRef({ refreshLost, renewalReload, upgradeReload, wonReload });', '');
+    const comoArgumento = semORef.match(/[(,]\s*(refreshLost|renewalReload|upgradeReload|wonReload|lostReload)\s*[,)]/g) || [];
+    expect(comoArgumento).toEqual([]);
+    const chamadasDoLost = limpo.match(/(^|[^.\w])lostReload\(/g) || [];
+    expect(chamadasDoLost).toHaveLength(1);
+    expect(compacta(limpo)).toContain('const refreshLost = useCallback(() => { lostReload();');
   });
 });
