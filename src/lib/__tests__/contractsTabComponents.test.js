@@ -8,6 +8,7 @@ import { ContractTimeline, HATCH_VIOLET } from '../../components/profile/contrac
 import { contractFactsOf, contractTimelineOf } from '../contractsTab.js';
 import { ContractHistoryTable } from '../../components/profile/contracts/ContractHistoryTable.jsx';
 import { ContractHeroCard } from '../../components/profile/contracts/ContractHeroCard.jsx';
+import { NextContractStrip } from '../../components/profile/contracts/NextContractStrip.jsx';
 
 const D = (y, m, d) => new Date(y, m - 1, d);
 const HOJE = new Date(2026, 8, 30, 10, 0);
@@ -168,5 +169,28 @@ describe('ContractHeroCard', () => {
 
   it('o nome do plano de origem quebra em qualquer ponto', () => {
     expect(classeDe(ORIGEM)).toContain('[overflow-wrap:anywhere]');
+  });
+});
+
+// A faixa do próximo quebra pela largura dela (@container), como o card: no
+// card estreito a frase ficava espremida ao lado dos três botões, e as ações
+// descem para uma linha embaixo da frase.
+describe('NextContractStrip', () => {
+  const LONGO = 'Pilates+Funcional+Musculação';
+  const html = renderToString(createElement(NextContractStrip, {
+    next: proximo, facts: { ...contractFactsOf(proximo, [emUso, proximo], HOJE, 30), planName: LONGO },
+    joinText: 'sem intervalo', now: HOJE, canUndo: true, isReadOnly: false, loading: false,
+    onActivate: () => {}, onEditContract: () => {}, onContractAction: () => {}
+  }));
+
+  it('a faixa é o contêiner, e frase e ações ficam em coluna até a faixa ter 672 px', () => {
+    expect(html).toMatch(/<section class="[^"]*@container[^"]*border-l-violet-500/);
+    const corpo = html.match(/<section[^>]*><div class="([^"]*)"/);
+    expect(corpo).not.toBeNull();
+    expect(corpo[1].split(' ')).toEqual(expect.arrayContaining(['flex', 'flex-col', '@2xl:flex-row', '@2xl:items-center']));
+  });
+
+  it('o nome do plano quebra em qualquer ponto', () => {
+    expect(html).toMatch(new RegExp(`class="[^"]*\\[overflow-wrap:anywhere\\][^"]*">${LONGO.replace(/[+]/g, '\\+')}<`));
   });
 });

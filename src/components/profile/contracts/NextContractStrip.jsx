@@ -20,29 +20,34 @@ export function NextContractStrip({ next, facts, joinText, now, canUndo, isReadO
   const start = getSafeDateOrNull(next.startsAt);
   const end = getSafeDateOrNull(next.endsAt);
   const daysToStart = start ? Math.max(0, calendarDaysBetween(now, start) || 0) : 0;
+  // Quebra pela largura da faixa (@container), como o card: abaixo de 672 px
+  // a frase ficava espremida ao lado dos três botões, e as ações descem para
+  // uma linha embaixo dela.
   return (
-    <section className="flex flex-wrap items-center gap-4 rounded-2xl border border-border border-l-[3px] border-l-violet-500 bg-card px-[22px] py-3.5 shadow-card">
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2.5">
-          <span className="inline-flex h-6 items-center rounded-full bg-violet-500/10 px-2.5 text-[12px] font-semibold whitespace-nowrap text-violet-700 dark:bg-violet-500/15 dark:text-violet-300">Próximo</span>
-          <span className="font-display text-[17px] font-bold tracking-tight">{facts.planName || '—'}</span>
+    <section className="@container rounded-2xl border border-border border-l-[3px] border-l-violet-500 bg-card px-[22px] py-3.5 shadow-card">
+      <div className="flex flex-col gap-3 @2xl:flex-row @2xl:items-center @2xl:gap-4">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span className="inline-flex h-6 items-center rounded-full bg-violet-500/10 px-2.5 text-[12px] font-semibold whitespace-nowrap text-violet-700 dark:bg-violet-500/15 dark:text-violet-300">Próximo</span>
+            <span className="min-w-0 font-display text-[17px] font-bold tracking-tight [overflow-wrap:anywhere]">{facts.planName || '—'}</span>
+          </div>
+          <p className="num mt-1.5 text-pretty text-[13.5px] leading-[1.5] text-slate-600 dark:text-slate-300">
+            Começa em <b className={STRONG}>{fmtDia(start)}</b>{`, daqui a ${dias(daysToStart)}.`} {`Vai até ${fmtDia(end)}.`}{' '}
+            <b className={STRONG}>{facts.value != null ? fmtBRL(facts.value) : '—'}</b>
+            {facts.monthly != null ? `, ${fmtBRL(facts.monthly)} por mês.` : '.'}
+          </p>
+          {joinText && <p className="mt-0.5 text-[13px] text-muted-foreground">{joinText}</p>}
         </div>
-        <p className="num mt-1.5 text-pretty text-[13.5px] leading-[1.5] text-slate-600 dark:text-slate-300">
-          Começa em <b className={STRONG}>{fmtDia(start)}</b>{`, daqui a ${dias(daysToStart)}.`} {`Vai até ${fmtDia(end)}.`}{' '}
-          <b className={STRONG}>{facts.value != null ? fmtBRL(facts.value) : '—'}</b>
-          {facts.monthly != null ? `, ${fmtBRL(facts.monthly)} por mês.` : '.'}
-        </p>
-        {joinText && <p className="mt-0.5 text-[13px] text-muted-foreground">{joinText}</p>}
+        {!isReadOnly && (
+          <div className="flex flex-none flex-wrap items-center gap-1">
+            <Btn kind="brand" icon={<Play size={12} />} onClick={() => onActivate(next)} disabled={loading}>Ativar agora</Btn>
+            <button type="button" onClick={() => onEditContract(next)} disabled={loading} className={LINK_BTN}>Corrigir</button>
+            <button type="button" onClick={() => onContractAction('cancelar', next)} disabled={loading} className={LINK_BTN_DANGER}>
+              {canUndo ? 'Cancelar renovação' : 'Cancelar'}
+            </button>
+          </div>
+        )}
       </div>
-      {!isReadOnly && (
-        <div className="flex flex-none items-center gap-1">
-          <Btn kind="brand" icon={<Play size={12} />} onClick={() => onActivate(next)} disabled={loading}>Ativar agora</Btn>
-          <button type="button" onClick={() => onEditContract(next)} disabled={loading} className={LINK_BTN}>Corrigir</button>
-          <button type="button" onClick={() => onContractAction('cancelar', next)} disabled={loading} className={LINK_BTN_DANGER}>
-            {canUndo ? 'Cancelar renovação' : 'Cancelar'}
-          </button>
-        </div>
-      )}
     </section>
   );
 }
