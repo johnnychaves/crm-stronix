@@ -74,7 +74,8 @@ export function buildSchedulePatch({
     // "Responsável" do assistente. Ausente significa o dono do lead, e o null é
     // EXPLÍCITO de propósito: agendamento novo não pode herdar o delegado do
     // agendamento anterior. A visita e a aula têm o próprio dono de tarefa
-    // (appointmentOwnerId, abaixo), e o contato não mexe nele.
+    // (appointmentOwnerId, abaixo), e o contato não mexe nele. Já a visita e a
+    // aula limpam o dono do contato (abaixo).
     patch.nextFollowUpOwnerId = contactOwnerId || null;
     patch.nextFollowUpOwnerName = contactOwnerId ? (contactOwnerName || null) : null;
     return patch;
@@ -105,5 +106,10 @@ export function buildSchedulePatch({
     // fica com o dono do lead não herda quem recebeu a tarefa do anterior.
     appointmentOwnerId: appointmentOwnerId || null,
     appointmentOwnerName: appointmentOwnerId ? (appointmentOwnerName || null) : null,
+    // O eco do agendamento sobrescreve o nextFollowUp, então o contato delegado
+    // que estava ali deixou de existir. Sem o null, o dono dele ficava para trás
+    // e o Reagendar do eco levava a mensagem para a Meta de quem o recebeu.
+    nextFollowUpOwnerId: null,
+    nextFollowUpOwnerName: null,
   };
 }

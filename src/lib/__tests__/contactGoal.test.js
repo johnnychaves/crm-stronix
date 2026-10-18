@@ -104,4 +104,31 @@ describe('contactReschedule', () => {
     expect(contactOwnerId(depois)).toBe('u-bruno');
     expect(depois.nextFollowUpOwnerName).toBe('Bruno');
   });
+
+  // O eco do agendamento (visita ou aula) não é o contato delegado: o contato
+  // que o Reagendar cria a partir dele é novo e fica com o dono do lead. Lead
+  // antigo, que ficou com o dono do contato anterior por baixo do eco, se acerta
+  // aqui, sem script.
+  describe('Reagendar do eco de um agendamento', () => {
+    const visita = new Date(2026, 6, 14, 19, 0);
+    const ecoComDonoAntigo = (over = {}) => ({
+      consultantId: 'u-ana', nextFollowUpOwnerId: 'u-bruno', nextFollowUpOwnerName: 'Bruno',
+      appointmentType: 'visita', appointmentScheduledFor: visita, nextFollowUp: visita, nextFollowUpType: 'Visita',
+      ...over,
+    });
+
+    it('eco reconhecido pelo tipo: o contato novo fica com o dono do lead', () => {
+      const lead = ecoComDonoAntigo();
+      const patch = contactReschedule(lead, '2026-07-15');
+      expect(patch).toHaveProperty('nextFollowUpOwnerId', null);
+      expect(patch).toHaveProperty('nextFollowUpOwnerName', null);
+      expect(contactOwnerId({ ...lead, ...patch })).toBe('u-ana');
+    });
+
+    it('eco reconhecido pelo horário igual ao do agendamento: o contato novo fica com o dono do lead', () => {
+      const lead = ecoComDonoAntigo({ nextFollowUpType: 'Mensagem', nextFollowUp: new Date(visita) });
+      const patch = contactReschedule(lead, '2026-07-15');
+      expect(contactOwnerId({ ...lead, ...patch })).toBe('u-ana');
+    });
+  });
 });

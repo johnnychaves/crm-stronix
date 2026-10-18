@@ -123,11 +123,19 @@ describe('buildSchedulePatch — dono da tarefa', () => {
     expect({ ...antes, ...p }.nextFollowUpOwnerId).toBeNull();
   });
 
-  it('visita e aula NÃO mexem no dono da tarefa de contato', () => {
+  // A visita e a aula gravam o próprio eco no nextFollowUp, por cima do contato
+  // delegado, que deixa de existir. O dono dele não pode ficar para trás: o
+  // Reagendar transformaria o eco em mensagem na Meta de quem recebeu o
+  // contato antigo, e o dono do lead ficaria sem nada.
+  it('visita e aula limpam o dono da tarefa de contato, com null explícito', () => {
+    const antes = { consultantId: 'u1', nextFollowUpOwnerId: 'u2', nextFollowUpOwnerName: 'Maria', nextFollowUpType: 'Mensagem' };
     for (const typeLabel of ['Visita', 'Aula Experimental']) {
       const p = buildSchedulePatch({ typeLabel, date: AULA, contactOwnerId: 'u2', contactOwnerName: 'Maria' });
-      expect(p).not.toHaveProperty('nextFollowUpOwnerId');
-      expect(p).not.toHaveProperty('nextFollowUpOwnerName');
+      expect(p).toHaveProperty('nextFollowUpOwnerId', null);
+      expect(p).toHaveProperty('nextFollowUpOwnerName', null);
+      const depois = aplicar(antes, p);
+      expect(depois.nextFollowUpOwnerId).toBeNull();
+      expect(depois.nextFollowUpOwnerName).toBeNull();
     }
   });
 });

@@ -28,6 +28,7 @@ import {
 import { DAILY_GOAL_CATEGORIES } from '../leads.js';
 import { contactDone, contactReschedule } from '../contactGoal.js';
 import { consumedFields } from '../outcomeCorrection.js';
+import { buildSchedulePatch } from '../schedulePatch.js';
 
 // Quarta-feira, 15 de julho de 2026, 10:00 local — "agora" de referência.
 const NOW = new Date(2026, 6, 15, 10, 0, 0);
@@ -967,6 +968,33 @@ describe('o contato feito fica com quem tinha a tarefa na marcação', () => {
     const feito = [goalDone(l.id, DAILY_GOAL_CATEGORIES.ATRASADO)];
     expect(byId(slotsDe(ANA, [concluido], feito), l.id).categoryStatus[DAILY_GOAL_CATEGORIES.ATRASADO]).toBe(true);
     expect(slotsDe(BRUNO, [concluido], feito)).toEqual([]);
+  });
+
+  // A visita e a aula gravam o eco no nextFollowUp, por cima do contato
+  // delegado. O dono daquele contato não pode ficar para trás: depois do "Não
+  // veio", o Reagendar transforma o eco em mensagem, e ela ia para a Meta do
+  // Bruno, que recebeu um contato que já não existia.
+  describe('a visita agendada depois de um contato delegado', () => {
+    const visita = new Date(2026, 6, 14, 19, 0);
+    const as16 = new Date(2026, 6, 15, 16, 0);
+
+    it('a Ana agenda a visita, marca "Não veio" e reagenda: o contato fica na Meta dela, e não na do Bruno', () => {
+      const delegado = delegadoAoBruno({ nextFollowUp: new Date(2026, 6, 14, 9, 0), nextFollowUpType: 'Mensagem' });
+      const agendado = { ...delegado, ...buildSchedulePatch({ typeLabel: 'Visita', date: visita, unidade: 'Centro' }) };
+      const naoVeio = { ...agendado, appointmentOutcome: 'no_show' };
+      const reagendado = { ...naoVeio, ...contactReschedule(naoVeio, as16) };
+      expect(slotsDe(BRUNO, [reagendado])).toEqual([]);
+      expect(byId(slotsDe(ANA, [reagendado]), reagendado.id)?.categorySlugs).toContain(CONTATO);
+    });
+
+    it('o lead antigo, com o eco e o dono do Bruno já gravados, volta para a Ana no Reagendar', () => {
+      const antigo = delegadoAoBruno({
+        appointmentType: 'visita', appointmentScheduledFor: visita, nextFollowUp: visita, nextFollowUpType: 'Visita', appointmentOutcome: 'no_show',
+      });
+      const reagendado = { ...antigo, ...contactReschedule(antigo, as16) };
+      expect(slotsDe(BRUNO, [reagendado])).toEqual([]);
+      expect(byId(slotsDe(ANA, [reagendado]), reagendado.id)?.categorySlugs).toContain(CONTATO);
+    });
   });
 });
 
