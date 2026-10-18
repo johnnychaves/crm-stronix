@@ -49,7 +49,10 @@ export function AgendaHoje({ rows, now, savingId, onMark }) {
         <h3 id="meta-agenda-titulo" className="font-display text-[14px] font-bold tracking-[-0.01em]">Agenda de hoje</h3>
         <small className="text-[12px] text-muted-foreground">Visitas e aulas da academia</small>
       </div>
-      <ul className="max-h-[340px] overflow-y-auto overscroll-y-contain thin-scroll">
+      {/* A lista rola, e quem rola corta o que passa da borda: o -mx-2 px-2 dá
+          folga por dentro para a área de clique da etiqueta (que sai 6 px) e
+          para o anel do foco, sem tirar o texto do alinhamento do título. */}
+      <ul className="-mx-2 max-h-[340px] overflow-y-auto overscroll-y-contain px-2 thin-scroll">
         {rows.map((row) => {
           const estado = stateOf(row, now, next);
           const tipo = row.categorySlug === C.VISITA_HOJE ? 'Visita' : 'Aula exp.';

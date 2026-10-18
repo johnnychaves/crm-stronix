@@ -106,10 +106,13 @@ describe('Agenda de hoje da Meta nova', () => {
     expect(linha('Eva Depois').querySelector('.sr-only')).toBeNull();
   });
 
-  it('a etiqueta tem área de clique maior que o texto', () => {
+  it('a etiqueta tem área de clique maior que o texto, e a lista tem folga para ela', () => {
     render();
     const cls = linha('Clara Veio').querySelector('button').className.split(/\s+/);
     expect(cls).toEqual(expect.arrayContaining(['p-1.5', '-m-1.5']));
+    // A lista rola e corta o que passa da borda: sem a folga, a etiqueta (6 px
+    // para fora) criava rolagem de lado e cortava o anel do foco.
+    expect(host.querySelector('ul').className.split(/\s+/)).toEqual(expect.arrayContaining(['px-2', '-mx-2']));
   });
 
   it('sem agendamento no dia, a Agenda não aparece', () => {
