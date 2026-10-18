@@ -94,11 +94,13 @@ export function ContractHeroCard({
   const chipTone = hasNext ? CONTRACT_TONE[HISTORY_STATUS.EM_USO] : tone;
   const closedBy = facts.closedBy || lead.consultantName;
 
+  // As colunas quebram pela largura do card (@container), não da tela: na
+  // ficha, o menu e o recuo comem 136 px, e a 881 px de tela o card tem 745.
+  // Três faixas: a partir de 1024 px de card, três colunas (contagem, plano e
+  // ações); de 672 a 1023, a contagem e o plano lado a lado e as ações numa
+  // faixa embaixo; abaixo de 672 (uma tela de 800 px dá 664), tudo empilha. Os
+  // três dados ficam em três colunas a partir de 448 px de card.
   return (
-    // As colunas quebram pela largura do card (@container), não da tela: na
-    // ficha, o menu e o recuo comem uns 140 px, e a 881 px de tela o card tem
-    // 745. Três colunas só a partir de 1024 px de card; abaixo disso, a
-    // contagem e o plano ficam lado a lado e as ações descem para uma faixa.
     <section className="@container rounded-2xl border border-border bg-card shadow-card overflow-hidden">
       <div className="grid grid-cols-1 @2xl:grid-cols-[208px_minmax(0,1fr)] @5xl:grid-cols-[208px_minmax(0,1fr)_auto]">
         {/* A contagem é o que importa */}
