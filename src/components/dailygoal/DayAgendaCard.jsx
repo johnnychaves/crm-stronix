@@ -2,7 +2,7 @@ import { BookOpen, Building2, CalendarDays } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { OutcomePopover } from './OutcomePopover.jsx';
 import { DAILY_GOAL_CATEGORIES } from '../../lib/leads.js';
-import { SOLO_TRAINING_LABEL } from '../../lib/professores.js';
+import { agendaSubtitle as subtitleOf } from '../../lib/dayAgenda.js';
 
 // Agenda do dia compartilhada (painel da Meta Diária). Só apresenta: as linhas
 // chegam prontas de computeDayAgenda e o clique sobe para o pai. NÃO conta na
@@ -13,22 +13,6 @@ const hourLabel = (d) =>
   d instanceof Date
     ? `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
     : '';
-
-// Linha secundária: tipo, modalidade, professor e dono, sem repetir o óbvio.
-const subtitleOf = (row) => {
-  const parts = [];
-  if (row.categorySlug === DAILY_GOAL_CATEGORIES.VISITA_HOJE) {
-    parts.push('Visita');
-    if (row.appointmentUnit) parts.push(row.appointmentUnit);
-  } else {
-    parts.push(row.appointmentModality || 'Aula exp.');
-    if (row.appointmentProfessorName) parts.push(row.appointmentProfessorName);
-    else if (row.appointmentSoloTraining) parts.push(SOLO_TRAINING_LABEL);
-  }
-  parts.push(row.isMine ? 'sua' : `de ${row.ownerName}`);
-  if (row.outcomeByName) parts.push(`conf. ${row.outcomeByName}`);
-  return parts.join(' · ');
-};
 
 export function DayAgendaCard({ rows, pending, nextIndex, savingId, onMark }) {
   // Sem filtro: a agenda mostra o dia INTEIRO, resolvidos junto com pendentes.

@@ -3,7 +3,7 @@
 // como o app faz.
 
 import { describe, it, expect } from 'vitest';
-import { computeDayAgenda } from '../dayAgenda.js';
+import { agendaSubtitle, computeDayAgenda } from '../dayAgenda.js';
 
 const NOW = new Date(2026, 6, 30, 18, 52); // qui 30/07/2026 18:52 local
 const at = (h, m = 0) => new Date(2026, 6, 30, h, m);
@@ -245,5 +245,20 @@ describe('computeDayAgenda — cliente, perda e desfecho', () => {
       liveLeads: [passou, vem], agendaLeads: [], usersById: users, viewerId: 'u1', now: at(22),
     });
     expect(fimDoDia.nextIndex).toBe(-1);
+  });
+});
+
+// A linha de baixo do agendamento, que o card da tela de hoje e a Agenda da
+// tela nova dividem.
+describe('agendaSubtitle', () => {
+  it('visita leva a unidade e o dono; aula, a modalidade e o professor', () => {
+    expect(agendaSubtitle({ categorySlug: 'visita_hoje', appointmentUnit: 'Moinhos', isMine: true })).toBe('Visita · Moinhos · sua');
+    expect(agendaSubtitle({ categorySlug: 'aula_hoje', appointmentModality: 'Funcional', appointmentProfessorName: 'Carol', isMine: false, ownerName: 'Bruno' }))
+      .toBe('Funcional · Carol · de Bruno');
+  });
+
+  it('aula sem professor diz treina sozinho, e o desfecho diz quem confirmou', () => {
+    expect(agendaSubtitle({ categorySlug: 'aula_hoje', appointmentSoloTraining: true, isMine: true, outcomeByName: 'Ana' }))
+      .toBe('Aula exp. · Treina sozinho · sua · conf. Ana');
   });
 });

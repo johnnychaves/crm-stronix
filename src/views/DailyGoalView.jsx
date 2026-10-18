@@ -13,6 +13,11 @@ import { followUpChannelOf } from '../lib/contactGoal.js';
 import { computeDayAgenda } from '../lib/dayAgenda.js';
 import { useDayAgenda } from '../hooks/useDayAgenda.js';
 import { useScreenParams } from '../hooks/useScreenParams.js';
+import { useFrozenWhileIdle, useMinuteClock } from '../hooks/useMinuteClock.js';
+import { frozenDayText } from '../lib/rotinasTela.js';
+import { MetaFocoScreen } from '../components/dailygoal/foco/MetaFocoScreen.jsx';
+import { RitmoCard, SideCard, SideSection } from '../components/dailygoal/foco/FocoParts.jsx';
+import { AgendaHoje } from '../components/dailygoal/foco/AgendaHoje.jsx';
 import { DayAgendaCard } from '../components/dailygoal/DayAgendaCard.jsx';
 import { RoutineCard } from '../components/dailygoal/RoutineCard.jsx';
 import { OutcomePopover } from '../components/dailygoal/OutcomePopover.jsx';
@@ -623,9 +628,15 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
   // A categoria aberta vem do endereço: F5 mantém e o link abre na mesma
   // categoria.
   const paramsCtx = useMemo(() => ({}), []);
-  const [{ cat: filter }, setParams] = useScreenParams('dailyGoal', paramsCtx);
+  // `metaNova` liga a tela nova (Foco agora) pelo ?meta=nova, até a virada.
+  const [{ metaNova, cat: filter }, setParams] = useScreenParams('dailyGoal', paramsCtx);
   const setFilter = (v) => setParams({ cat: v });
-  const [now, setNow] = useState(() => new Date());
+  // Relógio por minuto. A tela nova o congela na pausa por inatividade, como a
+  // aba Hoje das Rotinas: sem dados chegando, o relógio andando faria atrasada
+  // toda tarefa feita depois da pausa.
+  const liveNow = useMinuteClock();
+  const frozenNow = useFrozenWhileIdle(liveNow, listenersActive);
+  const now = metaNova ? frozenNow : liveNow;
   const [rescheduleTarget, setRescheduleTarget] = useState(null);
   const [nextContactTarget, setNextContactTarget] = useState(null);
   const prevProgress = useRef(null); // null = ainda sem cálculo nesta montagem
@@ -638,11 +649,6 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
     return true;
   };
   const releaseTask = (key) => savingTasks.current.delete(key);
-
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 60_000);
-    return () => clearInterval(id);
-  }, []);
 
   // Chave do dia derivada do relógio (atualiza por minuto): muda SÓ na virada
   // de meia-noite e entra como dependência dos memos baseados em "hoje" — sem
@@ -1310,6 +1316,8 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
     // tarefa de Renovação ser descartada silenciosamente (groups[slug]
     // undefined no push abaixo).
     const groups = Object.fromEntries(DG_CATEGORY_ORDER.map(slug => [slug, []]));
+    // A tela nova monta a própria fila (metaFoco.js), então não paga por esta.
+    if (metaNova) return groups;
     processedLeads.forEach(lead => {
       (lead.categorySlugs || []).forEach(slug => {
         if (!isLeadDoneForCategory(lead, slug) && groups[slug]) groups[slug].push(lead);
@@ -1322,7 +1330,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
     // de propósito: a chance de reativação cai a cada dia fora da academia.
     groups[DAILY_GOAL_CATEGORIES.VENCIDO].sort((a, b) => expiredSortKey(b) - expiredSortKey(a));
     return groups;
-  }, [processedLeads, now]);
+  }, [processedLeads, now, metaNova]);
 
   const counts = Object.fromEntries(
     DG_CATEGORY_ORDER.map(slug => [slug, (pendingBySlug[slug] || []).length])
@@ -1391,6 +1399,151 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
     : isTomorrowView
       ? tomorrowAppts.length
       : (counts[filter] || 0);
+
+  // Os pop-ups da Meta valem para as duas telas.
+  const modals = (
+    <>
+      {rescheduleTarget && (
+        <RescheduleModal
+          lead={rescheduleTarget.lead}
+          categorySlug={rescheduleTarget.categorySlug}
+          currentDate={getLeadAppointmentDate(rescheduleTarget.lead)}
+          currentType={getLeadAppointmentType(rescheduleTarget.lead)}
+          flow={rescheduleTarget.flow || 'manual'}
+          onConfirm={handleReschedule}
+          onClose={() => setRescheduleTarget(null)}
+        />
+      )}
+
+      {nextContactTarget && (
+        <NextContactModal
+          lead={nextContactTarget.lead}
+          contextLabel={nextContactTarget.contextLabel}
+          onPick={commitNextContact}
+          onSkip={commitNoNextContact}
+          onClose={() => setNextContactTarget(null)}
+        />
+      )}
+
+      {renewalTarget && (
+        <RenewalOutcomeModal
+          lead={renewalTarget.lead}
+          appUser={appUser}
+          db={db}
+          activeCheckpoint={renewalTarget.activeCheckpoint}
+          variant={renewalTarget?.variant || 'renovacao'}
+          initialOutcome={renewalTarget.initialOutcome}
+          onDone={handleRenewalOutcomeDone}
+          onClose={() => setRenewalTarget(null)}
+        />
+      )}
+
+      {matriculaTarget && (
+        <ContractModal
+          lead={matriculaTarget}
+          appUser={appUser}
+          db={db}
+          mode="renovacao"
+          renewedFromId={matriculaTarget.currentContractId || null}
+          onClose={() => setMatriculaTarget(null)}
+          // `stale`: o modal já foi fechado pelo X (gravação pendente sem internet) e pode ter sido reaberto; não fecha o de agora.
+          onDone={({ stale } = {}) => { if (!stale) setMatriculaTarget(null); }}
+        />
+      )}
+
+      {contactTarget && (
+        <ContactOutcomeModal
+          lead={contactTarget.lead}
+          categorySlug={contactTarget.categorySlug}
+          initialOutcome={contactTarget.initialOutcome}
+          appUser={appUser}
+          db={db}
+          onDone={() => setContactTarget(null)}
+          onClose={() => setContactTarget(null)}
+        />
+      )}
+    </>
+  );
+
+  if (metaNova) {
+    // A marca do Ritmo: os dias de meta do mês até ontem. No dia 1 ainda é zero.
+    const ontem = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    const expectedHits = ontem.getMonth() === now.getMonth() ? countMetaDaysInMonth(metaWeekdays, ontem) : 0;
+    const amanha = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toLocaleDateString('pt-BR', { weekday: 'long' });
+    const tomorrowRow = ({ lead, when }) => <TomorrowApptRow key={lead.id} lead={lead} when={when} />;
+    const volume = { count: volumeCount, target: volumeTarget, breakdown: volumeData };
+    return (
+      <div className="animate-fade-in">
+        <MetaFocoScreen
+          strip={{
+            greeting, firstName, todayLabel, now, totalSlots, doneSlots, progress, volume,
+            live: listenersActive,
+            frozenDay: listenersActive ? '' : frozenDayText(now, liveNow),
+            streak: ritmoMes.streak,
+          }}
+          processedLeads={processedLeads}
+          now={now}
+          sla={slaOverdueDays}
+          renewalCheckpoints={renewalCheckpoints}
+          meId={appUser.id}
+          foco={filter}
+          onFoco={setFilter}
+          totalSlots={totalSlots}
+          doneSlots={doneSlots}
+          volume={volume}
+          perfectDay={perfectDay}
+          tomorrow={tomorrowAppts.length > 0 && (
+            <div className="mt-6 border-t border-border pt-5">
+              <h3 className="font-display text-[14px] font-bold">Amanhã, {amanha}</h3>
+              <div className="mt-2.5 flex flex-col gap-2">{tomorrowAppts.map(tomorrowRow)}</div>
+            </div>
+          )}
+          onOutcome={handleOutcome}
+          onReschedule={(l, s) => setRescheduleTarget({ lead: l, categorySlug: s })}
+          onPostpone={handleRescheduleTask}
+          onGoalDone={handleGoalDone}
+          onWhatsapp={handleWhatsapp}
+          onCall={handleCall}
+          aside={(
+            <>
+              <AgendaHoje rows={dayAgenda.rows} now={now} savingId={savingAgendaId} onMark={markAgendaPresence} />
+              <RitmoCard ritmo={ritmoMes} expected={expectedHits} volumeMonth={volumeMonth} />
+              {isMetaParticipant(appUser) && (
+                <RoutineCard db={db} appUser={appUser} enabled={listenersActive} now={now} metaWeekdays={metaWeekdays} />
+              )}
+              <SideCard>
+                <SideSection
+                  title={`Amanhã, ${amanha}`}
+                  note="Não conta na meta de hoje"
+                  items={tomorrowAppts}
+                  empty="Nada agendado para amanhã."
+                  renderItem={tomorrowRow}
+                />
+                <SideSection
+                  title="Feitos hoje"
+                  count={done.length}
+                  items={done}
+                  empty="Nenhuma tarefa concluída ainda."
+                  moreLabel="Ver todos"
+                  renderItem={(lead) => (
+                    <DoneCard
+                      key={lead.id}
+                      lead={lead}
+                      now={now}
+                      saving={savingAgendaId === lead.id}
+                      onReschedule={(l, s) => setRescheduleTarget({ lead: l, categorySlug: s })}
+                      onCorrect={handleCorrectOutcome}
+                    />
+                  )}
+                />
+              </SideCard>
+            </>
+          )}
+        />
+        {modals}
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col gap-6 animate-fade-in relative font-sans">
@@ -1558,65 +1711,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
         Atualizado agora · {todayLabel} · <span className="font-display font-medium">STRONI</span><span className="font-display font-bold text-brand-600 dark:text-brand-400">LEAD</span>
       </footer>
 
-      {rescheduleTarget && (
-        <RescheduleModal
-          lead={rescheduleTarget.lead}
-          categorySlug={rescheduleTarget.categorySlug}
-          currentDate={getLeadAppointmentDate(rescheduleTarget.lead)}
-          currentType={getLeadAppointmentType(rescheduleTarget.lead)}
-          flow={rescheduleTarget.flow || 'manual'}
-          onConfirm={handleReschedule}
-          onClose={() => setRescheduleTarget(null)}
-        />
-      )}
-
-      {nextContactTarget && (
-        <NextContactModal
-          lead={nextContactTarget.lead}
-          contextLabel={nextContactTarget.contextLabel}
-          onPick={commitNextContact}
-          onSkip={commitNoNextContact}
-          onClose={() => setNextContactTarget(null)}
-        />
-      )}
-
-      {renewalTarget && (
-        <RenewalOutcomeModal
-          lead={renewalTarget.lead}
-          appUser={appUser}
-          db={db}
-          activeCheckpoint={renewalTarget.activeCheckpoint}
-          variant={renewalTarget?.variant || 'renovacao'}
-          initialOutcome={renewalTarget.initialOutcome}
-          onDone={handleRenewalOutcomeDone}
-          onClose={() => setRenewalTarget(null)}
-        />
-      )}
-
-      {matriculaTarget && (
-        <ContractModal
-          lead={matriculaTarget}
-          appUser={appUser}
-          db={db}
-          mode="renovacao"
-          renewedFromId={matriculaTarget.currentContractId || null}
-          onClose={() => setMatriculaTarget(null)}
-          // `stale`: o modal já foi fechado pelo X (gravação pendente sem internet) e pode ter sido reaberto; não fecha o de agora.
-          onDone={({ stale } = {}) => { if (!stale) setMatriculaTarget(null); }}
-        />
-      )}
-
-      {contactTarget && (
-        <ContactOutcomeModal
-          lead={contactTarget.lead}
-          categorySlug={contactTarget.categorySlug}
-          initialOutcome={contactTarget.initialOutcome}
-          appUser={appUser}
-          db={db}
-          onDone={() => setContactTarget(null)}
-          onClose={() => setContactTarget(null)}
-        />
-      )}
+      {modals}
     </div>
   );
 }

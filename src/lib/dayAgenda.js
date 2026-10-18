@@ -20,6 +20,24 @@ import {
   getLeadAppointmentType,
   isClientLead,
 } from './leads.js';
+import { SOLO_TRAINING_LABEL } from './professores.js';
+
+// A linha de baixo de cada agendamento: tipo, modalidade, professor e dono,
+// sem repetir o óbvio. A dividem o card da tela de hoje e a Agenda da tela nova.
+export function agendaSubtitle(row) {
+  const parts = [];
+  if (row.categorySlug === DAILY_GOAL_CATEGORIES.VISITA_HOJE) {
+    parts.push('Visita');
+    if (row.appointmentUnit) parts.push(row.appointmentUnit);
+  } else {
+    parts.push(row.appointmentModality || 'Aula exp.');
+    if (row.appointmentProfessorName) parts.push(row.appointmentProfessorName);
+    else if (row.appointmentSoloTraining) parts.push(SOLO_TRAINING_LABEL);
+  }
+  parts.push(row.isMine ? 'sua' : `de ${row.ownerName}`);
+  if (row.outcomeByName) parts.push(`conf. ${row.outcomeByName}`);
+  return parts.join(' · ');
+}
 
 // Mesmo dia em horário LOCAL (nunca UTC — o dia tem que bater com o fuso de quem
 // está na recepção).
