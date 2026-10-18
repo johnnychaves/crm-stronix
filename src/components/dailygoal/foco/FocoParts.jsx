@@ -41,7 +41,7 @@ export function FocoBar({ tabs, value, onChange, children }) {
               aria-label={`${t.label}: ${t.pending} pendentes${t.why ? `. ${t.why}` : ''}`}
               title={t.why || undefined}
               className={cn(
-                'h-8 flex-none gap-1.5 rounded-[9px] border-0 px-2 text-[13px] font-medium text-foreground/80 shadow-none hover:bg-accent',
+                'group/aba h-8 flex-none gap-1.5 rounded-[9px] border-0 px-2 text-[13px] font-medium text-foreground/80 shadow-none hover:bg-accent',
                 // O primitivo traz o anel de 3 px a 50% (ring-ring/50), e o cn
                 // não junta o anel-foco com ele. O ring-2 e o ring-ring repetem o
                 // anel-foco em classes que o cn sabe trocar, para o anel ficar sólido.
@@ -50,8 +50,20 @@ export function FocoBar({ tabs, value, onChange, children }) {
               )}
             >
               {t.label}
-              {t.dot && <i aria-hidden="true" className={cn('size-1.5 flex-none rounded-full', t.dot === 'late' ? 'bg-rose-500' : 'bg-brand-600')} />}
-              <span className="num text-[12.5px] font-semibold opacity-70">{t.pending}</span>
+              {/* Na aba escolhida (azul-marinho) o ponto e o número clareiam,
+                  como no mockup: o brand-600 dava 2,65:1 no ink-700 do escuro.
+                  Nas outras, o número fica na cor do nome, porque com opacidade
+                  ele caía para 4:1 no trilho claro. */}
+              {t.dot && (
+                <i
+                  aria-hidden="true"
+                  className={cn(
+                    'size-1.5 flex-none rounded-full',
+                    t.dot === 'late' ? 'bg-rose-500 group-data-[state=active]/aba:bg-rose-300' : 'bg-brand-600 group-data-[state=active]/aba:bg-brand-300',
+                  )}
+                />
+              )}
+              <span className="num text-[12.5px] font-semibold group-data-[state=active]/aba:opacity-75">{t.pending}</span>
             </TabsTrigger>
           ))}
         </TabsList>

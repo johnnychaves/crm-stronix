@@ -150,6 +150,13 @@ describe('Meta nova: o Agora e a fila', () => {
     expect(cls).not.toContain('focus-visible:ring-[3px]');
   });
 
+  it('o número da aba não perde contraste com opacidade fora da aba escolhida', () => {
+    render({ leads: LEADS, now: NOW });
+    const inativa = [...host.querySelectorAll('[role="tab"]')].find((t) => t.getAttribute('data-state') === 'inactive');
+    const numero = inativa.querySelector('.num');
+    expect(numero.className.split(/\s+/).filter((c) => c.startsWith('opacity-'))).toEqual([]);
+  });
+
   it('quando a tarefa do Agora sai da lista, o primeiro da ordem assume', () => {
     render({ leads: LEADS, now: NOW });
     click(button('Carla Contato'));
