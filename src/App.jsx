@@ -113,6 +113,7 @@ import { RotinasNovo, NOVO_ATE as ROTINAS_NOVO_ATE } from './components/rotinas/
 import { SettingsView } from './views/settings/SettingsView.jsx';
 import { WhatsNewModal } from './components/WhatsNewModal.jsx';
 import { WalkthroughModal } from './components/WalkthroughModal.jsx';
+import { MetaUrgentCount } from './components/dailygoal/MetaUrgentCount.jsx';
 import { HelpCenterModal } from './components/HelpCenterModal.jsx';
 import { NotificationBell } from './components/layout/NotificationBell.jsx';
 import { useNotificationsSeen } from './hooks/useNotificationsSeen.js';
@@ -128,6 +129,9 @@ import { countUnreadForClient } from './lib/ticketThread.js';
 import { AppErrorBoundary, ModalErrorBoundary, ScreenErrorBoundary, SilentErrorBoundary } from './components/ErrorBoundary.jsx';
 import { RouteRedirect } from './components/RouteRedirect.jsx';
 import { setSentryUser, clearSentryUser } from './lib/sentry.js';
+
+// A Meta de quem não vende: lista fixa, para o número do título não recalcular.
+const NO_SLOTS = [];
 
 // ==========================================
 // COMPONENTE PRINCIPAL (APP)
@@ -315,12 +319,16 @@ function AppInner() {
 
   // Título da aba: "<Tela> · <Academia> · STRONILEAD". Na ficha, só "Ficha",
   // nunca o nome da pessoa, porque o título fica no histórico do navegador.
-  // Antes do login continua "<Academia> · STRONILEAD".
+  // Antes do login continua "<Academia> · STRONILEAD". Com sessão, quem vende
+  // tem na frente o número de tarefas urgentes da Meta, "(2)", que o
+  // MetaUrgentCount (montado no fim do app) calcula com o próprio relógio.
+  const [metaUrgent, setMetaUrgent] = useState(0);
   const titleScreen = appUser && !appUser.superAdminOnly && !tenantBlock && !professorAccessOff(appUser) ? (fichaOpen ? 'ficha' : resolvedTab) : null;
   const titleTenant = appUser ? (appUser.superAdminOnly ? '' : tenantDisplayName) : (urlTenant?.displayName || '');
+  const titleUrgent = titleScreen ? metaUrgent : 0;
   useEffect(() => {
-    document.title = documentTitle({ screen: titleScreen, tenantName: titleTenant });
-  }, [titleScreen, titleTenant]);
+    document.title = documentTitle({ screen: titleScreen, tenantName: titleTenant, urgent: titleUrgent });
+  }, [titleScreen, titleTenant, titleUrgent]);
 
   const [leads, setLeads] = useState([]);
   const [interactions, setInteractions] = useState([]);
@@ -1458,11 +1466,11 @@ useEffect(() => {
   const dailyGoalProgress = useMemo(() => {
     // Só quem vende tem a Meta do consultor. O professor fica sem pendência no
     // menu e sem dia batido gravado: a Meta dele, a dos faltosos, vem no PR 3.
-    if (!appUser?.id || !isSeller(appUser)) return { total: 0, pending: 0 };
+    if (!appUser?.id || !isSeller(appUser)) return { total: 0, pending: 0, slots: NO_SLOTS };
     void dayKey; // recalcula na virada do dia
     const slots = computeDailyGoalSlots(metaLeads, buildInteractionsByLead(interactions), appUser.id, renewalCheckpoints, renewalGraceDays);
     const { totalSlots, doneSlots } = slotTotals(slots);
-    return { total: totalSlots, pending: totalSlots - doneSlots };
+    return { total: totalSlots, pending: totalSlots - doneSlots, slots };
   }, [metaLeads, interactions, appUser, dayKey, renewalCheckpoints, renewalGraceDays]);
   const dailyGoalPending = dailyGoalProgress.pending;
   const dailyGoalTotal = dailyGoalProgress.total;
@@ -1942,6 +1950,12 @@ useEffect(() => {
       <SilentErrorBoundary>
         <WalkthroughModal appUser={appUser} />
       </SilentErrorBoundary>
+      {/* O número de urgentes da Meta no título da aba. Não desenha nada. */}
+      {isSeller(appUser) && (
+        <SilentErrorBoundary>
+          <MetaUrgentCount slots={dailyGoalProgress.slots} onChange={setMetaUrgent} />
+        </SilentErrorBoundary>
+      )}
       <ModalErrorBoundary open={tutorialsOpen} onClose={closeHelpCenter}>
         <HelpCenterModal
           open={tutorialsOpen}

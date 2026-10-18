@@ -10,7 +10,7 @@ import { CHECK_TONE, META_TONE, SEG_TONE } from '../rotinas/routineTones.js';
 // Cartão "Rotina de hoje" da Meta diária (spec
 // docs/superpowers/specs/2026-10-06-rotinas-dos-consultores-design.md, mockup
 // 2026-10-06-rotina-na-meta-diaria.html, opção A). Fica fora da conta da Meta:
-// não entra no ProgressHero, nos filtros da lista nem no dia batido.
+// não entra na porcentagem do dia, na fila do Foco nem no dia batido.
 
 const DONE = new Set(['done', 'doneLate']);
 

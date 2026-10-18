@@ -1,6 +1,7 @@
-// Meta diária: todo nome que abre a ficha virou link. No
-// TaskCard e no DoneCard o link é esticado (after:absolute after:inset-0) sobre
-// um container com relative, e os botões de dentro sobem com relative z-10.
+// Meta diária: todo nome que abre a ficha virou link. No DoneCard o link é
+// esticado (after:absolute after:inset-0) sobre um container com relative, e os
+// botões de dentro sobem com relative z-10. O bloco Agora e a fila têm os
+// testes deles em metaFocoView.test.js.
 import { describe, it, expect, vi } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
@@ -14,7 +15,7 @@ vi.mock('../firebase.js', () => ({
   ROUTINE_MODELS_PATH: 'rotina_modelos', ROUTINE_VERSIONS_PATH: 'rotina_versoes', ROUTINE_MARKS_PATH: 'rotina_marcas',
 }));
 
-const { TaskCard, DoneCard, TomorrowApptRow } = await import('../../views/DailyGoalView.jsx');
+const { DoneCard, TomorrowApptRow } = await import('../../views/DailyGoalView.jsx');
 
 const TENANT = 'acad';
 const profile = {
@@ -34,82 +35,17 @@ function render(element) {
       createElement(LeadProfileContext.Provider, { value: profile }, element)));
 }
 
-const taskCard = () => render(createElement(TaskCard, {
-  task: TASK, slug: 'novo_24h', now: new Date('2026-09-22T10:00:00'),
-}));
-
 const doneCard = () => render(createElement(DoneCard, {
   lead: { ...TASK, categorySlugs: ['visita_hoje'], categoryStatus: { visita_hoje: true } },
   onReschedule: () => {},
 }));
 
 describe('Meta diária', () => {
-  it('TaskCard: o nome é link esticado para a ficha', () => {
-    const html = taskCard();
-    const i = html.indexOf('href="/acad/ficha/abc123"');
-    expect(i).toBeGreaterThan(-1);
-    const abertura = html.lastIndexOf('<a ', i);
-    expect(html.slice(abertura, html.indexOf('</a>', i))).toContain('after:absolute after:inset-0');
-  });
-
-  it('TaskCard: o cabeçalho é o ancestral posicionado do link', () => {
-    // Só o que importa: `relative` e o padding que identifica o cabeçalho.
-    // Prender a lista inteira de classes quebraria o teste a cada reordenação
-    // de utilitário Tailwind, sem nenhuma mudança de comportamento.
-    expect(taskCard()).toMatch(/class="relative [^"]*p-3\.5/);
-  });
-
-  it('TaskCard: a camada esticada arredonda só os cantos de cima', () => {
-    // A camada cobre o cabeçalho, não o card inteiro. Com after:rounded-xl
-    // sobram dois cantinhos mortos na divisa com o rodapé e o anel de foco
-    // desenha canto arredondado no meio do card.
-    const html = taskCard();
-    expect(html).toContain('after:rounded-t-xl');
-    expect(html).not.toContain('after:rounded-xl');
-  });
-
-  it('TaskCard: o atalho do canto abre a ficha por cima do link esticado', () => {
-    const html = taskCard();
-    const i = html.indexOf('title="Abrir ficha"');
-    expect(i).toBeGreaterThan(-1);
-    // A tag inteira: o class sai depois do title no HTML renderizado.
-    const abertura = html.lastIndexOf('<a ', i);
-    const tag = html.slice(abertura, html.indexOf('>', i));
-    expect(tag).toContain('relative z-10');
-    // Sem isto o leitor de tela anuncia um link sem nome nenhum, porque o
-    // conteúdo é só o ícone de reticências.
-    expect(tag).toContain('aria-label="Abrir ficha de Ana Lima"');
-  });
-
-  it('TaskCard: lead sem nome não vira "Abrir ficha de undefined"', () => {
-    const html = render(createElement(TaskCard, {
-      task: { ...TASK, name: '' }, slug: 'novo_24h', now: new Date('2026-09-22T10:00:00'),
-    }));
-    expect(html).toContain('aria-label="Abrir ficha de lead sem nome"');
-  });
-
   it('os links da Meta não são arrastáveis', () => {
     // A camada esticada é da âncora, então sem draggable={false} arrastar em
     // qualquer ponto do card arrastaria o endereço da ficha para outra aba ou
     // para um campo de texto.
-    expect(taskCard().match(/draggable="false"/g)).toHaveLength(2);
     expect(doneCard().match(/draggable="false"/g)).toHaveLength(1);
-  });
-
-  it('TaskCard: id que não serve para endereço vira texto sem link', () => {
-    const html = render(createElement(TaskCard, {
-      task: { ...TASK, id: 'a/b' }, slug: 'novo_24h', now: new Date('2026-09-22T10:00:00'),
-    }));
-    expect(html).not.toContain('<a ');
-    expect(html).toContain('Ana Lima');
-  });
-
-  it('TaskCard: WhatsApp, Ligar, Reagendar e Concluir continuam botões', () => {
-    const html = taskCard();
-    for (const rotulo of ['WhatsApp', 'title="Ligar"', 'title="Reagendar"', 'Concluir']) {
-      const i = html.indexOf(rotulo);
-      expect(html.lastIndexOf('<button', i)).toBeGreaterThan(html.lastIndexOf('<a ', i));
-    }
   });
 
   it('DoneCard: o nome é link esticado sobre um container posicionado', () => {
@@ -133,19 +69,11 @@ describe('Meta diária', () => {
     expect(html.slice(b, html.indexOf('>', i))).toContain('relative z-10');
   });
 
-  it('os containers não voltam a ter onClick', () => {
+  it('o container do DoneCard não volta a ter onClick', () => {
     // O renderToString não mostra handler, então a trava é olhar o elemento.
     // Com onClick no container o clique abriria a ficha duas vezes e o voltar
-    // do navegador passaria a exigir dois cliques. Nenhum dos dois usa hook,
-    // então dá para chamá-los como função.
-    const card = TaskCard({ task: TASK, slug: 'novo_24h', now: new Date('2026-09-22T10:00:00') });
-    // Pelo className, não pela posição: inserir qualquer elemento antes do
-    // cabeçalho moveria children[0] e o teste seguiria verde sem conferir nada.
-    const cabecalho = card.props.children.find(
-      (f) => typeof f?.props?.className === 'string' && f.props.className.startsWith('relative p-3.5')
-    );
-    expect(cabecalho).toBeDefined();
-    expect(cabecalho.props.onClick).toBeUndefined();
+    // do navegador passaria a exigir dois cliques. O DoneCard não usa hook,
+    // então dá para chamá-lo como função.
     const done = DoneCard({ lead: { ...TASK }, onReschedule: () => {} });
     expect(done.props.onClick).toBeUndefined();
   });
@@ -158,15 +86,6 @@ describe('Meta diária', () => {
     expect(html).toContain('href="/acad/ficha/abc123"');
     expect(html).toContain('Ana Lima');
     expect(html).toContain('draggable="false"');
-  });
-
-  it('TaskCard de visita: os quatro botões viraram o Marcar desfecho', () => {
-    const html = render(createElement(TaskCard, {
-      task: { ...TASK, categorySlugs: ['visita_hoje'] }, slug: 'visita_hoje', now: new Date('2026-09-22T10:00:00'),
-    }));
-    expect(html).toContain('Marcar desfecho');
-    expect(html).not.toContain('>Não veio<');
-    expect(html).not.toContain('>Remarcou<');
   });
 
   it('DoneCard: desfecho de hoje vira o botão de correção, por cima do link', () => {

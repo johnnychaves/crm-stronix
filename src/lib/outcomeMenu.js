@@ -1,7 +1,6 @@
 // Opções do balão "Marcar desfecho" da Meta Diária (OutcomePopover). Puro.
 //   outcome  : desfecho atual ('attended', 'no_show' ou null)
-//   withMore : sem desfecho, oferece também Remarcou e Cancelou (card A fazer
-//              e Próximo compromisso)
+//   withMore : sem desfecho, oferece também Remarcou e Cancelou
 //   canUndo  : com desfecho, oferece Desfazer marcação (só a Agenda de hoje)
 // Os ids são o que o onPick recebe: 'attended', 'no_show', 'rescheduled',
 // 'cancelled' e 'undo'.

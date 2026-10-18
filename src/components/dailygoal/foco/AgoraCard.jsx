@@ -12,16 +12,16 @@ import { Avatar } from '../../ui/Avatar.jsx';
 import { ContactPhone } from '../../profile/ContactPhone.jsx';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../ui/dropdown-menu.jsx';
 
-// O bloco Agora da Meta nova (mockup B): o único bloco escuro da tela, com a
-// tarefa que o consultor está fazendo. Mostra por que ela está aqui, quem é, a
-// última anotação, até quatro fatos e as ações da categoria. Só apresenta: quem
-// grava são os handlers da Meta, os mesmos da tela de hoje.
+// O bloco Agora da Meta (mockup B): o único bloco escuro da tela, com a tarefa
+// que o consultor está fazendo. Mostra por que ela está aqui, quem é, a última
+// anotação, até quatro fatos e as ações da categoria. Só apresenta: quem grava
+// são os handlers da DailyGoalView.
 //
 // Visita e aula: Compareceu e Não compareceu a qualquer hora, antes ou depois
 // do horário, e o "Mais" com Remarcar e Cancelou (decisão do Johnny, 16/10/2026).
 // Só a que já passou da hora mantém o WhatsApp, para falar com quem faltou. As
-// outras tarefas têm o Reagendar do card de hoje (handleRescheduleTask), que é
-// o único jeito de reagendar um Novo lead.
+// outras tarefas têm o Reagendar (handleRescheduleTask), que é o único jeito
+// de reagendar um Novo lead.
 //
 // O menu "Mais" leva a chave da tarefa: quando o Agora troca de lead com ele
 // aberto (o desfecho chegou por outra tela), o menu fecha, em vez de aplicar o

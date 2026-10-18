@@ -63,8 +63,7 @@ describe('a marca do dia da Meta leva o dono da tarefa', () => {
 
 // Dois cliques antes de o card sumir gravavam a marca duas vezes. O desfecho de
 // visita ou aula e o Concluir seguram a tarefa enquanto gravam. A gravação do
-// Concluir mora no concludeTask, que o handleGoalDone da tela de hoje e o
-// Desfazer da tela nova chamam.
+// Concluir mora no concludeTask, que o Desfazer da tela chama depois do prazo.
 describe('a marca do dia não repete no clique duplo', () => {
   it.each(['handleOutcome', 'concludeTask'])('%s segura a tarefa enquanto grava', (nome) => {
     const corpo = corpoDe(nome);
@@ -110,8 +109,8 @@ describe('o Reagendar do card só abre o pop-up', () => {
     expect(corpo).not.toMatch(/logInteraction|updateDoc|nextFollowUp|appointmentScheduledFor/);
   });
 
-  it('o card passa a categoria e a tela liga o botão a ele', () => {
-    expect(META).toContain('onPostpone(task, slug)');
+  it('o bloco Agora passa a categoria e a tela liga o botão a ele', () => {
+    expect(ler('../../components/dailygoal/foco/AgoraCard.jsx')).toContain('onPostpone(lead, slug)');
     expect(META).toContain('onPostpone={handleRescheduleTask}');
     expect(META).not.toContain('handleSnooze');
   });
@@ -125,9 +124,5 @@ describe('o Concluir do Novo lead marca o lead como tratado', () => {
   // o patch dele, com a categoria da tarefa.
   it('concludeTask grava o newLeadHandledPatch da categoria', () => {
     expect(corpoDe('concludeTask')).toContain('newLeadHandledPatch(categorySlug)');
-  });
-
-  it('o handleGoalDone da tela de hoje grava pelo concludeTask', () => {
-    expect(corpoDe('handleGoalDone')).toContain('await concludeTask(lead, categorySlug, note);');
   });
 });
