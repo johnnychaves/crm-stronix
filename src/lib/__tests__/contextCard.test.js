@@ -100,6 +100,9 @@ describe('ContextCard: leitura', () => {
     expect(nome(campo('Consultor'))).toBe('Editar Consultor Júlia Andrade');
     expect(nome(campo('Observação'))).toBe('Editar Observação Casamento em dezembro.');
     expect(campo('Dor').getAttribute('role')).toBe('combobox');
+    // O valor gravado sai em negrito, e o vazio, apagado, como nos botões.
+    const valor = document.getElementById(campo('Dor').getAttribute('aria-labelledby').split(' ')[2]);
+    expect(valor.className).toContain('font-semibold');
     expect(campo('Observação').getAttribute('aria-label')).toBeNull();
   });
 

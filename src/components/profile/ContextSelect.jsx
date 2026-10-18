@@ -25,7 +25,10 @@ export function ContextSelect({ label, labelClassName, display, valueClassName, 
       <SelectPrimitive.Trigger aria-labelledby={`${id}e ${id}l ${id}v`} onKeyDown={blockTypeahead} className={className}>
         <span id={`${id}e`} className="sr-only">Editar </span>
         <span id={`${id}l`} className={labelClassName}>{label}</span>
-        <SelectPrimitive.Value id={`${id}v`} placeholder={emptyText} className={valueClassName}>{display}</SelectPrimitive.Value>
+        {/* O Value do Radix descarta o className, então o estilo fica num span por fora. */}
+        <span id={`${id}v`} className={valueClassName}>
+          <SelectPrimitive.Value placeholder={emptyText}>{display}</SelectPrimitive.Value>
+        </span>
         {children}
       </SelectPrimitive.Trigger>
       <SelectContent className="border-border">
