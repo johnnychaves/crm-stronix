@@ -25,6 +25,8 @@ const CELLS = [
 
 // O valor gravado entra na lista mesmo fora do catálogo, senão o campo abriria em
 // branco e a primeira escolha apagaria um dado que a pessoa nem viu.
+const CELL_BOX = 'min-w-0 border-l border-t border-border px-4 py-3.5 lg:px-6';
+
 const withCurrent = (list, current, label = current) =>
   (current && !list.some((o) => o.value === current) ? [...list, { value: current, label }] : list);
 
@@ -32,19 +34,19 @@ function Shell({ cell, editable, onOpen, empty, plain, ref, children }) {
   const body = (
     <>
       <span className="text-[12.5px] font-medium text-muted-foreground">{cell.label}</span>
-      <span className={cn('mt-1 block min-w-0 text-[14px]', empty ? 'text-muted-foreground' : plain ? 'text-foreground' : 'font-semibold')}>
+      <span className={cn('mt-1 block min-w-0 break-words text-[14px]', empty ? 'text-muted-foreground' : plain ? 'text-foreground' : 'font-semibold')}>
         {children}
       </span>
       {editable && (
         <Pencil
           size={13}
           aria-hidden="true"
-          className="absolute right-4 top-3.5 text-muted-foreground opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100 pointer-coarse:opacity-100"
+          className="absolute right-3 top-3.5 text-muted-foreground lg:right-4 opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100 pointer-coarse:opacity-100"
         />
       )}
     </>
   );
-  const base = cn('relative min-w-0 bg-card px-6 py-3.5 text-left', cell.cls);
+  const base = cn(CELL_BOX, 'relative text-left', cell.cls);
   if (!editable) return <div className={base}>{body}</div>;
   return (
     <button
@@ -59,9 +61,9 @@ function Shell({ cell, editable, onOpen, empty, plain, ref, children }) {
   );
 }
 
-function EditArea({ cell, children }) {
+function EditArea({ cell, ref, onKeyDown, children }) {
   return (
-    <div className={cn('min-w-0 bg-card px-6 py-3.5', cell.cls)}>
+    <div ref={ref} onKeyDown={onKeyDown} className={cn(CELL_BOX, cell.cls)}>
       <span className="text-[12.5px] font-medium text-muted-foreground">{cell.label}</span>
       <div className="mt-1.5">{children}</div>
     </div>
@@ -73,11 +75,15 @@ export function ContextCard({ lead, sources = [], usersList = [], tagsCatalog = 
   const [editing, setEditing] = useState(null);
   const [draft, setDraft] = useState(null);
   const [saving, setSaving] = useState(false);
-  // O editor some ao fechar, e o foco cairia no body. Ele volta ao campo que
-  // estava aberto, para quem usa o teclado seguir de onde parou.
+  // O botão do campo some quando o editor abre, e o editor some ao fechar: sem
+  // isto o foco cairia no body. Ao abrir as etiquetas, ele vai para o campo de
+  // digitar (a observação usa autoFocus e a lista o Radix); ao fechar, volta ao
+  // campo que estava aberto, para quem usa o teclado seguir de onde parou.
   const cellRefs = useRef({});
+  const tagsRef = useRef(null);
   const returnFocusTo = useRef(null);
   useEffect(() => {
+    if (editing === 'tags') { tagsRef.current?.querySelector('input')?.focus(); return; }
     if (editing !== null || !returnFocusTo.current) return;
     cellRefs.current[returnFocusTo.current]?.focus();
     returnFocusTo.current = null;
@@ -134,17 +140,20 @@ export function ContextCard({ lead, sources = [], usersList = [], tagsCatalog = 
 
   return (
     <section aria-label="Contexto comercial" className="overflow-hidden rounded-2xl border border-border bg-card shadow-card">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-6 pb-3 pt-4">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 pb-3 pt-4 lg:px-6">
         <h3 className="font-display text-[16px] font-semibold tracking-tight">Contexto comercial</h3>
         {canEdit && <span className="text-[12.5px] text-muted-foreground">Clique em um campo para editar</span>}
       </div>
-      <div className="grid grid-cols-2 gap-px border-t border-border bg-border md:grid-cols-5">
+      {/* As réguas são bordas das células, e não o fundo da grade: no escuro o
+          card é translúcido, e o fundo apareceria através dele. O -ml-px esconde
+          a borda esquerda da primeira coluna sob o overflow-hidden do card. */}
+      <div className="-ml-px grid grid-cols-2 md:grid-cols-5">
         {CELLS.map((cell) => {
           const { key } = cell;
           const setRef = (el) => { cellRefs.current[key] = el; };
           if (editing === key && key === 'tags') {
             return (
-              <EditArea key={key} cell={cell}>
+              <EditArea key={key} cell={cell} ref={tagsRef} onKeyDown={(e) => { if (e.key === 'Escape') close(); }}>
                 <TagsInput tags={draft} setTags={setDraft} suggestions={(tagsCatalog || []).map((t) => t.name)} />
                 <div className="mt-2.5 flex justify-end gap-2">
                   <Btn kind="soft" size="sm" onClick={close} disabled={saving}>Cancelar</Btn>

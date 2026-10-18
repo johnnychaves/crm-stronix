@@ -155,6 +155,18 @@ describe('ContextCard', () => {
     expect(onSave).toHaveBeenCalledWith('tags', ['Quer treinar à noite', 'vip']);
   });
 
+  it('etiquetas: o foco vai para o campo de digitar, e Esc cancela e devolve o foco', async () => {
+    const onSave = await montar();
+    await clicar(porLabel('Editar etiquetas'));
+    const campo = document.body.querySelector('input');
+    expect(document.activeElement).toBe(campo);
+    await digitar(campo, 'vip');
+    await tecla(campo, 'Escape');
+    expect(document.body.querySelector('input')).toBeNull();
+    expect(onSave).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(porLabel('Editar etiquetas'));
+  });
+
   it('dor: abre a lista com as opções do catálogo e a opção de limpar', async () => {
     await montar();
     await clicar(porLabel('Editar dor'));
