@@ -7,7 +7,7 @@ function TagChip({ children, onRemove }) {
     <span className="inline-flex items-center gap-1 text-[11.5px] font-semibold px-2 py-1 rounded-md bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-200 whitespace-nowrap">
       {children}
       {onRemove && (
-        <button type="button" onClick={onRemove} className="text-slate-400 hover:text-slate-700 dark:hover:text-white -mr-0.5">
+        <button type="button" onClick={onRemove} aria-label={`Remover ${children}`} className="text-slate-400 hover:text-slate-700 dark:hover:text-white -mr-0.5">
           <X size={11} />
         </button>
       )}
@@ -34,6 +34,7 @@ export function TagsInput({ tags, setTags, suggestions = [] }) {
             if (e.key === 'Enter') { e.preventDefault(); add(); }
             if (e.key === 'Backspace' && !val && tags.length) setTags(tags.slice(0, -1));
           }}
+          aria-label="Nova etiqueta"
           placeholder={tags.length ? '' : 'Digite e pressione Enter…'}
           className="flex-1 min-w-[120px] bg-transparent outline-none text-[13px] h-7 placeholder:text-slate-400"
         />

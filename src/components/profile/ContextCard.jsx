@@ -9,88 +9,86 @@ import { TagsInput } from '../ui/TagsInput.jsx';
 import { ContextSelect } from './ContextSelect.jsx';
 
 // O Contexto comercial da ficha: o que o consultor precisa ter em mente antes de
-// falar com a pessoa. Cada campo é um botão que troca pelo editor no lugar. Quem
-// grava é a ficha (onSave), um campo por vez, e devolve false quando não deu
-// certo: o editor fica aberto, com o que foi digitado. Sem permissão de editar
-// (canEdit falso), os campos são só leitura.
+// falar com a pessoa. Quem grava é a ficha (onSave), um campo por vez, e devolve
+// false quando não deu certo. Sem permissão de editar (canEdit falso), os campos
+// são só leitura.
+//
+// Os cinco campos de escolha são listas do Radix, e a própria célula é o
+// gatilho (ContextSelect). Etiquetas e observação abrem um editor no lugar. O
+// editor aberto mora em `edit` ({ key, id, draft, opened }), que a ficha guarda
+// (edit e setEdit) para o rascunho sobreviver à troca de aba; sem as duas props,
+// o card guarda sozinho. `opened` é o valor da abertura: salvar sem mudar nada
+// não grava, e as etiquetas gravam só a diferença.
 const CELLS = [
   { key: 'dor', label: 'Dor', cls: '', emptyLabel: 'Sem dor' },
   { key: 'modalidade', label: 'Modalidade', cls: '', emptyLabel: 'Sem modalidade' },
   { key: 'source', label: 'Origem', cls: '' },
   { key: 'consultantId', label: 'Consultor', cls: '' },
   { key: 'professorId', label: 'Professor', cls: 'col-span-2 md:col-span-1', emptyLabel: 'Sem professor' },
-  { key: 'tags', label: 'Etiquetas', cls: 'col-span-2' },
-  { key: 'observation', label: 'Observação', cls: 'col-span-2 md:col-span-3' },
+  { key: 'tags', label: 'Etiquetas', cls: 'col-span-2', text: true },
+  { key: 'observation', label: 'Observação', cls: 'col-span-2 md:col-span-3', text: true },
 ];
+
+const CELL_BOX = 'min-w-0 border-l border-t border-border px-4 py-3.5 lg:px-6';
+// Rótulo em cima e valor embaixo, presos no topo: o botão centraliza o conteúdo
+// na vertical, e uma célula mais alta desalinhava os rótulos da linha. A palavra
+// longa quebra com hífen (o index.html declara pt-BR).
+const CELL_BODY = 'relative flex flex-col justify-start text-left hyphens-auto';
+const EDITABLE = 'group transition hover:bg-slate-50 dark:hover:bg-white/[0.03] focus-visible:outline-none focus-visible:anel-foco focus-visible:ring-inset';
+const LABEL = 'text-[12.5px] font-medium text-muted-foreground';
+const valueClass = (empty, plain) =>
+  cn('mt-1 block min-w-0 break-words text-[14px]', empty ? 'text-muted-foreground' : plain ? 'text-foreground' : 'font-semibold');
+
+const pencil = (
+  <Pencil
+    size={13}
+    aria-hidden="true"
+    className="absolute right-3 top-3.5 text-muted-foreground opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100 pointer-coarse:opacity-100 lg:right-4"
+  />
+);
 
 // O valor gravado entra na lista mesmo fora do catálogo, senão o campo abriria em
 // branco e a primeira escolha apagaria um dado que a pessoa nem viu.
-const CELL_BOX = 'min-w-0 border-l border-t border-border px-4 py-3.5 lg:px-6';
-
 const withCurrent = (list, current, label = current) =>
   (current && !list.some((o) => o.value === current) ? [...list, { value: current, label }] : list);
 
-function Shell({ cell, editable, onOpen, empty, plain, ref, children }) {
-  const body = (
-    <>
-      <span className="text-[12.5px] font-medium text-muted-foreground">{cell.label}</span>
-      <span className={cn('mt-1 block min-w-0 break-words text-[14px]', empty ? 'text-muted-foreground' : plain ? 'text-foreground' : 'font-semibold')}>
-        {children}
-      </span>
-      {editable && (
-        <Pencil
-          size={13}
-          aria-hidden="true"
-          className="absolute right-3 top-3.5 text-muted-foreground lg:right-4 opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100 pointer-coarse:opacity-100"
-        />
-      )}
-    </>
-  );
-  const base = cn(CELL_BOX, 'relative text-left', cell.cls);
-  if (!editable) return <div className={base}>{body}</div>;
-  return (
-    <button
-      ref={ref}
-      type="button"
-      aria-label={`Editar ${cell.label.toLowerCase()}`}
-      onClick={onOpen}
-      className={cn(base, 'group transition hover:bg-slate-50 dark:hover:bg-white/[0.03] focus-visible:outline-none focus-visible:anel-foco focus-visible:ring-inset')}
-    >
-      {body}
-    </button>
-  );
-}
+// Cada abertura de editor ganha um número. A resposta de uma gravação lenta só
+// fecha o editor que a pediu, nunca um aberto depois, nem o mesmo campo reaberto.
+let openSeq = 0;
 
-function EditArea({ cell, ref, onKeyDown, children }) {
-  return (
-    <div ref={ref} onKeyDown={onKeyDown} className={cn(CELL_BOX, cell.cls)}>
-      <span className="text-[12.5px] font-medium text-muted-foreground">{cell.label}</span>
-      <div className="mt-1.5">{children}</div>
-    </div>
-  );
-}
-
-export function ContextCard({ lead, sources = [], usersList = [], tagsCatalog = [], canEdit = false, onSave }) {
+export function ContextCard({ lead, sources = [], usersList = [], tagsCatalog = [], canEdit = false, onSave, edit: editProp, setEdit: setEditProp }) {
   const { dores, modalities, professores } = useGeneralConfig();
-  const [editing, setEditing] = useState(null);
-  const [draft, setDraft] = useState(null);
+  const [ownEdit, setOwnEdit] = useState(null);
+  const edit = setEditProp ? editProp : ownEdit;
+  const setEdit = setEditProp || setOwnEdit;
   const [saving, setSaving] = useState(false);
+
+  // O editor aberto, para quem roda depois de um await ler o de agora.
+  const latest = useRef(edit);
+  useEffect(() => { latest.current = edit; });
+
   // O botão do campo some quando o editor abre, e o editor some ao fechar: sem
-  // isto o foco cairia no body. Ao abrir as etiquetas, ele vai para o campo de
-  // digitar (a observação usa autoFocus e a lista o Radix); ao fechar, volta ao
-  // campo que estava aberto, para quem usa o teclado seguir de onde parou.
+  // isto o foco cairia no body. Ao abrir, o foco vai para o campo de digitar,
+  // com o cursor no fim do texto; ao fechar, volta ao campo. Só ao abrir pelo
+  // clique: o editor que reaparece na volta de outra aba não rouba o foco.
+  const areaRef = useRef(null);
   const cellRefs = useRef({});
-  const tagsRef = useRef(null);
+  const focusOnOpen = useRef(null);
   const returnFocusTo = useRef(null);
-  // O campo aberto agora, para a resposta de uma gravação que demorou não
-  // fechar o editor de outro campo que a pessoa abriu nesse meio tempo.
-  const editingRef = useRef(null);
+  const editKey = edit?.key ?? null;
   useEffect(() => {
-    if (editing === 'tags') { tagsRef.current?.querySelector('input')?.focus(); return; }
-    if (editing !== null || !returnFocusTo.current) return;
-    cellRefs.current[returnFocusTo.current]?.focus();
-    returnFocusTo.current = null;
-  }, [editing]);
+    if (editKey && focusOnOpen.current === editKey) {
+      focusOnOpen.current = null;
+      const field = areaRef.current?.querySelector('textarea, input');
+      field?.focus();
+      if (field?.tagName === 'TEXTAREA') field.setSelectionRange(field.value.length, field.value.length);
+      return;
+    }
+    if (!editKey && returnFocusTo.current) {
+      cellRefs.current[returnFocusTo.current]?.focus();
+      returnFocusTo.current = null;
+    }
+  }, [editKey]);
 
   // Quem pode receber o lead: gente ativa, com login, que vende. É a mesma lista
   // do Consultor responsável do cadastro completo.
@@ -118,30 +116,105 @@ export function ContextCard({ lead, sources = [], usersList = [], tagsCatalog = 
   // seria um convite a uma ação que ele não tem.
   const emptyText = canEdit ? 'Adicionar' : 'Não informado';
 
+  // A etiqueta digitada e ainda sem Enter entra no Salvar e conta como mudança.
+  const pendingTag = () => (areaRef.current?.querySelector('input')?.value || '').trim();
+  const withPending = (key, value) => {
+    const p = key === 'tags' ? pendingTag() : '';
+    return p && !value.includes(p) ? [...value, p] : value;
+  };
+  const sameAsOpened = (e, value) => (e.key === 'observation'
+    ? String(value).trim() === String(e.opened).trim()
+    : JSON.stringify(value) === JSON.stringify(e.opened));
+  const focusField = () => areaRef.current?.querySelector('textarea, input')?.focus();
+
+  const setDraft = (draft) => setEdit((cur) => (cur ? { ...cur, draft } : cur));
   const open = (key) => {
     if (!canEdit) return;
-    setDraft(key === 'tags' ? [...(lead.tags || [])] : key === 'observation' ? (lead.observation || '') : null);
-    editingRef.current = key;
-    setEditing(key);
+    const cur = latest.current;
+    // Trocar de campo com o rascunho mudado pergunta antes de descartar.
+    if (cur && cur.key !== key && !sameAsOpened(cur, withPending(cur.key, cur.draft))) {
+      const label = CELLS.find((c) => c.key === cur.key)?.label.toLowerCase();
+      if (!window.confirm(`Descartar a alteração em ${label}?`)) { focusField(); return; }
+    }
+    const opened = key === 'tags' ? [...(lead.tags || [])] : (lead.observation || '');
+    focusOnOpen.current = key;
+    setEdit({ key, id: ++openSeq, draft: opened, opened });
   };
   const close = () => {
-    returnFocusTo.current = editingRef.current;
-    editingRef.current = null;
-    setEditing(null);
-    setDraft(null);
+    returnFocusTo.current = latest.current?.key ?? null;
+    setEdit(null);
   };
-  // Texto e etiquetas iguais aos gravados só fecham: nada mudou, nada a gravar.
-  // Na lista, o Radix já não avisa quando a escolha é a mesma.
-  const unchanged = (key, value) =>
-    (key === 'observation' && String(value).trim() === (lead.observation || '').trim())
-    || (key === 'tags' && JSON.stringify(value) === JSON.stringify(lead.tags || []));
-  const save = async (key, value) => {
-    if (unchanged(key, value)) { close(); return; }
+  const save = async (key) => {
+    const cur = latest.current;
+    if (!cur || cur.key !== key || saving) return;
+    const value = withPending(key, cur.draft);
+    if (sameAsOpened(cur, value)) { close(); return; }
     setSaving(true);
-    const ok = await onSave(key, value);
+    const ok = await onSave(key, value, cur.opened);
     setSaving(false);
-    // A lista fecha sozinha ao escolher, então o editor dela já pode ter fechado.
-    if (ok !== false && editingRef.current === key) close();
+    if (latest.current?.id !== cur.id) return;
+    // Na falha, o editor fica aberto com o que foi digitado, e o foco volta a
+    // ele: o Salvar desligado durante a gravação o tinha soltado.
+    if (ok === false) { focusField(); return; }
+    close();
+  };
+
+  const editor = (cell) => {
+    const { key } = cell;
+    const footer = (hint) => (
+      <div className="mt-2.5 flex flex-wrap items-center justify-end gap-2">
+        <span className="mr-auto text-[12px] text-muted-foreground">{hint}</span>
+        <Btn kind="soft" size="sm" onClick={close} disabled={saving}>Cancelar</Btn>
+        <Btn kind="brand" size="sm" onClick={() => save(key)} disabled={saving}>Salvar</Btn>
+      </div>
+    );
+    return (
+      <div
+        key={key}
+        ref={areaRef}
+        onKeyDown={key === 'tags' ? (e) => { if (e.key === 'Escape') close(); } : undefined}
+        className={cn(CELL_BOX, cell.cls)}
+      >
+        <span className={LABEL}>{cell.label}</span>
+        <div className="mt-1.5">
+          {key === 'tags' ? (
+            <>
+              <TagsInput tags={edit.draft} setTags={setDraft} suggestions={(tagsCatalog || []).map((t) => t.name)} />
+              {footer('Enter acrescenta a etiqueta')}
+            </>
+          ) : (
+            <>
+              <textarea
+                value={edit.draft}
+                rows={3}
+                aria-label="Observação"
+                placeholder="Contexto, preferências, histórico relevante."
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') close();
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save(key); }
+                }}
+                className="w-full resize-none rounded-lg border border-border bg-card p-3 text-[13.5px] outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus-visible:anel-foco"
+              />
+              {footer('Ctrl e Enter salvam')}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const readValue = (key) => {
+    if (key === 'tags') {
+      const list = lead.tags || [];
+      return list.length === 0 ? null : (
+        <span className="flex flex-wrap gap-1.5">
+          {list.map((t) => <TagBadge key={t} tagName={t} tagsArray={tagsCatalog} />)}
+        </span>
+      );
+    }
+    if (key === 'observation') return lead.observation ? <span className="whitespace-pre-wrap text-pretty">{lead.observation}</span> : null;
+    return shown[key] || null;
   };
 
   return (
@@ -156,79 +229,49 @@ export function ContextCard({ lead, sources = [], usersList = [], tagsCatalog = 
       <div className="-ml-px grid grid-cols-2 md:grid-cols-5">
         {CELLS.map((cell) => {
           const { key } = cell;
-          const setRef = (el) => { cellRefs.current[key] = el; };
-          if (editing === key && key === 'tags') {
+          const value = readValue(key);
+          const plain = Boolean(cell.text);
+          if (!canEdit) {
             return (
-              <EditArea key={key} cell={cell} ref={tagsRef} onKeyDown={(e) => { if (e.key === 'Escape') close(); }}>
-                <TagsInput tags={draft} setTags={setDraft} suggestions={(tagsCatalog || []).map((t) => t.name)} />
-                <div className="mt-2.5 flex justify-end gap-2">
-                  <Btn kind="soft" size="sm" onClick={close} disabled={saving}>Cancelar</Btn>
-                  <Btn kind="brand" size="sm" onClick={() => save(key, draft)} disabled={saving}>Salvar</Btn>
-                </div>
-              </EditArea>
+              <div key={key} className={cn(CELL_BOX, CELL_BODY, cell.cls)}>
+                <span className={LABEL}>{cell.label}</span>
+                <span className={valueClass(!value, plain)}>{value || emptyText}</span>
+              </div>
             );
           }
-          if (editing === key && key === 'observation') {
+          if (cell.text && edit?.key === key) return editor(cell);
+          if (cell.text) {
             return (
-              <EditArea key={key} cell={cell}>
-                <textarea
-                  autoFocus
-                  value={draft}
-                  rows={3}
-                  aria-label="Observação"
-                  placeholder="Contexto, preferências, histórico relevante."
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Escape') close();
-                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save(key, draft); }
-                  }}
-                  className="w-full resize-none rounded-lg border border-border bg-card p-3 text-[13.5px] outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus-visible:anel-foco"
-                />
-                <div className="mt-2.5 flex items-center justify-end gap-2">
-                  <span className="mr-auto text-[12px] text-muted-foreground">Ctrl e Enter salvam</span>
-                  <Btn kind="soft" size="sm" onClick={close} disabled={saving}>Cancelar</Btn>
-                  <Btn kind="brand" size="sm" onClick={() => save(key, draft)} disabled={saving}>Salvar</Btn>
-                </div>
-              </EditArea>
-            );
-          }
-          if (editing === key) {
-            return (
-              <EditArea key={key} cell={cell}>
-                <ContextSelect
-                  label={cell.label}
-                  value={current[key]}
-                  options={options[key]}
-                  emptyLabel={cell.emptyLabel || null}
-                  onPick={(value) => save(key, value)}
-                  onCancel={close}
-                />
-              </EditArea>
-            );
-          }
-          if (key === 'tags') {
-            const list = lead.tags || [];
-            return (
-              <Shell key={key} ref={setRef} cell={cell} editable={canEdit} onOpen={() => open(key)} empty={list.length === 0} plain>
-                {list.length === 0 ? emptyText : (
-                  <span className="flex flex-wrap gap-1.5">
-                    {list.map((t) => <TagBadge key={t} tagName={t} tagsArray={tagsCatalog} />)}
-                  </span>
-                )}
-              </Shell>
-            );
-          }
-          if (key === 'observation') {
-            return (
-              <Shell key={key} ref={setRef} cell={cell} editable={canEdit} onOpen={() => open(key)} empty={!lead.observation} plain>
-                {lead.observation ? <span className="whitespace-pre-wrap text-pretty">{lead.observation}</span> : emptyText}
-              </Shell>
+              <button
+                key={key}
+                ref={(el) => { cellRefs.current[key] = el; }}
+                type="button"
+                onClick={() => open(key)}
+                className={cn(CELL_BOX, CELL_BODY, EDITABLE, cell.cls)}
+              >
+                <span className="sr-only">Editar </span>
+                <span className={LABEL}>{cell.label}</span>{' '}
+                <span className={valueClass(!value, plain)}>{value || emptyText}</span>
+                {pencil}
+              </button>
             );
           }
           return (
-            <Shell key={key} ref={setRef} cell={cell} editable={canEdit} onOpen={() => open(key)} empty={!shown[key]}>
-              {shown[key] || emptyText}
-            </Shell>
+            <ContextSelect
+              key={key}
+              label={cell.label}
+              labelClassName={LABEL}
+              display={value}
+              valueClassName={valueClass(!value, false)}
+              emptyText={emptyText}
+              value={current[key]}
+              options={options[key]}
+              emptyLabel={cell.emptyLabel || null}
+              onPick={(picked) => onSave(key, picked)}
+              className={cn(CELL_BOX, CELL_BODY, EDITABLE, cell.cls)}
+            >
+              {pencil}
+            </ContextSelect>
           );
         })}
       </div>

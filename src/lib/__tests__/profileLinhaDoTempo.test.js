@@ -59,8 +59,9 @@ describe('Linha do tempo sem a aba CRM', () => {
   it('gestor e consultor veem os campos como botões de editar', () => {
     for (const appUser of [GESTOR, CONSULTOR]) {
       const html = ficha({ appUser });
-      expect(html).toContain('aria-label="Editar dor"');
-      expect(html).toContain('aria-label="Editar observação"');
+      // Cinco listas (a célula é o gatilho) e dois botões, cada um com o "Editar" para o leitor de tela.
+      expect(html.match(/role="combobox"/g)).toHaveLength(5);
+      expect(html.match(/class="sr-only">Editar </g)).toHaveLength(7);
       expect(html).toContain('Clique em um campo para editar');
     }
   });
@@ -69,14 +70,16 @@ describe('Linha do tempo sem a aba CRM', () => {
     const html = ficha({ appUser: PROFESSOR });
     expect(html).toContain('Contexto comercial');
     expect(html).toContain('Emagrecimento');
-    expect(html).not.toContain('aria-label="Editar dor"');
+    expect(html).not.toContain('class="sr-only">Editar ');
+    expect(html).not.toContain('role="combobox"');
     expect(html).not.toContain('Clique em um campo para editar');
   });
 
   it('quem está sem login vinculado também só lê o contexto', () => {
     const html = ficha({ appUser: SEM_LOGIN });
     expect(html).toContain('Emagrecimento');
-    expect(html).not.toContain('aria-label="Editar dor"');
+    expect(html).not.toContain('class="sr-only">Editar ');
+    expect(html).not.toContain('role="combobox"');
   });
 
   it('A seguir aparece com visita marcada e some quando não há nada marcado', () => {
