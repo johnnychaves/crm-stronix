@@ -164,7 +164,7 @@ export const WIKI_ARTICLES = [
         'Mudar fase: move a pessoa no funil sem sair da ficha.',
         'Agendar: marca visita ou aula experimental.',
       ] },
-      { t: 'tip', text: 'Qualquer consultor pode registrar na linha do tempo de qualquer pessoa, mesmo não sendo o responsável, e também pode passar o lead ou o aluno para outro colega pelo campo Consultor, no Contexto comercial da Linha do tempo. A troca fica registrada na linha do tempo e quem recebeu é avisado no sino. Editar os dados, marcar venda ou perda continuam com o dono e com o administrador.' },
+      { t: 'tip', text: 'Qualquer consultor pode registrar na linha do tempo de qualquer pessoa, mesmo não sendo o responsável, e também pode passar o lead ou o aluno para outro colega pelo campo Consultor, no Contexto comercial da Linha do tempo. A troca fica registrada na linha do tempo e quem recebeu é avisado no sino. Gestor e consultor também editam os dados e marcam venda ou perda. Excluir a ficha é só do gestor, e o professor só registra e agenda.' },
     ],
   },
 

@@ -47,7 +47,7 @@ export function UpNextList({ items }) {
                     </span>
                   )}
                 </div>
-                <div className="truncate text-[12.5px] text-muted-foreground" title={item.detail || undefined}>
+                <div className="line-clamp-2 text-[12.5px] text-muted-foreground" title={item.detail || undefined}>
                   {[weekday(item.when), item.detail].filter(Boolean).join(' · ')}
                 </div>
               </div>
