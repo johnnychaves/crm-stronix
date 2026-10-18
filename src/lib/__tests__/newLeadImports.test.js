@@ -69,3 +69,16 @@ describe('o montador do lead novo cabe na api/', () => {
     expect(arquivos).not.toContain('src/lib/interactions.js');
   });
 });
+
+// O cartão e a faixa do Stronizap leem renewalGoal.js, que importa
+// outcomeCorrection.js para o Reagendar da Renovação (desde 18/10/2026).
+describe('o cartão do Stronizap cabe na api/', () => {
+  for (const entrada of ['api/_zapCard.js', 'api/_zapStrip.js']) {
+    it(`${entrada} chega a renewalGoal.js e outcomeCorrection.js sem pacote nenhum`, () => {
+      const { arquivos, pacotes } = grafoDe(doRepo(entrada));
+      expect(arquivos).toEqual(expect.arrayContaining(['src/lib/renewalGoal.js', 'src/lib/outcomeCorrection.js']));
+      expect(pacotes).toEqual([]);
+      expect(arquivos.filter((f) => PROIBIDOS.includes(f) || f.endsWith('.jsx'))).toEqual([]);
+    });
+  }
+});

@@ -996,6 +996,23 @@ describe('o contato feito fica com quem tinha a tarefa na marcação', () => {
       expect(byId(slotsDe(ANA, [reagendado]), reagendado.id)?.categorySlugs).toContain(CONTATO);
     });
 
+    // A reprodução da revisão (18/10/2026): o assistente sugere o mesmo horário
+    // para a visita e para a mensagem, e o horário igual não faz da mensagem
+    // com dono um eco. A Meta mostra o contato ao Bruno, e o Reagendar dele o
+    // mantém com ele.
+    it('mensagem passada ao Bruno no mesmo minuto da visita: o Reagendar dele a mantém com ele', () => {
+      const T = new Date(2026, 6, 15, 11, 0);
+      let l = lead({ consultantId: ANA });
+      l = { ...l, ...buildSchedulePatch({ typeLabel: 'Visita', date: new Date(T), unidade: 'Centro' }) };
+      l = { ...l, ...buildSchedulePatch({ typeLabel: 'Mensagem', date: new Date(T), contactOwnerId: BRUNO, contactOwnerName: 'Bruno' }) };
+      expect(byId(slotsDe(BRUNO, [l]), l.id)?.categorySlugs).toEqual([CONTATO]);
+      const amanha = new Date(2026, 6, 16, 9, 0);
+      const reagendado = { ...l, ...contactReschedule(l, amanha) };
+      expect(reagendado.nextFollowUpOwnerId).toBe(BRUNO);
+      expect(tomorrowAppointmentsOf([reagendado], BRUNO)).toEqual([{ lead: reagendado, when: amanha }]);
+      expect(tomorrowAppointmentsOf([reagendado], ANA)).toEqual([]);
+    });
+
     // O "Próximo contato?" que a Meta abre depois do Compareceu e do Cancelou
     // (commitNextContact, no DailyGoalView) grava só a data e o tipo. O dono do
     // contato antigo sai antes, junto com o eco, no desfecho (consumedFields).

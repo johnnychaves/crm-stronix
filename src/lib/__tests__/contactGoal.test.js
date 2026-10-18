@@ -125,10 +125,27 @@ describe('contactReschedule', () => {
       expect(contactOwnerId({ ...lead, ...patch })).toBe('u-ana');
     });
 
-    it('eco reconhecido pelo horário igual ao do agendamento: o contato novo fica com o dono do lead', () => {
-      const lead = ecoComDonoAntigo({ nextFollowUpType: 'Mensagem', nextFollowUp: new Date(visita) });
-      const patch = contactReschedule(lead, '2026-07-15');
-      expect(contactOwnerId({ ...lead, ...patch })).toBe('u-ana');
+    it('eco antigo sem tipo, reconhecido pelo horário igual ao do agendamento: o contato novo fica com o dono do lead', () => {
+      for (const nextFollowUpType of [null, undefined, '']) {
+        const lead = ecoComDonoAntigo({ nextFollowUpType, nextFollowUp: new Date(visita) });
+        const patch = contactReschedule(lead, '2026-07-15');
+        expect(patch).toHaveProperty('nextFollowUpOwnerId', null);
+        expect(contactOwnerId({ ...lead, ...patch })).toBe('u-ana');
+      }
+    });
+
+    // O assistente sugere 09:00 para todo dia que não é hoje, então a visita e a
+    // mensagem passada ao colega caem no mesmo minuto no uso normal. Com o tipo
+    // Mensagem, é contato de verdade: a Meta e a prévia mostram ao Bruno, e o
+    // Reagendar dele não pode entregá-lo à Ana.
+    it('mensagem com dono marcada no mesmo minuto da visita continua com quem recebeu', () => {
+      for (const nextFollowUpType of ['Mensagem', 'Ligação']) {
+        const lead = ecoComDonoAntigo({ nextFollowUpType, nextFollowUp: new Date(visita) });
+        const patch = contactReschedule(lead, '2026-07-15');
+        expect(patch).not.toHaveProperty('nextFollowUpOwnerId');
+        expect(patch).not.toHaveProperty('nextFollowUpOwnerName');
+        expect(contactOwnerId({ ...lead, ...patch })).toBe('u-bruno');
+      }
     });
   });
 });

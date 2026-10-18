@@ -12,6 +12,7 @@ import {
   renewalUndoDecline,
   renewalReschedule
 } from '../renewalGoal.js';
+import { contactOwnerId } from '../leads.js';
 
 const NOW = new Date(2026, 6, 15, 10, 0, 0); // quarta-feira, 15/07/2026 10:00
 
@@ -284,5 +285,32 @@ describe('renewalReschedule', () => {
   it('permite sobrescrever o tipo de follow-up (ex.: Ligação)', () => {
     const patch = renewalReschedule(cliente(), endsInDays(3), 30, 'Ligação');
     expect(patch.nextFollowUpType).toBe('Ligação');
+  });
+
+  // O contato de renovação toma o lugar do próximo contato. Quando ele era o eco
+  // de uma aula, o dono do contato delegado que ficou por baixo (cliente de
+  // antes de 18/10/2026) não vale mais, e o contato novo fica com o dono do
+  // cliente. Um contato de renovação delegado de verdade continua com quem o
+  // recebeu.
+  describe('dono do contato', () => {
+    const aula = new Date(2026, 6, 14, 18, 0);
+    const comBruno = { consultantId: 'u-ana', nextFollowUpOwnerId: 'u-bruno', nextFollowUpOwnerName: 'Bruno' };
+
+    it('cliente antigo com o eco de uma aula e o dono do Bruno: o contato de renovação fica com a Ana', () => {
+      const l = cliente({
+        ...comBruno, appointmentType: 'aula_experimental', appointmentScheduledFor: aula, nextFollowUp: aula, nextFollowUpType: 'Aula Experimental',
+      });
+      const patch = renewalReschedule(l, endsInDays(3), 90);
+      expect(patch).toHaveProperty('nextFollowUpOwnerId', null);
+      expect(patch).toHaveProperty('nextFollowUpOwnerName', null);
+      expect(contactOwnerId({ ...l, ...patch })).toBe('u-ana');
+    });
+
+    it('o contato de renovação delegado de verdade continua com o Bruno', () => {
+      const l = cliente({ ...comBruno, nextFollowUp: endsInDays(1), nextFollowUpType: 'Mensagem' });
+      const patch = renewalReschedule(l, endsInDays(3), 90);
+      expect(patch).not.toHaveProperty('nextFollowUpOwnerId');
+      expect(contactOwnerId({ ...l, ...patch })).toBe('u-bruno');
+    });
   });
 });

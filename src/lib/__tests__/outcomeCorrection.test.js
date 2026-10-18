@@ -231,6 +231,19 @@ describe('consumedFields: o desfecho tira o eco do agendamento', () => {
       }
     });
 
+    // Limite que já existia antes de 18/10/2026: o isAppointmentEcho trata como
+    // eco a mensagem marcada no mesmo minuto da visita, e o desfecho a apaga.
+    // O dono dela fica, porque com o tipo Mensagem ela não é eco para a Meta.
+    it('mensagem com dono no mesmo minuto da visita: o desfecho a apaga, mas não tira o dono', () => {
+      const lead = { ...comEco, nextFollowUp: new Date(agendado), nextFollowUpType: 'Mensagem', ...daAnaComBruno };
+      for (const outcome of ['attended', 'cancelled']) {
+        const patch = consumedFields(outcome, lead, at);
+        expect(patch.nextFollowUp).toBeNull();
+        expect(patch).not.toHaveProperty('nextFollowUpOwnerId');
+        expect(patch).not.toHaveProperty('nextFollowUpOwnerName');
+      }
+    });
+
     it('o contato delegado de verdade, marcado à parte, continua com o Bruno', () => {
       const lead = { ...comContato, ...daAnaComBruno };
       for (const outcome of ['attended', 'cancelled']) {
