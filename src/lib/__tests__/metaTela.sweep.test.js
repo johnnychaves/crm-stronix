@@ -48,8 +48,11 @@ describe('a tela da Meta na DailyGoalView', () => {
 });
 
 describe('o número de urgentes no título da aba', () => {
-  it('o App monta o contador só para quem vende, com a Meta do selo do menu', () => {
-    expect(APP).toContain('<MetaUrgentCount slots={dailyGoalProgress.slots} onChange={setMetaUrgent} />');
+  it('o App monta o contador só para quem vende, com a base e as regras da Meta', () => {
+    const tag = APP.slice(APP.indexOf('<MetaUrgentCount'), APP.indexOf('/>', APP.indexOf('<MetaUrgentCount')));
+    for (const prop of ['leads={metaLeads}', 'interactions={interactions}', 'userId={appUser.id}', 'renewalCheckpoints={renewalCheckpoints}', 'renewalGraceDays={renewalGraceDays}', 'onChange={setMetaUrgent}']) {
+      expect(tag, prop).toContain(prop);
+    }
     const i = APP.indexOf('<MetaUrgentCount');
     expect(APP.lastIndexOf('{isSeller(appUser) && (', i)).toBeGreaterThan(APP.lastIndexOf('</SilentErrorBoundary>', i));
   });

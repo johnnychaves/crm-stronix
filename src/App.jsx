@@ -130,9 +130,6 @@ import { AppErrorBoundary, ModalErrorBoundary, ScreenErrorBoundary, SilentErrorB
 import { RouteRedirect } from './components/RouteRedirect.jsx';
 import { setSentryUser, clearSentryUser } from './lib/sentry.js';
 
-// A Meta de quem não vende: lista fixa, para o número do título não recalcular.
-const NO_SLOTS = [];
-
 // ==========================================
 // COMPONENTE PRINCIPAL (APP)
 // ==========================================
@@ -1466,11 +1463,11 @@ useEffect(() => {
   const dailyGoalProgress = useMemo(() => {
     // Só quem vende tem a Meta do consultor. O professor fica sem pendência no
     // menu e sem dia batido gravado: a Meta dele, a dos faltosos, vem no PR 3.
-    if (!appUser?.id || !isSeller(appUser)) return { total: 0, pending: 0, slots: NO_SLOTS };
+    if (!appUser?.id || !isSeller(appUser)) return { total: 0, pending: 0 };
     void dayKey; // recalcula na virada do dia
     const slots = computeDailyGoalSlots(metaLeads, buildInteractionsByLead(interactions), appUser.id, renewalCheckpoints, renewalGraceDays);
     const { totalSlots, doneSlots } = slotTotals(slots);
-    return { total: totalSlots, pending: totalSlots - doneSlots, slots };
+    return { total: totalSlots, pending: totalSlots - doneSlots };
   }, [metaLeads, interactions, appUser, dayKey, renewalCheckpoints, renewalGraceDays]);
   const dailyGoalPending = dailyGoalProgress.pending;
   const dailyGoalTotal = dailyGoalProgress.total;
@@ -1953,7 +1950,14 @@ useEffect(() => {
       {/* O número de urgentes da Meta no título da aba. Não desenha nada. */}
       {isSeller(appUser) && (
         <SilentErrorBoundary>
-          <MetaUrgentCount slots={dailyGoalProgress.slots} onChange={setMetaUrgent} />
+          <MetaUrgentCount
+            leads={metaLeads}
+            interactions={interactions}
+            userId={appUser.id}
+            renewalCheckpoints={renewalCheckpoints}
+            renewalGraceDays={renewalGraceDays}
+            onChange={setMetaUrgent}
+          />
         </SilentErrorBoundary>
       )}
       <ModalErrorBoundary open={tutorialsOpen} onClose={closeHelpCenter}>

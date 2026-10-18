@@ -113,8 +113,5 @@ export function computeDayAgenda({
 
   rows.sort((a, b) => a.scheduledAt - b.scheduledAt);
 
-  const pending = rows.filter((r) => !r.outcome).length;
-  const nextIndex = rows.findIndex((r) => r.scheduledAt >= now);
-
-  return { rows, pending, nextIndex };
+  return { rows };
 }

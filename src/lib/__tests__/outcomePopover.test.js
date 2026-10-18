@@ -36,12 +36,6 @@ describe('OutcomePopover', () => {
     expect(opcoes()).toEqual(['Compareceu', 'Não compareceu']);
   });
 
-  it('com withMore traz Remarcou e Cancelou', async () => {
-    await montar({ withMore: true, onPick: () => {} });
-    await clicar(gatilho());
-    expect(opcoes()).toEqual(['Compareceu', 'Não compareceu', 'Remarcou', 'Cancelou']);
-  });
-
   it('marcado mostra o desfecho e oferece a troca e o desfazer', async () => {
     await montar({ outcome: 'attended', canUndo: true, onPick: () => {} });
     expect(gatilho().textContent).toContain('Compareceu');

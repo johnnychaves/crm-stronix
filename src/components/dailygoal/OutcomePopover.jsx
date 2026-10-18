@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowLeftRight, Ban, CalendarClock, Check, ChevronDown, Undo2, X } from 'lucide-react';
+import { ArrowLeftRight, Check, ChevronDown, Undo2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover.jsx';
 import { outcomeMenuItems, outcomeTriggerLabel } from '../../lib/outcomeMenu.js';
@@ -7,7 +7,7 @@ import { outcomeMenuItems, outcomeTriggerLabel } from '../../lib/outcomeMenu.js'
 // Botão "Marcar desfecho" da Meta Diária, com o balão de Compareceu e Não
 // compareceu. Depois de marcado, o botão mostra o desfecho e o mesmo balão
 // corrige. Só apresenta: quem grava é a tela, pelo onPick(id), com os ids de
-// outcomeMenuItems ('attended', 'no_show', 'rescheduled', 'cancelled', 'undo').
+// outcomeMenuItems ('attended', 'no_show' e 'undo').
 // Substituiu o switch de presença, cujo gesto de segurar para desmarcar
 // ninguém descobria. O mesmo componente serve a Agenda de hoje e o "Feitos
 // hoje".
@@ -39,12 +39,11 @@ const ITEM_TONE = {
   neutral: 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/[0.06]',
 };
 
-const ITEM_ICON = { attended: Check, no_show: X, rescheduled: CalendarClock, cancelled: Ban, undo: Undo2 };
+const ITEM_ICON = { attended: Check, no_show: X, undo: Undo2 };
 
 export function OutcomePopover({
   outcome = null,
   title = null,
-  withMore = false,
   canUndo = false,
   saving = false,
   size = 'md',
@@ -55,7 +54,7 @@ export function OutcomePopover({
 }) {
   const [open, setOpen] = useState(false);
   const marked = outcome === 'attended' || outcome === 'no_show' ? outcome : null;
-  const items = outcomeMenuItems({ outcome: marked, withMore, canUndo });
+  const items = outcomeMenuItems({ outcome: marked, canUndo });
   const label = outcomeTriggerLabel(marked);
   const shownLabel = tag ? (marked ? TAG_LABEL[marked] : upcoming ? 'Marcar' : 'Sem desfecho') : label;
   const tagTone = TAG_TONE[marked || (upcoming ? 'upcoming' : 'none')];

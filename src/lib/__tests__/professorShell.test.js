@@ -131,7 +131,7 @@ describe('casca do App para o professor', () => {
   });
 
   it('só quem vende tem a Meta do consultor no selo do menu e nas consultas de renovação e de contato de hoje', () => {
-    expect(app).toMatch(/const dailyGoalProgress = useMemo\(\(\) => \{\s*if \(!appUser\?\.id \|\| !isSeller\(appUser\)\) return \{ total: 0, pending: 0, slots: NO_SLOTS \};/);
+    expect(app).toMatch(/const dailyGoalProgress = useMemo\(\(\) => \{\s*if \(!appUser\?\.id \|\| !isSeller\(appUser\)\) return \{ total: 0, pending: 0 \};/);
     expect(app).toMatch(/useRenewalClients\(\{[^}]*enabled: isSeller\(appUser\) \}\)/);
     expect(app).toMatch(/useClientsWithContactToday\(\{[^}]*enabled: isSeller\(appUser\) \}\)/);
   });
