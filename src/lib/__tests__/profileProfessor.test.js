@@ -77,16 +77,16 @@ const ficha = ({ lead, tab, appUser, contratos = [] }) => renderToString(
 beforeAll(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date(2026, 8, 30, 10, 0)); });
 afterAll(() => { vi.useRealTimers(); });
 
-describe('ficha do professor: aba CRM', () => {
+describe('ficha do professor: compositor da Linha do tempo', () => {
   it('tem Anotação, WhatsApp, Ligação e Agendar, sem Mudar fase', () => {
-    const prof = ficha({ lead: cliente(start), tab: 'crm', appUser: PROFESSOR, contratos: [start] });
+    const prof = ficha({ lead: cliente(start), tab: 'timeline', appUser: PROFESSOR, contratos: [start] });
     ['>Anotação<', '>WhatsApp<', '>Ligação<', '>Agendar<'].forEach((aba) => expect(prof).toContain(aba));
     expect(prof).not.toContain('Mudar fase');
   });
 
   it('gestor e consultor continuam com o Mudar fase', () => {
-    expect(ficha({ lead: cliente(start), tab: 'crm', appUser: GESTOR, contratos: [start] })).toContain('>Mudar fase<');
-    expect(ficha({ lead: LEAD, tab: 'crm', appUser: CONSULTOR })).toContain('>Mudar fase<');
+    expect(ficha({ lead: cliente(start), tab: 'timeline', appUser: GESTOR, contratos: [start] })).toContain('>Mudar fase<');
+    expect(ficha({ lead: LEAD, tab: 'timeline', appUser: CONSULTOR })).toContain('>Mudar fase<');
   });
 });
 

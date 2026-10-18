@@ -84,7 +84,7 @@ export function FichaPanel({ view, onBack, onHome, onRetry }) {
 
 export function LeadProfileRoute({
   leadId, tab, onTab, tenantId, sessionKey, dataReady, listenersActive,
-  db, appUser, statuses, tags, lossReasons, usersList, funnels,
+  db, appUser, statuses, tags, lossReasons, usersList, funnels, sources,
 }) {
   const navigate = useNavigate();
   const [deleting, setDeleting] = useState(false);
@@ -137,6 +137,7 @@ export function LeadProfileRoute({
       usersList={usersList}
       db={db}
       funnels={funnels}
+      sources={sources}
     />
   );
 }

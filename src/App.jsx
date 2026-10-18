@@ -1841,6 +1841,7 @@ useEffect(() => {
                 lossReasons={lossReasons}
                 usersList={usersList}
                 funnels={funnels}
+                sources={sources}
               />
             </div>
           ) : loadingData ? (
