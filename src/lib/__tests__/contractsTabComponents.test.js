@@ -7,6 +7,7 @@ import { renderToString } from 'react-dom/server';
 import { ContractTimeline, HATCH_VIOLET } from '../../components/profile/contracts/ContractTimeline.jsx';
 import { contractFactsOf, contractTimelineOf } from '../contractsTab.js';
 import { ContractHistoryTable } from '../../components/profile/contracts/ContractHistoryTable.jsx';
+import { ContractHeroCard } from '../../components/profile/contracts/ContractHeroCard.jsx';
 
 const D = (y, m, d) => new Date(y, m - 1, d);
 const HOJE = new Date(2026, 8, 30, 10, 0);
@@ -137,5 +138,35 @@ describe('ContractHistoryTable', () => {
     expect(comContrato).toContain('Este é o primeiro contrato de Ana.');
     const semContrato = renderToString(createElement(ContractHistoryTable, { rows: [], firstName: 'Ana', hasContract: false }));
     expect(semContrato).toContain('O histórico de planos aparecerá aqui.');
+  });
+});
+
+// Nome de plano sem espaço ("Musculação+Funcional") não tem onde quebrar e
+// passava por cima do "Fechado por". O nome quebra em qualquer ponto
+// (overflow-wrap: anywhere), no título do card e na origem.
+describe('ContractHeroCard', () => {
+  const LONGO = 'Pilates+Funcional+Musculação';
+  const ORIGEM = 'Musculação+Funcional';
+  const anterior = { ...start24, planName: ORIGEM };
+  const atual = { ...emUso, planName: LONGO };
+  const todos = [anterior, atual];
+  const html = renderToString(createElement(ContractHeroCard, {
+    lead: { consultantName: 'Ana' }, hero: atual, status: 'ativo', hasNext: false,
+    countdown: { label: 'Restam', days: 11, note: 'vence 11/10/2026' },
+    facts: contractFactsOf(atual, todos, HOJE, 30), missed: null,
+    actions: { primary: 'renovar', actions: ['corrigir', 'trancar', 'cancelar'] },
+    isReadOnly: false, loading: false, onRenew: () => {}, onEditContract: () => {}, onContractAction: () => {}, onActivate: () => {}
+  }));
+  const classeDe = (texto) => {
+    const m = html.match(new RegExp(`class="([^"]*)"[^>]*>${texto.replace(/[+]/g, '\\+')}<`));
+    return m ? m[1] : null;
+  };
+
+  it('o nome do plano no título quebra em qualquer ponto', () => {
+    expect(classeDe(LONGO)).toContain('[overflow-wrap:anywhere]');
+  });
+
+  it('o nome do plano de origem quebra em qualquer ponto', () => {
+    expect(classeDe(ORIGEM)).toContain('[overflow-wrap:anywhere]');
   });
 });

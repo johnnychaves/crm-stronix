@@ -31,7 +31,7 @@ function OriginCell({ origin }) {
     return (
       <>
         <FieldLabel>Renovado de</FieldLabel>
-        <div className="mt-1 text-[15.5px] font-semibold leading-tight" title={prev?.planName || undefined}>{prev?.planName || '—'}</div>
+        <div className="mt-1 text-[15.5px] font-semibold leading-tight [overflow-wrap:anywhere]" title={prev?.planName || undefined}>{prev?.planName || '—'}</div>
         <div className="num mt-[3px] text-[12.5px] text-muted-foreground">
           {prev ? `#${shortContractId(prev.id)} · ` : ''}<span className="whitespace-nowrap">{`${origin.ordinal}ª renovação`}</span>
         </div>
@@ -50,7 +50,7 @@ function OriginCell({ origin }) {
     return (
       <>
         <FieldLabel>{kind === CONTRACT_ORIGIN.UPGRADE ? 'Upgrade' : 'Retorno'}</FieldLabel>
-        <div className="mt-1 text-[15.5px] font-semibold leading-tight" title={detail ? `${main} · ${detail}` : main}>{main}</div>
+        <div className="mt-1 text-[15.5px] font-semibold leading-tight [overflow-wrap:anywhere]" title={detail ? `${main} · ${detail}` : main}>{main}</div>
         {endText && <div className="num mt-[3px] text-[12.5px] text-muted-foreground">{endText}</div>}
         {gap && <div className="text-[12.5px] text-muted-foreground">{gap}</div>}
       </>
@@ -117,7 +117,7 @@ export function ContractHeroCard({
         {/* O plano como título e, embaixo, três dados */}
         <div className="min-w-0 px-7 py-[22px]">
           <div className="flex flex-wrap items-center gap-2.5">
-            <span className="font-display text-[20px] font-bold tracking-tight">{facts.planName || 'Plano'}</span>
+            <span className="min-w-0 font-display text-[20px] font-bold tracking-tight [overflow-wrap:anywhere]">{facts.planName || 'Plano'}</span>
             <span className={cn('inline-flex h-6 items-center rounded-full px-2.5 text-[12px] font-semibold whitespace-nowrap', chipTone.block, chipTone.fg)}>
               {hasNext ? 'Em uso' : CONTRACT_STATUS_LABEL[status]}
             </span>
