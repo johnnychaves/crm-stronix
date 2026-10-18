@@ -217,14 +217,32 @@ describe('ContextCard: observação', () => {
   });
 
   it('se a gravação falha, o editor continua aberto com o texto, e o foco volta a ele', async () => {
-    const onSave = vi.fn(async () => false);
+    let responder;
+    const onSave = vi.fn(() => new Promise((r) => { responder = r; }));
     await montar({ onSave });
     await clicar(campo('Observação'));
     await digitar(caixa(), 'Texto que não gravou');
     await clicar(botao('Salvar'));
+    // No navegador, o Salvar desligado durante a gravação solta o foco no body.
+    await act(async () => { document.activeElement.blur(); });
+    expect(document.activeElement).toBe(document.body);
+    await act(async () => { responder(false); });
     expect(onSave).toHaveBeenCalledTimes(1);
     expect(caixa().value).toBe('Texto que não gravou');
     expect(document.activeElement).toBe(caixa());
+  });
+
+  it('durante a gravação o texto fica só para leitura, para nada digitado depois do Salvar se perder', async () => {
+    let responder;
+    const onSave = vi.fn(() => new Promise((r) => { responder = r; }));
+    await montar({ onSave });
+    await clicar(campo('Observação'));
+    await digitar(caixa(), 'Casamento em dezembro. X');
+    await tecla(caixa(), 'Enter', { ctrlKey: true });
+    expect(caixa().readOnly).toBe(true);
+    await act(async () => { responder(true); });
+    expect(caixa()).toBeNull();
+    expect(onSave).toHaveBeenCalledWith('observation', 'Casamento em dezembro. X', 'Casamento em dezembro.');
   });
 });
 
@@ -260,6 +278,21 @@ describe('ContextCard: etiquetas', () => {
     await rerender({ onSave, lead: { ...LEAD, tags: ['Quer treinar à noite', 'vip'] } });
     await clicar(botao('Salvar'));
     expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it('durante a gravação o campo de etiqueta fica só para leitura e não acrescenta nada', async () => {
+    let responder;
+    const onSave = vi.fn(() => new Promise((r) => { responder = r; }));
+    await montar({ onSave });
+    await clicar(campo('Etiquetas'));
+    await digitar(campoEtiqueta(), 'vip');
+    await clicar(botao('Salvar'));
+    expect(campoEtiqueta().readOnly).toBe(true);
+    await digitar(campoEtiqueta(), 'outra');
+    await tecla(campoEtiqueta(), 'Enter');
+    expect(document.body.textContent).not.toContain('outra');
+    await act(async () => { responder(true); });
+    expect(onSave).toHaveBeenCalledWith('tags', ['Quer treinar à noite', 'vip'], ['Quer treinar à noite']);
   });
 
   it('Esc cancela e devolve o foco', async () => {
@@ -343,5 +376,24 @@ describe('ContextCard: rascunho e gravação lenta', () => {
     expect(caixa().value).toBe('Rascunho guardado');
     // Na volta, o editor não rouba o foco.
     expect(document.activeElement).not.toBe(caixa());
+  });
+
+  it('a etiqueta digitada sem Enter também sobrevive à troca de aba, e entra no Salvar', async () => {
+    const onSave = vi.fn(async () => true);
+    function Casca() {
+      const [aberto, setAberto] = useState(true);
+      const [edit, setEdit] = useState(null);
+      return h('div', null,
+        h('button', { type: 'button', onClick: () => setAberto((v) => !v) }, 'Trocar de aba'),
+        aberto ? card({ onSave, edit, setEdit }) : h('p', null, 'Contratos'));
+    }
+    await montarElemento(h(Casca));
+    await clicar(campo('Etiquetas'));
+    await digitar(campoEtiqueta(), 'vip');
+    await clicar(botao('Trocar de aba'));
+    await clicar(botao('Trocar de aba'));
+    expect(campoEtiqueta().value).toBe('vip');
+    await clicar(botao('Salvar'));
+    expect(onSave).toHaveBeenCalledWith('tags', ['Quer treinar à noite', 'vip'], ['Quer treinar à noite']);
   });
 });

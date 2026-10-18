@@ -15,10 +15,12 @@ import { ContextSelect } from './ContextSelect.jsx';
 //
 // Os cinco campos de escolha são listas do Radix, e a própria célula é o
 // gatilho (ContextSelect). Etiquetas e observação abrem um editor no lugar. O
-// editor aberto mora em `edit` ({ key, id, draft, opened }), que a ficha guarda
-// (edit e setEdit) para o rascunho sobreviver à troca de aba; sem as duas props,
-// o card guarda sozinho. `opened` é o valor da abertura: salvar sem mudar nada
-// não grava, e as etiquetas gravam só a diferença.
+// editor aberto mora em `edit` ({ key, id, draft, opened, pending, saving }), que
+// a ficha guarda (edit e setEdit) para o rascunho sobreviver à troca de aba; sem
+// as duas props, o card guarda sozinho. `opened` é o valor da abertura: salvar
+// sem mudar nada não grava, e as etiquetas gravam só a diferença. `pending` é a
+// etiqueta digitada e ainda sem Enter. Com `saving`, o texto fica só para
+// leitura: o que fosse digitado depois do Salvar sumiria quando o editor fecha.
 const CELLS = [
   { key: 'dor', label: 'Dor', cls: '', emptyLabel: 'Sem dor' },
   { key: 'modalidade', label: 'Modalidade', cls: '', emptyLabel: 'Sem modalidade' },
@@ -61,7 +63,6 @@ export function ContextCard({ lead, sources = [], usersList = [], tagsCatalog = 
   const [ownEdit, setOwnEdit] = useState(null);
   const edit = setEditProp ? editProp : ownEdit;
   const setEdit = setEditProp || setOwnEdit;
-  const [saving, setSaving] = useState(false);
 
   // O editor aberto, para quem roda depois de um await ler o de agora.
   const latest = useRef(edit);
@@ -117,9 +118,8 @@ export function ContextCard({ lead, sources = [], usersList = [], tagsCatalog = 
   const emptyText = canEdit ? 'Adicionar' : 'Não informado';
 
   // A etiqueta digitada e ainda sem Enter entra no Salvar e conta como mudança.
-  const pendingTag = () => (areaRef.current?.querySelector('input')?.value || '').trim();
-  const withPending = (key, value) => {
-    const p = key === 'tags' ? pendingTag() : '';
+  const withPending = (e, value) => {
+    const p = e.key === 'tags' ? String(e.pending || '').trim() : '';
     return p && !value.includes(p) ? [...value, p] : value;
   };
   const sameAsOpened = (e, value) => (e.key === 'observation'
@@ -128,11 +128,12 @@ export function ContextCard({ lead, sources = [], usersList = [], tagsCatalog = 
   const focusField = () => areaRef.current?.querySelector('textarea, input')?.focus();
 
   const setDraft = (draft) => setEdit((cur) => (cur ? { ...cur, draft } : cur));
+  const setPending = (pending) => setEdit((cur) => (cur ? { ...cur, pending } : cur));
   const open = (key) => {
     if (!canEdit) return;
     const cur = latest.current;
     // Trocar de campo com o rascunho mudado pergunta antes de descartar.
-    if (cur && cur.key !== key && !sameAsOpened(cur, withPending(cur.key, cur.draft))) {
+    if (cur && cur.key !== key && !sameAsOpened(cur, withPending(cur, cur.draft))) {
       const label = CELLS.find((c) => c.key === cur.key)?.label.toLowerCase();
       if (!window.confirm(`Descartar a alteração em ${label}?`)) { focusField(); return; }
     }
@@ -146,16 +147,16 @@ export function ContextCard({ lead, sources = [], usersList = [], tagsCatalog = 
   };
   const save = async (key) => {
     const cur = latest.current;
-    if (!cur || cur.key !== key || saving) return;
-    const value = withPending(key, cur.draft);
+    if (!cur || cur.key !== key || cur.saving) return;
+    const value = withPending(cur, cur.draft);
     if (sameAsOpened(cur, value)) { close(); return; }
-    setSaving(true);
+    const mark = (saving) => setEdit((e) => (e?.id === cur.id ? { ...e, saving } : e));
+    mark(true);
     const ok = await onSave(key, value, cur.opened);
-    setSaving(false);
     if (latest.current?.id !== cur.id) return;
     // Na falha, o editor fica aberto com o que foi digitado, e o foco volta a
     // ele: o Salvar desligado durante a gravação o tinha soltado.
-    if (ok === false) { focusField(); return; }
+    if (ok === false) { mark(false); focusField(); return; }
     close();
   };
 
@@ -164,8 +165,8 @@ export function ContextCard({ lead, sources = [], usersList = [], tagsCatalog = 
     const footer = (hint) => (
       <div className="mt-2.5 flex flex-wrap items-center justify-end gap-2">
         <span className="mr-auto text-[12px] text-muted-foreground">{hint}</span>
-        <Btn kind="soft" size="sm" onClick={close} disabled={saving}>Cancelar</Btn>
-        <Btn kind="brand" size="sm" onClick={() => save(key)} disabled={saving}>Salvar</Btn>
+        <Btn kind="soft" size="sm" onClick={close} disabled={edit.saving}>Cancelar</Btn>
+        <Btn kind="brand" size="sm" onClick={() => save(key)} disabled={edit.saving}>Salvar</Btn>
       </div>
     );
     return (
@@ -179,13 +180,21 @@ export function ContextCard({ lead, sources = [], usersList = [], tagsCatalog = 
         <div className="mt-1.5">
           {key === 'tags' ? (
             <>
-              <TagsInput tags={edit.draft} setTags={setDraft} suggestions={(tagsCatalog || []).map((t) => t.name)} />
+              <TagsInput
+                tags={edit.draft}
+                setTags={setDraft}
+                pending={edit.pending}
+                setPending={setPending}
+                readOnly={Boolean(edit.saving)}
+                suggestions={(tagsCatalog || []).map((t) => t.name)}
+              />
               {footer('Enter acrescenta a etiqueta')}
             </>
           ) : (
             <>
               <textarea
                 value={edit.draft}
+                readOnly={Boolean(edit.saving)}
                 rows={3}
                 aria-label="Observação"
                 placeholder="Contexto, preferências, histórico relevante."
