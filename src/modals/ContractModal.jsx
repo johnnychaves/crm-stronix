@@ -776,10 +776,11 @@ function ContractModal({
                         aria-pressed={hasDiscount && r === reason}
                         onClick={() => setReason(r)}
                         className={cn(
-                          'h-[34px] rounded-full border px-3.5 text-[13px] font-medium whitespace-nowrap transition focus-visible:outline-none focus-visible:anel-foco',
+                          // O peso é o mesmo marcado e desmarcado (como na main): marcado mais largo, o chip passava a quebrar a linha entre 855 e 856 px de tela.
+                          'h-[34px] rounded-full border px-3.5 text-[13px] font-semibold whitespace-nowrap transition focus-visible:outline-none focus-visible:anel-foco',
                           'disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-45 dark:disabled:bg-white/[0.03]',
                           hasDiscount && r === reason
-                            ? 'border-brand-600 bg-brand-50 font-semibold text-brand-700 dark:border-brand-500 dark:bg-brand-500/15 dark:text-brand-300'
+                            ? 'border-brand-600 bg-brand-50 text-brand-700 dark:border-brand-500 dark:bg-brand-500/15 dark:text-brand-300'
                             : 'border-border bg-card enabled:hover:border-brand-200 dark:enabled:hover:border-brand-500/45'
                         )}
                       >{r}</button>

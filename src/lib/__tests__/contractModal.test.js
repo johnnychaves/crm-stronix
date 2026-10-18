@@ -699,6 +699,49 @@ describe('ContractModal, subtítulo do cabeçalho', () => {
   });
 });
 
+// O chip de motivo tinha font-medium e, marcado, font-semibold: marcado ficava mais largo e, entre
+// 855 e 856 px de tela, o "Outro" caía para uma 2ª linha (o diálogo ia de 836 para 878 px). Na main o
+// chip era sempre semibold. Nenhum controle do modal troca o peso da fonte ao ser marcado.
+describe('ContractModal, o peso da fonte não muda ao marcar', () => {
+  const PESO = /^font-(thin|extralight|light|normal|medium|semibold|bold|extrabold|black)$/;
+  // Os pesos usados em toda a árvore do controle (sem repetir), para comparar marcado e desmarcado.
+  const pesos = (el) => [...new Set([el, ...el.querySelectorAll('*')].flatMap((n) => (n.getAttribute('class') || '').split(/\s+/).filter((c) => PESO.test(c))))].sort().join(',');
+
+  it('o chip de motivo marcado e o desmarcado têm o mesmo peso (semibold), como na main', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    await clicar(botao('%'));
+    await digitar(document.body.querySelector('input[aria-label="Valor do desconto"]'), '10');
+    const antes = motivos().map((b) => b.className);
+    expect(antes.every((c) => c.split(/\s+/).includes('font-semibold'))).toBe(true);
+    expect(antes.some((c) => c.includes('font-medium'))).toBe(false);
+
+    await clicar(botao('Fidelidade'));
+
+    const marcado = botao('Fidelidade');
+    const outro = botao('Outro');
+    expect(marcado.getAttribute('aria-pressed')).toBe('true');
+    expect(marcado.className).toContain('border-brand-600');
+    expect(pesos(marcado)).toBe(pesos(outro));
+    expect(marcado.className.split(/\s+/).includes('font-semibold')).toBe(true);
+  });
+
+  it('o tipo de desconto, os cartões de início e as linhas de plano também mantêm o peso ao marcar', async () => {
+    await montar({ lead: leadNovo, mode: 'matricula' });
+    // Tipo de desconto: o marcado ("Sem desconto") contra o desmarcado ("%").
+    expect(pesos(botao('Sem desconto'))).toBe(pesos(botao('%')));
+    await clicar(botao('%'));
+    expect(pesos(botao('%'))).toBe(pesos(botao('R$')));
+    // Cartões de início.
+    const [hoje, outra] = radios('Início da vigência');
+    expect(hoje.getAttribute('aria-checked')).toBe('true');
+    expect(pesos(hoje)).toBe(pesos(outra));
+    // Linhas de plano.
+    const [primeira, segunda] = radios('Plano');
+    expect(primeira.getAttribute('aria-checked')).toBe('true');
+    expect(pesos(primeira)).toBe(pesos(segunda));
+  });
+});
+
 // Medido no Chromium (viewport de 1600 px de altura, entre 768 e cerca de 850 px): clicar em "%"
 // mandava o campo do valor para uma 2ª linha (+48 px), a pílula "− R$ 51,00 (10%)" quebrava a
 // linha de apoio de "Valor e desconto" (+18,7 px) e a busca de plano quebrava "5 planos no
