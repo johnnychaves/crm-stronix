@@ -176,4 +176,13 @@ describe('os chamadores do ContractModal só fecham o modal quando o onDone não
     expect(comStrings).toContain('const wasRenewal = Boolean(matriculaLead?._renewalCard);');
     expect(comStrings).toContain('const wasUpgrade = Boolean(matriculaLead?._upgradeCard);');
   });
+
+  it('no Kanban, toda recarga do quadro passa pelo ref, também nos handlers que esperam uma gravação', () => {
+    // Mover de etapa, recusar o upgrade e marcar perda recarregam depois de um `await` da gravação,
+    // que sem internet só termina quando a rede volta. Pelo closure, a recarga buscaria o mês ou o
+    // funil de antes de a pessoa trocar o quadro. Chamada solta de uma das quatro é recusada.
+    const limpo = semStrings(semComentarios(ler('../../views/KanbanView.jsx')));
+    const soltas = limpo.match(/(^|[^.\w])(refreshLost|renewalReload|upgradeReload|wonReload)\(/g) || [];
+    expect(soltas).toEqual([]);
+  });
 });

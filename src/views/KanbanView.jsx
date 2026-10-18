@@ -863,10 +863,12 @@ const [isPanning, setIsPanning] = useState(false);
     lostReload();
     setCountEpoch((e) => e + 1);
   }, [lostReload]);
-  // As recargas que o `onDone` do ContractModal chama. O `onDone` é o da renderização em que a
-  // pessoa clicou em Confirmar, e com a internet fora a gravação pode terminar depois de o mês ou
-  // o funil do quadro terem mudado: pelo closure, as recargas buscariam a consulta velha e
-  // poriam os leads dela na coluna de agora. Por este ref são sempre as da última renderização.
+  // As recargas que rodam depois de uma gravação: o `onDone` do ContractModal e os handlers que
+  // esperam o `await` (mover de etapa, recusar o upgrade, marcar perda). Esses callbacks são da
+  // renderização em que a pessoa agiu, e com a internet fora a gravação pode terminar depois de o
+  // mês ou o funil do quadro terem mudado: pelo closure, as recargas buscariam a consulta velha e
+  // poriam os leads dela na coluna de agora. Por este ref são sempre as da última renderização,
+  // e toda chamada de uma delas passa por aqui (a varredura dos chamadores do modal cobra).
   const reloadsRef = useLatestRef({ refreshLost, renewalReload, upgradeReload, wonReload });
   // Total no header da Perda: a contagem do servidor vale quando NÃO há refino
   // client-side (respFilter/onlyOverdue). Com refino, cai no tamanho da página
@@ -1027,12 +1029,14 @@ const handleKanbanMouseMove = (e) => {
       if (plan.stampConvertedAt) {
         try { await markConvertingAula({ db, leadId: lead.id }); } catch (e) { console.error('markConvertingAula falhou', e); }
       }
-      if (lead.status === 'Perda') refreshLost(); // saiu da Perda: refaz query+contagem
+      // Saiu da Perda: refaz query+contagem. Pelo ref, porque a gravação acima pode terminar depois
+      // de o quadro ter trocado de mês ou de funil (internet fora), e aí vale a consulta de agora.
+      if (lead.status === 'Perda') reloadsRef.current.refreshLost();
     } catch (err) {
       console.error("Erro Kanban:", err);
       toast.error('Não foi possível mover o lead. Tente novamente.');
     }
-  }, [db, appUser, selectedFunnelId, toast, refreshLost]);
+  }, [db, appUser, selectedFunnelId, toast, reloadsRef]);
 
   // A Venda no Kanban agora abre o ContractModal (plano/valor/vigência) em vez
   // de gravar direto — mesmo fluxo da ficha. A escrita do contrato + resumo do
@@ -1135,14 +1139,14 @@ const handleKanbanMouseMove = (e) => {
         { text: plan.interactionText, type: 'status_change' },
         { ...plan.patch, upgradeDeclinedAt: serverTimestamp() }
       );
-      upgradeReload();
+      reloadsRef.current.upgradeReload(); // pelo ref: a consulta de agora, se o quadro mudou na espera
       setUpgradeCountEpoch((e) => e + 1);
       toast.success('Recusa registrada. O cliente saiu do funil Upgrade e segue cliente.');
     } catch (err) {
       console.error('Erro ao registrar recusa de upgrade', err);
       toast.error('Não foi possível registrar a recusa.');
     }
-  }, [appUser, db, toast, upgradeReload]);
+  }, [appUser, db, toast, reloadsRef]);
 
   // "Não vai renovar": a MESMA flag que a Meta Diária usa. A pessoa NÃO vira
   // lead perdido — segue cliente, com ficha e contratos, e continua na aba
@@ -1364,7 +1368,9 @@ const handleKanbanMouseMove = (e) => {
       // conversão histórica de aula a desfazer.
 
       setLossModalLeadId(null);
-      refreshLost(); // query da coluna Perda não é ao vivo — refaz fetch+contagem
+      // A coluna Perda não é ao vivo: refaz fetch+contagem, pelo ref (a consulta de agora, se o
+      // quadro mudou de mês ou de funil enquanto a gravação esperava a internet).
+      reloadsRef.current.refreshLost();
     } catch (err) {
       console.error(err);
       toast.error('Não foi possível registrar a perda. Tente novamente.');
