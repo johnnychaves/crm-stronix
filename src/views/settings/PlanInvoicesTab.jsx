@@ -69,7 +69,8 @@ function PlanInvoicesTab() {
   return (
     <div className="space-y-6">
       <SettingsCard title="Seu plano" hint="Assinatura e renovação" icon={<CreditCard size={16} />}>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {/* @container no corpo do cartão: as colunas quebram pelo espaço da grade, e não pela largura da janela. Dentro das Configurações o trilho ocupa a lateral. */}
+        <div className="@container"><div className="grid grid-cols-1 @lg:grid-cols-3 gap-3">
           <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] p-4">
             <div className="text-[11px] uppercase tracking-wide text-slate-400">Plano atual</div>
             <div className="text-[18px] font-bold text-slate-900 dark:text-white mt-1">{data.planName}</div>
@@ -85,7 +86,7 @@ function PlanInvoicesTab() {
             <div className="text-[18px] font-bold text-slate-900 dark:text-white mt-1 num flex items-center gap-1.5"><Calendar size={15} className="text-slate-400" />{renew || '—'}</div>
             {data.lastInvoiceUrl && <a href={data.lastInvoiceUrl} target="_blank" rel="noreferrer" className="text-[12px] text-brand-600 hover:underline inline-flex items-center gap-1 mt-0.5">fatura atual <ExternalLink size={11} /></a>}
           </div>
-        </div>
+        </div></div>
       </SettingsCard>
 
       <SettingsCard title="Faturas" hint="Pagas e em aberto" icon={<ReceiptText size={16} />}>
@@ -104,12 +105,12 @@ function PlanInvoicesTab() {
             })}
           </div>
         ) : (
-          <div className="text-center text-[12.5px] text-slate-400 italic py-6">{data.hasSubscription ? 'Nenhuma fatura emitida ainda.' : 'Cobrança automática ainda não configurada — fale com o suporte para ativar.'}</div>
+          <div className="text-center text-[12.5px] text-slate-400 italic py-6">{data.hasSubscription ? 'Nenhuma fatura emitida ainda.' : 'Cobrança automática ainda não configurada. Fale com o suporte para ativar.'}</div>
         )}
       </SettingsCard>
 
-      <SettingsCard title="Mudar de plano" hint="Você mesmo troca — sem precisar de suporte" icon={<CreditCard size={16} />}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      <SettingsCard title="Mudar de plano" hint="Você mesmo troca, sem precisar do suporte" icon={<CreditCard size={16} />}>
+        <div className="@container"><div className="grid grid-cols-1 @lg:grid-cols-2 @2xl:grid-cols-3 gap-3">
           {(data.availablePlans || []).map((p) => {
             const current = p.slug === data.plan;
             return (
@@ -137,7 +138,7 @@ function PlanInvoicesTab() {
               </div>
             );
           })}
-        </div>
+        </div></div>
         <p className="mt-3 text-[11.5px] text-slate-400">A troca vale na hora; o valor da cobrança ajusta no próximo ciclo. Faturas já emitidas não mudam.</p>
       </SettingsCard>
     </div>

@@ -7,6 +7,7 @@ import {
 } from '../screenParams.js';
 import { CONTRACT_STATUS } from '../contracts.js';
 import { SOLO_TRAINING } from '../professores.js';
+import { FOCO_ORDER } from '../metaFoco.js';
 
 const users = [{ id: 'u1', name: 'Ana' }, { id: 'u2', name: 'Bruno' }];
 const funis = [{ id: 'f1', name: 'Comercial' }, { id: 'f2', name: 'Vencidos' }];
@@ -702,5 +703,39 @@ describe('Relatórios', () => {
       .toMatchObject({ de: null, ate: null, monthKey: HOJE });
     expect(ler('relatorios', '?ate=2026-09-10', rel)).toMatchObject({ de: null, ate: null, periodo: null, monthKey: HOJE });
     expect(ler('relatorios', '?mes=2026-07&periodo=banana', rel)).toMatchObject({ periodo: null, monthKey: '2026-07' });
+  });
+});
+
+// A tela nova da Meta (Foco agora) passa `foco: true` no ctx. A de hoje não passa,
+// e por isso nada muda para ela: o valor novo só vale onde a tela o conhece.
+describe('categoria da Meta na tela nova (Foco agora)', () => {
+  const foco = { foco: true };
+
+  it('aceita todos os grupos do Foco em, e cada um volta pelo mesmo código', () => {
+    for (const v of FOCO_ORDER) {
+      expect(ler('dailyGoal', `?cat=${v}`, foco).cat, v).toBe(v);
+      expect(volta('dailyGoal', `?cat=${v}`, foco), v).toBe(v === 'all' ? '' : `?cat=${v}`);
+    }
+  });
+
+  it('os links antigos de visita e de aula caem em compromissos, e o de amanhã cai em todos', () => {
+    expect(ler('dailyGoal', '?cat=visita_hoje', foco).cat).toBe('compromissos');
+    expect(ler('dailyGoal', '?cat=aula_hoje', foco).cat).toBe('compromissos');
+    expect(volta('dailyGoal', '?cat=visita_hoje', foco)).toBe('?cat=compromissos');
+    expect(ler('dailyGoal', '?cat=amanha', foco).cat).toBe('all');
+    expect(ler('dailyGoal', '?cat=banana', foco).cat).toBe('all');
+  });
+
+  it('o que a tela nova não conhece não é escrito', () => {
+    expect(montar('dailyGoal', { cat: 'tomorrow' }, foco)).toBe('');
+    expect(montar('dailyGoal', { cat: 'visita_hoje' }, foco)).toBe('');
+    expect(montar('dailyGoal', { cat: 'all' }, foco)).toBe('');
+  });
+
+  it('na tela de hoje, compromissos não vale e o resto continua como era', () => {
+    expect(ler('dailyGoal', '?cat=compromissos', {}).cat).toBe('all');
+    expect(montar('dailyGoal', { cat: 'compromissos' }, {})).toBe('');
+    expect(ler('dailyGoal', '?cat=visita_hoje', {}).cat).toBe('visita_hoje');
+    expect(ler('dailyGoal', '?cat=amanha', {}).cat).toBe('tomorrow');
   });
 });

@@ -267,6 +267,22 @@ describe('screenKey', () => {
 });
 
 describe('documentTitle', () => {
+  it('com tarefas urgentes na Meta, o título começa com a contagem entre parênteses', () => {
+    expect(documentTitle({ screen: 'dailyGoal', tenantName: 'STRONIX', urgent: 2 })).toBe('(2) Meta diária · STRONIX · STRONILEAD');
+    expect(documentTitle({ screen: 'kanban', urgent: 1 })).toBe('(1) Pipeline · STRONILEAD');
+  });
+
+  it('sem urgente, ou com valor que não é um número positivo, o título não muda', () => {
+    for (const urgent of [0, -3, NaN, undefined, null, '2', Infinity]) {
+      expect(documentTitle({ screen: 'dailyGoal', tenantName: 'STRONIX', urgent }), String(urgent)).toBe('Meta diária · STRONIX · STRONILEAD');
+    }
+  });
+
+  it('a contagem passa de 99 como 99+ e é sempre inteira', () => {
+    expect(documentTitle({ screen: 'dailyGoal', urgent: 150 })).toBe('(99+) Meta diária · STRONILEAD');
+    expect(documentTitle({ screen: 'dailyGoal', urgent: 3.7 })).toBe('(3) Meta diária · STRONILEAD');
+  });
+
   it('tela, academia e marca', () => {
     expect(documentTitle({ screen: 'dailyGoal', tenantName: 'STRONIX' })).toBe('Meta diária · STRONIX · STRONILEAD');
     expect(documentTitle({ screen: 'ficha', tenantName: 'STRONIX' })).toBe('Ficha · STRONIX · STRONILEAD');

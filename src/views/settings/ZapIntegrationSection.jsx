@@ -37,6 +37,10 @@ function ZapIntegrationSection({ db, appUser }) {
 
   const [zap, setZap] = useState(null);
   const [loaded, setLoaded] = useState(false);
+  // A leitura falhou: o estado da chave é desconhecido. Sem isso a tela diria
+  // "Desconectado" e ofereceria gerar chave sem confirmar, derrubando a chave
+  // que o Stronizap está usando.
+  const [readFailed, setReadFailed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [newKey, setNewKey] = useState('');
 
@@ -46,9 +50,10 @@ function ZapIntegrationSection({ db, appUser }) {
       doc(db, 'tenants', tenantId),
       (snap) => {
         setZap(snap.exists() ? snap.data()?.integrations?.zap || null : null);
+        setReadFailed(false);
         setLoaded(true);
       },
-      (err) => { console.error('zap integration', err); setLoaded(true); }
+      (err) => { console.error('zap integration', err); setReadFailed(true); setLoaded(true); }
     );
     return () => unsub();
   }, [db, tenantId]);
@@ -83,7 +88,7 @@ function ZapIntegrationSection({ db, appUser }) {
     try {
       const data = await callZap('generate');
       setNewKey(data.key);
-      toast.success('Chave gerada. Copie agora — ela não aparece de novo.', { duration: 8000 });
+      toast.success('Chave gerada. Copie agora, porque ela não aparece de novo.', { duration: 8000 });
     } catch (err) {
       console.error(err);
       toast.error(err.message || 'Não foi possível gerar a chave.');
@@ -116,6 +121,16 @@ function ZapIntegrationSection({ db, appUser }) {
 
   if (!loaded) {
     return <div className="text-center text-[13px] text-muted-foreground py-12">Carregando integração…</div>;
+  }
+  if (readFailed) {
+    return (
+      <div className="flex flex-col gap-5">
+        <SettingsSectionHeader title="Stronizap" hint="Não deu para ler o estado da integração." />
+        <p role="alert" className="text-[13px] text-muted-foreground">
+          Recarregue a página para ver a chave. Enquanto isso, nada foi mudado na integração.
+        </p>
+      </div>
+    );
   }
 
   return (

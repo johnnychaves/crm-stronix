@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { createPortal } from 'react-dom';
 import confetti from 'canvas-confetti';
 import { collection, onSnapshot, query, where, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH, DAILY_GOAL_HISTORY_PATH } from '../lib/firebase.js';
@@ -11,7 +10,6 @@ import { withBucket } from '../lib/leadDerived.js';
 import { stageChangeFields } from '../lib/stageMove.js';
 import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, computeVolumeInRange, countMetaDaysInMonth, volumeTargetFor, volumeBreakdownLabel, tomorrowAppointmentsOf, slotTotals, newLeadHandledPatch } from '../lib/dailyGoal.js';
 import { followUpChannelOf } from '../lib/contactGoal.js';
-import { futureInstant } from '../lib/dates.js';
 import { computeDayAgenda } from '../lib/dayAgenda.js';
 import { useDayAgenda } from '../hooks/useDayAgenda.js';
 import { useScreenParams } from '../hooks/useScreenParams.js';
@@ -31,13 +29,14 @@ import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { LeadLink } from '../components/nav/AppLink.jsx';
 import { ContactPhone } from '../components/profile/ContactPhone.jsx';
-import { SOLO_TRAINING, SOLO_TRAINING_LABEL, professorsForModality, professorNameById } from '../lib/professores.js';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { Btn, IconBtn } from '../components/ui/Btn.jsx';
 import { RenewalOutcomeModal } from '../modals/RenewalOutcomeModal.jsx';
 import { ContactOutcomeModal } from '../modals/ContactOutcomeModal.jsx';
 import { ContractModal } from '../modals/ContractModal.jsx';
-import { AlertCircle, BookOpen, Building2, Calendar, Check, CheckCircle, ChevronRight, Clock, Dumbbell, Flame, Kanban, MessageCircle, MessageSquare, MoreHorizontal, Phone, RefreshCw, Target, X, Zap } from 'lucide-react';
+import { RescheduleModal } from '../modals/RescheduleModal.jsx';
+import { NextContactModal } from '../modals/NextContactModal.jsx';
+import { AlertCircle, BookOpen, Building2, Calendar, Check, CheckCircle, ChevronRight, Clock, Dumbbell, Flame, Kanban, MessageCircle, MessageSquare, MoreHorizontal, Phone, RefreshCw, Target, Zap } from 'lucide-react';
 
 // DAILY GOAL VIEW — DESIGN PRIMITIVES
 // ==========================================
@@ -612,362 +611,6 @@ export function TomorrowApptRow({ lead, when }) {
       </div>
       <span className="num text-[12.5px] font-semibold text-slate-600 dark:text-slate-300 shrink-0">{formatHourLabel(when)}</span>
     </LeadLink>
-  );
-}
-
-// Build a `YYYY-MM-DDTHH:MM` string in LOCAL time for <input type="datetime-local">.
-function toDatetimeLocalValue(date) {
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-// Botão de tipo do RescheduleModal — fora do componente pai para não ser
-// recriado a cada render (evitava perder foco/estado dos inputs irmãos do modal).
-function RescheduleTypeBtn({ active, label, onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex-1 h-9 px-3 rounded-lg text-[12.5px] font-semibold transition border ${
-        active
-          ? 'bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900 dark:border-white'
-          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-white/[0.03] dark:text-slate-300 dark:border-white/[0.07] dark:hover:bg-white/[0.06]'
-      }`}
-    >
-      {label}
-    </button>
-  );
-}
-
-// Exportado para o teste da trava de data futura (rescheduleModal.test.js).
-export function RescheduleModal({ lead, categorySlug, currentDate, currentType, flow = 'manual', onConfirm, onClose }) {
-  const isAfterNoShow = flow === 'after_no_show';
-  const { modalities, trialClassOptions, professores } = useGeneralConfig();
-
-  const defaultValue = useMemo(() => {
-    const base = currentDate ? new Date(currentDate) : new Date();
-    base.setDate(base.getDate() + 1);
-    return toDatetimeLocalValue(base);
-  }, [currentDate]);
-
-  const initialType = currentType === 'aula_experimental' || categorySlug === DAILY_GOAL_CATEGORIES.AULA_HOJE
-    ? 'aula_experimental'
-    : 'visita';
-
-  const [dateValue, setDateValue] = useState(defaultValue);
-  const [apptType, setApptType] = useState(initialType);
-  const [note, setNote] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  // Aula experimental: modalidade + quantidade (semeadas do lead, se houver).
-  const [modality, setModality] = useState(lead?.appointmentModality || '');
-  const [qty, setQty] = useState(() => {
-    const n = Number(lead?.trialClassesPlanned);
-    return Number.isFinite(n) && n > 0 ? n : ((trialClassOptions && trialClassOptions[0]) || 1);
-  });
-  // Professor responsável (ou "Treina sozinho"), semeado do lead se houver.
-  const [professorSel, setProfessorSel] = useState(
-    lead?.appointmentSoloTraining ? SOLO_TRAINING : (lead?.appointmentProfessorId || '')
-  );
-
-  // Garante que a opção semeada do lead apareça no select mesmo que não esteja
-  // mais na lista configurada (ex.: opção removida depois do agendamento).
-  const qtyOptions = useMemo(() => {
-    const base = (trialClassOptions && trialClassOptions.length ? trialClassOptions : [1]);
-    return base.includes(qty) ? base : [...base, qty].sort((a, b) => a - b);
-  }, [trialClassOptions, qty]);
-
-  // Só data e hora futuras. Antes o campo aceitava o passado: um dia digitado
-  // errado virava Atrasado e ainda fechava a tarefa de hoje. O instante fica
-  // fixo na montagem para o render seguir puro, e o envio confere de novo no
-  // relógio (futureInstant, em lib/dates.js), como nos outros pop-ups.
-  const toast = useToast();
-  const [nowMs] = useState(() => Date.now());
-  const isFuture = Boolean(futureInstant(dateValue, nowMs));
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!dateValue || submitting) return;
-    const newDate = futureInstant(dateValue);
-    if (!newDate) {
-      toast.warning('Escolha uma data e hora futuras.');
-      return;
-    }
-    const isAula = apptType === 'aula_experimental';
-    const finalQty = Number(qty) > 0 ? Math.floor(Number(qty)) : ((trialClassOptions && trialClassOptions[0]) || 1);
-    const isSolo = professorSel === SOLO_TRAINING;
-    const professorId = isAula && !isSolo ? (professorSel || null) : null;
-    const soloTraining = isAula && isSolo;
-    const professorName = professorId ? professorNameById(professores, professorId) : null;
-    setSubmitting(true);
-    await onConfirm(newDate, note, apptType, isAula ? (modality || '').trim() : null, isAula ? finalQty : null, professorId, professorName, soloTraining);
-    setSubmitting(false);
-  };
-
-  const title = isAfterNoShow
-    ? 'Agendar próxima tentativa'
-    : `Remarcar ${apptType === 'aula_experimental' ? 'aula experimental' : 'visita'}`;
-
-  const helperText = isAfterNoShow
-    ? 'A tarefa de hoje já foi marcada como "Não veio". O lead voltará à Meta Diária na nova data.'
-    : 'A tarefa de hoje será concluída e o lead voltará para a sua Meta Diária na nova data.';
-
-  return createPortal(
-    <>
-      <div onClick={onClose} className="fixed inset-0 z-[110] bg-slate-900/40 dark:bg-black/60 backdrop-blur-md animate-fade-in" />
-      <div className="fixed inset-0 z-[111] grid place-items-center p-4 animate-fade-in pointer-events-none">
-        <form onSubmit={handleSubmit} className="bg-white dark:bg-neutral-900 rounded-2xl shadow-2xl max-w-md w-full p-6 pointer-events-auto">
-          <div className="flex items-start gap-3 mb-5">
-            <div className={`w-10 h-10 rounded-xl grid place-items-center shrink-0 text-lg ${
-              isAfterNoShow
-                ? 'bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300'
-                : 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
-            }`}>
-              {isAfterNoShow ? '↻' : '🔄'}
-            </div>
-            <div className="min-w-0 flex-1">
-              <h3 className="text-[16px] font-semibold text-slate-900 dark:text-white">{title}</h3>
-              <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">{lead.name}</p>
-              {contactOf(lead).phone && (
-                <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5 min-w-0">
-                  <ContactPhone lead={lead} showName />
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div>
-              <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                Tipo
-              </label>
-              <div className="flex gap-2">
-                <RescheduleTypeBtn active={apptType === 'visita'} onClick={() => setApptType('visita')} label="Visita" />
-                <RescheduleTypeBtn active={apptType === 'aula_experimental'} onClick={() => setApptType('aula_experimental')} label="Aula Experimental" />
-              </div>
-            </div>
-            <div>
-              <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                Nova data e horário
-              </label>
-              <input
-                type="datetime-local"
-                value={dateValue}
-                min={toDatetimeLocalValue(new Date(nowMs))}
-                onChange={(e) => setDateValue(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[14px] num focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500"
-                required
-                autoFocus
-              />
-              {dateValue && !isFuture && (
-                <p className="text-[11.5px] text-rose-600 dark:text-rose-400 mt-1.5">Escolha uma data e hora futuras.</p>
-              )}
-            </div>
-            {apptType === 'aula_experimental' && (
-              <>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                      Modalidade
-                    </label>
-                    <select
-                      value={modality}
-                      onChange={(e) => { setModality(e.target.value); setProfessorSel(''); }}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[14px] focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 appearance-none cursor-pointer"
-                    >
-                      <option value="">{(modalities || []).length ? 'Selecione...' : 'Cadastre em Config. Gerais'}</option>
-                      {(modalities || []).map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                      Aulas previstas
-                    </label>
-                    <select
-                      value={qty}
-                      onChange={(e) => setQty(Number(e.target.value))}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[14px] num focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 appearance-none cursor-pointer"
-                    >
-                      {qtyOptions.map(n => (
-                        <option key={n} value={n}>{n} {n === 1 ? 'aula' : 'aulas'}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                    Professor
-                  </label>
-                  <select
-                    value={professorSel}
-                    onChange={(e) => setProfessorSel(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[14px] focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 appearance-none cursor-pointer"
-                  >
-                    <option value="">Selecione...</option>
-                    {professorsForModality(professores, modalities, modality).map((p) => (
-                      <option key={p.id} value={p.id}>{p.nome}</option>
-                    ))}
-                    <option value={SOLO_TRAINING}>{SOLO_TRAINING_LABEL}</option>
-                  </select>
-                </div>
-              </>
-            )}
-            <div>
-              <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                Observação (opcional)
-              </label>
-              <textarea
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                rows={2}
-                placeholder={isAfterNoShow ? 'Ex: combinar pela manhã, ligar antes' : 'Ex: lead pediu para remarcar por motivo de trabalho'}
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[14px] focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 resize-none"
-              />
-            </div>
-          </div>
-
-          <p className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-4 leading-relaxed">{helperText}</p>
-
-          <div className="mt-5 flex items-center justify-end gap-2">
-            <Btn kind="secondary" onClick={onClose}>
-              {isAfterNoShow ? 'Não remarcar agora' : 'Cancelar'}
-            </Btn>
-            <button
-              type="submit"
-              disabled={submitting || !isFuture}
-              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12px] font-semibold whitespace-nowrap transition active:scale-[.98] bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Check size={14} />
-              {submitting ? 'Salvando...' : (isAfterNoShow ? 'Confirmar agendamento' : 'Confirmar remarcação')}
-            </button>
-          </div>
-        </form>
-      </div>
-    </>,
-    document.body
-  );
-}
-
-// Botão de preset do NextContactModal — fora do pai para não recriar a cada
-// render (mesmo motivo do RescheduleTypeBtn).
-function NextContactPresetBtn({ icon, label, onClick, disabled }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="h-[38px] inline-flex items-center justify-center gap-1.5 px-3 rounded-lg text-[13px] font-semibold border bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300 disabled:opacity-50 disabled:cursor-not-allowed transition dark:bg-white/[0.03] dark:text-slate-200 dark:border-white/[0.07] dark:hover:bg-white/[0.06]"
-    >
-      {icon}{label}
-    </button>
-  );
-}
-
-// Popover "Próximo contato?" — abre ao CONCLUIR uma tarefa de Contato/Atrasado
-// (e após Compareceu/Cancelou em visita/aula). Garante que o lead sempre saia
-// com uma data futura OU sem data — nunca com o nextFollowUp parado no passado,
-// que era o que o trazia de volta como "Atrasado" no dia seguinte.
-function NextContactModal({ lead, contextLabel = 'Tarefa concluída', onPick, onSkip, onClose }) {
-  const [note, setNote] = useState('');
-  const [customMode, setCustomMode] = useState(false);
-  const [customValue, setCustomValue] = useState(() => {
-    const base = new Date();
-    base.setDate(base.getDate() + 1);
-    base.setHours(9, 0, 0, 0);
-    return toDatetimeLocalValue(base);
-  });
-  const [submitting, setSubmitting] = useState(false);
-
-  const run = async (fn) => {
-    if (submitting) return;
-    setSubmitting(true);
-    try { await fn(); } finally { setSubmitting(false); }
-  };
-  const pickIn = (days) => run(async () => {
-    const d = new Date();
-    d.setDate(d.getDate() + days);
-    await onPick(d, note);
-  });
-  const pickCustom = () => run(async () => {
-    if (!customValue) return;
-    const d = new Date(customValue);
-    // Trava de data futura (mesma garantia do ContactOutcomeModal): nunca
-    // agenda o próximo contato no passado/agora, senão o lead cairia em
-    // Atrasados. Cobre o fluxo pós-desfecho (Compareceu/Cancelou), único que
-    // ainda usa este popup depois de Atrasados migrar pro ContactOutcomeModal.
-    if (isNaN(d.getTime()) || d.getTime() <= Date.now()) return;
-    await onPick(d, note);
-  });
-  const skip = () => run(async () => { await onSkip(note); });
-
-  return createPortal(
-    <>
-      <div onClick={onClose} className="fixed inset-0 z-[110] bg-slate-900/40 dark:bg-black/60 backdrop-blur-md animate-fade-in" />
-      <div className="fixed inset-0 z-[111] grid place-items-center p-4 animate-fade-in pointer-events-none">
-        <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-2xl max-w-md w-full p-6 pointer-events-auto">
-          <div className="flex items-start gap-3 mb-5">
-            <div className="w-10 h-10 rounded-xl grid place-items-center shrink-0 bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
-              <Calendar size={18} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h3 className="text-[16px] font-semibold text-slate-900 dark:text-white">Próximo contato?</h3>
-              <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">{contextLabel} · {lead.name}</p>
-            </div>
-          </div>
-
-          <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-            Quando voltar a falar
-          </label>
-          {!customMode ? (
-            <div className="grid grid-cols-2 gap-2">
-              <NextContactPresetBtn disabled={submitting} onClick={() => pickIn(1)} icon={<Calendar size={15} />} label="Amanhã" />
-              <NextContactPresetBtn disabled={submitting} onClick={() => pickIn(3)} icon={<Calendar size={15} />} label="Em 3 dias" />
-              <NextContactPresetBtn disabled={submitting} onClick={() => pickIn(7)} icon={<Calendar size={15} />} label="Em 7 dias" />
-              <NextContactPresetBtn disabled={submitting} onClick={() => setCustomMode(true)} icon={<Calendar size={15} />} label="Escolher data…" />
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <input
-                type="datetime-local"
-                value={customValue}
-                min={toDatetimeLocalValue(new Date())}
-                onChange={(e) => setCustomValue(e.target.value)}
-                autoFocus
-                className="flex-1 px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[14px] num focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500"
-              />
-              <Btn kind="primary" size="md" icon={<Check size={14} />} onClick={pickCustom} disabled={submitting || !customValue}>OK</Btn>
-            </div>
-          )}
-
-          <button
-            type="button"
-            onClick={skip}
-            disabled={submitting}
-            className="w-full mt-2 h-[38px] inline-flex items-center justify-center gap-1.5 rounded-lg text-[13px] font-medium text-slate-500 border border-dashed border-slate-300 hover:bg-slate-50 hover:text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition dark:border-white/10 dark:text-slate-400 dark:hover:bg-white/[0.04]"
-          >
-            <X size={14} /> Sem próximo contato
-          </button>
-
-          <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mt-4 mb-1.5">
-            Observação (opcional)
-          </label>
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            rows={2}
-            placeholder="Ex: respondeu no WhatsApp, retornar a proposta"
-            className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[14px] focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 resize-none"
-          />
-
-          <div className="mt-5 flex items-center justify-between gap-2">
-            <span className="text-[11.5px] text-slate-400 dark:text-slate-500 inline-flex items-center gap-1">
-              <RefreshCw size={12} /> Agendar conta como reaquecimento
-            </span>
-            <Btn kind="secondary" onClick={onClose} disabled={submitting}>Cancelar</Btn>
-          </div>
-        </div>
-      </div>
-    </>,
-    document.body
   );
 }
 
@@ -1939,7 +1582,6 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
 
       {renewalTarget && (
         <RenewalOutcomeModal
-          open
           lead={renewalTarget.lead}
           appUser={appUser}
           db={db}
@@ -1966,7 +1608,6 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
 
       {contactTarget && (
         <ContactOutcomeModal
-          open
           lead={contactTarget.lead}
           categorySlug={contactTarget.categorySlug}
           initialOutcome={contactTarget.initialOutcome}

@@ -11,13 +11,14 @@
 // endereço com replace, como toda sub-tela trocada estando na tela.
 //
 // Abrir e fechar o grupo é estado da lista, não filtro: não vai ao endereço.
-import { useId, useState } from 'react';
-import { ChevronDown, GraduationCap, Users } from 'lucide-react';
+import { useState } from 'react';
+import { GraduationCap, Users } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select.jsx';
 import { AppLink } from '../../components/nav/AppLink.jsx';
+import { RailGroup } from '../../components/nav/RailGroup.jsx';
+import { railItemClassName } from '../../components/nav/railItem.js';
 import { RELATORIOS_RAIL_GROUPS } from '../../lib/relatoriosRail.js';
-import { FOCUS_RING } from '../../components/focusRing.js';
 import { RELATORIOS_ICONS, RELATORIOS_TONES } from './relatoriosIcons.js';
 
 function RailItem({ item, active, href, onSection }) {
@@ -28,15 +29,7 @@ function RailItem({ item, active, href, onSection }) {
       aria-current={active ? 'page' : undefined}
       // O clique simples troca de submenu pela tela (replace); o resto fica com o navegador.
       onNavigate={(e) => { e.preventDefault(); onSection(item.id); }}
-      className={cn(
-        'relative flex w-full items-center gap-2.5 rounded-xl border py-[7px] pl-[7px] pr-2.5 text-left',
-        'transition-[border-color,background-color,box-shadow] duration-150 motion-reduce:transition-none',
-        FOCUS_RING,
-        active
-          // O before é o traço azul em cima da linha que liga os itens ao grupo: 13px é o pl-3 da lista mais a borda do item.
-          ? 'border-border bg-card shadow-[0_1px_0_rgba(15,23,42,.04),0_10px_24px_-12px_rgba(15,23,42,.22)] before:absolute before:inset-y-[9px] before:-left-[13px] before:w-0.5 before:rounded-full before:bg-brand-600 dark:shadow-[0_14px_30px_-14px_rgba(0,0,0,.7)]'
-          : 'border-transparent hover:bg-muted'
-      )}
+      className={cn(railItemClassName(active), 'gap-2.5 pr-2.5')}
     >
       <span aria-hidden="true" className={cn('grid size-[30px] shrink-0 place-items-center rounded-[9px]', RELATORIOS_TONES[item.id])}>
         <Icon size={17} strokeWidth={2} />
@@ -48,69 +41,34 @@ function RailItem({ item, active, href, onSection }) {
   );
 }
 
-// O grupo recolhível, aberto ao entrar. Fechado, o conteúdo encolhe para 0fr e
-// some (opacity), e recebe inert, para sair da ordem do Tab e da leitura. As
-// durações caem para zero com prefers-reduced-motion. Aberto, o resumo diz o
-// período da barra (periodLabel, já em minúsculas); Leads parados não tem
-// período, e a tela passa null.
-export function RailGroup({ group, section, hrefOf, onSection, periodLabel = null }) {
+// O grupo recolhível, aberto ao entrar (o desenho mora em
+// src/components/nav/RailGroup.jsx, dividido com as Configurações). Aberto, o
+// resumo diz o período da barra (periodLabel, já em minúsculas); Leads parados
+// não tem período, e a tela passa null. Fechado, diz o relatório aberto.
+function RelatoriosGroup({ group, section, hrefOf, onSection, periodLabel = null }) {
   const [open, setOpen] = useState(true);
-  const panelId = useId();
   const current = group.items.find((it) => it.id === section);
   const count = `${group.items.length} relatórios`;
   const summary = open || !current ? (periodLabel ? `${count}, ${periodLabel}` : count) : `Aberto: ${current.label}`;
   return (
-    <div className="flex flex-col">
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={panelId}
-        onClick={() => setOpen((v) => !v)}
-        className={cn(
-          'flex w-full items-center gap-[11px] rounded-[14px] px-[11px] py-2.5 text-left transition-colors duration-150 hover:bg-muted motion-reduce:transition-none',
-          FOCUS_RING
-        )}
-      >
-        <span aria-hidden="true" className="grid size-[34px] shrink-0 place-items-center rounded-[10px] bg-brand-600 text-white shadow-[0_6px_14px_-6px_rgba(43,89,255,.7)]">
-          <Users size={17} strokeWidth={2} />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block font-display text-sm font-bold leading-tight text-foreground">{group.label}</span>
-          <span className="mt-0.5 block text-[11.5px] text-muted-foreground">{summary}</span>
-        </span>
-        <ChevronDown
-          size={15}
-          strokeWidth={2.2}
-          aria-hidden="true"
-          className={cn('shrink-0 text-muted-foreground transition-transform duration-[280ms] motion-reduce:transition-none', !open && '-rotate-90')}
+    <RailGroup
+      label={group.label}
+      icon={Users}
+      iconClassName="bg-brand-600 text-white shadow-[0_6px_14px_-6px_rgba(43,89,255,.7)]"
+      summary={summary}
+      open={open}
+      onToggle={() => setOpen((v) => !v)}
+    >
+      {group.items.map((it) => (
+        <RailItem
+          key={it.id}
+          item={it}
+          active={it.id === section}
+          href={hrefOf(it.id)}
+          onSection={onSection}
         />
-      </button>
-      <div
-        id={panelId}
-        className={cn(
-          'grid transition-[grid-template-rows,opacity] duration-[280ms,220ms] ease-[ease] motion-reduce:transition-none',
-          open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
-        )}
-      >
-        <div className="min-h-0 overflow-hidden">
-          {/* O before é a linha que liga os itens ao grupo. O pr e o pb deixam à vista o anel do foco, que o overflow cortaria. */}
-          <div
-            inert={!open}
-            className="relative mb-0.5 ml-[27px] mt-1.5 flex flex-col gap-[3px] pb-[3px] pl-3 pr-[3px] pt-0.5 before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-border"
-          >
-            {group.items.map((it) => (
-              <RailItem
-                key={it.id}
-                item={it}
-                active={it.id === section}
-                href={hrefOf(it.id)}
-                onSection={onSection}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
+      ))}
+    </RailGroup>
   );
 }
 
@@ -135,7 +93,7 @@ export function RelatoriosRail({ section, onSection, hrefOf, periodLabel = null 
       <nav aria-label="Relatórios" className="hidden flex-col gap-1 lg:flex">
         {RELATORIOS_RAIL_GROUPS.map((g) => (g.soon
           ? <SoonGroup key={g.label} group={g} />
-          : <RailGroup key={g.label} group={g} section={section} hrefOf={hrefOf} onSection={onSection} periodLabel={periodLabel} />
+          : <RelatoriosGroup key={g.label} group={g} section={section} hrefOf={hrefOf} onSection={onSection} periodLabel={periodLabel} />
         ))}
       </nav>
       <div className="lg:hidden">

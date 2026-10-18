@@ -1,7 +1,7 @@
 // O anel do foco do teclado dos Relatórios e do seletor de período é uma
 // constante só (src/components/focusRing.js). Estes testes não fixam as classes
 // do anel: pegam o que a constante disser, então trocar o desenho do anel é
-// mudar uma linha dela. Um confere o código (nenhum dos quatro arquivos escreve
+// mudar uma linha dela. Um confere o código (nenhum dos cinco arquivos escreve
 // o anel à mão, e o seletor de período não depende de pasta de tela), e o outro
 // confere que o anel chega aos controles que o teclado alcança, sem jsdom
 // (renderToString).
@@ -21,12 +21,13 @@ const read = (rel) => readFileSync(new URL(`../../${rel}`, import.meta.url), 'ut
 const ARQUIVOS = [
   'views/relatorios/ReportParts.jsx',
   'views/relatorios/RelatoriosToolbar.jsx',
-  'views/relatorios/RelatoriosRail.jsx',
+  'components/nav/RailGroup.jsx',
+  'components/nav/railItem.js',
   'components/period/PeriodControl.jsx',
 ];
 
 describe('o anel de foco é uma constante só', () => {
-  it('nenhum dos quatro arquivos escreve o anel à mão, e todos importam a constante', () => {
+  it('nenhum dos cinco arquivos escreve o anel à mão, e todos importam a constante', () => {
     for (const arquivo of ARQUIVOS) {
       const codigo = read(arquivo);
       expect(codigo, arquivo).not.toMatch(/focus-visible:ring-/);

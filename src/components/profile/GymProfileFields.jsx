@@ -44,7 +44,7 @@ function GymProfileFields({ value, onChange, wrapInCards = true, onValidityChang
     const r = await lookupCnpj(value.cnpjCpf);
     setCnpjBusy(false);
     if (r) onChange({ legalName: r.legalName || value.legalName, tradeName: r.tradeName || value.tradeName });
-    else toast.warning('CNPJ não encontrado na Receita — confira o número.');
+    else toast.warning('CNPJ não encontrado na Receita. Confira o número.');
   };
   // CEP completo → rua/bairro/cidade/UF (ViaCEP). Não toca número/complemento.
   const onCepBlur = async () => {
@@ -53,7 +53,7 @@ function GymProfileFields({ value, onChange, wrapInCards = true, onValidityChang
     const r = await lookupCep(value.cep);
     setCepBusy(false);
     if (r) onChange({ street: r.street || value.street, neighborhood: r.neighborhood || value.neighborhood, city: r.city || value.city, state: r.state || value.state });
-    else toast.warning('CEP não encontrado — confira o número.');
+    else toast.warning('CEP não encontrado. Confira o número.');
   };
 
   const identity = (
@@ -81,28 +81,30 @@ function GymProfileFields({ value, onChange, wrapInCards = true, onValidityChang
     </div>
   );
 
+  // @container próprio: as colunas do endereço quebram pelo espaço do cartão,
+  // e não pela largura da janela nem da tela inteira.
   const address = (
-    <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
-      <div className="sm:col-span-3">
+    <div className="@container"><div className="grid grid-cols-1 @lg:grid-cols-12 gap-4">
+      <div className="@lg:col-span-3">
         <Field label="CEP" hint={cepBusy ? 'Buscando endereço…' : undefined}>
           <StyledInput value={value.cep} onChange={(e) => set('cep', e.target.value)} onBlur={onCepBlur} placeholder="00000-000" />
         </Field>
       </div>
-      <div className="sm:col-span-7"><Field label="Rua / logradouro"><StyledInput value={value.street} onChange={(e) => set('street', e.target.value)} placeholder="Av. Exemplo" /></Field></div>
-      <div className="sm:col-span-2"><Field label="Número"><StyledInput value={value.number} onChange={(e) => set('number', e.target.value)} placeholder="123" /></Field></div>
-      <div className="sm:col-span-5"><Field label="Complemento"><StyledInput value={value.complement} onChange={(e) => set('complement', e.target.value)} placeholder="Sala, andar…" /></Field></div>
-      <div className="sm:col-span-7"><Field label="Bairro"><StyledInput value={value.neighborhood} onChange={(e) => set('neighborhood', e.target.value)} placeholder="Centro" /></Field></div>
-      <div className="sm:col-span-9"><Field label="Cidade"><StyledInput value={value.city} onChange={(e) => set('city', e.target.value)} placeholder="Cidade" /></Field></div>
-      <div className="sm:col-span-3"><Field label="UF"><StyledInput value={value.state} maxLength={2} onChange={(e) => set('state', e.target.value.toUpperCase())} placeholder="UF" /></Field></div>
-    </div>
+      <div className="@lg:col-span-7"><Field label="Rua / logradouro"><StyledInput value={value.street} onChange={(e) => set('street', e.target.value)} placeholder="Av. Exemplo" /></Field></div>
+      <div className="@lg:col-span-2"><Field label="Número"><StyledInput value={value.number} onChange={(e) => set('number', e.target.value)} placeholder="123" /></Field></div>
+      <div className="@lg:col-span-5"><Field label="Complemento"><StyledInput value={value.complement} onChange={(e) => set('complement', e.target.value)} placeholder="Sala, andar…" /></Field></div>
+      <div className="@lg:col-span-7"><Field label="Bairro"><StyledInput value={value.neighborhood} onChange={(e) => set('neighborhood', e.target.value)} placeholder="Centro" /></Field></div>
+      <div className="@lg:col-span-9"><Field label="Cidade"><StyledInput value={value.city} onChange={(e) => set('city', e.target.value)} placeholder="Cidade" /></Field></div>
+      <div className="@lg:col-span-3"><Field label="UF"><StyledInput value={value.state} maxLength={2} onChange={(e) => set('state', e.target.value.toUpperCase())} placeholder="UF" /></Field></div>
+    </div></div>
   );
 
   if (wrapInCards) {
     return (
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 @2xl:grid-cols-2 gap-5">
         <SettingsCard title="Identidade & fiscal" hint="Dados oficiais da empresa" icon={<FileText size={16} />}>{identity}</SettingsCard>
         <SettingsCard title="Contato & responsável" hint="Quem responde pela academia" icon={<User size={16} />}>{contact}</SettingsCard>
-        <SettingsCard className="order-last lg:col-span-2" title="Endereço" hint="Onde a academia funciona" icon={<MapPin size={16} />}>{address}</SettingsCard>
+        <SettingsCard className="order-last @2xl:col-span-2" title="Endereço" hint="Onde a academia funciona" icon={<MapPin size={16} />}>{address}</SettingsCard>
       </div>
     );
   }

@@ -38,6 +38,18 @@ export const isItemInFunnel = (item, selectedFunnelId, defaultFunnelId) => {
   return false;
 };
 
+// Por que um nome não pode virar etapa deste funil (texto do aviso), ou null.
+// O lead guarda o NOME da etapa: dois nomes iguais no mesmo funil juntam os
+// leads das duas colunas sem volta. Venda e Perda são as colunas finais do
+// Pipeline. `editingId` é a etapa sendo renomeada, que não conta contra si.
+export const stageNameProblem = (stages, name, editingId = null) => {
+  const norm = (v) => String(v || '').trim().toLowerCase();
+  const same = (stages || []).find((s) => s.id !== editingId && norm(s.name) === norm(name));
+  if (same) return `A etapa "${same.name}" já existe neste funil.`;
+  if (['venda', 'perda'].includes(norm(name))) return `"${String(name).trim()}" é uma coluna fixa do Pipeline e não pode ser nome de etapa.`;
+  return null;
+};
+
 // Performs the given { ref, data } updates in batches of `chunkSize`.
 // Firestore caps each batch at 500 writes; 400 leaves headroom.
 export const commitOpsInChunks = async (dbInstance, ops, chunkSize = 400) => {
