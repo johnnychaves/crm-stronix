@@ -26,14 +26,17 @@ const planos = [
 ];
 
 let root = null;
-async function renderizar(arvore, agora, falsos = ['Date']) {
+// `estrito`: o StrictMode por fora de tudo, na raiz. Aninhado dentro de outro provider ele não
+// faz montar, limpar e montar de novo na primeira montagem (React 19.2), e o teste não o exercita.
+async function renderizar(arvore, agora, falsos = ['Date'], estrito = false) {
   vi.useFakeTimers({ toFake: falsos });
   vi.setSystemTime(agora);
   const container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
+  const conteudo = h(ToastContext.Provider, { value: toast }, arvore);
   await act(async () => {
-    root.render(h(ToastContext.Provider, { value: toast }, arvore));
+    root.render(estrito ? h(StrictMode, null, conteudo) : conteudo);
   });
 }
 const modal = (props) => h(ContractModal, { appUser, db: {}, onClose: () => {}, onDone: () => {}, ...props });
@@ -1104,7 +1107,8 @@ describe('ContractModal, gravação bem-sucedida', () => {
 describe('ContractModal, onDone depois de o modal ser fechado', () => {
   it('na gravação normal o onDone recebe stale falso, também no StrictMode', async () => {
     const onDone = vi.fn();
-    await renderizar(h(StrictMode, null, h(GeneralConfigContext.Provider, { value: { planos, contratos: [] } }, modal({ lead: leadNovo, mode: 'matricula', onDone }))), D(2026, 10, 16, 10, 20));
+    // O StrictMode na raiz: o React monta, limpa e monta de novo, e o ref de montado tem de voltar a verdadeiro.
+    await renderizar(h(GeneralConfigContext.Provider, { value: { planos, contratos: [] } }, modal({ lead: leadNovo, mode: 'matricula', onDone })), D(2026, 10, 16, 10, 20), ['Date'], true);
     await clicar(botao('Confirmar matrícula'));
     expect(onDone).toHaveBeenCalledTimes(1);
     expect(onDone).toHaveBeenCalledWith({ stale: false });
