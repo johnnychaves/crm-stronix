@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { upNextOf } from '../upNext.js';
+import { computeDailyGoalSlots, isMetaOverdue } from '../dailyGoal.js';
+import { DAILY_GOAL_CATEGORIES } from '../leads.js';
+import { contactDone } from '../contactGoal.js';
+import { consumedFields } from '../outcomeCorrection.js';
 
 const D = (m, d, h = 0, mi = 0) => new Date(2026, m - 1, d, h, mi);
 const AGORA = D(10, 16, 10, 20);
@@ -57,9 +61,11 @@ describe('upNextOf', () => {
     expect(upNextOf({ appointmentType: 'visita' }, AGORA)).toEqual([]);
   });
 
-  it('compromisso que já passou e ficou sem desfecho continua a seguir, marcado como atrasado', () => {
-    const lead = { appointmentType: 'visita', appointmentScheduledFor: D(10, 15, 19), appointmentUnit: 'Moinhos' };
+  it('compromisso que já passou sem desfecho continua a seguir enquanto é o eco do próximo contato, marcado como atrasado', () => {
+    const lead = { appointmentType: 'visita', appointmentScheduledFor: D(10, 15, 19), appointmentUnit: 'Moinhos', nextFollowUp: D(10, 15, 19), nextFollowUpType: 'Visita' };
     expect(upNextOf(lead, AGORA)[0].overdue).toBe(true);
+    // Sem o eco (o "Contato feito" o tirou), a Meta não cobra mais, e ele sai.
+    expect(upNextOf({ ...lead, nextFollowUp: null, nextFollowUpType: null }, AGORA)).toEqual([]);
   });
 
   it('ligação marcada é o próximo contato, com o responsável da tarefa', () => {
@@ -68,7 +74,7 @@ describe('upNextOf', () => {
       nextFollowUpOwnerName: 'Bianca Torres'
     };
     const [item] = upNextOf(lead, AGORA);
-    expect(item).toMatchObject({ id: 'contact', type: 'ligacao', kind: 'call', title: 'Ligação', canOutcome: false });
+    expect(item).toMatchObject({ id: 'contact', type: 'ligacao', kind: 'call', title: 'Ligação', canOutcome: false, overdue: false });
     expect(item.detail).toBe('Tarefa de Bianca Torres · Fechar o plano');
   });
 
@@ -135,6 +141,76 @@ describe('upNextOf', () => {
 
   it('cliente matriculado por etapa customizada conta como cliente', () => {
     const lead = { status: 'Matriculado', appointmentType: 'visita', appointmentScheduledFor: D(10, 15, 19) };
+    expect(upNextOf(lead, AGORA)).toEqual([]);
+  });
+
+  it('contato que já passou leva atrasado', () => {
+    const [item] = upNextOf({ nextFollowUp: D(10, 15, 18), nextFollowUpType: 'Ligação' }, AGORA);
+    expect(item).toMatchObject({ id: 'contact', overdue: true });
+  });
+});
+
+// O "A seguir" concorda com a Meta Diária: o que a Meta cobra aparece, e o que
+// ela deixou de cobrar sai (revisão do PR 3, 18/10/2026).
+describe('upNextOf contra a Meta', () => {
+  const base = { id: 'l1', status: 'Novo', consultantId: 'u1', createdAt: D(10, 1), lifecycleStage: 'lead' };
+  const meta = (lead) => computeDailyGoalSlots([lead], new Map(), 'u1', undefined, undefined, AGORA).flatMap((s) => s.categorySlugs);
+
+  it('visita perdida concluída pelo "Contato feito" sai da Meta e do a seguir', () => {
+    const lead = {
+      ...base, appointmentType: 'visita', appointmentScheduledFor: D(10, 10, 19),
+      nextFollowUp: D(10, 10, 19), nextFollowUpType: 'Visita', ...contactDone(D(10, 11, 9)),
+    };
+    expect(meta(lead)).toEqual([]);
+    expect(isMetaOverdue(lead, AGORA)).toBe(false);
+    expect(upNextOf(lead, AGORA)).toEqual([]);
+  });
+
+  it('visita perdida que ainda é o eco do próximo contato aparece atrasada, como na Meta', () => {
+    const lead = {
+      ...base, appointmentType: 'visita', appointmentScheduledFor: D(10, 10, 19),
+      nextFollowUp: D(10, 10, 19), nextFollowUpType: 'Visita',
+    };
+    expect(meta(lead)).toEqual([DAILY_GOAL_CATEGORIES.ATRASADO]);
+    expect(upNextOf(lead, AGORA)).toMatchObject([{ id: 'appointment', overdue: true }]);
+  });
+
+  it('visita passada depois de um contato reagendado sai; o contato fica', () => {
+    const lead = {
+      ...base, appointmentType: 'visita', appointmentScheduledFor: D(10, 10, 19),
+      nextFollowUp: D(10, 17, 9), nextFollowUpType: 'Mensagem',
+    };
+    expect(upNextOf(lead, AGORA).map((i) => i.id)).toEqual(['contact']);
+  });
+
+  it('"Não veio" sem remarcar: a Meta cobra o contato atrasado, e o a seguir também', () => {
+    const lead = {
+      ...base, appointmentType: 'visita', appointmentScheduledFor: D(10, 15, 19),
+      nextFollowUp: D(10, 15, 19), nextFollowUpType: 'Visita', appointmentOutcome: 'no_show', ...consumedFields('no_show', {}),
+    };
+    expect(meta(lead)).toEqual([DAILY_GOAL_CATEGORIES.ATRASADO]);
+    expect(isMetaOverdue(lead, AGORA)).toBe(true);
+    const itens = upNextOf(lead, AGORA);
+    expect(itens).toHaveLength(1);
+    expect(itens[0]).toMatchObject({ id: 'contact', overdue: true, canOutcome: false, detail: 'Não veio à visita' });
+    expect(itens[0].when).toEqual(D(10, 15, 19));
+  });
+
+  it('"Não veio" hoje ainda não é atraso, nem na Meta nem no a seguir', () => {
+    const lead = {
+      ...base, appointmentType: 'aula_experimental', appointmentScheduledFor: D(10, 16, 7),
+      nextFollowUp: D(10, 16, 7), nextFollowUpType: 'Aula Experimental', appointmentOutcome: 'no_show',
+    };
+    expect(isMetaOverdue(lead, AGORA)).toBe(false);
+    expect(upNextOf(lead, AGORA)).toEqual([]);
+  });
+
+  it('cliente com o eco de uma aula passada fica fora, como na Meta', () => {
+    const lead = {
+      ...base, status: 'Venda', lifecycleStage: 'cliente', appointmentType: 'aula_experimental',
+      appointmentScheduledFor: D(10, 14, 18), nextFollowUp: D(10, 14, 18), nextFollowUpType: 'Aula Experimental', appointmentOutcome: 'no_show',
+    };
+    expect(isMetaOverdue(lead, AGORA)).toBe(false);
     expect(upNextOf(lead, AGORA)).toEqual([]);
   });
 });
