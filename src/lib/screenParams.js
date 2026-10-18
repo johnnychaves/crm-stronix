@@ -17,7 +17,6 @@
 //   `todayKey` (para o intervalo) e `origens` (o catálogo de origens).
 
 import { CONTRACT_STATUS } from './contracts.js';
-import { DAILY_GOAL_CATEGORIES } from './leads.js';
 import { FOCO_ORDER, FOCO_GRUPOS } from './metaFocoCodes.js';
 import { SOLO_TRAINING } from './professores.js';
 import { addMonthsToKey, compareOptions } from './operacional/month.js';
@@ -45,18 +44,11 @@ export const FASE_PERDA = 'perda';
 const DIA_POR_CODIGO = Object.freeze({ hoje: 'today', ontem: 'yesterday', amanha: 'tomorrow', andamento: 'ongoing' });
 const CODIGO_POR_DIA = Object.freeze(Object.fromEntries(Object.entries(DIA_POR_CODIGO).map(([c, d]) => [d, c])));
 
-// Categoria da Meta diária: os sete slugs do dia, mais a prévia de amanhã.
-const CAT_POR_CODIGO = Object.freeze({
-  ...Object.fromEntries(Object.values(DAILY_GOAL_CATEGORIES).map((s) => [s, s])),
-  amanha: 'tomorrow',
-});
-const CODIGO_POR_CAT = Object.freeze(Object.fromEntries(Object.entries(CAT_POR_CODIGO).map(([c, v]) => [v, c])));
-
-// A tela nova da Meta (Foco agora) liga com o ?meta=nova (ver `metaNova`, mais
-// abaixo). Ali o `cat` é o grupo da barra "Foco em": visitas e aulas viram `compromissos`, o resto
-// segue as categorias do dia. Os links de antes continuam valendo (visita_hoje
-// e aula_hoje caem em compromissos) e `amanha`, que deixou de ser filtro, cai em
-// "tudo". Sem o ?meta=nova, a tela de hoje segue com as tabelas de cima.
+// Categoria da Meta diária: o grupo da barra "Foco em". Visitas e aulas viram
+// `compromissos`, e o resto segue as categorias do dia. Os links de antes da
+// tela nova continuam valendo (visita_hoje e aula_hoje caem em compromissos) e
+// `amanha`, que deixou de ser filtro, cai em "tudo". O `?meta=nova` da fase de
+// testes não é mais lido e some na primeira troca de foco.
 // Os códigos vêm de metaFocoCodes.js, o único lugar que lista os grupos.
 const CAT_FOCO_POR_CODIGO = Object.freeze({
   ...Object.fromEntries(FOCO_ORDER.filter((v) => v !== 'all').map((v) => [v, v])),
@@ -239,25 +231,10 @@ const dataDoPeriodo = (campo) => param(
   (v) => (DIA_RE.test(v || '') ? v : null),
 );
 
-// A tela nova da Meta (Foco agora) fica atrás de ?meta=nova até a virada (PR 5
-// do plano da Meta). Vem antes do `cat` na tabela, porque o `cat` da tela nova
-// aceita os grupos do Foco em, e a tela de hoje continua igual sem ele.
-const metaNova = param(
-  'metaNova',
-  (raw) => raw === 'nova',
-  (v) => (v ? 'nova' : null),
-);
-
 const cat = param(
   'cat',
-  (raw, ctx, lidos) => {
-    const tabela = lidos?.metaNova ? CAT_FOCO_POR_CODIGO : CAT_POR_CODIGO;
-    return own(tabela, raw) ? tabela[raw] : 'all';
-  },
-  (v, ctx, valores) => {
-    if (valores?.metaNova) return FOCO_VALIDOS.has(v) ? v : null;
-    return v && v !== 'all' && own(CODIGO_POR_CAT, v) ? CODIGO_POR_CAT[v] : null;
-  },
+  (raw) => (own(CAT_FOCO_POR_CODIGO, raw) ? CAT_FOCO_POR_CODIGO[raw] : 'all'),
+  (v) => (FOCO_VALIDOS.has(v) ? v : null),
 );
 
 // Um dia em milissegundos, para o teto de largura do período. As datas são
@@ -404,7 +381,7 @@ const TABELA = {
   leads: { funil: funilDaTela, fase, resp, origem, ordem: ordemDosLeads },
   aulas: { dia, de: dataDoPeriodo('de'), ate: dataDoPeriodo('ate'), resp, prof },
   visitas: { dia, de: dataDoPeriodo('de'), ate: dataDoPeriodo('ate'), resp },
-  dailyGoal: { meta: metaNova, cat },
+  dailyGoal: { cat },
   relatorios: {
     mes: soNoModoMes(mes),
     periodo: periodoDoPainel,

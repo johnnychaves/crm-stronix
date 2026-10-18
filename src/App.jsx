@@ -113,6 +113,7 @@ import { RotinasNovo, NOVO_ATE as ROTINAS_NOVO_ATE } from './components/rotinas/
 import { SettingsView } from './views/settings/SettingsView.jsx';
 import { WhatsNewModal } from './components/WhatsNewModal.jsx';
 import { WalkthroughModal } from './components/WalkthroughModal.jsx';
+import { MetaUrgentCount } from './components/dailygoal/MetaUrgentCount.jsx';
 import { HelpCenterModal } from './components/HelpCenterModal.jsx';
 import { NotificationBell } from './components/layout/NotificationBell.jsx';
 import { useNotificationsSeen } from './hooks/useNotificationsSeen.js';
@@ -315,12 +316,16 @@ function AppInner() {
 
   // Título da aba: "<Tela> · <Academia> · STRONILEAD". Na ficha, só "Ficha",
   // nunca o nome da pessoa, porque o título fica no histórico do navegador.
-  // Antes do login continua "<Academia> · STRONILEAD".
+  // Antes do login continua "<Academia> · STRONILEAD". Com sessão, quem vende
+  // tem na frente o número de tarefas urgentes da Meta, "(2)", que o
+  // MetaUrgentCount (montado no fim do app) calcula com o próprio relógio.
+  const [metaUrgent, setMetaUrgent] = useState(0);
   const titleScreen = appUser && !appUser.superAdminOnly && !tenantBlock && !professorAccessOff(appUser) ? (fichaOpen ? 'ficha' : resolvedTab) : null;
   const titleTenant = appUser ? (appUser.superAdminOnly ? '' : tenantDisplayName) : (urlTenant?.displayName || '');
+  const titleUrgent = titleScreen ? metaUrgent : 0;
   useEffect(() => {
-    document.title = documentTitle({ screen: titleScreen, tenantName: titleTenant });
-  }, [titleScreen, titleTenant]);
+    document.title = documentTitle({ screen: titleScreen, tenantName: titleTenant, urgent: titleUrgent });
+  }, [titleScreen, titleTenant, titleUrgent]);
 
   const [leads, setLeads] = useState([]);
   const [interactions, setInteractions] = useState([]);
@@ -1943,6 +1948,19 @@ useEffect(() => {
       <SilentErrorBoundary>
         <WalkthroughModal appUser={appUser} />
       </SilentErrorBoundary>
+      {/* O número de urgentes da Meta no título da aba. Não desenha nada. */}
+      {isSeller(appUser) && (
+        <SilentErrorBoundary>
+          <MetaUrgentCount
+            leads={metaLeads}
+            interactions={interactions}
+            userId={appUser.id}
+            renewalCheckpoints={renewalCheckpoints}
+            renewalGraceDays={renewalGraceDays}
+            onChange={setMetaUrgent}
+          />
+        </SilentErrorBoundary>
+      )}
       <ModalErrorBoundary open={tutorialsOpen} onClose={closeHelpCenter}>
         <HelpCenterModal
           open={tutorialsOpen}

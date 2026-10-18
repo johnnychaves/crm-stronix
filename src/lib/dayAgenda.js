@@ -23,7 +23,7 @@ import {
 import { SOLO_TRAINING_LABEL } from './professores.js';
 
 // A linha de baixo de cada agendamento: tipo, modalidade, professor e dono,
-// sem repetir o óbvio. A dividem o card da tela de hoje e a Agenda da tela nova.
+// sem repetir o óbvio. É a linha de baixo da Agenda de hoje.
 export function agendaSubtitle(row) {
   const parts = [];
   if (row.categorySlug === DAILY_GOAL_CATEGORIES.VISITA_HOJE) {
@@ -113,8 +113,5 @@ export function computeDayAgenda({
 
   rows.sort((a, b) => a.scheduledAt - b.scheduledAt);
 
-  const pending = rows.filter((r) => !r.outcome).length;
-  const nextIndex = rows.findIndex((r) => r.scheduledAt >= now);
-
-  return { rows, pending, nextIndex };
+  return { rows };
 }

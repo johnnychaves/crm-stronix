@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowLeftRight, Ban, CalendarClock, Check, ChevronDown, Undo2, X } from 'lucide-react';
+import { ArrowLeftRight, Check, ChevronDown, Undo2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover.jsx';
 import { outcomeMenuItems, outcomeTriggerLabel } from '../../lib/outcomeMenu.js';
@@ -7,18 +7,12 @@ import { outcomeMenuItems, outcomeTriggerLabel } from '../../lib/outcomeMenu.js'
 // Botão "Marcar desfecho" da Meta Diária, com o balão de Compareceu e Não
 // compareceu. Depois de marcado, o botão mostra o desfecho e o mesmo balão
 // corrige. Só apresenta: quem grava é a tela, pelo onPick(id), com os ids de
-// outcomeMenuItems ('attended', 'no_show', 'rescheduled', 'cancelled', 'undo').
+// outcomeMenuItems ('attended', 'no_show' e 'undo').
 // Substituiu o switch de presença, cujo gesto de segurar para desmarcar
-// ninguém descobria. O mesmo componente serve a Agenda de hoje, o card
-// "A fazer", o Próximo compromisso e o "Feitos hoje".
+// ninguém descobria. O mesmo componente serve a Agenda de hoje e o "Feitos
+// hoje".
 //
-// `compact` é para a Agenda de hoje, onde a coluna é estreita e o botão
-// largo cortava o nome da pessoa: sem desfecho o botão diz só "Marcar", e com
-// desfecho vira um selo redondo cheio, verde ou vermelho, sem seta (escolha do
-// Johnny, 30/09/2026). O texto inteiro continua no aria-label e na dica do
-// mouse.
-//
-// `tag` é para a Agenda da tela nova (mockup B): o gatilho é a etiqueta de
+// `tag` é para a Agenda de hoje (mockup B): o gatilho é a etiqueta de
 // texto do desfecho ("Compareceu", "Não veio", ou "Sem desfecho" em âmbar), e
 // o mesmo balão marca ou corrige. Com `upcoming` (o horário ainda não chegou),
 // a etiqueta sem desfecho diz só "Marcar", em cinza: quem chega antes da hora
@@ -33,11 +27,6 @@ const TAG_TONE = {
 };
 const TAG_LABEL = { attended: 'Compareceu', no_show: 'Não veio' };
 
-const SEAL_TONE = {
-  attended: 'bg-emerald-500 text-white hover:bg-emerald-600',
-  no_show: 'bg-rose-500 text-white hover:bg-rose-600',
-};
-
 const TRIGGER_TONE = {
   attended: 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30 dark:hover:bg-emerald-500/15',
   no_show: 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100 dark:bg-rose-500/10 dark:text-rose-300 dark:border-rose-500/30 dark:hover:bg-rose-500/15',
@@ -50,16 +39,14 @@ const ITEM_TONE = {
   neutral: 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/[0.06]',
 };
 
-const ITEM_ICON = { attended: Check, no_show: X, rescheduled: CalendarClock, cancelled: Ban, undo: Undo2 };
+const ITEM_ICON = { attended: Check, no_show: X, undo: Undo2 };
 
 export function OutcomePopover({
   outcome = null,
   title = null,
-  withMore = false,
   canUndo = false,
   saving = false,
   size = 'md',
-  compact = false,
   tag = false,
   upcoming = false,
   className,
@@ -67,15 +54,10 @@ export function OutcomePopover({
 }) {
   const [open, setOpen] = useState(false);
   const marked = outcome === 'attended' || outcome === 'no_show' ? outcome : null;
-  const items = outcomeMenuItems({ outcome: marked, withMore, canUndo });
+  const items = outcomeMenuItems({ outcome: marked, canUndo });
   const label = outcomeTriggerLabel(marked);
-  const seal = !tag && compact && Boolean(marked);
-  const shownLabel = tag
-    ? (marked ? TAG_LABEL[marked] : upcoming ? 'Marcar' : 'Sem desfecho')
-    : compact ? (marked ? null : 'Marcar') : label;
+  const shownLabel = tag ? (marked ? TAG_LABEL[marked] : upcoming ? 'Marcar' : 'Sem desfecho') : label;
   const tagTone = TAG_TONE[marked || (upcoming ? 'upcoming' : 'none')];
-  const iconSize = seal ? 15 : 13;
-  const iconStroke = seal ? 2.75 : 2;
 
   const pick = (id) => {
     setOpen(false);
@@ -89,23 +71,21 @@ export function OutcomePopover({
         disabled={saving}
         // Com o título, o leitor de tela diferencia um botão do outro na lista.
         aria-label={marked ? `${label}. Abrir para corrigir` : (title ? `Marcar desfecho: ${title}` : 'Marcar desfecho')}
-        title={compact || tag ? (marked ? label : 'Marcar desfecho') : undefined}
+        title={tag ? (marked ? label : 'Marcar desfecho') : undefined}
         className={cn(
           'inline-flex items-center font-semibold whitespace-nowrap transition active:scale-[.98] disabled:opacity-60 disabled:cursor-default',
           'focus:outline-none focus-visible:anel-foco',
           tag && cn('-m-1.5 rounded-md p-1.5 text-[11.5px] underline-offset-2 hover:underline', tagTone),
-          seal && 'size-7 shrink-0 justify-center rounded-full',
-          !tag && !seal && compact && 'h-7 px-2.5 rounded-full border text-[11.5px]',
-          !tag && !compact && 'gap-1.5 rounded-lg border',
-          !tag && !compact && (size === 'sm' ? 'h-7 px-2 text-[11.5px]' : 'h-8 px-3 text-[12px]'),
-          !tag && (seal ? SEAL_TONE[marked] : TRIGGER_TONE[marked || 'none']),
+          !tag && 'gap-1.5 rounded-lg border',
+          !tag && (size === 'sm' ? 'h-7 px-2 text-[11.5px]' : 'h-8 px-3 text-[12px]'),
+          !tag && TRIGGER_TONE[marked || 'none'],
           className
         )}
       >
-        {!tag && marked === 'attended' && <Check size={iconSize} strokeWidth={iconStroke} />}
-        {!tag && marked === 'no_show' && <X size={iconSize} strokeWidth={iconStroke} />}
-        {shownLabel && <span>{shownLabel}</span>}
-        {!compact && !tag && <ChevronDown size={13} className="opacity-60" />}
+        {!tag && marked === 'attended' && <Check size={13} />}
+        {!tag && marked === 'no_show' && <X size={13} />}
+        <span>{shownLabel}</span>
+        {!tag && <ChevronDown size={13} className="opacity-60" />}
       </PopoverTrigger>
       <PopoverContent align="end" sideOffset={6} aria-label={title || 'Desfecho'} className="w-56 p-2 rounded-xl border-border">
         {title && (

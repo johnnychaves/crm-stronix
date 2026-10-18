@@ -82,13 +82,23 @@ function LeadsSkeleton() {
   );
 }
 
+// No desenho da Meta (Foco agora): a faixa do topo, a barra "Foco em", o bloco
+// Agora e a fila, e a lateral com a Agenda de hoje, o Ritmo e o Amanhã.
 function DailyGoalSkeleton() {
   return (
-    <div className="space-y-6 animate-fade-in">
-      <Skeleton className="h-32" rounded="rounded-[2.5rem]" />
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Skeleton className="h-[500px]" rounded="rounded-[2.5rem]" />
-        <Skeleton className="h-[500px]" rounded="rounded-[2.5rem]" />
+    <div className="flex flex-col gap-4 animate-fade-in">
+      <Skeleton className="h-[72px]" rounded="rounded-2xl" />
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="flex min-w-0 flex-col gap-3.5">
+          <Skeleton className="h-11" rounded="rounded-xl" />
+          <Skeleton className="h-[300px]" rounded="rounded-[22px]" />
+          <Skeleton className="h-[260px]" rounded="rounded-2xl" />
+        </div>
+        <div className="flex min-w-0 flex-col gap-3.5">
+          <Skeleton className="h-[260px]" rounded="rounded-2xl" />
+          <Skeleton className="h-[140px]" rounded="rounded-2xl" />
+          <Skeleton className="h-[180px]" rounded="rounded-2xl" />
+        </div>
       </div>
     </div>
   );
