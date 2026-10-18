@@ -61,7 +61,7 @@ export function pendingEntries(processedLeads) {
   return out;
 }
 
-const isAppt = (slug) => slug === C.VISITA_HOJE || slug === C.AULA_HOJE;
+export const isAppt = (slug) => slug === C.VISITA_HOJE || slug === C.AULA_HOJE;
 
 // Milissegundos até o prazo da tarefa (negativo = já passou), ou null quando a
 // tarefa não tem prazo: atrasado, renovação e vencido não têm hora.

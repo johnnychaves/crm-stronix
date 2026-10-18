@@ -42,7 +42,8 @@ beforeEach(() => {
   handlers = {
     onOutcome: vi.fn(), onReschedule: vi.fn(), onPostpone: vi.fn(),
     onOutcomePopup: vi.fn((_lead, slug) => slug !== 'novo_24h'), onConclude: vi.fn(() => Promise.resolve()),
-    onWhatsapp: vi.fn(), onCall: vi.fn(),
+    // Abriram o WhatsApp e a ligação (o lead tem telefone).
+    onWhatsapp: vi.fn(() => true), onCall: vi.fn(() => true),
   };
 });
 afterEach(() => {
@@ -297,6 +298,16 @@ describe('Meta nova: a faixa de urgência', () => {
     expect(document.activeElement).toBe(agora());
   });
 
+  it('"Agora não" leva o foco ao Agora, porque o botão some com a faixa', () => {
+    render({ leads: LEADS, now: NOW });
+    render({ leads: LEADS, now: at(15, 45) });
+    const nao = button('Agora não');
+    act(() => nao.focus());
+    click(nao);
+    expect(faixa()).toBeNull();
+    expect(document.activeElement).toBe(agora());
+  });
+
   it('"Agora não" esconde a faixa até a tarefa mudar de urgência', () => {
     render({ leads: LEADS, now: NOW });
     render({ leads: LEADS, now: at(15, 45) });
@@ -382,6 +393,20 @@ describe('Meta nova: os atalhos do Agora', () => {
     document.body.appendChild(campo);
     act(() => { campo.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', bubbles: true })); });
     campo.remove();
+    for (const role of ['menu', 'listbox']) {
+      const aberto = document.createElement('div');
+      aberto.setAttribute('role', role);
+      document.body.appendChild(aberto);
+      tecla('w');
+      aberto.remove();
+    }
+    const editor = document.createElement('div');
+    editor.setAttribute('contenteditable', 'plaintext-only');
+    const dentro = document.createElement('span');
+    editor.appendChild(dentro);
+    document.body.appendChild(editor);
+    act(() => { dentro.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', bubbles: true })); });
+    editor.remove();
     tecla('w', { ctrlKey: true });
     tecla('w', { metaKey: true });
     tecla('w', { repeat: true });
@@ -466,6 +491,51 @@ describe('Meta nova: a pergunta na volta do contato', () => {
     expect(document.activeElement).toBe(agora());
   });
 
+  it('lead sem telefone de contato não abre nada, e não há pergunta', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      handlers.onWhatsapp.mockReturnValue(false);
+      handlers.onCall.mockReturnValue(false);
+      render({ leads: [CONTATO], now: NOW });
+      click(button('Ligar', agora()));
+      act(() => { vi.advanceTimersByTime(2000); });
+      expect(pergunta()).toBeNull();
+      click(button('WhatsApp', agora()));
+      mudarAba('hidden');
+      mudarAba('visible');
+      expect(pergunta()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('o WhatsApp que não tirou a pessoa da aba em 5 s desarma a pergunta', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      render({ leads: [NOVO], now: NOW });
+      click(button('WhatsApp', agora()));
+      act(() => { vi.advanceTimersByTime(5000); });
+      // Bem depois, a pessoa troca de janela por outro motivo e volta.
+      mudarAba('hidden');
+      mudarAba('visible');
+      expect(pergunta()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('o "Sim" que abre o pop-up deixa o foco no Agora, para onde ele volta', () => {
+    render({ leads: [CONTATO], now: NOW });
+    click(button('WhatsApp', agora()));
+    mudarAba('hidden');
+    mudarAba('visible');
+    const sim = button('Sim, concluir', agora());
+    act(() => sim.focus());
+    click(sim);
+    expect(handlers.onOutcomePopup).toHaveBeenCalledWith(expect.objectContaining({ id: 'c' }), 'contato_hoje');
+    expect(document.activeElement).toBe(agora());
+  });
+
   it('a visita que passou da hora não pergunta: o próximo passo é o desfecho', () => {
     render({ leads: [VISITA], now: at(17, 20) });
     click(button('WhatsApp', agora()));
@@ -543,6 +613,53 @@ describe('Meta nova: Concluir com Desfazer', () => {
     expect(host.querySelectorAll('button').length).toBeGreaterThan(0);
     expect([...document.querySelectorAll('button')].filter((b) => b.textContent.includes('Desfazer'))).toHaveLength(1);
     expect(aviso().textContent).toContain('Mara Nova');
+  });
+
+  it('o prazo para com o mouse ou o foco no aviso e recomeça inteiro quando saem', () => {
+    render({ leads: [NOVO, CONTATO], now: NOW });
+    click(button('Concluir', agora()));
+    const caixa = aviso();
+    act(() => { caixa.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, relatedTarget: document.body })); });
+    act(() => { vi.advanceTimersByTime(20000); });
+    expect(handlers.onConclude).not.toHaveBeenCalled();
+    act(() => { caixa.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body })); });
+    act(() => { vi.advanceTimersByTime(5900); });
+    expect(handlers.onConclude).not.toHaveBeenCalled();
+    // Com o foco do teclado no Desfazer o prazo também para.
+    act(() => button('Desfazer').focus());
+    act(() => { vi.advanceTimersByTime(20000); });
+    expect(handlers.onConclude).not.toHaveBeenCalled();
+    act(() => button('Desfazer').blur());
+    act(() => { vi.advanceTimersByTime(6000); });
+    expect(handlers.onConclude).toHaveBeenCalledTimes(1);
+  });
+
+  it('a gravação que falha devolve a tarefa sem deixar promessa rejeitada solta', async () => {
+    handlers.onConclude = vi.fn(() => Promise.reject(new Error('sem rede')));
+    const soltas = [];
+    const pegar = (e) => soltas.push(e);
+    globalThis.process.on('unhandledRejection', pegar);
+    try {
+      render({ leads: [NOVO, CONTATO], now: NOW });
+      click(button('Concluir', agora()));
+      act(() => { vi.advanceTimersByTime(6000); });
+      await act(async () => {});
+      // Uma volta do laço de eventos: é quando o Node avisa da rejeição solta.
+      await new Promise((r) => globalThis.setImmediate(r));
+      expect(filaNames()).toContain('Nina Nova');
+      expect(soltas).toEqual([]);
+    } finally {
+      globalThis.process.off('unhandledRejection', pegar);
+    }
+  });
+
+  it('nos últimos segundos do dia grava na hora, sem Desfazer', () => {
+    vi.useRealTimers();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'], now: new Date(2026, 9, 16, 23, 59, 57) });
+    render({ leads: [NOVO, CONTATO], now: NOW });
+    click(button('Concluir', agora()));
+    expect(handlers.onConclude).toHaveBeenCalledWith(expect.objectContaining({ id: 'n' }), 'novo_24h', '');
+    expect(aviso()).toBeNull();
   });
 
   it('a tarefa continua fora da fila enquanto a gravação não termina, e volta se ela falhar', async () => {

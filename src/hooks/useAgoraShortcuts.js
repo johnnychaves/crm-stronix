@@ -11,7 +11,9 @@ import { useEffect, useRef } from 'react';
 // - o foco está num campo de texto;
 // - Ctrl, Cmd ou Alt estão apertados, ou a tecla está sendo segurada.
 
-const EDITAVEL = 'input, textarea, select, [contenteditable=""], [contenteditable="true"]';
+// Todo contenteditable que não seja "false" (inclui o plaintext-only e os filhos
+// de um editor, pelo closest).
+const EDITAVEL = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
 const ABERTO = '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]';
 
 export function atalhoBloqueado(e, doc = document) {

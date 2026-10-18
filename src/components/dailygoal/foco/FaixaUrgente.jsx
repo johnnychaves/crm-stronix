@@ -31,7 +31,7 @@ export function FaixaUrgente({ texto, passou, onIr, onDepois }) {
         <button
           type="button"
           onClick={onDepois}
-          className="h-9 rounded-lg px-3 text-[13px] font-semibold text-slate-600 transition hover:bg-white/70 hover:text-foreground focus-visible:outline-none focus-visible:anel-foco dark:text-slate-300 dark:hover:bg-white/[0.06]"
+          className="h-9 rounded-lg px-3 text-[13px] font-semibold text-foreground/75 transition hover:bg-background/70 hover:text-foreground focus-visible:outline-none focus-visible:anel-foco"
         >
           Agora não
         </button>
@@ -41,18 +41,26 @@ export function FaixaUrgente({ texto, passou, onIr, onDepois }) {
 }
 
 // O aviso com Desfazer, embaixo e no meio da tela, como no mockup B: fundo
-// azul-marinho no tema claro e claro no escuro. A região viva existe desde a
-// montagem, para o leitor de tela ler cada aviso novo.
-export function AvisoDesfazer({ aviso, onDesfazer }) {
+// azul-marinho no tema claro e claro no escuro (as cores do texto e do fundo
+// da página, trocadas). A região viva existe desde a montagem, para o leitor de
+// tela ler cada aviso novo. O mouse ou o foco em cima seguram o prazo
+// (`onSegurar`).
+export function AvisoDesfazer({ aviso, onDesfazer, onSegurar }) {
   return (
     <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-6 z-[60] flex justify-center px-4">
       {aviso && (
-        <div className="pointer-events-auto flex items-center gap-3.5 rounded-xl bg-ink-900 py-2 pl-4 pr-2 text-[13px] text-white shadow-[0_12px_32px_rgba(14,26,64,0.3)] animate-in fade-in-0 slide-in-from-bottom-2 motion-reduce:animate-none dark:bg-white dark:text-ink-900">
+        <div
+          onMouseEnter={() => onSegurar?.('mouse', true)}
+          onMouseLeave={() => onSegurar?.('mouse', false)}
+          onFocus={() => onSegurar?.('foco', true)}
+          onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) onSegurar?.('foco', false); }}
+          className="pointer-events-auto flex items-center gap-3.5 rounded-xl bg-foreground py-2 pl-4 pr-2 text-[13px] text-background shadow-[0_12px_32px_rgba(14,26,64,0.3)] animate-in fade-in-0 slide-in-from-bottom-2 motion-reduce:animate-none"
+        >
           <span>{aviso.texto}</span>
           <button
             type="button"
             onClick={onDesfazer}
-            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-white/30 px-2.5 text-[12.5px] font-semibold transition hover:bg-white/10 focus-visible:outline-none focus-visible:anel-foco dark:border-ink-900/30 dark:hover:bg-ink-900/10"
+            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-background/30 px-2.5 text-[12.5px] font-semibold transition hover:bg-background/10 focus-visible:outline-none focus-visible:anel-foco"
           >
             <Undo2 size={13} aria-hidden="true" /> Desfazer
           </button>

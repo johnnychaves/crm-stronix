@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { faixaFor, inFoco, pendingEntries, pickAgora, rankFoco, withSkipped } from '../../../lib/metaFoco.js';
+import { faixaFor, inFoco, isAppt, pendingEntries, pickAgora, rankFoco, withSkipped } from '../../../lib/metaFoco.js';
 import { dgDateKey } from '../../../lib/dailyGoal.js';
-import { DAILY_GOAL_CATEGORIES as C, getLeadAppointmentDate } from '../../../lib/leads.js';
+import { getLeadAppointmentDate } from '../../../lib/leads.js';
 import { CATEGORY_ONE, FOCO_LABEL, factsOf, focoTabs, morningText, urgentText, whyOf } from '../../../lib/metaFocoTexts.js';
 import { useAgoraShortcuts } from '../../../hooks/useAgoraShortcuts.js';
-import { useConcluirComDesfazer } from '../../../hooks/useConcluirComDesfazer.js';
+import { DESFAZER_MS, useConcluirComDesfazer } from '../../../hooks/useConcluirComDesfazer.js';
 import { TabsContent } from '../../ui/tabs.jsx';
 import { DiaStrip } from './DiaStrip.jsx';
 import { AgoraCard } from './AgoraCard.jsx';
@@ -29,7 +29,13 @@ import { DiaFechado, FilaDepois, FocoBar, FocoVazio, MetaVazia } from './FocoPar
 const NONE = [];
 const HOLD_AFTER_PAUSE_MS = 3000;
 const CALL_QUESTION_MS = 1500;
-const isAppt = (slug) => slug === C.VISITA_HOJE || slug === C.AULA_HOJE;
+// O WhatsApp abre em outra aba na hora. Se em 5 s a aba não saiu de vista (o
+// navegador barrou a aba nova), a pergunta desarma, para não aparecer na
+// próxima vez que a pessoa trocar de janela por outro motivo.
+const WHATSAPP_LEAVE_MS = 5000;
+// O prazo do Desfazer passaria da meia-noite? Lê o relógio de verdade, e não o
+// `now` da tela, que fica parado na pausa por inatividade.
+const prazoViraODia = () => dgDateKey(new Date(Date.now() + DESFAZER_MS)) !== dgDateKey(new Date());
 
 export function MetaFocoScreen({
   strip, processedLeads, now, sla, renewalCheckpoints, meId, foco, onFoco,
@@ -97,7 +103,8 @@ export function MetaFocoScreen({
   // aparece quando a aba volta a ficar visível ou a janela volta a ter o foco
   // (o WhatsApp abre em outra aba ou no aplicativo). Depois da ligação, que
   // não tira a pessoa da aba, aparece 1,5 s depois do clique. Visita e aula
-  // não perguntam: o próximo passo é o desfecho.
+  // não perguntam: o próximo passo é o desfecho. Lead sem telefone de contato
+  // não abre nada, e aí não há o que perguntar.
   const [retorno, setRetorno] = useState(null);
   if (retorno && retorno.key !== agoraKey) setRetorno(null);
   useEffect(() => {
@@ -111,10 +118,14 @@ export function MetaFocoScreen({
     const sair = () => { saiu = true; };
     const voltar = () => { if (saiu) pronto(); };
     const onVis = () => (document.visibilityState === 'hidden' ? sair() : voltar());
+    const desarma = setTimeout(() => {
+      if (!saiu) setRetorno((r) => (r && r.key === retorno.key && !r.pronto ? null : r));
+    }, WHATSAPP_LEAVE_MS);
     document.addEventListener('visibilitychange', onVis);
     window.addEventListener('blur', sair);
     window.addEventListener('focus', voltar);
     return () => {
+      clearTimeout(desarma);
       document.removeEventListener('visibilitychange', onVis);
       window.removeEventListener('blur', sair);
       window.removeEventListener('focus', voltar);
@@ -146,26 +157,32 @@ export function MetaFocoScreen({
   };
   const agoraNao = () => {
     if (!urgente) return;
+    // A faixa some com o botão em que o foco estava.
+    focusAgora.current = true;
     const map = new Map(dispensadas || []);
     map.set(urgente.key, urgente.klass);
     setDispensa({ day: today, map });
   };
 
   const whatsapp = (lead) => {
-    onWhatsapp(lead);
-    if (agora && !isAppt(agora.slug)) setRetorno({ key: agora.key, via: 'whatsapp', pronto: false });
+    if (onWhatsapp(lead) && agora && !isAppt(agora.slug)) setRetorno({ key: agora.key, via: 'whatsapp', pronto: false });
   };
   const ligar = (lead) => {
-    onCall(lead);
-    if (agora && !isAppt(agora.slug)) setRetorno({ key: agora.key, via: 'ligacao', pronto: false });
+    if (onCall(lead) && agora && !isAppt(agora.slug)) setRetorno({ key: agora.key, via: 'ligacao', pronto: false });
   };
 
   // Concluir: as categorias com pop-up concluem nele; o Novo lead sai da tela
-  // na hora e grava quando o prazo do Desfazer passa.
+  // na hora e grava quando o prazo do Desfazer passa. Nos últimos segundos do
+  // dia grava na hora e sem Desfazer: a marca leva a hora do servidor, e a
+  // gravação depois da meia-noite daria o feito ao dia seguinte.
   const concluir = (entry) => {
     const { lead, slug, key } = entry;
     if (onOutcomePopup(lead, slug)) return;
     focusAgora.current = true;
+    if (prazoViraODia()) {
+      onConclude(lead, slug, '');
+      return;
+    }
     aviso.agendar({
       esconder: key,
       texto: `Tarefa de ${lead.name || 'lead sem nome'} concluída.`,
@@ -177,6 +194,9 @@ export function MetaFocoScreen({
     });
   };
   const retornoSim = () => {
+    // A pergunta some com o "Sim". O foco vai ao Agora, e é para lá que ele
+    // volta quando o pop-up de desfecho fecha.
+    focusAgora.current = true;
     setRetorno(null);
     if (agora) concluir(agora);
   };
@@ -258,7 +278,7 @@ export function MetaFocoScreen({
         </div>
         <aside aria-label="Painel do dia" className="flex min-w-0 flex-col gap-3.5">{aside}</aside>
       </div>
-      <AvisoDesfazer aviso={aviso.pendente} onDesfazer={aviso.desfazer} />
+      <AvisoDesfazer aviso={aviso.pendente} onDesfazer={aviso.desfazer} onSegurar={aviso.segurar} />
     </div>
   );
 }

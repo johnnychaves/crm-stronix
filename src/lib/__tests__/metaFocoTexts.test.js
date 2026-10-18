@@ -149,5 +149,12 @@ describe('urgentText', () => {
   });
   it('lead sem nome não vira frase quebrada', () => {
     expect(urgentText(entry({ ...visita, name: '' }, C.VISITA_HOJE), NOW)).toBe('O lead chega em 10 min');
+    const contato = { id: 'c', name: '', nextFollowUp: at(15, 2), nextFollowUpType: 'Ligação' };
+    expect(urgentText(entry(contato, C.CONTATO_HOJE), NOW)).toBe('Ligação para o lead em 30 min');
+  });
+  it('no minuto do horário não diz "0 min"', () => {
+    const agoraMesmo = { ...visita, appointmentScheduledFor: at(14, 32) };
+    expect(urgentText(entry(agoraMesmo, C.VISITA_HOJE), new Date(NOW.getTime() + 50))).toBe('Mateus passou do horário há 1 min, sem desfecho');
+    expect(urgentText(entry(agoraMesmo, C.VISITA_HOJE), new Date(NOW.getTime() - 20000))).toBe('Mateus chega em 1 min');
   });
 });

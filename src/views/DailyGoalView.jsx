@@ -1308,14 +1308,18 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
     }
   };
 
+  // Os dois dizem se abriram alguma coisa: lead sem telefone de contato não
+  // abre nada, e a tela nova não pergunta "Conversou com…?" nesse caso.
   const handleWhatsapp = (lead) => {
     const href = whatsappHref(contactOf(lead).phone);
     if (href) window.open(href, '_blank', 'noopener,noreferrer');
+    return Boolean(href);
   };
 
   const handleCall = (lead) => {
     const href = telHref(contactOf(lead).phone);
     if (href) window.location.href = href;
+    return Boolean(href);
   };
 
   // Per-slug pending tasks. A lead with two pending categories renders TWICE — once per slug — preserving main's per-category status model.
