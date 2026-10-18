@@ -11,7 +11,10 @@ import { Popover, PopoverContent, PopoverTrigger } from '../../ui/popover.jsx';
 // Fica fixa como a barra dos painéis (FilterBar): o top negativo desconta o
 // preenchimento da área que rola (p-4 md:p-8), e o fundo da página por trás
 // cobre o que passa por baixo. Com top positivo, ela parava 44 px abaixo da
-// borda e o conteúdo aparecia rolando por cima dela.
+// borda e o conteúdo aparecia rolando por cima dela. O pt-7 e o md:pt-11 deixam
+// o cartão onde ele sempre ficou (o preenchimento mais 12 px), e o -mb-3 tira
+// esses 12 px do fluxo, como o top antigo fazia, para o resto da tela não
+// descer. O cartão continua flutuando, com a sombra do mockup.
 //
 // Frescor: com as leituras ligadas, "Ao vivo". Com a pausa por inatividade, o
 // instante parado e o pedido de mexer na tela, como na aba Hoje das Rotinas.
@@ -27,8 +30,8 @@ function Bar({ value, max, className, label }) {
 
 export function DiaStrip({ greeting, firstName, todayLabel, live, now, frozenDay, totalSlots, doneSlots, progress, volume, streak }) {
   return (
-    <div className="sticky -top-4 z-30 -mx-4 -mt-4 bg-page px-4 pb-3 pt-4 md:-top-8 md:-mx-8 md:-mt-8 md:px-8 md:pt-5">
-      <header className="flex items-center gap-[22px] rounded-[18px] border border-border bg-card px-6 py-3.5 shadow-card max-[900px]:flex-wrap">
+    <div className="sticky -top-4 z-30 -mx-4 -mt-4 -mb-3 bg-page px-4 pt-7 md:-top-8 md:-mx-8 md:-mt-8 md:px-8 md:pt-11">
+      <header className="flex items-center gap-[22px] rounded-[18px] border border-border bg-popover px-6 py-3.5 shadow-[0_10px_28px_-14px_rgba(14,26,64,0.28)] dark:bg-neutral-900 max-[900px]:flex-wrap">
         <div className="min-w-0">
           <h1 className="font-display text-[21px] font-bold leading-tight tracking-[-0.02em] whitespace-nowrap">{greeting}, {firstName}</h1>
           <p className="flex flex-wrap items-center gap-x-2 text-[12.5px] text-muted-foreground">
@@ -63,7 +66,7 @@ export function DiaStrip({ greeting, firstName, todayLabel, live, now, frozenDay
         )}
 
         {streak > 0 && (
-          <p className="flex items-center gap-1.5 text-[13px] whitespace-nowrap text-muted-foreground">
+          <p className="flex items-center gap-1.5 text-[13px] whitespace-nowrap text-slate-600 dark:text-slate-300">
             <Flame size={16} className="text-amber-500" aria-hidden="true" />
             <b className="num font-display text-[20px] font-bold tracking-[-0.02em] text-foreground">{streak}</b>
             {streak === 1 ? 'dia seguido' : 'dias seguidos'}

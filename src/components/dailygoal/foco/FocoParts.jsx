@@ -13,6 +13,12 @@ import { Tabs, TabsList, TabsTrigger } from '../../ui/tabs.jsx';
 
 const CARD = 'rounded-2xl border border-border bg-card shadow-card';
 
+// As cores do mockup B onde o token não chega: o bg-muted (#eef0f5) quase some
+// no fundo da página (#f5f7fb), e o trilho, o hover e a linha da fila ficam com
+// os tons aprovados. Trocá-los pelo token em 18/10/2026 apagou o trilho do Foco em.
+const TRACK = 'bg-slate-200/60 dark:bg-white/[0.06]';
+const ROW_HOVER = 'hover:bg-slate-50 dark:hover:bg-white/[0.04]';
+
 // O tom do motivo nos fundos claros, com o par do tema escuro.
 const WHY_TEXT = {
   late: 'text-rose-700 dark:text-rose-300',
@@ -32,7 +38,7 @@ export function FocoBar({ tabs, value, onChange, children }) {
         <span className="text-[13px] whitespace-nowrap text-muted-foreground">Foco em</span>
         <TabsList
           aria-label="Foco em"
-          className="h-auto w-auto min-w-0 justify-start gap-0.5 overflow-x-auto overscroll-x-contain rounded-xl bg-muted p-[3px] [scrollbar-width:none] group-data-[orientation=horizontal]/tabs:h-auto"
+          className={cn('h-auto w-auto min-w-0 justify-start gap-0.5 overflow-x-auto overscroll-x-contain rounded-xl p-[3px] [scrollbar-width:none] group-data-[orientation=horizontal]/tabs:h-auto', TRACK)}
         >
           {tabs.map((t) => (
             <TabsTrigger
@@ -41,7 +47,7 @@ export function FocoBar({ tabs, value, onChange, children }) {
               aria-label={`${t.label}: ${t.pending} pendentes${t.why ? `. ${t.why}` : ''}`}
               title={t.why || undefined}
               className={cn(
-                'group/aba h-8 flex-none gap-1.5 rounded-[9px] border-0 px-2 text-[13px] font-medium text-foreground/80 shadow-none hover:bg-accent',
+                'group/aba h-8 flex-none gap-1.5 rounded-[9px] border-0 px-2 text-[13px] font-medium text-slate-700 shadow-none hover:bg-white/70 dark:text-slate-200 dark:hover:bg-white/[0.06]',
                 // O primitivo traz o anel de 3 px a 50% (ring-ring/50), e o cn
                 // não junta o anel-foco com ele. O ring-2 e o ring-ring repetem o
                 // anel-foco em classes que o cn sabe trocar, para o anel ficar sólido.
@@ -52,8 +58,8 @@ export function FocoBar({ tabs, value, onChange, children }) {
               {t.label}
               {/* Na aba escolhida (azul-marinho) o ponto e o número clareiam,
                   como no mockup: o brand-600 dava 2,65:1 no ink-700 do escuro.
-                  Nas outras, o número fica na cor do nome, porque com opacidade
-                  ele caía para 4:1 no trilho claro. */}
+                  Nas outras, o número é um cinza mais claro que o nome, como no
+                  mockup, mas sólido: com opacidade ele caía para 4:1 no trilho. */}
               {t.dot && (
                 <i
                   aria-hidden="true"
@@ -63,7 +69,7 @@ export function FocoBar({ tabs, value, onChange, children }) {
                   )}
                 />
               )}
-              <span className="num text-[12.5px] font-semibold group-data-[state=active]/aba:opacity-75">{t.pending}</span>
+              <span className="num text-[12.5px] font-semibold text-slate-600 group-data-[state=active]/aba:text-white/75 dark:text-slate-400 dark:group-data-[state=active]/aba:text-white/75">{t.pending}</span>
             </TabsTrigger>
           ))}
         </TabsList>
@@ -77,7 +83,7 @@ export function FocoBar({ tabs, value, onChange, children }) {
 // a tarefa precisa ser fechada pela Meta para contar.
 export function InteractedTag({ className }) {
   return (
-    <span className={cn('rounded-full bg-muted px-2 py-px text-[11.5px] font-semibold text-muted-foreground', className)}>
+    <span className={cn('rounded-full bg-slate-100 px-2 py-px text-[11.5px] font-semibold text-slate-600 dark:bg-white/[0.06] dark:text-slate-300', className)}>
       Já interagido. Feche pela Meta
     </span>
   );
@@ -96,11 +102,11 @@ export function FilaDepois({ items, sla, onPick, whyOf }) {
       <div className="flex flex-wrap items-baseline gap-2.5 px-5 pb-2 pt-[18px]">
         <h2 id="meta-fila-titulo" className="font-display text-[17px] font-bold">Depois</h2>
         <span className="num font-semibold text-muted-foreground">{items.length}</span>
-        <details className="group ml-auto text-[12.5px] open:ml-0 open:mt-1.5 open:basis-full open:rounded-xl open:bg-muted open:px-4 open:py-3">
+        <details className="group ml-auto text-[12.5px] open:ml-0 open:mt-1.5 open:basis-full open:rounded-xl open:bg-slate-50 open:px-4 open:py-3 dark:open:bg-white/[0.04]">
           <summary className="cursor-pointer list-none rounded font-semibold text-brand-700 outline-none focus-visible:anel-foco group-open:mb-2 dark:text-brand-300 [&::-webkit-details-marker]:hidden">
             Como a ordem é definida
           </summary>
-          <ol className="grid list-decimal gap-1 pl-5 text-foreground/80">
+          <ol className="grid list-decimal gap-1 pl-5 text-slate-700 dark:text-slate-300">
             {focoRules(sla).map((r) => <li key={r}>{r}</li>)}
           </ol>
         </details>
@@ -120,7 +126,7 @@ export function FilaDepois({ items, sla, onPick, whyOf }) {
                   <button
                     type="button"
                     onClick={() => onPick(e)}
-                    className="group grid w-full grid-cols-[34px_minmax(0,1fr)_auto_16px] items-center gap-3.5 px-5 py-[9px] text-left transition hover:bg-muted focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-inset focus-visible:anel-foco"
+                    className={cn('group grid w-full grid-cols-[34px_minmax(0,1fr)_auto_16px] items-center gap-3.5 px-5 py-[9px] text-left transition focus-visible:bg-slate-50 focus-visible:outline-none focus-visible:ring-inset focus-visible:anel-foco dark:focus-visible:bg-white/[0.04]', ROW_HOVER)}
                   >
                     <Avatar name={e.lead.name} size={34} photoUrl={e.lead.photoUrl || null} />
                     <span className="min-w-0">
@@ -142,7 +148,7 @@ export function FilaDepois({ items, sla, onPick, whyOf }) {
           </ul>
           {items.length > QUEUE_SHOWN && (
             <div className="flex justify-center p-3.5">
-              <button type="button" onClick={() => setAll((v) => !v)} className="h-9 rounded-lg border border-border px-3.5 text-[13px] font-semibold hover:bg-muted focus-visible:outline-none focus-visible:anel-foco">
+              <button type="button" onClick={() => setAll((v) => !v)} className={cn('h-9 rounded-lg border border-border px-3.5 text-[13px] font-semibold focus-visible:outline-none focus-visible:anel-foco', ROW_HOVER)}>
                 {all ? 'Mostrar menos' : `Mostrar as outras ${items.length - QUEUE_SHOWN}`}
               </button>
             </div>
@@ -192,7 +198,7 @@ export function RitmoCard({ ritmo, expected, volumeMonth }) {
                 state === 'hit' && 'bg-emerald-500/90 text-white',
                 state === 'miss' && 'bg-rose-50 text-rose-700 ring-[1.5px] ring-inset ring-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-500/30',
                 state === 'today' && (d.hit ? 'bg-emerald-500/90 text-white ring-2 ring-inset ring-brand-600' : 'ring-2 ring-inset ring-brand-600'),
-                state === 'off' && 'bg-muted',
+                state === 'off' && 'bg-slate-100 dark:bg-white/[0.05]',
               )}
             >
               <span className="sr-only">{d.label}, {label}</span>
@@ -266,7 +272,7 @@ export function FocoVazio({ label, onAll }) {
       <span className="mb-3 grid size-12 place-items-center rounded-full bg-emerald-50 dark:bg-emerald-500/10"><CheckCircle size={22} className="text-emerald-600 dark:text-emerald-400" aria-hidden="true" /></span>
       <h2 className="text-[15px] font-semibold">Nada pendente em {label.toLowerCase()}</h2>
       <p className="mt-1 text-[13px] text-muted-foreground">Escolha outro foco ou volte para Todos.</p>
-      <button type="button" onClick={onAll} className="mt-4 h-9 rounded-lg border border-border px-3.5 text-[13px] font-semibold hover:bg-muted focus-visible:outline-none focus-visible:anel-foco">
+      <button type="button" onClick={onAll} className={cn('mt-4 h-9 rounded-lg border border-border px-3.5 text-[13px] font-semibold focus-visible:outline-none focus-visible:anel-foco', ROW_HOVER)}>
         Ver todos
       </button>
     </div>
