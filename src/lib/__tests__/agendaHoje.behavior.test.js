@@ -89,10 +89,27 @@ describe('Agenda de hoje da Meta nova', () => {
     expect(onMark).toHaveBeenCalledWith(VEIO, 'undo');
   });
 
-  it('o que ainda vai acontecer não tem ação', () => {
+  it('o que ainda vai acontecer se marca pelo "Marcar": quem chega antes da hora também é confirmado', () => {
+    const colegaDepois = row('f', 'Fábio Cedo', at(18, 0), { isMine: false, ownerName: 'Bruno' });
+    render([...ROWS, colegaDepois]);
+    for (const nome of ['Davi Próximo', 'Eva Depois', 'Fábio Cedo']) {
+      expect(linha(nome).querySelector('button').textContent, nome).toBe('Marcar');
+    }
+    click(linha('Fábio Cedo').querySelector('button'));
+    click(itemDoBalao('attended'));
+    expect(onMark).toHaveBeenCalledWith(colegaDepois, 'attended');
+  });
+
+  it('a próxima diz que é a próxima também para o leitor de tela', () => {
     render();
-    expect(linha('Davi Próximo').querySelector('button')).toBeNull();
-    expect(linha('Eva Depois').querySelector('button')).toBeNull();
+    expect(linha('Davi Próximo').querySelector('.sr-only').textContent).toBe(' (próximo)');
+    expect(linha('Eva Depois').querySelector('.sr-only')).toBeNull();
+  });
+
+  it('a etiqueta tem área de clique maior que o texto', () => {
+    render();
+    const cls = linha('Clara Veio').querySelector('button').className.split(/\s+/);
+    expect(cls).toEqual(expect.arrayContaining(['p-1.5', '-m-1.5']));
   });
 
   it('sem agendamento no dia, a Agenda não aparece', () => {

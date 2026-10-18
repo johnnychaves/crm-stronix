@@ -16,8 +16,11 @@ import { OutcomePopover } from '../OutcomePopover.jsx';
 //   para trocar ou desfazer, como no card de hoje;
 // - a sua que passou da hora, os botões de Compareceu e Não compareceu;
 // - a de um colega que passou da hora, "Sem desfecho", que abre o mesmo balão:
-//   a agenda é de todos, e quem está na recepção confirma por quem não está.
-// O que ainda vai acontecer não mostra ação: a sua se marca pelo Agora.
+//   a agenda é de todos, e quem está na recepção confirma por quem não está;
+// - a que ainda vai acontecer, um "Marcar" em cinza, que abre o mesmo balão,
+//   porque o lead que chega antes da hora também precisa ser confirmado (o card
+//   de hoje deixava marcar qualquer linha a qualquer hora).
+// A próxima é azul e, para o leitor de tela, diz "(próximo)".
 
 const DOT = {
   ok: 'bg-emerald-500',
@@ -52,10 +55,10 @@ export function AgendaHoje({ rows, now, savingId, onMark }) {
           const tipo = row.categorySlug === C.VISITA_HOJE ? 'Visita' : 'Aula exp.';
           const title = `${tipo} de ${row.name || 'sem nome'} · ${formatHourLabel(row.scheduledAt)}`;
           const saving = savingId === row.id;
-          let acao = null;
-          if (row.outcome || (estado === 'pend' && !row.isMine)) {
-            acao = <OutcomePopover tag outcome={row.outcome} canUndo saving={saving} title={title} onPick={(c) => onMark(row, c)} />;
-          } else if (estado === 'pend') {
+          let acao;
+          if (row.outcome || estado !== 'pend' || !row.isMine) {
+            acao = <OutcomePopover tag upcoming={estado === 'next' || estado === 'later'} outcome={row.outcome} canUndo saving={saving} title={title} onPick={(c) => onMark(row, c)} />;
+          } else {
             acao = (
               <span className="flex gap-1">
                 <button type="button" disabled={saving} aria-label={`Compareceu: ${row.name || 'sem nome'}`} title="Compareceu" onClick={() => onMark(row, 'attended')} className={cn(MARK, 'hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:border-emerald-500/40 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-300')}>
@@ -71,6 +74,7 @@ export function AgendaHoje({ rows, now, savingId, onMark }) {
             <li key={row.id} data-estado={estado} className="grid grid-cols-[38px_10px_minmax(0,1fr)_auto] items-start gap-2 py-[7px]">
               <span className={cn('num pt-px text-[12px]', estado === 'next' ? 'font-bold text-brand-700 dark:text-brand-300' : 'text-muted-foreground')}>
                 {formatHourLabel(row.scheduledAt)}
+                {estado === 'next' && <span className="sr-only"> (próximo)</span>}
               </span>
               <span aria-hidden="true" className={cn('mt-1.5 size-2 rounded-full', DOT[estado])} />
               <div className="min-w-0">

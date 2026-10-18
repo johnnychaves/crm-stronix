@@ -20,12 +20,16 @@ import { outcomeMenuItems, outcomeTriggerLabel } from '../../lib/outcomeMenu.js'
 //
 // `tag` é para a Agenda da tela nova (mockup B): o gatilho é a etiqueta de
 // texto do desfecho ("Compareceu", "Não veio", ou "Sem desfecho" em âmbar), e
-// o mesmo balão marca ou corrige.
+// o mesmo balão marca ou corrige. Com `upcoming` (o horário ainda não chegou),
+// a etiqueta sem desfecho diz só "Marcar", em cinza: quem chega antes da hora
+// também é confirmado. O preenchimento com margem negativa aumenta a área do
+// clique sem tirar o texto do lugar.
 
 const TAG_TONE = {
   attended: 'text-emerald-700 dark:text-emerald-300',
   no_show: 'text-rose-700 dark:text-rose-300',
   none: 'text-amber-700 dark:text-amber-300',
+  upcoming: 'text-muted-foreground hover:text-foreground',
 };
 const TAG_LABEL = { attended: 'Compareceu', no_show: 'Não veio' };
 
@@ -57,6 +61,7 @@ export function OutcomePopover({
   size = 'md',
   compact = false,
   tag = false,
+  upcoming = false,
   className,
   onPick,
 }) {
@@ -66,8 +71,9 @@ export function OutcomePopover({
   const label = outcomeTriggerLabel(marked);
   const seal = !tag && compact && Boolean(marked);
   const shownLabel = tag
-    ? (marked ? TAG_LABEL[marked] : 'Sem desfecho')
+    ? (marked ? TAG_LABEL[marked] : upcoming ? 'Marcar' : 'Sem desfecho')
     : compact ? (marked ? null : 'Marcar') : label;
+  const tagTone = TAG_TONE[marked || (upcoming ? 'upcoming' : 'none')];
   const iconSize = seal ? 15 : 13;
   const iconStroke = seal ? 2.75 : 2;
 
@@ -87,7 +93,7 @@ export function OutcomePopover({
         className={cn(
           'inline-flex items-center font-semibold whitespace-nowrap transition active:scale-[.98] disabled:opacity-60 disabled:cursor-default',
           'focus:outline-none focus-visible:anel-foco',
-          tag && cn('rounded text-[11.5px] underline-offset-2 hover:underline', TAG_TONE[marked || 'none']),
+          tag && cn('-m-1.5 rounded-md p-1.5 text-[11.5px] underline-offset-2 hover:underline', tagTone),
           seal && 'size-7 shrink-0 justify-center rounded-full',
           !tag && !seal && compact && 'h-7 px-2.5 rounded-full border text-[11.5px]',
           !tag && !compact && 'gap-1.5 rounded-lg border',
