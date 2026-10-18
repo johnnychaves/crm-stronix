@@ -532,11 +532,15 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // Edição no lugar do Contexto comercial: grava só o campo que mudou
   // (lib/contextWrites.js). A trava é a do cadastro, a mesma do lápis do
   // cabeçalho. Devolve false quando não gravou, para o editor ficar aberto.
-  const handleContextSave = async (field, value) => {
+  // `from` é o valor da abertura do editor: as etiquetas gravam só a diferença.
+  // O editor aberto mora aqui, e não no card, para o rascunho sobreviver à
+  // troca de aba, como o `note` do compositor.
+  const [contextEdit, setContextEdit] = useState(null);
+  const handleContextSave = async (field, value, from) => {
     if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return false; }
     if (!canEditCadastro) { negarAcesso(); return false; }
     try {
-      const { ok, change } = await saveContextField({ db, lead, appUser, field, value, usersList, professores });
+      const { ok, change } = await saveContextField({ db, lead, appUser, field, value, from, usersList, professores });
       if (!ok) { toast.warning('Esse campo não pode ser salvo.'); return false; }
       if (change) toast.success(`${change.toName} agora é o responsável.`);
       return true;
@@ -831,6 +835,10 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
 
   // O que vem a seguir (visita, aula, próximo contato), lido dos campos do lead.
   const upNext = upNextOf(lead);
+  // Professor do cabeçalho: o do cadastro, o mesmo do Contexto comercial, e na
+  // falta dele o da aula experimental. A modalidade vai junto só quando o
+  // professor é o da aula.
+  const teamProfessor = lead.professorName || lead.appointmentProfessorName || null;
 
   // Histórico de contratos (aba Contratos): todos os contratos do lead, mais
   // recentes primeiro.
@@ -1464,11 +1472,11 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
             </MetaCell>
 
             <MetaCell label="Professor resp.">
-              {lead.appointmentProfessorName ? (
+              {teamProfessor ? (
                 <>
-                  <Avatar name={lead.appointmentProfessorName} size={19} />
-                  <span className="truncate">{lead.appointmentProfessorName}</span>
-                  {lead.appointmentModality && (
+                  <Avatar name={teamProfessor} size={19} />
+                  <span className="truncate">{teamProfessor}</span>
+                  {teamProfessor === lead.appointmentProfessorName && lead.appointmentModality && (
                     <span className="text-slate-400 dark:text-slate-500 font-normal truncate">· {lead.appointmentModality}</span>
                   )}
                 </>
@@ -1558,6 +1566,8 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
             tagsCatalog={tags}
             canEdit={canEditCadastro}
             onSave={handleContextSave}
+            edit={contextEdit}
+            setEdit={setContextEdit}
           />
           {renderComposer()}
          {/* O registro vive dentro de um card branco: a barra de controles fica
