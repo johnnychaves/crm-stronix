@@ -2,7 +2,7 @@
 // fatos do bloco Agora e a barra "Foco em". O cenário é o do mockup B: sexta,
 // 16/10/2026, 14:32.
 import { describe, it, expect } from 'vitest';
-import { durationText, whyOf, factsOf, focoTabs, focoRules, morningText, FOCO_LABEL } from '../metaFocoTexts.js';
+import { durationText, whyOf, factsOf, focoTabs, focoRules, morningText, urgentText, FOCO_LABEL } from '../metaFocoTexts.js';
 import { taskKey } from '../metaFoco.js';
 import { DAILY_GOAL_CATEGORIES as C } from '../leads.js';
 import { overdueDaysOf } from '../dailyGoal.js';
@@ -123,5 +123,31 @@ describe('focoTabs', () => {
   it('as regras dizem o prazo da academia', () => {
     expect(focoRules(5)[2]).toBe('Atrasados críticos, a partir de 5 dias');
     expect(FOCO_LABEL.all).toBe('Todos');
+  });
+});
+
+describe('urgentText', () => {
+  const visita = { id: 'v', name: 'Mateus Lima', appointmentType: 'visita', appointmentScheduledFor: at(14, 42) };
+  it('diz quanto falta para a visita e a aula, pelo primeiro nome', () => {
+    expect(urgentText(entry(visita, C.VISITA_HOJE), NOW)).toBe('Mateus chega em 10 min');
+    const aula = { ...visita, appointmentType: 'aula_experimental', appointmentScheduledFor: at(15, 50) };
+    expect(urgentText(entry(aula, C.AULA_HOJE), NOW)).toBe('Mateus tem aula em 1h18');
+  });
+  it('diz há quanto a visita passou sem desfecho', () => {
+    const passou = { ...visita, appointmentScheduledFor: at(14, 20) };
+    expect(urgentText(entry(passou, C.VISITA_HOJE), NOW)).toBe('Mateus passou do horário há 12 min, sem desfecho');
+  });
+  it('diz o canal e a hora do contato', () => {
+    const contato = { id: 'c', name: 'Carla Souza', nextFollowUp: at(15, 2), nextFollowUpType: 'Ligação' };
+    expect(urgentText(entry(contato, C.CONTATO_HOJE), NOW)).toBe('Ligação para Carla em 30 min');
+    const era = { ...contato, nextFollowUp: at(14, 0) };
+    expect(urgentText(entry(era, C.CONTATO_HOJE), NOW)).toBe('Ligação para Carla era às 14:00');
+  });
+  it('diz quando o lead novo sai da janela de 24h', () => {
+    const novo = { id: 'n', name: 'Nina Rosa', createdAt: at(15, 0, -1) };
+    expect(urgentText(entry(novo, C.NOVO_24H), NOW)).toBe('Nina sai dos novos leads em 28 min');
+  });
+  it('lead sem nome não vira frase quebrada', () => {
+    expect(urgentText(entry({ ...visita, name: '' }, C.VISITA_HOJE), NOW)).toBe('O lead chega em 10 min');
   });
 });

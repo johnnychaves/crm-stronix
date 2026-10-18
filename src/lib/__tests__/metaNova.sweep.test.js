@@ -28,7 +28,8 @@ describe('o desvio da tela nova na DailyGoalView', () => {
     for (const ligacao of [
       'onOutcome={handleOutcome}',
       'onPostpone={handleRescheduleTask}',
-      'onGoalDone={handleGoalDone}',
+      'onOutcomePopup={openOutcomePopup}',
+      'onConclude={concludeTask}',
       'onWhatsapp={handleWhatsapp}',
       'onCall={handleCall}',
       'onFoco={setFilter}',

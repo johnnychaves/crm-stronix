@@ -1031,6 +1031,15 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
     if (openOutcomePopup(lead, categorySlug)) return;
     const categoryLabel = DAILY_GOAL_CATEGORY_LABEL[categorySlug] || categorySlug;
     if (!window.confirm(`Concluir a tarefa "${categoryLabel}" deste lead?`)) return;
+    await concludeTask(lead, categorySlug, note);
+  };
+
+  // A gravação do Concluir sem pop-up (o Novo lead). A tela de hoje pergunta
+  // antes (handleGoalDone); a tela nova grava depois do prazo do Desfazer, com
+  // `quiet`, porque o aviso dela já disse que a tarefa foi concluída.
+  const concludeTask = async (lead, categorySlug, note, { quiet = false } = {}) => {
+    if (!Object.values(DAILY_GOAL_CATEGORIES).includes(categorySlug)) return;
+    const categoryLabel = DAILY_GOAL_CATEGORY_LABEL[categorySlug] || categorySlug;
     const noteText = (note || '').trim();
     const taskKey = `${lead.id}:${categorySlug}`;
     if (!claimTask(taskKey)) return;
@@ -1045,7 +1054,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
         dailyGoalCategory: categorySlug,
         ...goalOwnerFields(lead, categorySlug)
       }, newLeadHandledPatch(categorySlug));
-      toast.success(`Tarefa "${categoryLabel}" concluída.`);
+      if (!quiet) toast.success(`Tarefa "${categoryLabel}" concluída.`);
     } catch (err) {
       console.error(err);
       toast.error('Não foi possível concluir a tarefa. Tente novamente.');
@@ -1500,7 +1509,8 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
           onOutcome={handleOutcome}
           onReschedule={(l, s) => setRescheduleTarget({ lead: l, categorySlug: s })}
           onPostpone={handleRescheduleTask}
-          onGoalDone={handleGoalDone}
+          onOutcomePopup={openOutcomePopup}
+          onConclude={concludeTask}
           onWhatsapp={handleWhatsapp}
           onCall={handleCall}
           aside={(
