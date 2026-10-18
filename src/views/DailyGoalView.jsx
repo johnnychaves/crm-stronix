@@ -17,6 +17,7 @@ import { useFrozenWhileIdle, useMinuteClock } from '../hooks/useMinuteClock.js';
 import { frozenDayText } from '../lib/rotinasTela.js';
 import { MetaFocoScreen } from '../components/dailygoal/foco/MetaFocoScreen.jsx';
 import { RitmoCard, SideCard, SideSection } from '../components/dailygoal/foco/FocoParts.jsx';
+import { AgendaHoje } from '../components/dailygoal/foco/AgendaHoje.jsx';
 import { DayAgendaCard } from '../components/dailygoal/DayAgendaCard.jsx';
 import { RoutineCard } from '../components/dailygoal/RoutineCard.jsx';
 import { OutcomePopover } from '../components/dailygoal/OutcomePopover.jsx';
@@ -1504,13 +1505,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
           onCall={handleCall}
           aside={(
             <>
-              <DayAgendaCard
-                rows={dayAgenda.rows}
-                pending={dayAgenda.pending}
-                nextIndex={dayAgenda.nextIndex}
-                savingId={savingAgendaId}
-                onMark={markAgendaPresence}
-              />
+              <AgendaHoje rows={dayAgenda.rows} now={now} savingId={savingAgendaId} onMark={markAgendaPresence} />
               <RitmoCard ritmo={ritmoMes} expected={expectedHits} volumeMonth={volumeMonth} />
               {isMetaParticipant(appUser) && (
                 <RoutineCard db={db} appUser={appUser} enabled={listenersActive} now={now} metaWeekdays={metaWeekdays} />

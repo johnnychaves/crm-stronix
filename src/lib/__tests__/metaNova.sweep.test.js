@@ -37,6 +37,17 @@ describe('o desvio da tela nova na DailyGoalView', () => {
     }
   });
 
+  it('a tela nova usa a Agenda do mockup B, e a de hoje continua com o card de sempre', () => {
+    const antiga = corpo.indexOf('<ProgressHero');
+    expect(antiga).toBeGreaterThan(desvio);
+    const nova = corpo.slice(desvio, antiga);
+    const deHoje = corpo.slice(antiga);
+    expect(nova).toContain('<AgendaHoje');
+    expect(nova).not.toContain('<DayAgendaCard');
+    expect(deHoje).toContain('<DayAgendaCard');
+    expect(deHoje).not.toContain('<AgendaHoje');
+  });
+
   it('trocar de foco escreve pelo setParams, que guarda o ?meta=nova', () => {
     expect(corpo).toContain('const setFilter = (v) => setParams({ cat: v });');
   });
