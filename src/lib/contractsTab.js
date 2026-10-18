@@ -367,3 +367,19 @@ export function contractTimelineOf({
 
   return { start: new Date(t0), end: new Date(t1), todayPct: round1(pct(ref.getTime())), years, lanes, heroLane, marks };
 }
+
+// A legenda da vigência só mostra o que está desenhado no eixo: uma legenda de
+// cinco itens para um cliente com um contrato só era ruído. A ordem é fixa
+// (em uso, próximo, encerrado, cancelado, trancado, marcos de renovação), e quem
+// desenha troca cada chave pelo rótulo e pela cor.
+const LEGEND_SEGMENT_ORDER = ['em_uso', 'proximo', 'encerrado', 'cancelado'];
+
+export function legendKeysOf(timeline) {
+  if (!timeline) return [];
+  const segments = (timeline.lanes || []).flat();
+  const kinds = new Set(segments.map((s) => s.kind));
+  const keys = LEGEND_SEGMENT_ORDER.filter((k) => kinds.has(k));
+  if (segments.some((s) => (s.pauses || []).length > 0)) keys.push('trancado');
+  if ((timeline.marks || []).length > 0) keys.push('marcos');
+  return keys;
+}
