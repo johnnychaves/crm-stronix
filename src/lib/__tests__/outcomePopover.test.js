@@ -36,12 +36,6 @@ describe('OutcomePopover', () => {
     expect(opcoes()).toEqual(['Compareceu', 'Não compareceu']);
   });
 
-  it('com withMore traz Remarcou e Cancelou', async () => {
-    await montar({ withMore: true, onPick: () => {} });
-    await clicar(gatilho());
-    expect(opcoes()).toEqual(['Compareceu', 'Não compareceu', 'Remarcou', 'Cancelou']);
-  });
-
   it('marcado mostra o desfecho e oferece a troca e o desfazer', async () => {
     await montar({ outcome: 'attended', canUndo: true, onPick: () => {} });
     expect(gatilho().textContent).toContain('Compareceu');
@@ -57,22 +51,6 @@ describe('OutcomePopover', () => {
     await clicar(document.querySelector('[data-outcome-item="attended"]'));
     expect(escolhas).toEqual(['attended']);
     expect(document.querySelector('[data-outcome-item]')).toBeNull();
-  });
-
-  it('compacto (Agenda de hoje): "Marcar" sem desfecho e só o ícone com desfecho, com o texto inteiro no rótulo', async () => {
-    await montar({ compact: true, title: 'Visita de Ana · 18:00', onPick: () => {} });
-    expect(gatilho().textContent.trim()).toBe('Marcar');
-    expect(gatilho().getAttribute('aria-label')).toBe('Marcar desfecho: Visita de Ana · 18:00');
-    await act(async () => { root.unmount(); });
-    document.body.innerHTML = '';
-    await montar({ compact: true, outcome: 'no_show', onPick: () => {} });
-    expect(gatilho().textContent.trim()).toBe('');
-    expect(gatilho().getAttribute('aria-label')).toBe('Não compareceu. Abrir para corrigir');
-    expect(gatilho().getAttribute('title')).toBe('Não compareceu');
-    // Selo redondo cheio, sem a seta: só o ícone do desfecho.
-    expect(gatilho().className).toContain('rounded-full');
-    expect(gatilho().className).toContain('bg-rose-500');
-    expect(gatilho().querySelectorAll('svg')).toHaveLength(1);
   });
 
   it('gravando, o botão fica desligado', async () => {

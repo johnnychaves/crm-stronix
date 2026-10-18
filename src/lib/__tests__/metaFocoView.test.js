@@ -185,6 +185,12 @@ describe('Meta nova: o Agora e a fila', () => {
     expect(host.querySelector('section[aria-labelledby="meta-fila-titulo"] a')).toBeNull();
   });
 
+  it('lead com id que não serve para endereço fica sem link, com o nome à vista', () => {
+    render({ leads: [{ ...CONTATO, id: 'a/b' }], now: NOW });
+    expect(agora().querySelector('a')).toBeNull();
+    expect(agoraName()).toBe('Carla Contato');
+  });
+
   it('a fila mostra a marca de quem já foi contatado hoje', () => {
     render({ leads: LEADS, now: NOW });
     expect(button('Davi Atraso').textContent).toContain('Já interagido. Feche pela Meta');

@@ -5,21 +5,20 @@ import { DAILY_GOAL_CATEGORIES as C } from '../../../lib/leads.js';
 import { formatHourLabel } from '../../../lib/format.js';
 import { OutcomePopover } from '../OutcomePopover.jsx';
 
-// A Agenda de hoje da Meta nova (mockup B): todas as visitas e aulas do dia na
+// A Agenda de hoje da Meta (mockup B): todas as visitas e aulas do dia na
 // academia, numa lista curta com a hora, um ponto do estado, quem é e o que
 // falta. As linhas chegam prontas de computeDayAgenda e quem grava é o
-// markAgendaPresence da Meta, o mesmo do card da tela de hoje.
+// markAgendaPresence da Meta.
 //
 // O ponto: verde compareceu, vermelho faltou, âmbar passou da hora sem
 // desfecho, azul o próximo e cinza o resto. À direita:
 // - com desfecho, a etiqueta ("Compareceu" ou "Não veio"), que abre o balão
-//   para trocar ou desfazer, como no card de hoje;
+//   para trocar ou desfazer;
 // - a sua que passou da hora, os botões de Compareceu e Não compareceu;
 // - a de um colega que passou da hora, "Sem desfecho", que abre o mesmo balão:
 //   a agenda é de todos, e quem está na recepção confirma por quem não está;
 // - a que ainda vai acontecer, um "Marcar" em cinza, que abre o mesmo balão,
-//   porque o lead que chega antes da hora também precisa ser confirmado (o card
-//   de hoje deixava marcar qualquer linha a qualquer hora).
+//   porque o lead que chega antes da hora também precisa ser confirmado.
 // A próxima é azul e, para o leitor de tela, diz "(próximo)".
 
 const DOT = {

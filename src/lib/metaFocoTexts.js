@@ -9,7 +9,7 @@ import { dayRefText } from './whenPicker.js';
 import { firstName } from './guardian.js';
 import { FOCO_ORDER, URGENT_WINDOW_MIN, inFoco, isAppt, rankFoco } from './metaFoco.js';
 
-// Os textos da tela nova da Meta (Foco agora, mockup B): o motivo de cada
+// Os textos da tela da Meta (Foco agora, mockup B): o motivo de cada
 // tarefa estar onde está na fila, os fatos do bloco Agora e o que a barra "Foco
 // em" mostra. Puro e testado em node; a ordem da fila continua em metaFoco.js.
 
@@ -94,7 +94,7 @@ export function whyOf({ slug, lead }, now, opts = {}) {
     // atraso. Depois, o texto continua dizendo que ele nunca teve próximo passo.
     if (days === 0) return { text: 'Sem próximo passo', tone: 'warn' };
     const semPasso = !getSafeDateOrNull(lead?.nextFollowUp);
-    // O crítico vai escrito, e não só na cor (o card de hoje dizia "crítico").
+    // O crítico vai escrito, e não só na cor.
     const critico = days >= slaOf(opts);
     const base = `${plural(days, 'dia', 'dias')} ${semPasso ? 'sem próximo passo' : 'de atraso'}`;
     return { text: critico ? `${base}, crítico` : base, tone: critico ? 'late' : 'warn' };

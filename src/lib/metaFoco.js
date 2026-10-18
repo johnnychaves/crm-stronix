@@ -28,7 +28,7 @@ import { FOCO_COMPROMISSOS, FOCO_ORDER, FOCO_GRUPOS } from './metaFocoCodes.js';
 // chama de 0 e 1, são as "urgentes" que o título da aba conta.
 //
 // Uma "entrada" é uma tarefa pendente: { key, slug, lead }. Um lead com duas
-// categorias pendentes vira duas entradas, como na tela de hoje.
+// categorias pendentes vira duas entradas.
 // ============================================================================
 
 const MIN_MS = 60 * 1000;

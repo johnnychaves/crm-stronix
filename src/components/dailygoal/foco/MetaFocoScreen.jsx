@@ -11,9 +11,9 @@ import { AgoraCard } from './AgoraCard.jsx';
 import { AvisoDesfazer, FaixaUrgente } from './FaixaUrgente.jsx';
 import { DiaFechado, FilaDepois, FocoBar, FocoVazio, MetaVazia } from './FocoParts.jsx';
 
-// A tela nova da Meta (Foco agora, mockup B), atrás do ?meta=nova até a
-// virada. A faixa do topo, a barra "Foco em", o bloco Agora com a tarefa da vez
-// e a fila "Depois". A lateral vem pronta da Meta (`aside`), porque usa peças
+// A tela da Meta diária (Foco agora, mockup B, a tela padrão desde o PR 5 do
+// plano da Meta). A faixa do topo, a barra "Foco em", o bloco Agora com a
+// tarefa da vez e a fila "Depois". A lateral vem pronta da Meta (`aside`), porque usa peças
 // que moram na DailyGoalView. Quem grava são os handlers da Meta.
 //
 // O Agora fica parado: a tela guarda a chave da tarefa escolhida pela última
