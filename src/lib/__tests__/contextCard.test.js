@@ -187,6 +187,18 @@ describe('ContextCard', () => {
     expect(document.body.querySelector('[role="listbox"]')).toBeNull();
   });
 
+  it('a resposta de uma gravação lenta não fecha o editor que a pessoa abriu depois', async () => {
+    let terminar;
+    const onSave = vi.fn(() => new Promise((r) => { terminar = r; }));
+    await montar({ onSave });
+    await clicar(porLabel('Editar dor'));
+    const opcao = [...document.body.querySelectorAll('[role="option"]')].find((o) => o.textContent === 'Saúde');
+    await tecla(opcao, 'Enter');
+    await clicar(porLabel('Editar observação'));
+    await act(async () => { terminar(true); });
+    expect(document.body.querySelector('textarea')).not.toBeNull();
+  });
+
   it('escolher o valor que já está gravado não grava', async () => {
     const onSave = await montar();
     await clicar(porLabel('Editar dor'));

@@ -82,6 +82,9 @@ export function ContextCard({ lead, sources = [], usersList = [], tagsCatalog = 
   const cellRefs = useRef({});
   const tagsRef = useRef(null);
   const returnFocusTo = useRef(null);
+  // O campo aberto agora, para a resposta de uma gravação que demorou não
+  // fechar o editor de outro campo que a pessoa abriu nesse meio tempo.
+  const editingRef = useRef(null);
   useEffect(() => {
     if (editing === 'tags') { tagsRef.current?.querySelector('input')?.focus(); return; }
     if (editing !== null || !returnFocusTo.current) return;
@@ -118,10 +121,12 @@ export function ContextCard({ lead, sources = [], usersList = [], tagsCatalog = 
   const open = (key) => {
     if (!canEdit) return;
     setDraft(key === 'tags' ? [...(lead.tags || [])] : key === 'observation' ? (lead.observation || '') : null);
+    editingRef.current = key;
     setEditing(key);
   };
   const close = () => {
-    returnFocusTo.current = editing;
+    returnFocusTo.current = editingRef.current;
+    editingRef.current = null;
     setEditing(null);
     setDraft(null);
   };
@@ -135,7 +140,8 @@ export function ContextCard({ lead, sources = [], usersList = [], tagsCatalog = 
     setSaving(true);
     const ok = await onSave(key, value);
     setSaving(false);
-    if (ok !== false) close();
+    // A lista fecha sozinha ao escolher, então o editor dela já pode ter fechado.
+    if (ok !== false && editingRef.current === key) close();
   };
 
   return (
