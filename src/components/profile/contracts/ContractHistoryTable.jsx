@@ -126,7 +126,7 @@ export function ContractHistoryTable({ rows, firstName, hasContract, defaultOpen
     <section className="rounded-2xl border border-border bg-card shadow-card overflow-hidden">
       <div className="flex items-center gap-2.5 px-[22px] py-4 border-b border-border">
         <h3 className="font-display text-[16px] font-semibold tracking-tight">Histórico</h3>
-        <span className="num rounded-full bg-slate-100 px-2.5 py-0.5 text-[12px] font-semibold text-slate-500 dark:bg-white/[0.06] dark:text-slate-400">
+        <span className="num rounded-full bg-slate-100 px-2.5 py-0.5 text-[12px] font-semibold text-slate-600 dark:bg-white/[0.06] dark:text-slate-400">
           {count === 1 ? '1 anterior' : `${count} anteriores`}
         </span>
         <div className="flex-1"></div>
