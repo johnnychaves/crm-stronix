@@ -6,7 +6,8 @@ import { overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS } from './dailyGoal.js';
 import { getSafeDateOrNull } from './dates.js';
 import { formatHourLabel } from './format.js';
 import { dayRefText } from './whenPicker.js';
-import { FOCO_ORDER, URGENT_WINDOW_MIN, inFoco, rankFoco } from './metaFoco.js';
+import { firstName } from './guardian.js';
+import { FOCO_ORDER, URGENT_WINDOW_MIN, inFoco, isAppt, rankFoco } from './metaFoco.js';
 
 // Os textos da tela nova da Meta (Foco agora, mockup B): o motivo de cada
 // tarefa estar onde está na fila, os fatos do bloco Agora e o que a barra "Foco
@@ -14,7 +15,6 @@ import { FOCO_ORDER, URGENT_WINDOW_MIN, inFoco, rankFoco } from './metaFoco.js';
 
 const MIN_MS = 60 * 1000;
 const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
-const isAppt = (slug) => slug === C.VISITA_HOJE || slug === C.AULA_HOJE;
 const slaOf = (opts) => (Number.isFinite(opts?.sla) && opts.sla > 0 ? opts.sla : DEFAULT_SLA_OVERDUE_DAYS);
 
 // Os nomes da barra "Foco em", na ordem de FOCO_ORDER.
@@ -152,6 +152,36 @@ export function factsOf({ slug, lead }, now, opts = {}) {
   if (!cliente && lead?.source) out.push(['Origem', lead.source]);
   if (lead?.dor) out.push(['Interesse', lead.dor]);
   return out.slice(0, 4);
+}
+
+// A frase da faixa de urgência, que avisa da tarefa mais urgente que o Agora:
+// "Mateus chega em 10 min", "Bia passou do horário há 12 min, sem desfecho",
+// "Ligação para Carla em 40 min". Só as classes 0 e 1 chegam aqui.
+export function urgentText({ slug, lead }, now) {
+  const nome = firstName(lead?.name);
+  const quem = nome || 'O lead';
+  // No minuto do horário a conta arredonda para zero, e a faixa não diz "0 min".
+  const falta = (ms) => durationText(Math.max(Math.abs(ms), MIN_MS));
+  if (isAppt(slug)) {
+    const at = getLeadAppointmentDate(lead);
+    if (!at) return `${quem}: ${CATEGORY_ONE[slug].toLowerCase()} sem horário`;
+    const ms = at - now;
+    if (ms < 0) return `${quem} passou do horário há ${falta(ms)}, sem desfecho`;
+    return slug === C.AULA_HOJE ? `${quem} tem aula em ${falta(ms)}` : `${quem} chega em ${falta(ms)}`;
+  }
+  if (slug === C.CONTATO_HOJE) {
+    const { type } = followUpChannelOf(lead);
+    const praQuem = nome || 'o lead';
+    const at = getSafeDateOrNull(lead?.nextFollowUp);
+    if (!at) return `${type} para ${praQuem}`;
+    const ms = at - now;
+    return ms < 0 ? `${type} para ${praQuem} era às ${formatHourLabel(at)}` : `${type} para ${praQuem} em ${falta(ms)}`;
+  }
+  if (slug === C.NOVO_24H) {
+    const at = newLeadCloses(lead);
+    return at ? `${quem} sai dos novos leads em ${falta(at - now)}` : `${quem} é lead novo`;
+  }
+  return `${quem}: ${whyOf({ slug, lead }, now).text}`;
 }
 
 // A linha da manhã, antes da primeira tarefa feita: quantas o dia tem e
