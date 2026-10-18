@@ -18,17 +18,25 @@
 // é por ele que a Meta põe o lead em Atrasados. Concluído pelo "Contato feito"
 // ou trocado por outro contato, ele sai. Com desfecho marcado ("Não veio"), o
 // eco que ficou é o contato atrasado. O cliente não entra em Atrasados, então
-// mostra o compromisso só de hoje em diante, como a Agenda de hoje
-// (src/lib/dayAgenda.js), que mostra a aula marcada para aluno.
+// mostra o compromisso e o contato só de hoje em diante, como a Agenda de hoje
+// (src/lib/dayAgenda.js), que mostra a aula marcada para aluno, e o Contato
+// hoje da Meta. No Vencidos a Meta cobra o cliente, e não a ligação que passou.
+//
+// O "Tarefa de X" diz quem tem a tarefa na Meta. O que venceu antes de hoje é
+// Atrasado, e o Atrasado é do dono do lead, mesmo com o contato delegado ou a
+// visita agendada por outra pessoa: aí o "Tarefa de" sai.
+//
+// Ele mostra o que está marcado, e não tudo que a Meta cobra: o lead novo sem
+// próximo passo, que a Meta põe em Atrasados, não tem nada marcado.
 import { getSafeDateOrNull, normalizeAppointmentType } from './dates.js';
 import { getLeadAppointmentDate, getLeadAppointmentType, isClientLead } from './leads.js';
 import { isAppointmentEcho } from './outcomeCorrection.js';
 
 const join = (parts) => parts.filter(Boolean).join(' · ');
-const taskOf = (name) => (name ? `Tarefa de ${name}` : '');
+const taskOf = (name, when, today) => (name && when >= today ? `Tarefa de ${name}` : '');
 const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 
-function appointmentItem(lead, type, when, now) {
+function appointmentItem(lead, type, when, now, today) {
   const isAula = type === 'aula_experimental';
   // A anotação do agendamento mora em nextFollowUpNote, mas um contato marcado
   // depois a sobrescreve. Só vale enquanto o próximo contato ainda é o compromisso.
@@ -45,14 +53,14 @@ function appointmentItem(lead, type, when, now) {
     type,
     kind: isAula ? 'class' : 'visit',
     title: isAula ? 'Aula experimental' : 'Visita',
-    detail: join([...(isAula ? aula : visita), taskOf(lead.appointmentOwnerName), note]),
+    detail: join([...(isAula ? aula : visita), taskOf(lead.appointmentOwnerName, when, today), note]),
     when,
     overdue: when.getTime() < now.getTime(),
     canOutcome: true
   };
 }
 
-function contactItem(lead, when, now, detail = join([taskOf(lead.nextFollowUpOwnerName), lead.nextFollowUpNote])) {
+function contactItem(lead, when, now, today, detail = join([taskOf(lead.nextFollowUpOwnerName, when, today), lead.nextFollowUpNote])) {
   const call = /liga/i.test(String(lead.nextFollowUpType || ''));
   return {
     id: 'contact',
@@ -80,17 +88,18 @@ export function upNextOf(lead, now = new Date()) {
   // ficha continua com os campos, mas ele deixa de ser "a seguir".
   const live = apptWhen && (apptWhen >= today || (chased && isAppointmentEcho(lead)));
   const showAppt = Boolean(apptType && live && !lead.appointmentOutcome);
-  if (showAppt) items.push(appointmentItem(lead, apptType, apptWhen, now));
+  if (showAppt) items.push(appointmentItem(lead, apptType, apptWhen, now, today));
 
   const nextWhen = getSafeDateOrNull(lead.nextFollowUp);
   if (nextWhen && !normalizeAppointmentType(lead.nextFollowUpType)) {
-    items.push(contactItem(lead, nextWhen, now));
+    if (chased || nextWhen >= today) items.push(contactItem(lead, nextWhen, now, today));
   } else if (nextWhen && !showAppt && chased && nextWhen < today) {
-    // O eco que ficou depois do desfecho: a Meta o cobra como Atrasado.
+    // O eco que ficou depois do desfecho: a Meta o cobra como Atrasado, do dono
+    // do lead. O dono do contato que ficou no lead é de um contato antigo.
     const what = apptType === 'aula_experimental' ? 'aula experimental' : 'visita';
     const outcome = lead.appointmentOutcome === 'no_show' ? `Não veio à ${what}`
       : lead.appointmentOutcome === 'attended' ? `Veio à ${what}` : '';
-    items.push(contactItem(lead, nextWhen, now, join([outcome, taskOf(lead.nextFollowUpOwnerName)])));
+    items.push(contactItem(lead, nextWhen, now, today, outcome));
   }
 
   return items.sort((a, b) => a.when.getTime() - b.when.getTime());

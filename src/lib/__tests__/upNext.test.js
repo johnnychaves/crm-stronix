@@ -150,8 +150,11 @@ describe('upNextOf', () => {
   });
 });
 
-// O "A seguir" concorda com a Meta Diária: o que a Meta cobra aparece, e o que
-// ela deixou de cobrar sai (revisão do PR 3, 18/10/2026).
+// O "A seguir" mostra o que está marcado no lead e não contradiz a Meta Diária:
+// o que a Meta deixou de cobrar sai, o atrasado é do dono do lead e o contato do
+// cliente que já passou não aparece. Ele não promete tudo que a Meta cobra: o
+// lead novo sem próximo passo não tem nada marcado e fica vazio (revisão do PR 3,
+// 18/10/2026).
 describe('upNextOf contra a Meta', () => {
   const base = { id: 'l1', status: 'Novo', consultantId: 'u1', createdAt: D(10, 1), lifecycleStage: 'lead' };
   const meta = (lead) => computeDailyGoalSlots([lead], new Map(), 'u1', undefined, undefined, AGORA).flatMap((s) => s.categorySlugs);
@@ -212,5 +215,82 @@ describe('upNextOf contra a Meta', () => {
     };
     expect(isMetaOverdue(lead, AGORA)).toBe(false);
     expect(upNextOf(lead, AGORA)).toEqual([]);
+  });
+
+  // A Ana (u1) é a dona do lead e passou uma mensagem ao Bruno (u2).
+  const meta2 = (lead, quem) => computeDailyGoalSlots([lead], new Map(), quem, undefined, undefined, AGORA).flatMap((x) => x.categorySlugs);
+
+  it('o eco do "Não veio" é Atrasado da dona do lead, mesmo com o dono do contato antigo no lead', () => {
+    const lead = {
+      ...base, appointmentType: 'visita', appointmentScheduledFor: D(10, 15, 19), appointmentOutcome: 'no_show',
+      nextFollowUp: D(10, 15, 19), nextFollowUpType: 'Visita', nextFollowUpOwnerId: 'u2', nextFollowUpOwnerName: 'Bruno Lima',
+    };
+    expect(meta2(lead, 'u1')).toEqual([DAILY_GOAL_CATEGORIES.ATRASADO]);
+    expect(meta2(lead, 'u2')).toEqual([]);
+    expect(upNextOf(lead, AGORA)[0].detail).toBe('Não veio à visita');
+  });
+
+  it('contato delegado que venceu é Atrasado da dona do lead, sem "Tarefa de"', () => {
+    const lead = {
+      ...base, nextFollowUp: D(10, 15, 10), nextFollowUpType: 'Mensagem', nextFollowUpNote: 'Mandar os horários',
+      nextFollowUpOwnerId: 'u2', nextFollowUpOwnerName: 'Bruno Lima',
+    };
+    expect(meta2(lead, 'u1')).toEqual([DAILY_GOAL_CATEGORIES.ATRASADO]);
+    expect(meta2(lead, 'u2')).toEqual([]);
+    expect(upNextOf(lead, AGORA)).toMatchObject([{ id: 'contact', overdue: true, detail: 'Mandar os horários' }]);
+  });
+
+  it('contato delegado de hoje continua com quem o recebeu, como na Meta', () => {
+    const lead = { ...base, nextFollowUp: D(10, 16, 18), nextFollowUpType: 'Mensagem', nextFollowUpOwnerId: 'u2', nextFollowUpOwnerName: 'Bruno Lima' };
+    expect(meta2(lead, 'u2')).toEqual([DAILY_GOAL_CATEGORIES.CONTATO_HOJE]);
+    expect(upNextOf(lead, AGORA)[0].detail).toBe('Tarefa de Bruno Lima');
+  });
+
+  it('visita passada que ainda é o eco fica sem "Tarefa de": o atrasado é da dona do lead', () => {
+    const lead = {
+      ...base, appointmentType: 'visita', appointmentScheduledFor: D(10, 15, 19), appointmentOwnerId: 'u2', appointmentOwnerName: 'Bruno Lima',
+      nextFollowUp: D(10, 15, 19), nextFollowUpType: 'Visita',
+    };
+    expect(meta2(lead, 'u1')).toEqual([DAILY_GOAL_CATEGORIES.ATRASADO]);
+    expect(upNextOf(lead, AGORA)[0]).toMatchObject({ id: 'appointment', detail: '' });
+  });
+
+  const clienteAtivo = {
+    ...base, status: 'Venda', lifecycleStage: 'cliente', isConverted: true,
+    currentContractStatus: 'ativo', currentContractStartsAt: D(1, 10), currentContractEndsAt: new Date(2027, 5, 30),
+  };
+
+  it('cliente ativo com ligação que passou: a Meta não cobra, e o a seguir não mostra', () => {
+    const lead = { ...clienteAtivo, nextFollowUp: D(10, 8, 10), nextFollowUpType: 'Ligação' };
+    expect(meta2(lead, 'u1')).toEqual([]);
+    expect(upNextOf(lead, AGORA)).toEqual([]);
+  });
+
+  it('cliente com ligação de hoje ou depois aparece, como o contato de hoje da Meta', () => {
+    const hoje = { ...clienteAtivo, nextFollowUp: D(10, 16, 17), nextFollowUpType: 'Ligação' };
+    expect(meta2(hoje, 'u1')).toEqual([DAILY_GOAL_CATEGORIES.CONTATO_HOJE]);
+    expect(upNextOf(hoje, AGORA).map((i) => i.id)).toEqual(['contact']);
+    expect(upNextOf({ ...clienteAtivo, nextFollowUp: D(10, 20, 9), nextFollowUpType: 'Ligação' }, AGORA)).toHaveLength(1);
+  });
+
+  it('lead Venda antigo, sem lifecycleStage, segue a regra do cliente', () => {
+    const lead = { ...base, status: 'Venda', lifecycleStage: undefined, nextFollowUp: D(10, 8, 10), nextFollowUpType: 'Ligação' };
+    expect(meta2(lead, 'u1')).toEqual([]);
+    expect(upNextOf(lead, AGORA)).toEqual([]);
+  });
+
+  it('cliente vencido no Vencidos: a Meta cobra o cliente, não a ligação que passou, e o a seguir fica vazio', () => {
+    const lead = {
+      ...clienteAtivo, currentContractStatus: 'ativo', currentContractEndsAt: D(10, 10), nextFollowUp: D(10, 12, 10), nextFollowUpType: 'Ligação',
+    };
+    expect(meta2(lead, 'u1')).toEqual([DAILY_GOAL_CATEGORIES.VENCIDO]);
+    expect(upNextOf(lead, AGORA)).toEqual([]);
+  });
+
+  it('lead novo sem próximo passo: a Meta cobra, mas não há nada marcado, e o a seguir fica vazio', () => {
+    const DEPOIS = new Date(2026, 9, 19, 10);
+    const lead = { ...base, createdAt: new Date(2026, 9, 17, 8) };
+    expect(isMetaOverdue(lead, DEPOIS)).toBe(true);
+    expect(upNextOf(lead, DEPOIS)).toEqual([]);
   });
 });
