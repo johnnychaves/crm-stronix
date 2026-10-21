@@ -1363,43 +1363,48 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
               {!isClient && (canContrato || canMudarFase) && (
                 <>
                   <div className="w-px h-6 bg-slate-200 dark:bg-white/[0.08] mx-0.5 hidden sm:block"></div>
-                  {canContrato && (
-                    <Btn
-                      kind="success"
-                      size="md"
-                      icon={<TrendingUp size={14} />}
-                      onClick={handleWin}
-                      disabled={lead.status === 'Venda' || loading}
-                      title={lead.status === 'Venda' ? 'Lead já marcado como venda' : 'Marcar venda'}
-                    >
-                      Marcar venda
-                    </Btn>
-                  )}
-                  {/* Lead em Perda troca o "Marcar perda" pelo "Reativar lead",
-                      que o devolve a uma fase aberta do funil. */}
-                  {canMudarFase && lead.status === 'Perda' && (
-                    <Btn
-                      kind="brand"
-                      size="md"
-                      icon={<RotateCcw size={14} />}
-                      onClick={() => setReactivateOpen(true)}
-                      disabled={loading || reactivateFunnels.length === 0}
-                      title={reactivateFunnels.length === 0 ? 'Nenhum funil com fase aberta' : 'Devolver o lead a uma fase do funil'}
-                    >
-                      Reativar lead
-                    </Btn>
-                  )}
-                  {canMudarFase && lead.status !== 'Perda' && (
-                    <Btn
-                      kind="danger"
-                      size="md"
-                      icon={<Ban size={14} />}
-                      onClick={() => setLossModalOpen(true)}
-                      disabled={loading}
-                      title="Marcar perda"
-                    >
-                      Marcar perda
-                    </Btn>
+                  {/* Lead em Perda: Venda e Perda saem, e fica só o "Reativar
+                      lead", que o devolve a uma fase do funil. Reativado, os dois
+                      voltam. */}
+                  {lead.status === 'Perda' ? (
+                    canMudarFase && (
+                      <Btn
+                        kind="brand"
+                        size="md"
+                        icon={<RotateCcw size={14} />}
+                        onClick={() => setReactivateOpen(true)}
+                        disabled={loading || reactivateFunnels.length === 0}
+                      >
+                        Reativar lead
+                      </Btn>
+                    )
+                  ) : (
+                    <>
+                      {canContrato && (
+                        <Btn
+                          kind="success"
+                          size="md"
+                          icon={<TrendingUp size={14} />}
+                          onClick={handleWin}
+                          disabled={lead.status === 'Venda' || loading}
+                          title={lead.status === 'Venda' ? 'Lead já marcado como venda' : 'Marcar venda'}
+                        >
+                          Marcar venda
+                        </Btn>
+                      )}
+                      {canMudarFase && (
+                        <Btn
+                          kind="danger"
+                          size="md"
+                          icon={<Ban size={14} />}
+                          onClick={() => setLossModalOpen(true)}
+                          disabled={loading}
+                          title="Marcar perda"
+                        >
+                          Marcar perda
+                        </Btn>
+                      )}
+                    </>
                   )}
                 </>
               )}
