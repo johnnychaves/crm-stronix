@@ -6,7 +6,7 @@ import { logInteraction } from '../lib/interactions.js';
 import { useLeadTimeline } from '../hooks/useLeadTimeline.js';
 import { useReferrals } from '../hooks/useReferrals.js';
 import { withBucket } from '../lib/leadDerived.js';
-import { planStageMove, planLoss, planUpgradeMove, planUpgradeDecline, stageMoveBlockMessage, withStageEntered } from '../lib/stageMove.js';
+import { planStageMove, planLoss, planUpgradeMove, planUpgradeDecline, stageMoveBlockMessage, withStageEntered, reactivationFunnels, REACTIVATED_NOTE } from '../lib/stageMove.js';
 import { canEditLead, isLeadConverted, ZAP_VIA } from '../lib/leads.js';
 import { ACTIONS, can, isGestor, isSeller } from '../lib/acesso.js';
 import { normalizeAppointmentType, getSafeDateOrNull } from '../lib/dates.js';
@@ -44,6 +44,7 @@ import { ContractsTab } from '../components/profile/contracts/ContractsTab.jsx';
 import { TimelineAuthor } from '../components/profile/TimelineAuthor.jsx';
 import { StronizapBadge } from '../components/brand/StronizapMark.jsx';
 import { LossReasonModal } from '../modals/LossReasonModal.jsx';
+import { ReactivateLeadModal } from '../modals/ReactivateLeadModal.jsx';
 import { ContractModal } from '../modals/ContractModal.jsx';
 import { ContractOutcomeModal } from '../modals/ContractOutcomeModal.jsx';
 import { ContractEditModal } from '../modals/ContractEditModal.jsx';
@@ -69,7 +70,7 @@ import {
   appointmentOriginText,
   isAppointmentReschedule
 } from '../lib/timeline.js';
-import { ArrowLeft, ArrowRight, Ban, BookOpen, Building2, Calendar, Check, CheckCircle, Clock, Copy, CreditCard, FileText, GraduationCap, Handshake, MessageCircle, Pencil, Phone, Plus, RefreshCw, Search, Tag, Target, ThumbsDown, Trash, TrendingUp, User, UserPlus, Users } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Ban, BookOpen, Building2, Calendar, Check, CheckCircle, Clock, Copy, CreditCard, FileText, GraduationCap, Handshake, MessageCircle, Pencil, Phone, Plus, RefreshCw, RotateCcw, Search, Tag, Target, ThumbsDown, Trash, TrendingUp, User, UserPlus, Users } from 'lucide-react';
 
 // Eventos de contrato que ganham faixa de destaque na linha do tempo: os que
 // mudam a situação do cliente. Trancamento, reativação e correção seguem como
@@ -142,6 +143,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   const [loading, setLoading] = useState(false);
 
   const [lossModalOpen, setLossModalOpen] = useState(false);
+  const [reactivateOpen, setReactivateOpen] = useState(false);
   const [matriculaOpen, setMatriculaOpen] = useState(false);
   // 'matricula' (nova/retroativa) | 'renovacao' — controla o modo do ContractModal.
   const [matriculaMode, setMatriculaMode] = useState('matricula');
@@ -444,12 +446,24 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
         try { await markConvertingAula({ db, leadId: lead.id }); } catch (e) { console.error('markConvertingAula falhou', e); }
       }
       setComposerTab('note');
+      return true;
     } catch (e) {
       console.error(e);
       toast.error('Não foi possível mudar a fase. Tente novamente.');
+      return false;
     } finally {
       setLoading(false);
     }
+  };
+
+  // Reativar lead: o lead em Perda volta a uma fase aberta pelo mesmo caminho
+  // do "Mudar fase" (planStageMove limpa o motivo e a data da perda), e a linha
+  // do tempo diz que ele foi reativado. Devolve se gravou, para a janela fechar.
+  const handleReactivate = async ({ funnelId: targetFunnelId, targetStatus }) => {
+    if (lead.status !== 'Perda') return false;
+    const ok = await handlePhaseConfirm({ funnelId: targetFunnelId, targetStatus, note: REACTIVATED_NOTE });
+    if (ok) toast.success(`${lead.name || 'Lead'} reativado em ${targetStatus}.`);
+    return Boolean(ok);
   };
 
   // Link público de indicação deste cliente. O menu do cabeçalho oferece as
@@ -711,6 +725,11 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   const phaseChangerFunnels = isClient
     ? (upgradeFunnel ? [upgradeFunnel] : [])
     : safeFunnels.filter((f) => !isSystemFunnel(f) || isReferralFunnel(f));
+  // Os funis do "Reativar lead": os mesmos do "Mudar fase", com fase aberta, e
+  // o de Indicações só para quem já tem o indicador (reactivationFunnels).
+  const reactivateFunnels = isClient ? [] : reactivationFunnels(phaseChangerFunnels, statuses, {
+    isReferral: isReferralFunnel, hasReferrer: Boolean(lead.referredById)
+  });
   // Estado de ciclo de vida da pessoa (fonte única em lib/leadState.js): dita o
   // tom/rótulo/hint do cabeçalho, o anel do RingAvatar e o alerta contextual.
   const profileState = deriveLeadState(lead, new Date(), contractThresholdDays);
@@ -1356,14 +1375,28 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                       Marcar venda
                     </Btn>
                   )}
-                  {canMudarFase && (
+                  {/* Lead em Perda troca o "Marcar perda" pelo "Reativar lead",
+                      que o devolve a uma fase aberta do funil. */}
+                  {canMudarFase && lead.status === 'Perda' && (
+                    <Btn
+                      kind="brand"
+                      size="md"
+                      icon={<RotateCcw size={14} />}
+                      onClick={() => setReactivateOpen(true)}
+                      disabled={loading || reactivateFunnels.length === 0}
+                      title={reactivateFunnels.length === 0 ? 'Nenhum funil com fase aberta' : 'Devolver o lead a uma fase do funil'}
+                    >
+                      Reativar lead
+                    </Btn>
+                  )}
+                  {canMudarFase && lead.status !== 'Perda' && (
                     <Btn
                       kind="danger"
                       size="md"
                       icon={<Ban size={14} />}
                       onClick={() => setLossModalOpen(true)}
-                      disabled={lead.status === 'Perda' || loading}
-                      title={lead.status === 'Perda' ? 'Lead já marcado como perda' : 'Marcar perda'}
+                      disabled={loading}
+                      title="Marcar perda"
                     >
                       Marcar perda
                     </Btn>
@@ -1761,6 +1794,15 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
         usersList={usersList}
         tags={tags}
       />
+      {reactivateOpen && (
+        <ReactivateLeadModal
+          lead={lead}
+          funnels={reactivateFunnels}
+          statuses={statuses}
+          onClose={() => setReactivateOpen(false)}
+          onConfirm={handleReactivate}
+        />
+      )}
       {lossModalOpen && <LossReasonModal lossReasons={lossReasons} onClose={() => setLossModalOpen(false)} onConfirm={confirmLoss} />}
       {quickReferralOpen && (
         <QuickReferralModal
