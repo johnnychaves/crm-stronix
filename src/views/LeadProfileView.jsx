@@ -20,7 +20,7 @@ import { getReferralFunnel, getReferralEntryStage, buildReferralShareLink, build
 import { getUpgradeFunnel, upgradeStageIdOf } from '../lib/upgradeFunnel.js';
 import { commitReferralLink, removeReferralLink } from '../lib/referralsWrites.js';
 import { deriveLeadState, getTone, phaseToneName } from '../lib/leadState.js';
-import { professorNameById } from '../lib/professores.js';
+import { professorNameById, profileProfessorOf } from '../lib/professores.js';
 import { recordNewAppointment, markConvertingAula } from '../lib/aulasWrites.js';
 import { buildSchedulePatch, appointmentTaskOwnerFor, taskOwnerText } from '../lib/schedulePatch.js';
 import { cn } from '../lib/utils.js';
@@ -1203,6 +1203,8 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     );
   };
 
+  const profileProfessor = profileProfessorOf(lead);
+
   return (
     // 1160px centralizado (medida do handoff). O shell do app libera até
     // 1400/1600px, e nessa largura a linha do tempo vira uma linha de texto
@@ -1481,12 +1483,12 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
             </MetaCell>
 
             <MetaCell label="Professor resp.">
-              {lead.appointmentProfessorName ? (
+              {profileProfessor ? (
                 <>
-                  <Avatar name={lead.appointmentProfessorName} size={19} />
-                  <span className="truncate">{lead.appointmentProfessorName}</span>
-                  {lead.appointmentModality && (
-                    <span className="text-slate-400 dark:text-slate-500 font-normal truncate">· {lead.appointmentModality}</span>
+                  <Avatar name={profileProfessor.name} size={19} />
+                  <span className="truncate">{profileProfessor.name}</span>
+                  {profileProfessor.modality && (
+                    <span className="text-slate-400 dark:text-slate-500 font-normal truncate">· {profileProfessor.modality}</span>
                   )}
                 </>
               ) : <span className="text-slate-400 dark:text-slate-500 font-normal">—</span>}

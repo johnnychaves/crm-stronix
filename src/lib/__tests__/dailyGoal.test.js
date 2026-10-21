@@ -24,7 +24,9 @@ import {
   newLeadDueOf,
   newLeadHandledPatch,
   isMetaOverdue,
-  withDayAgendaLeads
+  withDayAgendaLeads,
+  renewedGoalDoneInteraction,
+  clientTouchCount
 } from '../dailyGoal.js';
 import { DAILY_GOAL_CATEGORIES } from '../leads.js';
 import { contactDone, contactReschedule } from '../contactGoal.js';
@@ -766,6 +768,48 @@ describe('computeDailyGoalSlots — funil Vencidos', () => {
     const found = out.find((l) => l.id === 'v1');
     expect(found.categoryStatus[DAILY_GOAL_CATEGORIES.VENCIDO]).toBe(true);
   });
+
+  // Bug de 21/10/2026: o "Contato feito" no contato de hoje do cliente vencido
+  // apaga o próximo contato, e o Vencidos voltava a cobrar o cliente no mesmo
+  // dia, como tarefa pendente. A marca do contato também sumia da tela.
+  it('depois do "Contato feito" o cliente vencido não volta como pendente', () => {
+    const hoje = new Date();
+    hoje.setHours(10, 0, 0, 0);
+    const lead = clienteVencido({ ...contactDone() });
+    const byLead = new Map([[lead.id, [{
+      leadId: lead.id,
+      type: 'daily_goal_done',
+      dailyGoalCategory: DAILY_GOAL_CATEGORIES.CONTATO_HOJE,
+      goalOwnerId: CONSULTOR,
+      createdAt: hoje
+    }]]]);
+    const out = computeDailyGoalSlots([lead], byLead, CONSULTOR, [90, 60, 30], 15);
+    expect(slugsOf(out, 'v1')).toEqual([DAILY_GOAL_CATEGORIES.CONTATO_HOJE]);
+    expect(slotTotals(out)).toMatchObject({ totalSlots: 1, doneSlots: 1 });
+  });
+});
+
+describe('renewedGoalDoneInteraction', () => {
+  it('o Renovou e o Reativou gravam a marca da própria categoria', () => {
+    expect(renewedGoalDoneInteraction(DAILY_GOAL_CATEGORIES.RENOVACAO))
+      .toMatchObject({ type: 'daily_goal_done', dailyGoalCategory: DAILY_GOAL_CATEGORIES.RENOVACAO });
+    expect(renewedGoalDoneInteraction(DAILY_GOAL_CATEGORIES.VENCIDO))
+      .toMatchObject({ type: 'daily_goal_done', dailyGoalCategory: DAILY_GOAL_CATEGORIES.VENCIDO });
+    expect(renewedGoalDoneInteraction(DAILY_GOAL_CATEGORIES.CONTATO_HOJE)).toBeNull();
+  });
+
+  it('com a marca, a renovação da cópia antiga do cliente conta como feita', () => {
+    const endsAt = new Date();
+    endsAt.setHours(0, 0, 0, 0);
+    endsAt.setDate(endsAt.getDate() - 3);
+    const c = {
+      id: 'v1', name: 'Cliente', consultantId: 'u1', status: 'Venda', lifecycleStage: 'cliente',
+      createdAt: new Date(2025, 0, 10), currentContractStartsAt: new Date(2025, 0, 10), currentContractEndsAt: endsAt,
+    };
+    const mark = { leadId: 'v1', createdAt: new Date(), ...renewedGoalDoneInteraction(DAILY_GOAL_CATEGORIES.VENCIDO) };
+    const out = computeDailyGoalSlots([c], new Map([['v1', [mark]]]), 'u1', [90, 60, 30], 15);
+    expect(slotTotals(out)).toMatchObject({ totalSlots: 1, doneSlots: 1 });
+  });
 });
 
 describe('contato delegado a outro consultor', () => {
@@ -1473,5 +1517,30 @@ describe('visita e aula de hoje em qualquer fase', () => {
     expect(rows[0].outcome).toBe('attended');
     const result = computeDailyGoalSlots(goal, buildInteractionsByLead([goalDone('c7', AULA, new Date(2026, 6, 15, 18, 5))]), 'u1');
     expect(byId(result, 'c7').categoryStatus[AULA]).toBe(true);
+  });
+});
+
+// Bug de 21/10/2026: depois do Compareceu, do Renovou ou de uma troca no
+// cadastro do cliente, a Meta só mudava com F5, porque os clientes da base vêm
+// de consultas únicas. O App relê as duas quando esta contagem sobe.
+describe('clientTouchCount', () => {
+  const clientIds = new Set(['c1']);
+  const liveIds = new Set(['l1']);
+
+  it('conta a interação em cliente da base e a de quem está logado fora dos ativos', () => {
+    const interactions = [
+      { leadId: 'c1', actorId: 'outro' },
+      { leadId: 'c2', actorId: 'u1' },
+      { leadId: 'l1', actorId: 'u1' },
+      { leadId: 'c3', actorId: 'outro' },
+      { actorId: 'u1' },
+    ];
+    expect(clientTouchCount(interactions, clientIds, liveIds, 'u1')).toBe(2);
+  });
+
+  it('sobe quando chega a marca do dia num cliente', () => {
+    const before = clientTouchCount([], clientIds, liveIds, 'u1');
+    const after = clientTouchCount([{ leadId: 'c1', type: 'daily_goal_done' }], clientIds, liveIds, 'u1');
+    expect(after).toBeGreaterThan(before);
   });
 });

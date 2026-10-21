@@ -65,11 +65,19 @@ describe('NextContactModal', () => {
     expect(onPick).not.toHaveBeenCalled();
   });
 
-  it('hoje às 09:00 já passou: o botão fica desligado e o rodapé diz por quê', async () => {
+  // Decisão do Johnny em 21/10/2026: o próximo contato vale a partir de amanhã.
+  it('não oferece hoje: o dia de hoje deixa o botão desligado e o rodapé diz por quê', async () => {
     const { onPick } = await montar();
-    await clicar('Hoje');
+    expect(botao('Hoje')).toBeUndefined();
+    await clicar('Outro dia');
+    const dia = document.querySelector('input[type="date"]');
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    await act(async () => {
+      setter.call(dia, '2026-10-16');
+      dia.dispatchEvent(new Event('input', { bubbles: true }));
+    });
     expect(botao('Agendar contato').disabled).toBe(true);
-    expect(document.querySelector('[role="status"]').textContent).toBe('Escolha um dia e horário futuros.');
+    expect(document.querySelector('[role="status"]').textContent).toBe('Escolha um dia a partir de amanhã.');
     await clicar('Agendar contato');
     expect(onPick).not.toHaveBeenCalled();
   });
