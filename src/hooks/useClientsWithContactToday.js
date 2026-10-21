@@ -32,7 +32,7 @@ export function useClientsWithContactToday({ db, enabled = true, reloadKey = 0 }
 
   const spec = useMemo(() => clientsWithContactTodayQuerySpec(win.start, win.end), [win.start, win.end]);
 
-  const { items, loading } = usePagedLeads({
+  const { items, loading, ready, reload } = usePagedLeads({
     db, path: LEADS_PATH, spec,
     specKey: `clientContactToday:${reloadKey}`,
     // Mesmo shape do prop global: computeDailyGoalSlots espera createdAt e
@@ -41,5 +41,5 @@ export function useClientsWithContactToday({ db, enabled = true, reloadKey = 0 }
     enabled: enabled && !!db,
   });
 
-  return { clients: items || [], loading };
+  return { clients: items || [], loading, ready, reload };
 }

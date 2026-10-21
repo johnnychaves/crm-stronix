@@ -186,3 +186,16 @@ describe('ficha do professor: Indicações só para leitura', () => {
     expect(html).not.toContain('botão Indicar');
   });
 });
+
+// Bug de 21/10/2026: trocar o professor no cadastro do cliente não mudava o
+// "Professor resp." da ficha, que lia só o professor da aula experimental.
+describe('profileProfessorOf', () => {
+  it('o professor do cadastro vem primeiro; sem ele, o da aula', async () => {
+    const { profileProfessorOf } = await import('../professores.js');
+    expect(profileProfessorOf({ professorName: 'Bia', appointmentProfessorName: 'Caio', appointmentModality: 'Pilates' }))
+      .toEqual({ name: 'Bia', modality: null });
+    expect(profileProfessorOf({ appointmentProfessorName: 'Caio', appointmentModality: 'Pilates' }))
+      .toEqual({ name: 'Caio', modality: 'Pilates' });
+    expect(profileProfessorOf({})).toBeNull();
+  });
+});

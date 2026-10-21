@@ -193,6 +193,20 @@ export function newLeadDueOf(lead) {
 export const newLeadHandledPatch = (categorySlug, at = new Date()) =>
   (categorySlug === DAILY_GOAL_CATEGORIES.NOVO_24H ? { newLeadHandledAt: at } : null);
 
+// A marca do dia que o "Renovou" (Renovação) e o "Reativou" (Contrato vencido)
+// gravam depois que o contrato novo é salvo. Até 21/10/2026 os dois só abriam o
+// contrato e não gravavam marca: a tarefa seguia pendente na cópia do cliente
+// que a Meta tinha e o dia não batia. Devolve null fora dessas duas categorias.
+export function renewedGoalDoneInteraction(categorySlug) {
+  if (categorySlug === DAILY_GOAL_CATEGORIES.RENOVACAO) {
+    return { text: '✅ Renovação — Meta Diária concluída (renovou).', type: 'daily_goal_done', dailyGoalCategory: categorySlug };
+  }
+  if (categorySlug === DAILY_GOAL_CATEGORIES.VENCIDO) {
+    return { text: '✅ Contrato vencido — Meta Diária concluída (reativou).', type: 'daily_goal_done', dailyGoalCategory: categorySlug };
+  }
+  return null;
+}
+
 // O prazo do próximo contato: o nextFollowUp, ou o do lead novo sem próximo passo.
 export const followUpDueOf = (lead) => lead?.nextFollowUp || newLeadDueOf(lead);
 
@@ -231,6 +245,25 @@ export function buildInteractionsByLead(interactions) {
     if (arr) arr.push(i); else map.set(i.leadId, [i]);
   });
   return map;
+}
+
+// Quantas interações do mês tocam um cliente que a Meta lê por consulta única (a
+// renovação e o contato marcado para hoje, useRenewalClients e
+// useClientsWithContactToday, que não são ao vivo). Quando o número muda, o App
+// relê essas duas listas, e a Meta não precisa de F5 depois de um desfecho, de
+// um contrato ou de uma troca no cadastro do cliente. Conta a interação em
+// cliente da base (`clientIds`) e a de quem está logado num lead fora da
+// assinatura de leads ativos (`liveIds`): é o cliente que ganhou agora um
+// contato para hoje e ainda não está na base. O resto não conta, para cada
+// ação num lead comum não reler as listas.
+export function clientTouchCount(interactions, clientIds, liveIds, userId) {
+  let n = 0;
+  (interactions || []).forEach((i) => {
+    if (!i?.leadId) return;
+    if (clientIds.has(i.leadId)) n += 1;
+    else if (userId && i.actorId === userId && !liveIds.has(i.leadId)) n += 1;
+  });
+  return n;
 }
 
 // A base da Meta com quem tem visita ou aula hoje (`dayLeads`, a leitura ao
@@ -417,7 +450,13 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
     // (renewalGraceDays) e sem contato marcado para hoje/futuro. Cobrado TODO
     // dia enquanto durar o período; sai por desfecho (reativou / não vai voltar
     // / reagendou) ou quando o período acaba. Regra em src/lib/expiredGoal.js.
-    if (shouldPromptExpired(lead, nowRef, renewalGraceDays)) {
+    // O "Contato feito" de hoje no cliente vencido já tratou o cliente: ele
+    // apaga o próximo contato, e sem esta guarda o Vencidos voltava a cobrá-lo
+    // no mesmo dia, como tarefa nova e pendente (bug de 21/10/2026).
+    if (
+      shouldPromptExpired(lead, nowRef, renewalGraceDays) &&
+      !isMarkedDoneToday(lead, DAILY_GOAL_CATEGORIES.CONTATO_HOJE)
+    ) {
       addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.vencido, DAILY_GOAL_CATEGORIES.VENCIDO);
     }
   });
@@ -460,11 +499,16 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
   // seguinte agendado por outra pessoa troca o dono da tarefa do agendamento, e
   // o "Contato feito" limpa o próximo contato que o colega recebeu, e a tarefa
   // feita não muda de Meta por isso. Mesmo guard dos leads dele: cliente não
-  // tem o contato aqui: o contato de cliente feito hoje continua fora desta
-  // lista, como antes. A visita e a aula do cliente e da Perda entram, como
-  // no pendente.
+  // tem o contato aqui. O cliente entra com o contato feito hoje (o contato de
+  // renovação reagendado), para a tarefa concluída seguir como feita depois do
+  // "Contato feito", que apaga o próximo contato. A visita e a aula do cliente e
+  // da Perda entram, como no pendente.
   (leads || []).forEach(lead => {
-    if (isClientLead(lead) || lead.status === 'Perda') {
+    if (isClientLead(lead)) {
+      addDoneToday(lead, TASK_OWNER_GOAL_CATEGORIES);
+      return;
+    }
+    if (lead.status === 'Perda') {
       addDoneToday(lead, APPOINTMENT_GOAL_CATEGORIES);
       return;
     }

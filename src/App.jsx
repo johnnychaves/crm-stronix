@@ -57,7 +57,7 @@ import { ACTIONS, can, isGestor, isProfessor, isSeller } from './lib/acesso.js';
 import { planExpiredSetupOps } from './lib/expiredFunnel.js';
 import { planRenewalSetupOps } from './lib/renewalFunnel.js';
 import { planUpgradeSetupOps } from './lib/upgradeFunnel.js';
-import { computeDailyGoalSlots, buildInteractionsByLead, slotTotals, dgDateKey, withDayAgendaLeads } from './lib/dailyGoal.js';
+import { dgDateKey, withDayAgendaLeads, clientTouchCount } from './lib/dailyGoal.js';
 import { recordGoalHit as recordGoalHitDoc, goalHitKeyToRecord } from './lib/dailyGoalHistory.js';
 import { useRenewalClients } from './hooks/useRenewalClients.js';
 import { useClientsWithContactToday } from './hooks/useClientsWithContactToday.js';
@@ -1418,13 +1418,23 @@ useEffect(() => {
   // dayKey vira na meia-noite (timeout re-armado a cada virada) para o badge
   // não ficar preso no dia anterior com a aba aberta — mesmo princípio do fix
   // A5 da Meta. Um re-render por dia, custo zero no resto do tempo.
+  // O timeout atrasa com o computador dormindo, então a volta da aba (foco ou
+  // aba visível) também confere o dia.
   const [dayKey, setDayKey] = useState(() => dgDateKey(new Date()));
   useEffect(() => {
     const now = new Date();
     const nextMidnight = new Date(now);
     nextMidnight.setHours(24, 0, 5, 0); // 00:00:05 do dia seguinte
-    const t = setTimeout(() => setDayKey(dgDateKey(new Date())), nextMidnight - now);
-    return () => clearTimeout(t);
+    const refresh = () => setDayKey(dgDateKey(new Date()));
+    const t = setTimeout(refresh, nextMidnight - now);
+    const onVisible = () => { if (document.visibilityState === 'visible') refresh(); };
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [dayKey]);
 
   // Clientes com contrato "a vencer" por query (E2c) — fonte da categoria
@@ -1440,7 +1450,7 @@ useEffect(() => {
   // que a Meta usa pra avaliar os marcos configuráveis (ver useRenewalClients.js).
   // Só quem vende tem a Meta do consultor: o professor não faz estas consultas
   // (isSeller dá false também sem sessão, como o !!appUser de antes).
-  const { clients: renewalClients, candidates: renewalCandidates, loading: renewalLoading } = useRenewalClients({ db, contractThresholdDays, renewalCheckpoints, expiredWindowDays: renewalGraceDays, reloadKey: dayKey, enabled: isSeller(appUser) });
+  const { clients: renewalClients, candidates: renewalCandidates, ready: renewalReady, reload: reloadRenewalClients } = useRenewalClients({ db, contractThresholdDays, renewalCheckpoints, expiredWindowDays: renewalGraceDays, reloadKey: dayKey, enabled: isSeller(appUser) });
   // Base da META (G1d): ativo (prop) ∪ candidatos a renovação (renewalCandidates),
   // dedupe por id (global primeiro). PRÉ-flip o prop já contém os clientes →
   // no-op → números idênticos; PÓS-flip o prop vira só 'ativo' e os
@@ -1451,7 +1461,7 @@ useEffect(() => {
   // contrato longe de vencer não entra na base e o contato marcado com ele some
   // da Meta em silêncio (a categoria 5 prevê o caso, mas nunca é avaliada
   // porque o lead não chega a ser carregado).
-  const { clients: clientsContactToday, loading: contactTodayLoading } = useClientsWithContactToday({ db, reloadKey: dayKey, enabled: isSeller(appUser) });
+  const { clients: clientsContactToday, ready: contactTodayReady, reload: reloadClientsContactToday } = useClientsWithContactToday({ db, reloadKey: dayKey, enabled: isSeller(appUser) });
   const metaLeads = useMemo(() => {
     const byId = new Map();
     (leads || []).forEach((l) => byId.set(l.id, l));
@@ -1460,58 +1470,95 @@ useEffect(() => {
     return Array.from(byId.values());
   }, [leads, renewalCandidates, clientsContactToday]);
 
+  // As duas listas de clientes acima não são ao vivo. Quando chega uma
+  // interação num cliente da base (desfecho, contrato, troca no cadastro) ou de
+  // quem está logado num lead fora dos ativos, as duas são relidas, e a Meta
+  // não precisa de F5 (clientTouchCount, em dailyGoal.js). A primeira contagem
+  // só guarda o número.
+  const clientTouches = useMemo(() => {
+    if (!isSeller(appUser)) return 0;
+    const clientIds = new Set();
+    (renewalCandidates || []).forEach((c) => clientIds.add(c.id));
+    (clientsContactToday || []).forEach((c) => clientIds.add(c.id));
+    const liveIds = new Set((leads || []).map((l) => l.id));
+    return clientTouchCount(interactions, clientIds, liveIds, appUser?.id);
+  }, [interactions, renewalCandidates, clientsContactToday, leads, appUser]);
+  const clientTouchesRef = useRef(null);
+  useEffect(() => {
+    const before = clientTouchesRef.current;
+    clientTouchesRef.current = clientTouches;
+    if (before === null || clientTouches <= before) return;
+    reloadRenewalClients();
+    reloadClientsContactToday();
+    // As funções de reler mudam com a consulta, e aí o número não subiu.
+  }, [clientTouches, reloadRenewalClients, reloadClientsContactToday]);
+
   // Os agendamentos de hoje, ao vivo: a Agenda de hoje da Meta e a base da
   // Meta, onde toda visita e aula de hoje conta, em qualquer fase
   // (withDayAgendaLeads, em dailyGoal.js). A leitura mora aqui, e não na tela da Meta, porque o selo do
   // menu e o título da aba contam a mesma Meta. A sessão vai na chave porque o
   // App não remonta no "Acessar como".
-  const { items: dayAgendaLeads } = useDayAgenda({
+  const { items: dayAgendaLeads, loading: dayAgendaLoading } = useDayAgenda({
     db, enabled: listenersActive && !tenantBlock && isSeller(appUser), dayKey: `${sessionKey}:${dayKey}`
   });
   // A base da Meta (o selo, o título da aba e a tela). Os painéis continuam
   // com o metaLeads.
   const goalLeads = useMemo(() => withDayAgendaLeads(metaLeads, dayAgendaLeads), [metaLeads, dayAgendaLeads]);
 
-  // Tarefas pendentes HOJE do usuário logado (mesma regra Meta-only da tela).
-  const dailyGoalProgress = useMemo(() => {
-    // Só quem vende tem a Meta do consultor. O professor fica sem pendência no
-    // menu e sem dia batido gravado: a Meta dele, a dos faltosos, vem no PR 3.
-    if (!appUser?.id || !isSeller(appUser)) return { total: 0, pending: 0 };
-    void dayKey; // recalcula na virada do dia
-    const slots = computeDailyGoalSlots(goalLeads, buildInteractionsByLead(interactions), appUser.id, renewalCheckpoints, renewalGraceDays);
-    const { totalSlots, doneSlots } = slotTotals(slots);
-    return { total: totalSlots, pending: totalSlots - doneSlots };
-  }, [goalLeads, interactions, appUser, dayKey, renewalCheckpoints, renewalGraceDays]);
-  const dailyGoalPending = dailyGoalProgress.pending;
-  const dailyGoalTotal = dailyGoalProgress.total;
+  // Total e pendências de HOJE do usuário logado (mesma regra Meta-only da
+  // tela), calculados pelo MetaUrgentCount com o relógio por minuto e avisados
+  // aqui só quando mudam. O aviso leva as listas de onde saiu, e a gravação do
+  // dia só confia na conta da base de agora (goalLeads e interactions).
+  // Só quem vende tem a Meta do consultor: o professor fica sem pendência no
+  // menu e sem dia batido gravado.
+  const [metaProgress, setMetaProgress] = useState(null);
+  const handleMetaProgress = useCallback((next) => {
+    setMetaProgress((prev) => (
+      prev && prev.leads === next.leads && prev.interactions === next.interactions
+        && prev.total === next.total && prev.pending === next.pending
+        ? prev : next
+    ));
+  }, []);
+  const metaProgressCurrent = isSeller(appUser) && metaProgress
+    && metaProgress.leads === goalLeads && metaProgress.interactions === interactions;
+  const dailyGoalPending = isSeller(appUser) && metaProgress ? metaProgress.pending : 0;
+  const dailyGoalTotal = metaProgressCurrent ? metaProgress.total : null;
 
   // Dia batido gravado de QUALQUER tela: antes só a Meta Diária aberta gravava,
   // e quem fechava a última tarefa pelo Pipeline ficava sem o dia. Só grava com
-  // a base carregada, inclusive os clientes com contato hoje (senão uma
-  // pendência ainda não carregada parece zerada). Olha os números e não o
-  // objeto, que muda a cada interação nova. O ref guarda o dia já gravado, por
-  // pessoa: o doc é o mesmo, e regravar na mesma sessão só gastaria escrita.
+  // a base carregada: os leads, os clientes da renovação e do contato de hoje
+  // (já lidos, e não só "sem carregar", porque a leitura começa um render
+  // depois) e os agendamentos do dia. Senão uma pendência ainda não carregada
+  // parece zerada, e o dia sem tarefa agora conta como batido. Olha os números
+  // e não o objeto, que muda a cada interação nova. O ref guarda o dia já
+  // gravado, por pessoa, e só depois da gravação dar certo. A chave é a do dia
+  // de agora, e não o dayKey, que fica velho com o computador dormindo e
+  // barrava o dia novo com a chave do dia anterior.
   // A decisão (qual chave gravar, ou se grava) é a função pura
   // goalHitKeyToRecord em lib/dailyGoalHistory.js, testada isoladamente. Só
   // quem vende grava: o professor não tem a Meta do consultor (seller).
   const goalHitRecordedRef = useRef(null);
+  const goalHitPendingRef = useRef(null);
   useEffect(() => {
     if (!db || !appUser?.id) return;
-    const ready = listenersActive && !loadingData && !renewalLoading && !contactTodayLoading;
+    const ready = listenersActive && !loadingData && renewalReady && contactTodayReady && !dayAgendaLoading && dailyGoalTotal !== null;
     const key = goalHitKeyToRecord({
       userId: appUser.id,
-      dayKey,
+      dayKey: dgDateKey(new Date()),
       ready,
       total: dailyGoalTotal,
       pending: dailyGoalPending,
       recordedKey: goalHitRecordedRef.current,
       seller: isSeller(appUser)
     });
-    if (!key) return;
-    goalHitRecordedRef.current = key;
-    recordGoalHitDoc(db, appUser);
+    if (!key || goalHitPendingRef.current === key) return;
+    goalHitPendingRef.current = key;
+    recordGoalHitDoc(db, appUser).then((ok) => {
+      if (goalHitPendingRef.current === key) goalHitPendingRef.current = null;
+      if (ok) goalHitRecordedRef.current = key;
+    });
     // db é o singleton do módulo (lib/firebase.js) — não é dependência válida.
-  }, [appUser, listenersActive, loadingData, renewalLoading, contactTodayLoading, dailyGoalTotal, dailyGoalPending, dayKey]);
+  }, [appUser, listenersActive, loadingData, renewalReady, contactTodayReady, dayAgendaLoading, dailyGoalTotal, dailyGoalPending, dayKey]);
 
   // Base do Kanban: a assinatura de leads ATIVOS, igual para todo mundo. Quem
   // recorta por carteira é o filtro de responsável da própria tela, que abre na
@@ -1970,6 +2017,7 @@ useEffect(() => {
             renewalCheckpoints={renewalCheckpoints}
             renewalGraceDays={renewalGraceDays}
             onChange={setMetaUrgent}
+            onProgress={handleMetaProgress}
           />
         </SilentErrorBoundary>
       )}
