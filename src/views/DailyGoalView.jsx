@@ -11,7 +11,6 @@ import { stageChangeFields } from '../lib/stageMove.js';
 import { DG_CATEGORY_META, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeRitmo, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, computeVolumeInRange, countMetaDaysInMonth, volumeTargetFor, tomorrowAppointmentsOf, slotTotals, newLeadHandledPatch } from '../lib/dailyGoal.js';
 import { followUpChannelOf } from '../lib/contactGoal.js';
 import { computeDayAgenda } from '../lib/dayAgenda.js';
-import { useDayAgenda } from '../hooks/useDayAgenda.js';
 import { useScreenParams } from '../hooks/useScreenParams.js';
 import { useFrozenWhileIdle, useMinuteClock } from '../hooks/useMinuteClock.js';
 import { frozenDayText } from '../lib/rotinasTela.js';
@@ -172,7 +171,7 @@ export function TomorrowApptRow({ lead, when }) {
 // DAILY GOAL VIEW (META DIÁRIA)
 // ==========================================
 
-function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, listenersActive = true }) {
+function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuses, db, usersList, listenersActive = true }) {
   const toast = useToast();
   // A categoria aberta vem do endereço: F5 mantém e o link abre na mesma
   // categoria.
@@ -281,8 +280,8 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
     return m;
   }, [usersList]);
 
-  const { items: agendaLeads } = useDayAgenda({ db, enabled: listenersActive, dayKey: todayKey });
-
+  // agendaLeads: os agendamentos de hoje, lidos ao vivo no App (useDayAgenda),
+  // que também põe na Meta os clientes ativos com visita ou aula hoje.
   const dayAgenda = useMemo(
     () => computeDayAgenda({ liveLeads: leads, agendaLeads, usersById, viewerId: appUser.id, now }),
     [leads, agendaLeads, usersById, appUser, now]

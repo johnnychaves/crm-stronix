@@ -50,11 +50,17 @@ describe('a tela da Meta na DailyGoalView', () => {
 describe('o número de urgentes no título da aba', () => {
   it('o App monta o contador só para quem vende, com a base e as regras da Meta', () => {
     const tag = APP.slice(APP.indexOf('<MetaUrgentCount'), APP.indexOf('/>', APP.indexOf('<MetaUrgentCount')));
-    for (const prop of ['leads={metaLeads}', 'interactions={interactions}', 'userId={appUser.id}', 'renewalCheckpoints={renewalCheckpoints}', 'renewalGraceDays={renewalGraceDays}', 'onChange={setMetaUrgent}']) {
+    for (const prop of ['leads={goalLeads}', 'interactions={interactions}', 'userId={appUser.id}', 'renewalCheckpoints={renewalCheckpoints}', 'renewalGraceDays={renewalGraceDays}', 'onChange={setMetaUrgent}']) {
       expect(tag, prop).toContain(prop);
     }
     const i = APP.indexOf('<MetaUrgentCount');
     expect(APP.lastIndexOf('{isSeller(appUser) && (', i)).toBeGreaterThan(APP.lastIndexOf('</SilentErrorBoundary>', i));
+  });
+
+  it('a tela, o selo do menu e o título contam a mesma base, com os clientes da agenda de hoje', () => {
+    expect(APP).toMatch(/const goalLeads = useMemo\(\(\) => withDayAgendaClients\(metaLeads, dayAgendaLeads\)/);
+    expect(APP).toContain('<DailyGoalView leads={goalLeads} agendaLeads={dayAgendaLeads}');
+    expect(APP).toMatch(/computeDailyGoalSlots\(goalLeads, /);
   });
 
   it('o título leva o número só com uma tela de sessão aberta', () => {

@@ -11,9 +11,11 @@ import {
   appointmentTaskOwnerId,
   TASK_OWNER_GOAL_CATEGORIES,
   isTaskOwnerGoalCategory,
-  isClientLead
+  isClientLead,
+  APPOINTMENT_GOAL_CATEGORIES
 } from './leads.js';
 import { getSafeDateOrNull, normalizeAppointmentType } from './dates.js';
+import { deriveLeadContractStatus, CONTRACT_STATUS } from './contracts.js';
 import { shouldPromptRenewal, DEFAULT_RENEWAL_CHECKPOINTS, DEFAULT_RENEWAL_GRACE_DAYS } from './renewalGoal.js';
 import { shouldPromptExpired } from './expiredGoal.js';
 
@@ -232,6 +234,33 @@ export function buildInteractionsByLead(interactions) {
   return map;
 }
 
+// Cliente ativo: o contrato vale agora (ativo ou a vencer, pelo status
+// derivado no instante). A visita e a aula experimental dele contam na Meta
+// como as de um lead (decisão do Johnny, 21/10/2026: a aula de outra
+// modalidade do aluno é tarefa de quem a tem). Até ali a Meta só pulava quem
+// tinha a fase escrita "Venda", então o cliente numa etapa com outro nome
+// ("Matriculado") entrava e o da fase Venda ficava de fora. Vencido, trancado,
+// cancelado e agendado continuam fora.
+export const isActiveClientAt = (lead, now = new Date()) => {
+  if (!isClientLead(lead)) return false;
+  const status = deriveLeadContractStatus(lead, now);
+  return status === CONTRACT_STATUS.ATIVO || status === CONTRACT_STATUS.A_VENCER;
+};
+
+// A base da Meta com os clientes que têm visita ou aula hoje (`dayLeads`, a
+// leitura ao vivo do useDayAgenda). A base de leads ativos não traz cliente, e
+// o "contato marcado para hoje" (useClientsWithContactToday) só o traz pelo
+// eco do agendamento, que o Compareceu apaga: depois de um F5 a aula feita
+// sumiria da Meta. O que já está na base vence.
+export function withDayAgendaClients(baseLeads, dayLeads) {
+  const extra = (dayLeads || []).filter(isClientLead);
+  if (!extra.length) return baseLeads || [];
+  const byId = new Map();
+  (baseLeads || []).forEach((l) => byId.set(l.id, l));
+  extra.forEach((l) => { if (l?.id && !byId.has(l.id)) byId.set(l.id, l); });
+  return Array.from(byId.values());
+}
+
 // Monta os "slots" da meta de UM consultor: cada lead alvo sai com
 // categorySlugs[] e categoryStatus{slug:bool} (par lead×categoria = 1 slot;
 // um lead pode estar feito numa categoria e pendente noutra).
@@ -329,7 +358,10 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
   const addAppointmentTodayIfDue = (lead) => {
     // Dono da TAREFA do agendamento, que pode não ser o dono do lead.
     if (!ownsAppointmentTask(lead)) return;
-    if (lead.status === 'Venda' || lead.status === 'Perda') return;
+    if (lead.status === 'Perda') return;
+    // Cliente só com o contrato valendo (isActiveClientAt). A fase não decide:
+    // Venda e as etapas de matriculado são todas cliente.
+    if (isClientLead(lead) && !isActiveClientAt(lead, nowRef)) return;
     const apptType = getLeadAppointmentType(lead);
     const apptDate = getLeadAppointmentDate(lead);
     if (!(apptDate >= todayStart && apptDate <= todayEnd)) return;
@@ -437,10 +469,15 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
   // seguinte agendado por outra pessoa troca o dono da tarefa do agendamento, e
   // o "Contato feito" limpa o próximo contato que o colega recebeu, e a tarefa
   // feita não muda de Meta por isso. Mesmo guard dos leads dele: cliente não
-  // tem visita nem aula, e o contato de cliente feito hoje continua fora desta
-  // lista, como antes.
+  // tem o contato aqui: o contato de cliente feito hoje continua fora desta
+  // lista, como antes. A visita e a aula do cliente ativo entram, como no
+  // pendente (isActiveClientAt).
   (leads || []).forEach(lead => {
-    if (lead.lifecycleStage === 'cliente' || lead.status === 'Venda' || lead.status === 'Perda') return;
+    if (lead.status === 'Perda') return;
+    if (isClientLead(lead)) {
+      if (isActiveClientAt(lead, nowRef)) addDoneToday(lead, APPOINTMENT_GOAL_CATEGORIES);
+      return;
+    }
     addDoneToday(lead, TASK_OWNER_GOAL_CATEGORIES);
   });
 
