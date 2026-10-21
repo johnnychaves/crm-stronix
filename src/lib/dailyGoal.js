@@ -234,16 +234,21 @@ export function buildInteractionsByLead(interactions) {
 }
 
 // A base da Meta com quem tem visita ou aula hoje (`dayLeads`, a leitura ao
-// vivo do useDayAgenda), a mesma lista da Agenda de hoje, Perda incluída. A base de leads ativos não traz cliente, e o "contato marcado para
-// hoje" (useClientsWithContactToday) só o traz pelo eco do agendamento, que o
-// Compareceu apaga: depois de um F5 a aula feita sumiria da Meta. O que já
-// está na base vence.
+// vivo do useDayAgenda), a mesma lista da Agenda de hoje, Perda incluída. A
+// base de leads ativos não traz cliente, e o "contato marcado para hoje"
+// (useClientsWithContactToday) só o traz pelo eco do agendamento, que o
+// Compareceu apaga: depois de um F5 a aula feita sumiria da Meta.
+// A cópia da agenda vence a da base. A do "contato marcado para hoje" é lida
+// uma vez na abertura do app, e o cliente com aula hoje está nas duas, por
+// causa do eco: com a cópia velha, a Agenda de hoje e o "Feitos hoje" seguiam
+// sem o Compareceu marcado (bug de 21/10/2026). A dos leads ativos também é ao
+// vivo, então trocar uma pela outra não perde nada.
 export function withDayAgendaLeads(baseLeads, dayLeads) {
   const extra = dayLeads || [];
   if (!extra.length) return baseLeads || [];
   const byId = new Map();
   (baseLeads || []).forEach((l) => byId.set(l.id, l));
-  extra.forEach((l) => { if (l?.id && !byId.has(l.id)) byId.set(l.id, l); });
+  extra.forEach((l) => { if (l?.id) byId.set(l.id, l); });
   return Array.from(byId.values());
 }
 
