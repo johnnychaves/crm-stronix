@@ -29,6 +29,7 @@ import {
 import { DAILY_GOAL_CATEGORIES } from '../leads.js';
 import { contactDone, contactReschedule } from '../contactGoal.js';
 import { consumedFields } from '../outcomeCorrection.js';
+import { computeDayAgenda } from '../dayAgenda.js';
 
 // Quarta-feira, 15 de julho de 2026, 10:00 local — "agora" de referência.
 const NOW = new Date(2026, 6, 15, 10, 0, 0);
@@ -1452,9 +1453,25 @@ describe('visita e aula de hoje em qualquer fase', () => {
     const leadDaAgenda = lead({ id: 'l9' });
     const perdido = lead({ id: 'p1', status: 'Perda' });
     const base = [ativo, naBase];
-    const out = withDayAgendaLeads(base, [{ ...naBase, name: 'cópia' }, daAgenda, leadDaAgenda, perdido]);
+    const copiaDaAgenda = { ...naBase, name: 'cópia' };
+    const out = withDayAgendaLeads(base, [copiaDaAgenda, daAgenda, leadDaAgenda, perdido]);
     expect(out.map((l) => l.id)).toEqual(['a1', 'c1', 'c2', 'l9', 'p1']);
-    expect(byId(out, 'c1')).toBe(naBase);
+    expect(byId(out, 'c1')).toBe(copiaDaAgenda);
     expect(withDayAgendaLeads(base, [])).toBe(base);
+  });
+
+  // Bug de 21/10/2026: o cliente com aula hoje vinha também do "contato marcado
+  // para hoje", lido uma vez na abertura do app. A cópia velha vencia a da
+  // agenda ao vivo, e depois do Compareceu a Agenda de hoje e o "Feitos hoje"
+  // seguiam sem o desfecho, como se o comparecimento não tivesse sido marcado.
+  it('depois do Compareceu, a Meta e a Agenda leem a cópia da agenda ao vivo, não a da abertura do app', () => {
+    const velha = clienteComAula({ id: 'c7' });
+    const viva = { ...velha, nextFollowUp: null, appointmentOutcome: 'attended', appointmentOutcomeAt: new Date(2026, 6, 15, 18, 5) };
+    const goal = withDayAgendaLeads([velha], [viva]);
+    expect(byId(goal, 'c7').appointmentOutcome).toBe('attended');
+    const { rows } = computeDayAgenda({ liveLeads: goal, agendaLeads: [viva], usersById: new Map(), viewerId: 'u1', now: new Date(2026, 6, 15, 18, 10) });
+    expect(rows[0].outcome).toBe('attended');
+    const result = computeDailyGoalSlots(goal, buildInteractionsByLead([goalDone('c7', AULA, new Date(2026, 6, 15, 18, 5))]), 'u1');
+    expect(byId(result, 'c7').categoryStatus[AULA]).toBe(true);
   });
 });
