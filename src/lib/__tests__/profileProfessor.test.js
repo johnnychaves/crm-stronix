@@ -107,6 +107,21 @@ describe('ficha do professor: cabeçalho', () => {
     expect(html).toContain('>Ligar<');
   });
 
+  it('no lead em Perda, Venda e Perda dão lugar só ao "Reativar lead", e o professor não o tem', () => {
+    const emAberto = ficha({ lead: LEAD, tab: 'timeline', appUser: CONSULTOR });
+    expect(emAberto).not.toContain('Reativar lead');
+    expect(emAberto).toContain('>Marcar venda<');
+    expect(emAberto).toContain('>Marcar perda<');
+    const perdido = { ...LEAD, id: 'l9', status: 'Perda', lossReason: 'Preço', lostAt: D(2026, 9, 20) };
+    const consultor = ficha({ lead: perdido, tab: 'timeline', appUser: CONSULTOR });
+    expect(consultor).toContain('>Reativar lead<');
+    expect(consultor).not.toContain('Marcar venda');
+    expect(consultor).not.toContain('Marcar perda');
+    const prof = ficha({ lead: perdido, tab: 'timeline', appUser: PROFESSOR });
+    expect(prof).not.toContain('Reativar lead');
+    expect(prof).not.toContain('Marcar perda');
+  });
+
   it('num lead, o professor não marca venda nem perda', () => {
     const consultor = ficha({ lead: LEAD, tab: 'timeline', appUser: CONSULTOR });
     expect(consultor).toContain('>Marcar venda<');

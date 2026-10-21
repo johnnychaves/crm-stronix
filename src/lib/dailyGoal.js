@@ -11,7 +11,8 @@ import {
   appointmentTaskOwnerId,
   TASK_OWNER_GOAL_CATEGORIES,
   isTaskOwnerGoalCategory,
-  isClientLead
+  isClientLead,
+  APPOINTMENT_GOAL_CATEGORIES
 } from './leads.js';
 import { getSafeDateOrNull, normalizeAppointmentType } from './dates.js';
 import { shouldPromptRenewal, DEFAULT_RENEWAL_CHECKPOINTS, DEFAULT_RENEWAL_GRACE_DAYS } from './renewalGoal.js';
@@ -232,6 +233,20 @@ export function buildInteractionsByLead(interactions) {
   return map;
 }
 
+// A base da Meta com quem tem visita ou aula hoje (`dayLeads`, a leitura ao
+// vivo do useDayAgenda), a mesma lista da Agenda de hoje, Perda incluída. A base de leads ativos não traz cliente, e o "contato marcado para
+// hoje" (useClientsWithContactToday) só o traz pelo eco do agendamento, que o
+// Compareceu apaga: depois de um F5 a aula feita sumiria da Meta. O que já
+// está na base vence.
+export function withDayAgendaLeads(baseLeads, dayLeads) {
+  const extra = dayLeads || [];
+  if (!extra.length) return baseLeads || [];
+  const byId = new Map();
+  (baseLeads || []).forEach((l) => byId.set(l.id, l));
+  extra.forEach((l) => { if (l?.id && !byId.has(l.id)) byId.set(l.id, l); });
+  return Array.from(byId.values());
+}
+
 // Monta os "slots" da meta de UM consultor: cada lead alvo sai com
 // categorySlugs[] e categoryStatus{slug:bool} (par lead×categoria = 1 slot;
 // um lead pode estar feito numa categoria e pendente noutra).
@@ -329,7 +344,10 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
   const addAppointmentTodayIfDue = (lead) => {
     // Dono da TAREFA do agendamento, que pode não ser o dono do lead.
     if (!ownsAppointmentTask(lead)) return;
-    if (lead.status === 'Venda' || lead.status === 'Perda') return;
+    // Toda visita e toda aula de hoje contam, em qualquer fase e com qualquer
+    // contrato, Perda incluída, como na Agenda de hoje (decisão do Johnny,
+    // 21/10/2026: o lead perdido pode voltar). O Compareceu não tira o lead da
+    // Perda (planPromotion).
     const apptType = getLeadAppointmentType(lead);
     const apptDate = getLeadAppointmentDate(lead);
     if (!(apptDate >= todayStart && apptDate <= todayEnd)) return;
@@ -437,10 +455,14 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
   // seguinte agendado por outra pessoa troca o dono da tarefa do agendamento, e
   // o "Contato feito" limpa o próximo contato que o colega recebeu, e a tarefa
   // feita não muda de Meta por isso. Mesmo guard dos leads dele: cliente não
-  // tem visita nem aula, e o contato de cliente feito hoje continua fora desta
-  // lista, como antes.
+  // tem o contato aqui: o contato de cliente feito hoje continua fora desta
+  // lista, como antes. A visita e a aula do cliente e da Perda entram, como
+  // no pendente.
   (leads || []).forEach(lead => {
-    if (lead.lifecycleStage === 'cliente' || lead.status === 'Venda' || lead.status === 'Perda') return;
+    if (isClientLead(lead) || lead.status === 'Perda') {
+      addDoneToday(lead, APPOINTMENT_GOAL_CATEGORIES);
+      return;
+    }
     addDoneToday(lead, TASK_OWNER_GOAL_CATEGORIES);
   });
 

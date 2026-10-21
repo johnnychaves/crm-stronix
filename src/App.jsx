@@ -57,10 +57,11 @@ import { ACTIONS, can, isGestor, isProfessor, isSeller } from './lib/acesso.js';
 import { planExpiredSetupOps } from './lib/expiredFunnel.js';
 import { planRenewalSetupOps } from './lib/renewalFunnel.js';
 import { planUpgradeSetupOps } from './lib/upgradeFunnel.js';
-import { computeDailyGoalSlots, buildInteractionsByLead, slotTotals, dgDateKey } from './lib/dailyGoal.js';
+import { computeDailyGoalSlots, buildInteractionsByLead, slotTotals, dgDateKey, withDayAgendaLeads } from './lib/dailyGoal.js';
 import { recordGoalHit as recordGoalHitDoc, goalHitKeyToRecord } from './lib/dailyGoalHistory.js';
 import { useRenewalClients } from './hooks/useRenewalClients.js';
 import { useClientsWithContactToday } from './hooks/useClientsWithContactToday.js';
+import { useDayAgenda } from './hooks/useDayAgenda.js';
 import { useRouteScroll } from './hooks/useRouteScroll.js';
 import { useActivityGate } from './hooks/useActivityGate.js';
 import { useReloadOnUpdate } from './hooks/useReloadOnUpdate.js';
@@ -1459,16 +1460,28 @@ useEffect(() => {
     return Array.from(byId.values());
   }, [leads, renewalCandidates, clientsContactToday]);
 
+  // Os agendamentos de hoje, ao vivo: a Agenda de hoje da Meta e a base da
+  // Meta, onde toda visita e aula de hoje conta, em qualquer fase
+  // (withDayAgendaLeads, em dailyGoal.js). A leitura mora aqui, e não na tela da Meta, porque o selo do
+  // menu e o título da aba contam a mesma Meta. A sessão vai na chave porque o
+  // App não remonta no "Acessar como".
+  const { items: dayAgendaLeads } = useDayAgenda({
+    db, enabled: listenersActive && !tenantBlock && isSeller(appUser), dayKey: `${sessionKey}:${dayKey}`
+  });
+  // A base da Meta (o selo, o título da aba e a tela). Os painéis continuam
+  // com o metaLeads.
+  const goalLeads = useMemo(() => withDayAgendaLeads(metaLeads, dayAgendaLeads), [metaLeads, dayAgendaLeads]);
+
   // Tarefas pendentes HOJE do usuário logado (mesma regra Meta-only da tela).
   const dailyGoalProgress = useMemo(() => {
     // Só quem vende tem a Meta do consultor. O professor fica sem pendência no
     // menu e sem dia batido gravado: a Meta dele, a dos faltosos, vem no PR 3.
     if (!appUser?.id || !isSeller(appUser)) return { total: 0, pending: 0 };
     void dayKey; // recalcula na virada do dia
-    const slots = computeDailyGoalSlots(metaLeads, buildInteractionsByLead(interactions), appUser.id, renewalCheckpoints, renewalGraceDays);
+    const slots = computeDailyGoalSlots(goalLeads, buildInteractionsByLead(interactions), appUser.id, renewalCheckpoints, renewalGraceDays);
     const { totalSlots, doneSlots } = slotTotals(slots);
     return { total: totalSlots, pending: totalSlots - doneSlots };
-  }, [metaLeads, interactions, appUser, dayKey, renewalCheckpoints, renewalGraceDays]);
+  }, [goalLeads, interactions, appUser, dayKey, renewalCheckpoints, renewalGraceDays]);
   const dailyGoalPending = dailyGoalProgress.pending;
   const dailyGoalTotal = dailyGoalProgress.total;
 
@@ -1876,7 +1889,7 @@ useEffect(() => {
                   faltosos (PR 3), a tela dele diz o que falta. */}
               {activeTab === 'dailyGoal' && (isProfessor(appUser)
                 ? <ProfessorGoalPlaceholder appUser={appUser} />
-                : <DailyGoalView leads={metaLeads} interactions={interactions} appUser={appUser} statuses={statuses} db={db} tags={tags} lossReasons={lossReasons} usersList={usersList} funnels={funnels} listenersActive={listenersActive} />)}
+                : <DailyGoalView leads={goalLeads} agendaLeads={dayAgendaLeads} interactions={interactions} appUser={appUser} statuses={statuses} db={db} tags={tags} lossReasons={lossReasons} usersList={usersList} funnels={funnels} listenersActive={listenersActive} />)}
               {activeTab === 'leads' && <LeadsView interactions={interactions} appUser={appUser} sources={sources} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} onAddLeadClick={() => setIsAddLeadModalOpen(true)} />}
               {/* Aulas e Visitas são SOMENTE CONSULTA: não gravam desfecho, então
                   não precisam mais de interactions/statuses (que serviam ao antigo
@@ -1951,7 +1964,7 @@ useEffect(() => {
       {isSeller(appUser) && (
         <SilentErrorBoundary>
           <MetaUrgentCount
-            leads={metaLeads}
+            leads={goalLeads}
             interactions={interactions}
             userId={appUser.id}
             renewalCheckpoints={renewalCheckpoints}
