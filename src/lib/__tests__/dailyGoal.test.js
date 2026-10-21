@@ -24,8 +24,7 @@ import {
   newLeadDueOf,
   newLeadHandledPatch,
   isMetaOverdue,
-  isActiveClientAt,
-  withDayAgendaClients
+  withDayAgendaLeads
 } from '../dailyGoal.js';
 import { DAILY_GOAL_CATEGORIES } from '../leads.js';
 import { contactDone, contactReschedule } from '../contactGoal.js';
@@ -1034,10 +1033,12 @@ describe('visita e aula agendadas por outro consultor', () => {
     expect(slotsDe('outro', [l])).toEqual([]);
   });
 
-  it('lead em Venda ou em Perda continua fora', () => {
+  it('lead em Perda continua fora, e o cliente em Venda entra (qualquer fase conta)', () => {
     const vendido = visitaDeHoje({ consultantId: 'outro', appointmentOwnerId: 'u1', status: 'Venda', lifecycleStage: 'cliente' });
     const perdido = aulaDeHoje({ consultantId: 'outro', appointmentOwnerId: 'u1', status: 'Perda' });
-    expect(slots([vendido, perdido])).toEqual([]);
+    const result = slots([vendido, perdido]);
+    expect(byId(result, vendido.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.VISITA_HOJE]);
+    expect(byId(result, perdido.id)).toBeUndefined();
   });
 
   it('agendamento de outro dia não vira tarefa de hoje para ninguém', () => {
@@ -1077,9 +1078,11 @@ describe('visita e aula agendadas por outro consultor', () => {
     expect(byId(slotsDe('outro', [l], feitos), l.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.CONTATO_HOJE]);
   });
 
-  it('cliente com a visita de outra pessoa não ganha a tarefa feita de visita', () => {
+  it('o cliente com a visita agendada por outra pessoa fica feito na Meta dela', () => {
     const cliente = visitaDeHoje({ consultantId: 'outro', appointmentOwnerId: 'u1', status: 'Venda', lifecycleStage: 'cliente' });
-    expect(slots([cliente], [goalDone(cliente.id, DAILY_GOAL_CATEGORIES.VISITA_HOJE)])).toEqual([]);
+    const result = slots([cliente], [goalDone(cliente.id, DAILY_GOAL_CATEGORIES.VISITA_HOJE)]);
+    expect(byId(result, cliente.id).categoryStatus[DAILY_GOAL_CATEGORIES.VISITA_HOJE]).toBe(true);
+    expect(slotsDe('outro', [cliente], [goalDone(cliente.id, DAILY_GOAL_CATEGORIES.VISITA_HOJE)])).toEqual([]);
   });
 });
 
@@ -1162,12 +1165,14 @@ describe('a visita e a aula feitas ficam com quem tinha a tarefa na marcação',
     expect(slotsDe(ANA, [l], antiga)).toEqual([]);
   });
 
-  it('cliente, Venda e Perda continuam sem visita e aula feitas, mesmo com a marca de quem fez', () => {
+  it('cliente e Venda ficam com a visita feita de quem fez, e a Perda continua sem', () => {
     const cliente = aulaDeAmanha({ consultantId: ANA, status: 'Venda', lifecycleStage: 'cliente' });
     const vendido = aulaDeAmanha({ consultantId: ANA, status: 'Venda' });
     const perdido = aulaDeAmanha({ consultantId: ANA, status: 'Perda' });
     const feitas = [cliente, vendido, perdido].map((l) => marcaDe(l.id, VISITA, BRUNO));
-    expect(slotsDe(BRUNO, [cliente, vendido, perdido], feitas)).toEqual([]);
+    const doBruno = slotsDe(BRUNO, [cliente, vendido, perdido], feitas);
+    expect(doBruno.map((l) => l.id).sort()).toEqual([cliente.id, vendido.id].sort());
+    for (const l of doBruno) expect(l.categoryStatus[VISITA]).toBe(true);
   });
 });
 
@@ -1373,12 +1378,12 @@ describe('newLeadHandledPatch', () => {
   });
 });
 
-// A visita e a aula do CLIENTE ATIVO contam na Meta (decisão do Johnny,
-// 21/10/2026). Até ali a Meta só pulava a fase escrita "Venda": o cliente numa
-// etapa com outro nome ("Matriculado") entrava, e o da fase Venda ficava só na
-// Agenda de hoje (caso da Catia e do Vinicius no Hosiel, contra a Magda e a
-// Guiomar).
-describe('visita e aula de cliente ativo', () => {
+// Toda visita e toda aula de hoje contam na Meta, em qualquer fase e com
+// qualquer contrato, como na Agenda de hoje (decisão do Johnny, 21/10/2026).
+// Até ali a Meta só pulava a fase escrita "Venda": o cliente numa etapa com
+// outro nome ("Matriculado") entrava, e o da fase Venda ficava só na Agenda
+// (caso da Catia e do Vinicius no Hosiel, contra a Magda e a Guiomar).
+describe('visita e aula de hoje em qualquer fase', () => {
   const hoje18 = new Date(2026, 6, 15, 18, 0);
   const AULA = DAILY_GOAL_CATEGORIES.AULA_HOJE;
   const VISITA = DAILY_GOAL_CATEGORIES.VISITA_HOJE;
@@ -1399,33 +1404,31 @@ describe('visita e aula de cliente ativo', () => {
   const slotsDe = (id, leads, interactions = []) =>
     computeDailyGoalSlots(leads, buildInteractionsByLead(interactions), id);
 
-  it('o cliente na fase Venda com contrato ativo tem a aula na Meta do dono', () => {
+  it('o cliente na fase Venda tem a aula na Meta do dono', () => {
     const c = clienteComAula();
     expect(byId(slots([c]), c.id).categorySlugs).toEqual([AULA]);
   });
 
-  it('a fase não decide: Venda e etapa de matriculado com outro nome dão o mesmo resultado', () => {
-    const venda = clienteComAula();
-    const matriculado = clienteComAula({ status: 'Matriculado', isConverted: false });
-    const result = slots([venda, matriculado]);
-    expect(byId(result, venda.id).categorySlugs).toEqual([AULA]);
-    expect(byId(result, matriculado.id).categorySlugs).toEqual([AULA]);
+  it('a fase e o contrato não decidem: Venda, Matriculado, vencido, trancado, cancelado e sem contrato contam', () => {
+    const casos = [
+      clienteComAula(),
+      clienteComAula({ status: 'Matriculado', isConverted: false }),
+      clienteComAula({ currentContractEndsAt: new Date(2026, 5, 1) }),
+      clienteComAula({ currentContractStatus: 'trancado' }),
+      clienteComAula({ currentContractStatus: 'cancelado' }),
+      clienteComAula({ currentContractStatus: null, currentContractStartsAt: null, currentContractEndsAt: null }),
+      clienteComAula({ lifecycleStage: undefined, isConverted: false, status: 'Venda' })
+    ];
+    const result = slots(casos);
+    for (const c of casos) expect(byId(result, c.id).categorySlugs).toContain(AULA);
   });
 
-  it('o contrato a vencer também conta, e a visita segue a mesma regra', () => {
-    const aVencer = clienteComAula({ currentContractEndsAt: new Date(2026, 6, 25), appointmentType: 'visita', nextFollowUpType: 'Visita' });
-    expect(byId(slots([aVencer]), aVencer.id).categorySlugs).toContain(VISITA);
-  });
-
-  it('cliente com contrato vencido, trancado, cancelado ou sem contrato fica fora, em qualquer fase', () => {
-    const vencido = clienteComAula({ status: 'Matriculado', isConverted: false, currentContractEndsAt: new Date(2026, 5, 1) });
-    const trancado = clienteComAula({ currentContractStatus: 'trancado' });
-    const cancelado = clienteComAula({ currentContractStatus: 'cancelado' });
-    const semContrato = clienteComAula({ currentContractStatus: null, currentContractStartsAt: null, currentContractEndsAt: null });
-    const result = slots([vencido, trancado, cancelado, semContrato]);
-    for (const c of [vencido, trancado, cancelado, semContrato]) {
-      expect(byId(result, c.id)?.categorySlugs || []).not.toContain(AULA);
-    }
+  it('a visita segue a mesma regra, e a Perda fica fora, como na Agenda', () => {
+    const visita = clienteComAula({ appointmentType: 'visita', nextFollowUpType: 'Visita' });
+    const perdido = lead({ status: 'Perda', appointmentType: 'visita', appointmentScheduledFor: hoje18 });
+    const result = slots([visita, perdido]);
+    expect(byId(result, visita.id).categorySlugs).toContain(VISITA);
+    expect(byId(result, perdido.id)).toBeUndefined();
   });
 
   it('a aula que outro consultor agendou no cliente fica com quem agendou', () => {
@@ -1440,21 +1443,16 @@ describe('visita e aula de cliente ativo', () => {
     expect(byId(result, c.id).categoryStatus[AULA]).toBe(true);
   });
 
-  it('isActiveClientAt só vale para cliente com contrato ativo ou a vencer', () => {
-    expect(isActiveClientAt(clienteComAula(), NOW)).toBe(true);
-    expect(isActiveClientAt(clienteComAula({ currentContractStatus: 'trancado' }), NOW)).toBe(false);
-    expect(isActiveClientAt(lead({ status: 'Contato' }), NOW)).toBe(false);
-  });
-
-  it('withDayAgendaClients junta à base só os clientes da agenda, sem repetir', () => {
+  it('withDayAgendaLeads junta à base quem está na agenda, sem repetir e sem a Perda', () => {
     const ativo = lead({ id: 'a1' });
     const naBase = clienteComAula({ id: 'c1' });
     const daAgenda = clienteComAula({ id: 'c2' });
     const leadDaAgenda = lead({ id: 'l9' });
+    const perdido = lead({ id: 'p1', status: 'Perda' });
     const base = [ativo, naBase];
-    const out = withDayAgendaClients(base, [{ ...naBase, name: 'cópia' }, daAgenda, leadDaAgenda]);
-    expect(out.map((l) => l.id)).toEqual(['a1', 'c1', 'c2']);
+    const out = withDayAgendaLeads(base, [{ ...naBase, name: 'cópia' }, daAgenda, leadDaAgenda, perdido]);
+    expect(out.map((l) => l.id)).toEqual(['a1', 'c1', 'c2', 'l9']);
     expect(byId(out, 'c1')).toBe(naBase);
-    expect(withDayAgendaClients(base, [])).toBe(base);
+    expect(withDayAgendaLeads(base, [])).toBe(base);
   });
 });

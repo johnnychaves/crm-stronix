@@ -57,7 +57,7 @@ import { ACTIONS, can, isGestor, isProfessor, isSeller } from './lib/acesso.js';
 import { planExpiredSetupOps } from './lib/expiredFunnel.js';
 import { planRenewalSetupOps } from './lib/renewalFunnel.js';
 import { planUpgradeSetupOps } from './lib/upgradeFunnel.js';
-import { computeDailyGoalSlots, buildInteractionsByLead, slotTotals, dgDateKey, withDayAgendaClients } from './lib/dailyGoal.js';
+import { computeDailyGoalSlots, buildInteractionsByLead, slotTotals, dgDateKey, withDayAgendaLeads } from './lib/dailyGoal.js';
 import { recordGoalHit as recordGoalHitDoc, goalHitKeyToRecord } from './lib/dailyGoalHistory.js';
 import { useRenewalClients } from './hooks/useRenewalClients.js';
 import { useClientsWithContactToday } from './hooks/useClientsWithContactToday.js';
@@ -1460,9 +1460,9 @@ useEffect(() => {
     return Array.from(byId.values());
   }, [leads, renewalCandidates, clientsContactToday]);
 
-  // Os agendamentos de hoje, ao vivo: a Agenda de hoje da Meta e os clientes
-  // ativos com visita ou aula hoje, que contam na Meta (isActiveClientAt, em
-  // dailyGoal.js). A leitura mora aqui, e não na tela da Meta, porque o selo do
+  // Os agendamentos de hoje, ao vivo: a Agenda de hoje da Meta e a base da
+  // Meta, onde toda visita e aula de hoje conta, em qualquer fase
+  // (withDayAgendaLeads, em dailyGoal.js). A leitura mora aqui, e não na tela da Meta, porque o selo do
   // menu e o título da aba contam a mesma Meta. A sessão vai na chave porque o
   // App não remonta no "Acessar como".
   const { items: dayAgendaLeads } = useDayAgenda({
@@ -1470,7 +1470,7 @@ useEffect(() => {
   });
   // A base da Meta (o selo, o título da aba e a tela). Os painéis continuam
   // com o metaLeads.
-  const goalLeads = useMemo(() => withDayAgendaClients(metaLeads, dayAgendaLeads), [metaLeads, dayAgendaLeads]);
+  const goalLeads = useMemo(() => withDayAgendaLeads(metaLeads, dayAgendaLeads), [metaLeads, dayAgendaLeads]);
 
   // Tarefas pendentes HOJE do usuário logado (mesma regra Meta-only da tela).
   const dailyGoalProgress = useMemo(() => {

@@ -281,7 +281,7 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
   }, [usersList]);
 
   // agendaLeads: os agendamentos de hoje, lidos ao vivo no App (useDayAgenda),
-  // que também põe na Meta os clientes ativos com visita ou aula hoje.
+  // que também põe na Meta quem tem visita ou aula hoje, em qualquer fase.
   const dayAgenda = useMemo(
     () => computeDayAgenda({ liveLeads: leads, agendaLeads, usersById, viewerId: appUser.id, now }),
     [leads, agendaLeads, usersById, appUser, now]

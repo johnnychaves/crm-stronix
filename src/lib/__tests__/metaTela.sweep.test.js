@@ -57,8 +57,8 @@ describe('o número de urgentes no título da aba', () => {
     expect(APP.lastIndexOf('{isSeller(appUser) && (', i)).toBeGreaterThan(APP.lastIndexOf('</SilentErrorBoundary>', i));
   });
 
-  it('a tela, o selo do menu e o título contam a mesma base, com os clientes da agenda de hoje', () => {
-    expect(APP).toMatch(/const goalLeads = useMemo\(\(\) => withDayAgendaClients\(metaLeads, dayAgendaLeads\)/);
+  it('a tela, o selo do menu e o título contam a mesma base, com quem está na agenda de hoje', () => {
+    expect(APP).toMatch(/const goalLeads = useMemo\(\(\) => withDayAgendaLeads\(metaLeads, dayAgendaLeads\)/);
     expect(APP).toContain('<DailyGoalView leads={goalLeads} agendaLeads={dayAgendaLeads}');
     expect(APP).toMatch(/computeDailyGoalSlots\(goalLeads, /);
   });
