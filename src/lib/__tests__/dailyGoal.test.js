@@ -1033,12 +1033,12 @@ describe('visita e aula agendadas por outro consultor', () => {
     expect(slotsDe('outro', [l])).toEqual([]);
   });
 
-  it('lead em Perda continua fora, e o cliente em Venda entra (qualquer fase conta)', () => {
+  it('o cliente em Venda e o lead em Perda entram (qualquer fase conta)', () => {
     const vendido = visitaDeHoje({ consultantId: 'outro', appointmentOwnerId: 'u1', status: 'Venda', lifecycleStage: 'cliente' });
     const perdido = aulaDeHoje({ consultantId: 'outro', appointmentOwnerId: 'u1', status: 'Perda' });
     const result = slots([vendido, perdido]);
     expect(byId(result, vendido.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.VISITA_HOJE]);
-    expect(byId(result, perdido.id)).toBeUndefined();
+    expect(byId(result, perdido.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.AULA_HOJE]);
   });
 
   it('agendamento de outro dia não vira tarefa de hoje para ninguém', () => {
@@ -1165,13 +1165,13 @@ describe('a visita e a aula feitas ficam com quem tinha a tarefa na marcação',
     expect(slotsDe(ANA, [l], antiga)).toEqual([]);
   });
 
-  it('cliente e Venda ficam com a visita feita de quem fez, e a Perda continua sem', () => {
+  it('cliente, Venda e Perda ficam com a visita feita de quem fez', () => {
     const cliente = aulaDeAmanha({ consultantId: ANA, status: 'Venda', lifecycleStage: 'cliente' });
     const vendido = aulaDeAmanha({ consultantId: ANA, status: 'Venda' });
     const perdido = aulaDeAmanha({ consultantId: ANA, status: 'Perda' });
     const feitas = [cliente, vendido, perdido].map((l) => marcaDe(l.id, VISITA, BRUNO));
     const doBruno = slotsDe(BRUNO, [cliente, vendido, perdido], feitas);
-    expect(doBruno.map((l) => l.id).sort()).toEqual([cliente.id, vendido.id].sort());
+    expect(doBruno.map((l) => l.id).sort()).toEqual([cliente.id, vendido.id, perdido.id].sort());
     for (const l of doBruno) expect(l.categoryStatus[VISITA]).toBe(true);
   });
 });
@@ -1379,7 +1379,8 @@ describe('newLeadHandledPatch', () => {
 });
 
 // Toda visita e toda aula de hoje contam na Meta, em qualquer fase e com
-// qualquer contrato, como na Agenda de hoje (decisão do Johnny, 21/10/2026).
+// qualquer contrato, Perda incluída, como na Agenda de hoje (decisão do
+// Johnny, 21/10/2026: o lead perdido pode voltar).
 // Até ali a Meta só pulava a fase escrita "Venda": o cliente numa etapa com
 // outro nome ("Matriculado") entrava, e o da fase Venda ficava só na Agenda
 // (caso da Catia e do Vinicius no Hosiel, contra a Magda e a Guiomar).
@@ -1423,12 +1424,13 @@ describe('visita e aula de hoje em qualquer fase', () => {
     for (const c of casos) expect(byId(result, c.id).categorySlugs).toContain(AULA);
   });
 
-  it('a visita segue a mesma regra, e a Perda fica fora, como na Agenda', () => {
+  it('a visita segue a mesma regra, e o lead em Perda entra só com a visita', () => {
     const visita = clienteComAula({ appointmentType: 'visita', nextFollowUpType: 'Visita' });
-    const perdido = lead({ status: 'Perda', appointmentType: 'visita', appointmentScheduledFor: hoje18 });
+    // O próximo contato vencido não acende o Atrasado da Perda: só a visita conta.
+    const perdido = lead({ status: 'Perda', appointmentType: 'visita', appointmentScheduledFor: hoje18, nextFollowUp: new Date(2026, 6, 10, 9, 0), nextFollowUpType: 'Mensagem' });
     const result = slots([visita, perdido]);
     expect(byId(result, visita.id).categorySlugs).toContain(VISITA);
-    expect(byId(result, perdido.id)).toBeUndefined();
+    expect(byId(result, perdido.id).categorySlugs).toEqual([VISITA]);
   });
 
   it('a aula que outro consultor agendou no cliente fica com quem agendou', () => {
@@ -1443,7 +1445,7 @@ describe('visita e aula de hoje em qualquer fase', () => {
     expect(byId(result, c.id).categoryStatus[AULA]).toBe(true);
   });
 
-  it('withDayAgendaLeads junta à base quem está na agenda, sem repetir e sem a Perda', () => {
+  it('withDayAgendaLeads junta à base quem está na agenda, Perda incluída, sem repetir', () => {
     const ativo = lead({ id: 'a1' });
     const naBase = clienteComAula({ id: 'c1' });
     const daAgenda = clienteComAula({ id: 'c2' });
@@ -1451,7 +1453,7 @@ describe('visita e aula de hoje em qualquer fase', () => {
     const perdido = lead({ id: 'p1', status: 'Perda' });
     const base = [ativo, naBase];
     const out = withDayAgendaLeads(base, [{ ...naBase, name: 'cópia' }, daAgenda, leadDaAgenda, perdido]);
-    expect(out.map((l) => l.id)).toEqual(['a1', 'c1', 'c2', 'l9']);
+    expect(out.map((l) => l.id)).toEqual(['a1', 'c1', 'c2', 'l9', 'p1']);
     expect(byId(out, 'c1')).toBe(naBase);
     expect(withDayAgendaLeads(base, [])).toBe(base);
   });

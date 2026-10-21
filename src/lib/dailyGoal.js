@@ -234,13 +234,12 @@ export function buildInteractionsByLead(interactions) {
 }
 
 // A base da Meta com quem tem visita ou aula hoje (`dayLeads`, a leitura ao
-// vivo do useDayAgenda), a mesma lista da Agenda de hoje: em Perda fica fora,
-// como lá. A base de leads ativos não traz cliente, e o "contato marcado para
+// vivo do useDayAgenda), a mesma lista da Agenda de hoje, Perda incluída. A base de leads ativos não traz cliente, e o "contato marcado para
 // hoje" (useClientsWithContactToday) só o traz pelo eco do agendamento, que o
 // Compareceu apaga: depois de um F5 a aula feita sumiria da Meta. O que já
 // está na base vence.
 export function withDayAgendaLeads(baseLeads, dayLeads) {
-  const extra = (dayLeads || []).filter((l) => l?.status !== 'Perda');
+  const extra = dayLeads || [];
   if (!extra.length) return baseLeads || [];
   const byId = new Map();
   (baseLeads || []).forEach((l) => byId.set(l.id, l));
@@ -346,9 +345,9 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
     // Dono da TAREFA do agendamento, que pode não ser o dono do lead.
     if (!ownsAppointmentTask(lead)) return;
     // Toda visita e toda aula de hoje contam, em qualquer fase e com qualquer
-    // contrato, como na Agenda de hoje (decisão do Johnny, 21/10/2026). Só a
-    // Perda fica fora, como lá.
-    if (lead.status === 'Perda') return;
+    // contrato, Perda incluída, como na Agenda de hoje (decisão do Johnny,
+    // 21/10/2026: o lead perdido pode voltar). O Compareceu não tira o lead da
+    // Perda (planPromotion).
     const apptType = getLeadAppointmentType(lead);
     const apptDate = getLeadAppointmentDate(lead);
     if (!(apptDate >= todayStart && apptDate <= todayEnd)) return;
@@ -457,10 +456,10 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
   // o "Contato feito" limpa o próximo contato que o colega recebeu, e a tarefa
   // feita não muda de Meta por isso. Mesmo guard dos leads dele: cliente não
   // tem o contato aqui: o contato de cliente feito hoje continua fora desta
-  // lista, como antes. A visita e a aula do cliente entram, como no pendente.
+  // lista, como antes. A visita e a aula do cliente e da Perda entram, como
+  // no pendente.
   (leads || []).forEach(lead => {
-    if (lead.status === 'Perda') return;
-    if (isClientLead(lead)) {
+    if (isClientLead(lead) || lead.status === 'Perda') {
       addDoneToday(lead, APPOINTMENT_GOAL_CATEGORIES);
       return;
     }
