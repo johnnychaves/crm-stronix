@@ -112,7 +112,7 @@ const PhaseChanger = ({ lead, db = null, funnels = [], statuses = [], onConfirm,
 
   const stage = active === 'funil' ? (
     <>
-      <StageHead title="Funil" hint={`Em qual funil ${firstName} deve ficar?`} />
+      <StageHead key="funil" title="Funil" hint={`Em qual funil ${firstName} deve ficar?`} />
       <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
         {funnels.map((f) => (
           <WizardOption
@@ -129,12 +129,12 @@ const PhaseChanger = ({ lead, db = null, funnels = [], statuses = [], onConfirm,
     </>
   ) : active === 'indicador' ? (
     <>
-      <StageHead title="Quem indicou?" hint="O funil de Indicações só recebe leads ligados a um cliente indicador." />
+      <StageHead key="indicador" title="Quem indicou?" hint="O funil de Indicações só recebe leads ligados a um cliente indicador." />
       <ReferrerPicker db={db} value={referrer} onSelect={(r) => { setReferrer(r); setEditing(null); }} excludeId={lead?.id} />
     </>
   ) : (
     <>
-      <StageHead title="Nova fase" hint={`Para onde ${firstName} vai agora?`} />
+      <StageHead key="fase" title="Nova fase" hint={`Para onde ${firstName} vai agora?`} />
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
         {LINEAR.map((s, i) => {
           const isCurrent = sameFunnel && s.name === originalStage;

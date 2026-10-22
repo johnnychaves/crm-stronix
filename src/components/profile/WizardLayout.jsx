@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { Check } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 
@@ -95,12 +96,24 @@ export function WizardStepper({ steps, label, tone }) {
   );
 }
 
-export const StageHead = ({ title, hint }) => (
-  <div className="mb-3 mt-0.5">
-    <div className="text-[15px] font-semibold">{title}</div>
-    {hint && <div className="mt-px text-[13px] text-muted-foreground">{hint}</div>}
-  </div>
-);
+// O cabeçalho do passo atual. Cada assistente o monta com a key do passo, então
+// ele nasce de novo a cada troca. A opção ou o passo da linha que a pessoa usou
+// sai da tela, e o foco cairia no body: ele vem para o título do passo novo.
+// Com o foco em outro lugar (o assistente aberto pelo botão de modo, que
+// continua na tela), ele fica onde está.
+export function StageHead({ title, hint }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const a = document.activeElement;
+    if (!a || a === document.body) ref.current?.focus();
+  }, []);
+  return (
+    <div className="mb-3 mt-0.5">
+      <h3 ref={ref} tabIndex={-1} className="rounded-md text-[15px] font-semibold outline-none focus-visible:anel-foco">{title}</h3>
+      {hint && <div className="mt-px text-[13px] text-muted-foreground">{hint}</div>}
+    </div>
+  );
+}
 
 // O cartão de resumo da coluna da direita. Fica cinza enquanto falta algo e
 // ganha o tom do assistente quando está completo.

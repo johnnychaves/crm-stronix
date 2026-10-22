@@ -306,3 +306,34 @@ describe('ProfileComposer, gravação lenta', () => {
     expect(botao('Vai pensar').disabled).toBe(true);
   });
 });
+
+// O foco nunca cai no body: ao fechar, ele volta para a linha fechada.
+describe('ProfileComposer, foco', () => {
+  const linha = () => botao('Registrar o que aconteceu com Rafael');
+
+  it('Cancelar sem texto devolve o foco à linha fechada', async () => {
+    await montar();
+    await abrir();
+    expect(document.activeElement).toBe(caixa());
+    await clicar(botao('Cancelar'));
+    expect(document.activeElement).toBe(linha());
+  });
+
+  it('Cancelar com texto e "sim" também devolve o foco à linha fechada', async () => {
+    await montar();
+    await abrir();
+    await digitar(caixa(), 'Pode descartar');
+    await clicar(botao('Cancelar'));
+    expect(document.activeElement).toBe(linha());
+  });
+
+  it('fechar com o foco em outro lugar da tela não o puxa de volta', async () => {
+    const fora = document.createElement('input');
+    document.body.appendChild(fora);
+    await montar();
+    await abrir();
+    fora.focus();
+    await clicar(botao('Cancelar'));
+    expect(document.activeElement).toBe(fora);
+  });
+});

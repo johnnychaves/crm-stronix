@@ -163,4 +163,25 @@ describe('o compositor na ficha', () => {
     expect(caixa().value).toBe('Resumo pela metade');
     expect(botao('Ligação').getAttribute('aria-pressed')).toBe('true');
   });
+
+  it('o foco segue o compositor: Agendar e Mudar fase pela linha fechada, e a volta à linha depois de registrar', async () => {
+    await montar('timeline', {
+      funnels: [{ id: 'f1', name: 'Comercial', isDefault: true }],
+      statuses: [{ id: 's1', funnelId: 'f1', name: 'Novo', order: 0 }, { id: 's2', funnelId: 'f1', name: 'Contato', order: 1 }],
+    });
+    await clicar(botao('Agendar'));
+    expect(document.activeElement.textContent).toBe('O que você quer agendar?');
+    await clicar(botao('Cancelar'));
+    expect(document.activeElement).toBe(botao('Registrar o que aconteceu com Lucas'));
+
+    await clicar(botao('Mudar fase'));
+    expect(document.activeElement.textContent).toBe('Nova fase');
+    await clicar(botao('Cancelar'));
+
+    await clicar(botao('Registrar o que aconteceu com Lucas'));
+    await digitar('Vai pensar');
+    await act(async () => { caixa().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true })); });
+    expect(caixa()).toBeNull();
+    expect(document.activeElement).toBe(botao('Registrar o que aconteceu com Lucas'));
+  });
 });

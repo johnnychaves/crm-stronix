@@ -427,7 +427,7 @@ function ScheduleWizard({ onConfirm, onCancel, submitting = false, usersList = [
       stepper={<WizardStepper steps={steps} label="Passos do agendamento" tone={t} />}
       stage={active === 'tipo' ? (
         <>
-          <StageHead title="O que você quer agendar?" hint="Escolha o tipo para liberar os próximos passos." />
+          <StageHead key="tipo" title="O que você quer agendar?" hint="Escolha o tipo para liberar os próximos passos." />
           <div className="grid grid-cols-2 gap-2">
             {WZ_TYPES.map((tp, i) => (
               <WzOptionCard key={tp.id} index={i} Icon={tp.Icon} label={tp.label} hint={tp.desc} color={tp.color} selected={false} onClick={() => pickType(tp.id)}/>
@@ -436,7 +436,7 @@ function ScheduleWizard({ onConfirm, onCancel, submitting = false, usersList = [
         </>
       ) : (
         <>
-          <StageHead title={WZ_STEP_INFO[active].title} hint={WZ_STEP_INFO[active].hint} />
+          <StageHead key={`head-${active}`} title={WZ_STEP_INFO[active].title} hint={WZ_STEP_INFO[active].hint} />
           <WzStepBody key={active} stepId={active} values={values} set={setVal} color={color}
             modalities={modalities} units={units} qtyOptions={qtyOptions} professores={professores}
             ownerOptions={ownerOptions} leadOwnerName={leadOwnerName}/>

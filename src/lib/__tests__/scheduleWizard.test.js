@@ -133,4 +133,29 @@ describe('ScheduleWizard em passos horizontais', () => {
     await clicar(botao('Confirmar agendamento'));
     expect(onConfirm.mock.calls[0][0]).toMatchObject({ typeLabel: 'Ligação', note: 'Fechar o plano' });
   });
+
+  it('abre com o foco no cabeçalho do passo quando o foco estava solto', async () => {
+    await montar();
+    expect(document.activeElement.textContent).toBe('O que você quer agendar?');
+  });
+
+  it('não tira o foco de quem o tem ao abrir', async () => {
+    const fora = document.createElement('button');
+    document.body.appendChild(fora);
+    fora.focus();
+    await montar();
+    expect(document.activeElement).toBe(fora);
+  });
+
+  it('trocar de passo leva o foco ao cabeçalho do passo novo', async () => {
+    await montar();
+    await clicar(botao('Visita'));
+    expect(document.activeElement.textContent).toBe('Unidade');
+    await clicar(botao('Centro'));
+    expect(document.activeElement.textContent).toBe('Dia e horário');
+    await clicar(document.body.querySelector('button[title="Editar unidade"]'));
+    expect(document.activeElement.textContent).toBe('Unidade');
+    await clicar(document.body.querySelector('button[title="Editar tipo"]'));
+    expect(document.activeElement.textContent).toBe('O que você quer agendar?');
+  });
 });

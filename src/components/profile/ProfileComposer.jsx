@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Calendar, Check, MessageCircle, Pencil, Phone, RefreshCw } from 'lucide-react';
 import { appendQuickText, EMPTY_DRAFTS, QUICK_TEXTS } from '../../lib/quickTexts.js';
 import { cn } from '../../lib/utils.js';
@@ -62,6 +62,17 @@ export function ProfileComposer({
   const hint = hintState.mode === mode ? hintState.text : '';
   const setHint = (text) => setHintState({ mode, text });
 
+  // Ao fechar (Cancelar, registro feito, assistente concluído ou cancelado), o
+  // que tinha o foco sai da tela e ele cairia no body: volta para a linha
+  // fechada. Com o foco em outro lugar da tela, ele fica onde está.
+  const lineRef = useRef(null);
+  const wasOpen = useRef(open);
+  useEffect(() => {
+    const a = document.activeElement;
+    if (wasOpen.current && !open && (!a || a === document.body)) lineRef.current?.focus();
+    wasOpen.current = open;
+  }, [open]);
+
   const modes = MODES.filter((m) => m.id !== 'status' || canMudarFase);
   const textMode = TEXT_MODES[mode];
   const draft = drafts[mode] ?? '';
@@ -104,6 +115,7 @@ export function ProfileComposer({
       >
         <Avatar name={appUser?.name || 'Você'} size={30} />
         <button
+          ref={lineRef}
           type="button"
           onClick={() => onOpen('note')}
           className="min-w-0 flex-1 rounded-lg py-1.5 text-left text-[14.5px] text-muted-foreground focus-visible:outline-none focus-visible:anel-foco"

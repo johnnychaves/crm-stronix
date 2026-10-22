@@ -124,4 +124,15 @@ describe('PhaseChanger em passos horizontais', () => {
     await clicar(botao('Cancelar'));
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
+
+  it('trocar de passo leva o foco ao cabeçalho do passo novo', async () => {
+    await montar();
+    expect(document.activeElement.textContent).toBe('Nova fase');
+    await clicar(document.body.querySelector('button[title="Editar funil"]'));
+    expect(document.activeElement.textContent).toBe('Funil');
+    await clicar(botao('Indicações'));
+    expect(document.activeElement.textContent).toBe('Nova fase');
+    await clicar(botao('Indicado'));
+    expect(document.activeElement.textContent).toBe('Quem indicou?');
+  });
 });
