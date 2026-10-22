@@ -57,7 +57,7 @@ describe('ProfileHeaderBand', () => {
   it('próximo passo é um botão que leva ao A seguir', () => {
     const html = render();
     expect(html).toContain('Visita qua, 21/10 às 19:00');
-    expect(html).toMatch(/<button[^>]*aria-label="Ver o próximo passo no A seguir: Visita qua, 21\/10 às 19:00"/);
+    expect(html).toMatch(/<button[^>]*aria-label="Ver o próximo passo no A seguir: Visita qua, 21\/10 às 19:00/);
   });
 
   it('sem próximo passo, não é botão e convida a definir', () => {
@@ -67,10 +67,22 @@ describe('ProfileHeaderBand', () => {
     expect(html).not.toContain('Ver o próximo passo no A seguir');
   });
 
-  it('próximo passo atrasado avisa por escrito', () => {
+  it('próximo passo atrasado avisa por escrito, e o nome do botão diz o atraso e o detalhe', () => {
     const atrasado = { ...LEAD, appointmentScheduledFor: D(10, 14, 19), nextFollowUp: D(10, 14, 19), nextFollowUpType: 'Visita' };
     const html = render({ band: { next: nextStepCell(atrasado, AGORA), mid: null, team: teamCell({}) } });
     expect(html).toContain('>Atrasado<');
+    expect(html).toContain('aria-label="Ver o próximo passo no A seguir: Visita qua, 14/10 às 19:00, atrasado. Unidade Centro"');
+  });
+
+  it('o nome do botão leva o detalhe também sem atraso', () => {
+    expect(render()).toContain('aria-label="Ver o próximo passo no A seguir: Visita qua, 21/10 às 19:00. Unidade Centro"');
+  });
+
+  // O papel vai numa linha própria: ao lado, com shrink-0, ele espremia o nome.
+  it('equipe: o papel fica embaixo do nome, sem espremê-lo', () => {
+    const html = render();
+    expect(html).not.toMatch(/class="shrink-0[^"]*">consultor</);
+    expect(html).toMatch(/<span class="block[^"]*">consultor<\/span>/);
   });
 
   it('lead: a etapa, a régua do funil e os dias', () => {

@@ -173,7 +173,7 @@ describe('Linha do tempo sem a aba CRM', () => {
 
     it('o próximo passo é a visita marcada, e é um botão', () => {
       const marcado = { ...LEAD, appointmentType: 'visita', appointmentScheduledFor: D(2026, 10, 21, 19), appointmentUnit: 'Centro', nextFollowUp: D(2026, 10, 21, 19), nextFollowUpType: 'Visita' };
-      expect(ficha({ lead: marcado })).toContain('aria-label="Ver o próximo passo no A seguir: Visita qua, 21/10 às 19:00"');
+      expect(ficha({ lead: marcado })).toContain('aria-label="Ver o próximo passo no A seguir: Visita qua, 21/10 às 19:00. Unidade Centro"');
       expect(ficha()).toContain('Sem próximo passo');
     });
 

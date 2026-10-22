@@ -43,7 +43,7 @@ function NextCell({ next, onGoNext }) {
     <button
       type="button"
       onClick={onGoNext}
-      aria-label={`Ver o próximo passo no A seguir: ${next.title}`}
+      aria-label={`Ver o próximo passo no A seguir: ${next.title}${next.overdue ? ', atrasado' : ''}${next.detail ? `. ${next.detail}` : ''}`}
       className="-m-1 flex w-[calc(100%+0.5rem)] items-start gap-2.5 rounded-lg p-1 text-left transition hover:bg-slate-50 focus-visible:outline-none focus-visible:anel-foco dark:hover:bg-white/[0.04]"
     >
       <span className={cn('grid size-8 flex-none place-items-center rounded-lg', tone.soft, tone.text, tone.darkSoft, tone.darkText)}>
@@ -151,10 +151,13 @@ function ContactCell({ contact, contactText, studentPhone, onCopyPhone }) {
 function Person({ name, role, empty }) {
   if (!name) return <span className="text-[13px] text-muted-foreground">{empty}</span>;
   return (
-    <span className="flex min-w-0 items-center gap-1.5">
+    <span className="flex min-w-0 items-start gap-1.5">
       <Avatar name={name} size={20} />
-      <span className="truncate text-[13.5px] font-semibold" title={name}>{name}</span>
-      <span className="shrink-0 text-[12.5px] text-muted-foreground">{role}</span>
+      {/* O papel em linha própria: ao lado, ele espremia o nome em telas médias. */}
+      <span className="min-w-0 leading-tight">
+        <span className="block truncate text-[13.5px] font-semibold" title={name}>{name}</span>
+        <span className="block truncate text-[12px] text-muted-foreground">{role}</span>
+      </span>
     </span>
   );
 }
