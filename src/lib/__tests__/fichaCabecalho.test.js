@@ -212,6 +212,16 @@ describe('cabeçalho da ficha: Indicações', () => {
     expect(document.activeElement).toBe(gatilho);
   });
 
+  it('Excluir cliente pergunta pelo cliente, e não pelo lead', async () => {
+    const confirmar = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    await montar({ lead: CLIENTE });
+    await tecla(porLabel('Mais ações'), 'Enter');
+    expect(itens()).toEqual(['Excluir cliente']);
+    await clicar(item('Excluir cliente'));
+    expect(confirmar).toHaveBeenCalledWith('Excluir este cliente permanentemente? Não dá pra desfazer.');
+    confirmar.mockRestore();
+  });
+
   it('o lead não tem o botão Indicações', async () => {
     await montar();
     expect(porLabelInicio('Indicações,')).toBeNull();

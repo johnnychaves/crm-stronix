@@ -99,7 +99,9 @@ describe('ficha do professor: cabeçalho', () => {
   it('no cliente, o gestor tem lápis, foto, etiqueta, Indicações e Mais ações', () => {
     const html = ficha({ lead: cliente(start), tab: 'timeline', appUser: GESTOR, contratos: [start] });
     BOTOES.forEach((b) => expect(html).toContain(b));
-    expect(html).toContain('aria-label="Indicações, 0"');
+    // Em node a contagem não chega (null): o botão e a aba ficam sem número.
+    expect(html).toContain('aria-label="Indicações"');
+    expect(html).toMatch(/-trigger-referrals"[^>]*>(?:(?!<\/button>).)*Indicações<\/button>/);
   });
 
   it('no cliente, o professor só chama: WhatsApp e Ligar', () => {

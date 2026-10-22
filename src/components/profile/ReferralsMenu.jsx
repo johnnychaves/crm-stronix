@@ -12,19 +12,22 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 // ela só abre depois de o menu devolver o foco ao botão (onCloseAutoFocus).
 // Aberta antes, ela guardava o item do menu, que some, e ao fechar o foco
 // caía no body.
-export function ReferralsMenu({ count = 0, canRegister, onRegister, onCopy, whatsappHref, toGuardian }) {
+export function ReferralsMenu({ count = null, canRegister, onRegister, onCopy, whatsappHref, toGuardian }) {
   const afterClose = useRef(null);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        aria-label={`Indicações, ${count}`}
+        aria-label={count == null ? 'Indicações' : `Indicações, ${count}`}
         className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3.5 text-[12.5px] font-semibold text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:anel-foco active:scale-[.98] data-[state=open]:bg-slate-50 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-200 dark:hover:bg-white/[0.08] dark:data-[state=open]:bg-white/[0.08]"
       >
         <Users size={14} aria-hidden="true" />
         Indicações
-        <span className="num inline-grid h-[18px] min-w-[18px] place-items-center rounded-full bg-slate-100 px-1 text-[11px] font-semibold text-slate-600 dark:bg-white/10 dark:text-slate-300">
-          {count}
-        </span>
+        {/* Sem a contagem ainda (null), sem número: um 0 diria que não há indicados. */}
+        {count != null && (
+          <span className="num inline-grid h-[18px] min-w-[18px] place-items-center rounded-full bg-slate-100 px-1 text-[11px] font-semibold text-slate-600 dark:bg-white/10 dark:text-slate-300">
+            {count}
+          </span>
+        )}
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"

@@ -51,7 +51,11 @@ export function arrivedText(lead, now = new Date()) {
 export function nextStepCell(lead, now = new Date()) {
   const [item] = upNextOf(lead, now);
   if (!item) {
-    return { item: null, title: 'Sem próximo passo', detail: `Defina quando falar com ${firstName(lead?.name) || 'a pessoa'} de novo.` };
+    // O lead em Perda está encerrado: não há o que marcar até ele ser reativado.
+    const detail = lead?.status === 'Perda'
+      ? 'Lead encerrado.'
+      : `Defina quando falar com ${firstName(lead?.name) || 'a pessoa'} de novo.`;
+    return { item: null, title: 'Sem próximo passo', detail };
   }
   return {
     item,

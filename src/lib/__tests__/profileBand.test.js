@@ -37,9 +37,9 @@ describe('nextStepCell', () => {
     });
   });
 
-  it('lead perdido não tem próximo passo, como o A seguir', () => {
+  it('lead perdido não tem próximo passo, como o A seguir, e não é convidado a falar de novo', () => {
     const lead = { name: 'Rafael', status: 'Perda', nextFollowUp: D(10, 17, 9), nextFollowUpType: 'Ligação' };
-    expect(nextStepCell(lead, AGORA).item).toBeNull();
+    expect(nextStepCell(lead, AGORA)).toEqual({ item: null, title: 'Sem próximo passo', detail: 'Lead encerrado.' });
   });
 });
 

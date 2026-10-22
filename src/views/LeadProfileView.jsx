@@ -250,7 +250,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
 
   const handleDelete = async () => {
     if (!isGestor(appUser)) { negarAcesso(); return; }
-    if (!window.confirm("Excluir este lead permanentemente? Não dá pra desfazer.")) return;
+    if (!window.confirm(`Excluir este ${isClient ? 'cliente' : 'lead'} permanentemente? Não dá pra desfazer.`)) return;
     // A rota troca a ficha por "Excluindo a ficha…" até terminar. Sem isso, o
     // aviso de doc apagado chega antes do fim e a tela piscaria "excluída".
     onDeleteStart?.();
@@ -1153,7 +1153,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                   professor fica sem ele. */}
               {isClient && canIndicar && (
                 <ReferralsMenu
-                  count={referralsCount ?? 0}
+                  count={referralsCount}
                   canRegister={canQuickReferral}
                   onRegister={() => setQuickReferralOpen(true)}
                   onCopy={copyReferralLink}
@@ -1261,7 +1261,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
             >
               <Handshake className="size-[15px]" />
               Indicações
-              <TabCount n={referralsCount ?? 0} active={activeProfileTab === 'referrals'} />
+              {referralsCount != null && <TabCount n={referralsCount} active={activeProfileTab === 'referrals'} />}
             </TabsTrigger>
           )}
         </TabsList>

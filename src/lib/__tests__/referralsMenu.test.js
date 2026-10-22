@@ -52,6 +52,12 @@ describe('ReferralsMenu', () => {
     expect(gatilho().textContent).toContain('3');
   });
 
+  it('sem a contagem ainda (null), o botão diz só Indicações, sem número', async () => {
+    await montar({ count: null });
+    expect(gatilho().getAttribute('aria-label')).toBe('Indicações');
+    expect(gatilho().textContent.trim()).toBe('Indicações');
+  });
+
   it('abre com as três opções', async () => {
     await montar();
     await abrir();
