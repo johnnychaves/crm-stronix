@@ -26,7 +26,7 @@ import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { LeadLink } from '../components/nav/AppLink.jsx';
-import { Btn, IconBtn } from '../components/ui/Btn.jsx';
+import { Btn } from '../components/ui/Btn.jsx';
 import { TagBadge } from '../components/ui/Badges.jsx';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs.jsx';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../components/ui/dialog.jsx';
@@ -562,8 +562,8 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   };
 
   // Edição no lugar do Contexto comercial: grava só o campo que mudou
-  // (lib/contextWrites.js). A trava é a do cadastro, a mesma do lápis do
-  // cabeçalho. Devolve false quando não gravou, para o editor ficar aberto.
+  // (lib/contextWrites.js). A trava é a do cadastro, a mesma da aba Cadastro.
+  // Devolve false quando não gravou, para o editor ficar aberto.
   // `from` é o valor da abertura do editor: as etiquetas gravam só a diferença.
   // O editor aberto mora aqui, e não no card, para o rascunho sobreviver à
   // troca de aba, como o rascunho do compositor.
@@ -583,8 +583,8 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     }
   };
 
-  // Abre o Cadastro, opcionalmente já numa seção e num campo. Sem seção (o
-  // lápis), só troca de aba: a seção que estiver aberta lá continua.
+  // Abre o Cadastro, opcionalmente já numa seção e num campo (o "Fez 18
+  // anos"). Sem seção, só troca de aba: a seção que estiver aberta lá continua.
   const openCadastro = (sectionId = null, field = null) => {
     if (sectionId) setCadastroRequest({ sectionId, field, at: Date.now() });
     onTab('cadastro');
@@ -1085,16 +1085,13 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                   {isClient ? profileState.hint : (arrivedText(lead, bandNow) || profileState.hint)}
                 </span>
               </div>
-              {/* name + edit */}
+              {/* nome. Editar o cadastro é pela aba Cadastro. */}
               <div className="flex items-center flex-wrap gap-2 gap-y-1">
                 <h1 className="font-display text-[26px] sm:text-[28px] font-bold tracking-tight leading-none truncate">{lead.name}</h1>
                 {isMinorNow(lead) && (
                   <span className="inline-flex h-6 shrink-0 items-center rounded-full bg-brand-50 px-2.5 text-[12.5px] font-semibold text-brand-700 dark:bg-brand-500/10 dark:text-brand-300">
                     Menor de idade
                   </span>
-                )}
-                {canEditCadastro && (
-                  <IconBtn icon={<Pencil size={16} />} kind="default" title="Editar cadastro" onClick={() => openCadastro()} />
                 )}
               </div>
               {/* etiquetas e indicação. A etapa do lead mora na faixa de baixo. */}

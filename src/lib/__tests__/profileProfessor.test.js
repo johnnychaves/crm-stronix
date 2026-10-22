@@ -1,6 +1,6 @@
 // O professor na ficha (spec docs/superpowers/specs/2026-10-02-professor-e-faltosos-design.md,
 // "O que ele vê"). Ele registra Anotação, WhatsApp, Ligação e Agendar. Não
-// tem Mudar fase, lápis, foto, etiqueta, o botão Indicações, Marcar venda nem
+// tem Mudar fase, foto, etiqueta, o botão Indicações, Marcar venda nem
 // o menu Mais ações (Marcar perda e Excluir), e as abas Contratos e Indicações
 // aparecem sem botão.
 // A ficha inteira é renderizada em node (renderToString), no molde de
@@ -94,11 +94,13 @@ describe('ficha do professor: compositor da Linha do tempo', () => {
 describe('ficha do professor: cabeçalho', () => {
   // O que cada opção dos menus mostra é dos testes de cada menu: fechado, o
   // conteúdo dele não existe no HTML.
-  const BOTOES = ['title="Editar cadastro"', 'title="Alterar foto"', 'aria-label="Mais ações"', 'Adicionar etiqueta'];
+  const BOTOES = ['title="Alterar foto"', 'aria-label="Mais ações"', 'Adicionar etiqueta'];
 
-  it('no cliente, o gestor tem lápis, foto, etiqueta, Indicações e Mais ações', () => {
+  it('no cliente, o gestor tem foto, etiqueta, Indicações e Mais ações, sem o lápis do cadastro', () => {
     const html = ficha({ lead: cliente(start), tab: 'timeline', appUser: GESTOR, contratos: [start] });
     BOTOES.forEach((b) => expect(html).toContain(b));
+    // O lápis ao lado do nome saiu: o caminho é a aba Cadastro.
+    expect(html).not.toContain('title="Editar cadastro"');
     // Em node a contagem não chega (null): o botão e a aba ficam sem número.
     expect(html).toContain('aria-label="Indicações"');
     expect(html).toMatch(/-trigger-referrals"[^>]*>(?:(?!<\/button>).)*Indicações<\/button>/);

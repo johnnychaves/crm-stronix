@@ -145,22 +145,12 @@ describe('aba Cadastro montada na ficha: troca de aba', () => {
 });
 
 describe('caminhos do cabeçalho até o Cadastro', () => {
-  it('o lápis do cabeçalho abre a aba Cadastro', async () => {
+  // O lápis ao lado do nome saiu (pedido do Johnny, 22/10/2026): o caminho é a
+  // aba Cadastro. O único "Editar cadastro" do cabeçalho é o do "Fez 18 anos".
+  it('o cabeçalho não tem mais o lápis de editar o cadastro', async () => {
     await montar();
-    const lapis = botoes('').find((b) => b.title === 'Editar cadastro');
-    await clicar(lapis);
-    expect(abaAtual).toBe('cadastro');
-    expect(painelCadastro().hidden).toBe(false);
-    expect(porLabel('Identidade')).toBeTruthy();
-  });
-
-  it('o lápis não descarta a seção aberta no Cadastro', async () => {
-    await montar({ aba: 'cadastro' });
-    await clicar(porLabel('Editar endereço'));
-    await digitar(campo('city'), 'Canoas');
-    await irPara('timeline');
-    await clicar(botoes('').find((b) => b.title === 'Editar cadastro'));
-    expect(campo('city').value).toBe('Canoas');
+    expect(botoes('').find((b) => b.title === 'Editar cadastro')).toBeUndefined();
+    expect(botoes('Editar cadastro')).toEqual([]);
   });
 
   it('o "Adicionar etiqueta" leva à Linha do tempo e rola até o Contexto comercial', async () => {
