@@ -12,3 +12,7 @@ export function appendQuickText(draft, text) {
   const base = String(draft ?? '').replace(/\s+$/, '');
   return base ? `${base}\n${text}` : text;
 }
+
+// Os rascunhos vazios do compositor, um por modo de texto. Mora aqui, e não no
+// ProfileComposer, porque arquivo de componente só exporta componente.
+export const EMPTY_DRAFTS = Object.freeze({ note: '', whatsapp: '', call: '' });
