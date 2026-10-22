@@ -127,4 +127,22 @@ describe('o compositor na ficha', () => {
     expect(toast.success).toHaveBeenCalledWith('Lucas Prado reativado em Contato.');
     expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
+
+  it('com a gravação lenta, o Ctrl e Enter de novo não grava duas vezes, e a caixa fica só de leitura', async () => {
+    let terminar;
+    logInteraction.mockImplementationOnce(() => new Promise((r) => { terminar = r; }));
+    await montar();
+    await clicar(botao('Registrar o que aconteceu com Lucas'));
+    await digitar('Vai pensar');
+    const ctrlEnter = async () => {
+      await act(async () => { caixa().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true })); });
+    };
+    await ctrlEnter();
+    await ctrlEnter();
+    expect(logInteraction).toHaveBeenCalledTimes(1);
+    expect(caixa().readOnly).toBe(true);
+    expect(botao('Ligação').disabled).toBe(true);
+    await act(async () => { terminar(); });
+    expect(caixa()).toBeNull();
+  });
 });

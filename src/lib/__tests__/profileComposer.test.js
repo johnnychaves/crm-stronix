@@ -250,3 +250,59 @@ describe('ProfileComposer, assistentes', () => {
     expect(botao('Agendar')).not.toBeNull();
   });
 });
+
+// Gravação lenta (rede ruim): o texto que a pessoa mexeu enquanto gravava não
+// pode sumir quando a gravação termina, e o Ctrl e Enter não grava duas vezes.
+describe('ProfileComposer, gravação lenta', () => {
+  const pendente = () => {
+    let resolver;
+    const fn = vi.fn(() => new Promise((r) => { resolver = r; }));
+    return { fn, terminar: async (ok) => { await act(async () => { resolver(ok); }); } };
+  };
+
+  it('Ctrl e Enter de novo durante a gravação não grava duas vezes', async () => {
+    const { fn, terminar } = pendente();
+    await montar({ onSubmitText: fn });
+    await abrir();
+    await digitar(caixa(), 'Vai pensar');
+    await ctrlEnter(caixa());
+    await ctrlEnter(caixa());
+    await clicar(botao('Registrar anotação'));
+    expect(fn).toHaveBeenCalledTimes(1);
+    await terminar(true);
+  });
+
+  it('o texto mudado durante a gravação fica na caixa quando ela termina', async () => {
+    const { fn, terminar } = pendente();
+    await montar({ onSubmitText: fn });
+    await abrir();
+    await digitar(caixa(), 'Primeira parte');
+    await ctrlEnter(caixa());
+    await digitar(caixa(), 'Primeira parte e mais um pedaço');
+    await terminar(true);
+    expect(caixa().value).toBe('Primeira parte e mais um pedaço');
+  });
+
+  it('trocar de modo durante a gravação não perde o texto do outro modo', async () => {
+    const { fn, terminar } = pendente();
+    await montar({ onSubmitText: fn });
+    await abrir();
+    await digitar(caixa(), 'Anotação enviada');
+    await ctrlEnter(caixa());
+    await clicar(botao('Ligação'));
+    await digitar(caixa(), 'Texto da ligação');
+    await terminar(true);
+    expect(caixa().value).toBe('Texto da ligação');
+    // A anotação foi gravada, então o rascunho dela esvazia.
+    await clicar(botao('Anotação'));
+    expect(caixa().value).toBe('');
+  });
+
+  it('com a ficha gravando, a caixa fica só de leitura e os modos e atalhos ficam desligados', async () => {
+    await montar({ loading: true });
+    await abrir();
+    expect(caixa().readOnly).toBe(true);
+    ['Anotação', 'WhatsApp', 'Ligação', 'Mudar fase', 'Agendar'].forEach((m) => expect(botao(m).disabled, m).toBe(true));
+    expect(botao('Vai pensar').disabled).toBe(true);
+  });
+});

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Calendar, Check, MessageCircle, Pencil, Phone, RefreshCw } from 'lucide-react';
 import { appendQuickText, EMPTY_DRAFTS, QUICK_TEXTS } from '../../lib/quickTexts.js';
 import { cn } from '../../lib/utils.js';
@@ -76,13 +76,24 @@ export function ProfileComposer({
     setHint('');
     onClose();
   };
+  // Gravação em andamento neste compositor: o botão fica desligado pelo
+  // `loading`, e esta trava segura o Ctrl e Enter repetido antes de a ficha
+  // redesenhar.
+  const sending = useRef(false);
   const submit = async () => {
-    // O botão já fica desligado durante a gravação; o Ctrl e Enter não fica.
-    if (loading) return;
-    const text = draft.trim();
+    if (loading || sending.current) return;
+    const sent = draft;
+    const text = sent.trim();
     if (!text) { setHint(textMode.empty); return; }
-    const ok = await onSubmitText(mode, text);
-    if (ok) { onDrafts((d) => ({ ...d, [mode]: '' })); setHint(''); }
+    sending.current = true;
+    try {
+      const ok = await onSubmitText(mode, text);
+      // Só esvazia o rascunho que ainda é o texto enviado: o que a pessoa
+      // escreveu depois, com a rede lenta, fica.
+      if (ok) { onDrafts((d) => (d[mode] === sent ? { ...d, [mode]: '' } : d)); setHint(''); }
+    } finally {
+      sending.current = false;
+    }
   };
 
   if (!open) {
@@ -129,9 +140,10 @@ export function ProfileComposer({
               key={m.id}
               type="button"
               aria-pressed={on}
+              disabled={loading}
               onClick={() => onOpen(m.id)}
               className={cn(
-                'flex h-[50px] items-center gap-2.5 whitespace-nowrap rounded-[15px] border px-3 text-[14.5px] font-semibold transition',
+                'flex h-[50px] items-center gap-2.5 whitespace-nowrap rounded-[15px] border px-3 text-[14.5px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-60',
                 'focus-visible:outline-none focus-visible:anel-foco focus-visible:ring-offset-2 focus-visible:ring-offset-background',
                 on ? cn(c.on, 'shadow-card') : cn('border-border bg-card text-slate-700 dark:text-slate-200', c.hover)
               )}
@@ -163,6 +175,7 @@ export function ProfileComposer({
               id="composer-text"
               autoFocus
               rows={4}
+              readOnly={loading}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submit(); } }}
@@ -175,8 +188,9 @@ export function ProfileComposer({
                   <button
                     key={q}
                     type="button"
+                    disabled={loading}
                     onClick={() => setDraft(appendQuickText(draft, q))}
-                    className="h-7 rounded-full border border-border bg-card px-3 text-[12.5px] transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700 focus-visible:outline-none focus-visible:anel-foco dark:hover:bg-brand-500/10 dark:hover:text-brand-300"
+                    className="h-7 rounded-full border border-border bg-card px-3 text-[12.5px] transition disabled:cursor-not-allowed disabled:opacity-60 hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700 focus-visible:outline-none focus-visible:anel-foco dark:hover:bg-brand-500/10 dark:hover:text-brand-300"
                   >
                     {q}
                   </button>

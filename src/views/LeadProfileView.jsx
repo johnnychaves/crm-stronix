@@ -168,11 +168,13 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // O compositor da Linha do tempo: aberto ou fechado, em que modo e o rascunho
   // de cada modo. Tudo mora na ficha porque a aba desmonta o compositor quando a
   // pessoa vai a Contratos e volta: o texto digitado não pode se perder na troca.
-  const [composerOpen, setComposerOpen] = useState(false);
-  const [composerMode, setComposerMode] = useState('note');
+  const [composer, setComposer] = useState({ open: false, mode: 'note' });
   const [composerDrafts, setComposerDrafts] = useState(EMPTY_DRAFTS);
-  const openComposer = (mode = 'note') => { setComposerMode(mode); setComposerOpen(true); };
-  const closeComposer = () => { setComposerOpen(false); setComposerMode('note'); };
+  const openComposer = (mode = 'note') => setComposer({ open: true, mode });
+  const closeComposer = () => setComposer({ open: false, mode: 'note' });
+  // Quem grava fecha o compositor só se ele ainda está no modo que gravou: a
+  // gravação lenta não fecha o compositor que a pessoa já levou a outro modo.
+  const closeComposerIn = (mode) => setComposer((c) => (c.mode === mode ? { open: false, mode: 'note' } : c));
 
   // Foto do cliente: menu (galeria/câmera) + gravação. No perfil não há botão
   // Salvar — escolheu/capturou, sobe pro Storage e grava na hora.
@@ -545,7 +547,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     setLoading(true);
     try {
       await logInteraction(db, lead, appUser, payload);
-      closeComposer();
+      closeComposerIn('note');
       setLoading(false);
       return true;
     } catch (e) {
@@ -693,7 +695,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
         text: `📲 Mensagem WhatsApp enviada: ${msg}`,
         type: 'note'
       });
-      closeComposer();
+      closeComposerIn('whatsapp');
       setLoading(false);
       return true;
     } catch (e) {
@@ -714,7 +716,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
         text: `📞 Ligação: ${summary}`,
         type: 'note'
       });
-      closeComposer();
+      closeComposerIn('call');
       setLoading(false);
       return true;
     } catch (e) {
@@ -1507,8 +1509,8 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
             setEdit={setContextEdit}
           />
           <ProfileComposer
-            open={composerOpen}
-            mode={composerMode}
+            open={composer.open}
+            mode={composer.mode}
             onOpen={openComposer}
             onClose={closeComposer}
             drafts={composerDrafts}
