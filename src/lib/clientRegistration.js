@@ -1,6 +1,8 @@
 // Regra pura do cadastro completo do cliente. Mapeia form <-> documento do lead
-// e calcula o medidor de completude. Mantém o ClientRegistrationModal fino e
-// testável (padrão do repo: regra em lib + teste).
+// e calcula o medidor de completude. Mantém a aba Cadastro da ficha fina e
+// testável (padrão do repo: regra em lib + teste). A aba grava por seção, pelo
+// cadastroSections.js, que passa por este montador e descarta o que não é da
+// seção: nunca grave o patch inteiro a partir da ficha.
 import { fromDateInputValue, toDateInputValue } from './dates.js';
 import { buildLeadSearchFields, buildGuardianPatch, sameContactPhone } from './leadDerived.js';
 import { formatCPF, formatPhone } from './masks.js';
@@ -17,7 +19,7 @@ const nullify = (v) => (str(v) ? str(v) : null);
 // Monta o mapa se pelo menos um subcampo tiver valor; senão null.
 const mapOrNull = (obj) => (Object.values(obj).some((v) => str(v)) ? obj : null);
 
-// lead (documento) -> form do modal.
+// lead (documento) -> form do cadastro.
 export function readClientRegistration(lead = {}, now = new Date()) {
   const a = lead.address || {};
   const e = lead.emergencyContact || {};
@@ -57,7 +59,7 @@ export function readClientRegistration(lead = {}, now = new Date()) {
   };
 }
 
-// form do modal -> patch para updateDoc no documento do lead.
+// form do cadastro -> patch para updateDoc no documento do lead.
 export function buildClientRegistrationPatch(form, { usersList, professores } = {}) {
   const patch = {
     name: str(form.name),

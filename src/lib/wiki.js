@@ -143,7 +143,7 @@ export const WIKI_ARTICLES = [
     id: 'ficha',
     category: 'inicio',
     title: 'A ficha da pessoa, aba por aba',
-    summary: 'Linha do tempo, contratos e indicações: o que fica em cada lugar.',
+    summary: 'Linha do tempo, cadastro, contratos e indicações: o que fica em cada lugar.',
     blocks: [
       { t: 'p', text: 'Clicar em qualquer card, resultado de busca ou linha de lista abre a ficha. Ela é o histórico completo daquela pessoa com a academia.' },
 
@@ -154,6 +154,7 @@ export const WIKI_ARTICLES = [
       { t: 'demo', name: 'ficha', caption: 'A aba Indicações aparece só para alunos.' },
       { t: 'steps', items: [
         'Linha do tempo: no alto, o Contexto comercial, com dor, modalidade, origem, consultor, professor, etiquetas e observação. Clique em um campo para trocar o valor ali mesmo. Logo abaixo fica o campo para registrar o que aconteceu e, no topo do registro, o que vem a seguir. O registro mostra tudo que aconteceu, em ordem, com filtros por conversas, agendamentos, anotações e marcos, e um interruptor para mostrar também os eventos de sistema.',
+        'Cadastro: os dados da pessoa em quatro partes, Identidade, Endereço, Contato de emergência e Dados pessoais. No alto aparece quanto do cadastro está preenchido, e cada dado que falta é um atalho que abre a parte certa com o cursor no campo. Cada parte se edita no lugar e salva só o que é dela. O lápis ao lado do nome leva até aqui. A aba aparece só para quem pode editar o cadastro.',
         'Contratos: plano vigente, histórico completo e as ações de renovar, trancar, cancelar ou corrigir.',
         'Indicações: só para alunos. Mostra o link dele, quem ele trouxe e quantos viraram alunos.',
       ] },
