@@ -1,10 +1,16 @@
 import { BookOpen, Building2, MessageCircle, Phone } from 'lucide-react';
 import { getTone } from '../../lib/leadState.js';
 import { cn } from '../../lib/utils.js';
+import { OutcomePopover } from '../dailygoal/OutcomePopover.jsx';
 
 // O que está marcado para a pessoa, no topo do registro. Os itens vêm de
 // upNextOf (lib/upNext.js), que lê os campos do lead. A cor e o ícone seguem o
 // tipo, como na lista de Próximos agendamentos que existia na aba CRM.
+// As ações são opcionais: sem a função, o botão não existe.
+//   onReschedule(item)       Remarcar: a ficha abre o Agendar no tipo do item.
+//   onOutcome(item, choice)  Marcar desfecho ('attended' ou 'no_show'), só no
+//                            item com canOutcome (hoje ou vencido) e quando a
+//                            prop canOutcome, a permissão de mudar fase, deixa.
 const KIND = {
   class: { tone: 'teal', Icon: BookOpen },
   visit: { tone: 'violet', Icon: Building2 },
@@ -15,7 +21,7 @@ const dm = (d) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digi
 const hm = (d) => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 const weekday = (d) => d.toLocaleDateString('pt-BR', { weekday: 'long' });
 
-export function UpNextList({ items }) {
+export function UpNextList({ items, canOutcome = false, savingId = null, onReschedule = null, onOutcome = null }) {
   if (!items || items.length === 0) return null;
   return (
     <section aria-label="A seguir" className="px-8 pb-1 pt-4">
@@ -29,6 +35,7 @@ export function UpNextList({ items }) {
           const k = KIND[item.kind] || KIND.msg;
           const tone = getTone(k.tone);
           const { Icon } = k;
+          const showOutcome = Boolean(canOutcome && item.canOutcome && onOutcome);
           return (
             <li key={item.id} className="flex items-center gap-3.5 rounded-xl border border-dashed border-border px-3.5 py-2.5">
               <div className="w-12 flex-none text-center">
@@ -51,6 +58,28 @@ export function UpNextList({ items }) {
                   {[weekday(item.when), item.detail].filter(Boolean).join(' · ')}
                 </div>
               </div>
+              {(onReschedule || showOutcome) && (
+                <div className="flex flex-none items-center gap-1.5">
+                  {onReschedule && (
+                    <button
+                      type="button"
+                      aria-label={`Remarcar: ${item.title}`}
+                      onClick={() => onReschedule(item)}
+                      className="inline-flex h-7 items-center rounded-lg px-2.5 text-[12px] font-semibold text-slate-700 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:anel-foco dark:text-slate-200 dark:hover:bg-white/[0.06]"
+                    >
+                      Remarcar
+                    </button>
+                  )}
+                  {showOutcome && (
+                    <OutcomePopover
+                      title={item.title}
+                      size="sm"
+                      saving={savingId === item.id}
+                      onPick={(choice) => onOutcome(item, choice)}
+                    />
+                  )}
+                </div>
+              )}
             </li>
           );
         })}
