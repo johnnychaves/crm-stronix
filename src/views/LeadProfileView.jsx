@@ -1026,7 +1026,9 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     // scroll-mt-32 (128 px): a barra fina (56 px) e o mês que gruda embaixo dela
     // (uns 44 px) cobrem o topo da área que rola, e o foco que volta com
     // Shift+Tab sumia atrás deles. O padrão é o dos Relatórios.
-    <div className="animate-fade-in font-sans max-w-[1160px] mx-auto w-full [&_:is(a,button,input,textarea,[tabindex])]:scroll-mt-32">
+    // pb-24: respiro no fim, para o último cartão não encostar no fim da área
+    // que rola (pedido do Johnny, 22/10/2026).
+    <div className="animate-fade-in font-sans max-w-[1160px] mx-auto w-full pb-24 [&_:is(a,button,input,textarea,[tabindex])]:scroll-mt-32">
       {/* Barra fina: aparece presa no alto quando o cabeçalho sai por cima. */}
       <StickyMini
         visible={headerGone}

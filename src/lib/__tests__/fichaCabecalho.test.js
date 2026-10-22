@@ -241,3 +241,17 @@ describe('cabeçalho da ficha: Indicações', () => {
     expect(porLabelInicio('Indicações,')).toBeNull();
   });
 });
+
+describe('ficha: folga no fim da página', () => {
+  // Pedido do Johnny (22/10/2026): o último cartão encostava no fim da área
+  // que rola. A folga mora na raiz da ficha e vale em todas as abas.
+  const CLIENTE = {
+    ...LEAD, id: 'c1', status: 'Venda', lifecycleStage: 'cliente', isConverted: true, clienteSince: new Date(2026, 0, 10),
+  };
+  it.each(['timeline', 'cadastro', 'contratos', 'referrals'])('a aba %s termina com respiro', async (aba) => {
+    await montar({ lead: CLIENTE, aba });
+    expect(document.body.querySelector('[role="tabpanel"]:not([hidden])')).toBeTruthy();
+    const raiz = document.body.querySelector('.max-w-\\[1160px\\]');
+    expect(raiz.className.split(/\s+/)).toContain('pb-24');
+  });
+});
