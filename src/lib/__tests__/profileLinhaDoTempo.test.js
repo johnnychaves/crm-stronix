@@ -139,6 +139,16 @@ describe('Linha do tempo sem a aba CRM', () => {
   });
 
   describe('cabeçalho', () => {
+    // A barra fina (56 px) e o mês que gruda embaixo dela cobrem o topo da área
+    // que rola: quem volta com Shift+Tab via o foco sumir atrás deles.
+    it('os focáveis da ficha têm margem de rolagem para não ficarem atrás da barra fina e do mês', () => {
+      const html = ficha();
+      const raiz = html.match(/<div class="([^"]*max-w-\[1160px\][^"]*)"/);
+      expect(raiz).toBeTruthy();
+      // O renderToString escreve o & como &amp;.
+      expect(raiz[1].replaceAll('&amp;', '&').split(' ')).toContain('[&_:is(a,button,input,textarea,[tabindex])]:scroll-mt-32');
+    });
+
     it('a faixa de baixo tem os quatro blocos, em frase normal', () => {
       const html = ficha();
       ['Próximo passo', 'Etapa', 'Contato', 'Equipe'].forEach((rotulo) => expect(html).toContain(`>${rotulo}<`));

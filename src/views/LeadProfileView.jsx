@@ -1023,7 +1023,10 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     // 1400/1600px, e nessa largura a linha do tempo vira uma linha de texto
     // longa demais entre a hora e o autor — a leitura do registro depende da
     // coluna curta.
-    <div className="animate-fade-in font-sans max-w-[1160px] mx-auto w-full">
+    // scroll-mt-32 (128 px): a barra fina (56 px) e o mês que gruda embaixo dela
+    // (uns 44 px) cobrem o topo da área que rola, e o foco que volta com
+    // Shift+Tab sumia atrás deles. O padrão é o dos Relatórios.
+    <div className="animate-fade-in font-sans max-w-[1160px] mx-auto w-full [&_:is(a,button,input,textarea,[tabindex])]:scroll-mt-32">
       {/* Barra fina: aparece presa no alto quando o cabeçalho sai por cima. */}
       <StickyMini
         visible={headerGone}
