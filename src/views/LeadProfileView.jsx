@@ -1436,10 +1436,12 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
           ) : (
             <div className="px-8 pt-1 pb-7">
               {/* Um bloco por mês ("Setembro de 2026"). O dia e a hora vão em
-                  cada linha, então o bloco não precisa de régua de dia. */}
+                  cada linha, então o bloco não precisa de régua de dia. No
+                  escuro o bg-card é translúcido: o cabeçalho fixo usa a mesma
+                  cor já misturada, opaca, para não virar uma faixa clara. */}
               {groupedEvents.map(([label, events]) => (
                 <section key={label} className="mb-5">
-                  <header className="sticky top-0 z-10 flex items-baseline gap-2.5 bg-card/95 py-2.5 backdrop-blur">
+                  <header className="sticky top-0 z-10 flex items-baseline gap-2.5 bg-card/95 py-2.5 backdrop-blur dark:bg-[color-mix(in_srgb,var(--page),white_2%)]">
                     <span className="font-display text-[15px] font-semibold tracking-tight">{label}</span>
                     <span className="num text-[12.5px] text-muted-foreground">
                       {events.length} {events.length === 1 ? 'registro' : 'registros'}
