@@ -108,6 +108,19 @@ describe('ficha do professor: cabeçalho', () => {
     expect(html).toMatch(/-trigger-referrals"[^>]*>(?:(?!<\/button>).)*Indicações<\/button>/);
   });
 
+  // Idade e tempo de casa à vista no cabeçalho (pedido do Johnny, 22/10/2026).
+  it('no cliente, o tempo de casa conta da primeira matrícula, com a data no title, para todos', () => {
+    [GESTOR, PROFESSOR].forEach((appUser) => {
+      const html = ficha({ lead: cliente(start), tab: 'timeline', appUser, contratos: [start] });
+      expect(html).toMatch(/title="Primeira matrícula em 11\/10\/2025"[^>]*>Cliente desde out\/2025 \(/);
+    });
+  });
+
+  it('sem nascimento, só quem edita o cadastro vê o "Idade não informada"', () => {
+    expect(ficha({ lead: cliente(start), tab: 'timeline', appUser: GESTOR, contratos: [start] })).toContain('Idade não informada');
+    expect(ficha({ lead: cliente(start), tab: 'timeline', appUser: PROFESSOR, contratos: [start] })).not.toContain('Idade não informada');
+  });
+
   it('no cliente, o professor só chama: WhatsApp e Ligar', () => {
     const html = ficha({ lead: cliente(start), tab: 'timeline', appUser: PROFESSOR, contratos: [start] });
     BOTOES.forEach((b) => expect(html).not.toContain(b));

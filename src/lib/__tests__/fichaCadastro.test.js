@@ -159,6 +159,27 @@ describe('caminhos do cabeçalho até o Cadastro', () => {
     await montar();
     expect(botoes('Adicionar etiqueta')).toEqual([]);
   });
+
+  // Idade e tempo de casa à vista no cabeçalho (pedido do Johnny, 22/10/2026).
+  it('sem nascimento, o "Idade não informada" abre a Identidade com o cursor no nascimento', async () => {
+    await montar();
+    await clicar(botoes('Idade não informada')[0]);
+    expect(abaAtual).toBe('cadastro');
+    expect(document.activeElement).toBe(campo('birthDate'));
+  });
+
+  it('quem não edita o cadastro não vê o "Idade não informada"', async () => {
+    await montar({ appUser: PROFESSOR });
+    expect(botoes('Idade não informada')).toEqual([]);
+  });
+
+  // O tempo de casa do cliente é coberto pelo profileProfessor.test.js.
+  it('com nascimento, mostra a idade; o lead não tem tempo de casa', async () => {
+    await montar({ lead: FEZ_18 });
+    expect(botoes('Idade não informada')).toEqual([]);
+    expect([...document.body.querySelectorAll('span')].some((s) => s.textContent === '18 anos')).toBe(true);
+    expect(document.body.textContent).not.toContain('Cliente desde');
+  });
 });
 
 describe('quem não edita cadastro', () => {

@@ -5,9 +5,10 @@
 // heroCountdownOf), a entrada na etapa do relatório de Leads parados
 // (stageSinceOf), o silêncio do card do Pipeline (silenceDaysOf) e o professor
 // do cabeçalho (profileProfessorOf).
-import { CONTRACT_STATUS } from './contracts.js';
+import { ageOf } from './cadastroSections.js';
+import { CONTRACT_STATUS, neverTookEffect } from './contracts.js';
 import { contractHeroOf, contractStartOf, heroCountdownOf } from './contractsTab.js';
-import { calendarDaysBetween, getSafeDateOrNull } from './dates.js';
+import { calendarDaysBetween, getSafeDateOrNull, toDateInputValue } from './dates.js';
 import { getDefaultFunnel, isItemInFunnel } from './funnels.js';
 import { firstName } from './guardian.js';
 import { silenceDaysOf } from './kanban.js';
@@ -45,6 +46,43 @@ export function arrivedText(lead, now = new Date()) {
   if (!created) return null;
   const when = created.getFullYear() === now.getFullYear() ? dm(created) : `${dm(created)}/${created.getFullYear()}`;
   return lead.source ? `Chegou por ${lead.source} em ${when}.` : `Cadastrado em ${when}.`;
+}
+
+// "34 anos", pela conta da leitura da Identidade (ageOf). Sem data, null.
+export function ageText(lead, now = new Date()) {
+  const age = ageOf(toDateInputValue(lead?.birthDate), now);
+  return age == null ? null : `${age} ${age === 1 ? 'ano' : 'anos'}`;
+}
+
+const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
+
+// Tempo de casa do cliente: da primeira matrícula (clienteSince, que a volta de
+// ex-cliente não regrava) até hoje, por dia do calendário. Sem clienteSince,
+// o início do contrato mais antigo que chegou a valer e já começou. Sem nenhum,
+// null. "Cliente desde mar/2024 (2 anos e 7 meses)", com a data inteira no title.
+export function clientSinceCell({ lead, contracts = [], now = new Date() } = {}) {
+  let since = getSafeDateOrNull(lead?.clienteSince);
+  if (!since) {
+    const starts = contracts
+      .filter((c) => !neverTookEffect(c))
+      .map(contractStartOf)
+      .filter((d) => d && d.getTime() <= now.getTime())
+      .sort((a, b) => a - b);
+    since = starts[0] || null;
+  }
+  if (!since) return null;
+  const title = `Primeira matrícula em ${fmtDia(since)}`;
+  const days = calendarDaysBetween(since, now);
+  if (days <= 0) return { text: 'Cliente desde hoje', title };
+  const months = (now.getFullYear() - since.getFullYear()) * 12 + now.getMonth() - since.getMonth()
+    - (now.getDate() < since.getDate() ? 1 : 0);
+  const years = Math.floor(months / 12);
+  const rest = months % 12;
+  const span = months < 1
+    ? plural(days, 'dia', 'dias')
+    : [years && plural(years, 'ano', 'anos'), rest && plural(rest, 'mês', 'meses')].filter(Boolean).join(' e ');
+  return { text: `Cliente desde ${MESES[since.getMonth()]}/${since.getFullYear()} (${span})`, title };
 }
 
 // Próximo passo: o primeiro item do "A seguir" (upNextOf já vem em ordem).

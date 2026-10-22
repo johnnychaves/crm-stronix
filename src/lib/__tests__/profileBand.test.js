@@ -6,6 +6,7 @@ vi.mock('../firebase.js', () => ({
   db: {}, auth: {}, storage: {},
 }));
 
+const profileBandMod = await import('../profileBand.js');
 const {
   SILENCE_NOTICE_DAYS, nextStepCell, stageCell, stageText, contractCell, teamCell, arrivedText, stateChipText,
 } = await import('../profileBand.js');
@@ -203,5 +204,57 @@ describe('textos do topo', () => {
     expect(stateChipText('A VENCER')).toBe('A vencer');
     expect(stateChipText('CONTRATO AGENDADO')).toBe('Contrato agendado');
     expect(stateChipText('')).toBe('');
+  });
+});
+
+describe('ageText', () => {
+  const { ageText } = profileBandMod;
+  it('conta os anos completos: véspera, dia do aniversário e depois', () => {
+    const lead = { birthDate: new Date(1990, 9, 16) };
+    expect(ageText(lead, new Date(2026, 9, 15, 23))).toBe('35 anos');
+    expect(ageText(lead, new Date(2026, 9, 16, 0, 5))).toBe('36 anos');
+    expect(ageText(lead, new Date(2026, 11, 1))).toBe('36 anos');
+  });
+  it('aceita o Timestamp do Firestore e diz 1 ano no singular', () => {
+    const ts = { toDate: () => new Date(2025, 0, 10) };
+    expect(ageText({ birthDate: ts }, AGORA)).toBe('1 ano');
+  });
+  it('sem data de nascimento, ou com data no futuro, não tem o que dizer', () => {
+    expect(ageText({}, AGORA)).toBeNull();
+    expect(ageText({ birthDate: D(12, 1) }, AGORA)).toBeNull();
+  });
+});
+
+describe('clientSinceCell', () => {
+  const { clientSinceCell } = profileBandMod;
+  it('conta da primeira matrícula (clienteSince), em anos e meses', () => {
+    const cell = clientSinceCell({ lead: { clienteSince: new Date(2024, 2, 12) }, now: AGORA });
+    expect(cell.text).toBe('Cliente desde mar/2024 (2 anos e 7 meses)');
+    expect(cell.title).toBe('Primeira matrícula em 12/03/2024');
+  });
+  it('o mês só fecha no dia: na véspera ainda falta um mês', () => {
+    expect(clientSinceCell({ lead: { clienteSince: new Date(2025, 9, 17) }, now: AGORA }).text)
+      .toBe('Cliente desde out/2025 (11 meses)');
+    expect(clientSinceCell({ lead: { clienteSince: new Date(2025, 9, 16) }, now: AGORA }).text)
+      .toBe('Cliente desde out/2025 (1 ano)');
+    expect(clientSinceCell({ lead: { clienteSince: new Date(2026, 8, 16) }, now: AGORA }).text)
+      .toBe('Cliente desde set/2026 (1 mês)');
+  });
+  it('menos de um mês sai em dias, e no dia da matrícula diz hoje', () => {
+    expect(clientSinceCell({ lead: { clienteSince: D(10, 4, 18) }, now: AGORA }).text).toBe('Cliente desde out/2026 (12 dias)');
+    expect(clientSinceCell({ lead: { clienteSince: D(10, 15, 23) }, now: AGORA }).text).toBe('Cliente desde out/2026 (1 dia)');
+    expect(clientSinceCell({ lead: { clienteSince: D(10, 16, 8) }, now: AGORA }).text).toBe('Cliente desde hoje');
+  });
+  it('sem clienteSince, conta do início do contrato mais antigo que chegou a valer', () => {
+    const contracts = [
+      { id: 'b', startsAt: new Date(2025, 5, 1) },
+      { id: 'a', startsAt: new Date(2024, 0, 20) },
+      { id: 'x', startsAt: new Date(2023, 0, 1), status: CONTRACT_STATUS.CANCELADO, cancelledAt: new Date(2022, 11, 1) },
+    ];
+    const cell = clientSinceCell({ lead: {}, contracts, now: AGORA });
+    expect(cell.text).toBe('Cliente desde jan/2024 (2 anos e 8 meses)');
+  });
+  it('sem clienteSince e sem contrato, não mostra nada', () => {
+    expect(clientSinceCell({ lead: {}, contracts: [], now: AGORA })).toBeNull();
   });
 });

@@ -148,6 +148,7 @@ export const WIKI_ARTICLES = [
       { t: 'p', text: 'Clicar em qualquer card, resultado de busca ou linha de lista abre a ficha. Ela é o histórico completo daquela pessoa com a academia.' },
 
       { t: 'h', text: 'O cabeçalho' },
+      { t: 'p', text: 'Junto do nome aparecem a idade e, para aluno, desde quando ele é cliente, contando da primeira matrícula. Se a data de nascimento não estiver no cadastro, clique em "Idade não informada" para preencher.' },
       { t: 'p', text: 'Embaixo do nome, uma faixa responde quatro perguntas de uma vez: qual o próximo passo, em que etapa o lead está (ou, para aluno, quanto falta do contrato), qual o contato e quem é a equipe, o consultor e o professor. Clicar no próximo passo leva até ele na Linha do tempo.' },
       { t: 'p', text: 'Ao lado do nome ficam o WhatsApp, o Ligar, o Marcar venda (no lead) e, para aluno, o botão Indicações, com quantas pessoas ele já indicou. Marcar perda e excluir ficam no botão de três pontinhos, Mais ações. Ao rolar a ficha, uma barra fina com o nome, o WhatsApp e o Ligar fica presa no alto.' },
 

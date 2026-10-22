@@ -56,7 +56,7 @@ import { ProfileHeaderBand } from '../components/profile/ProfileHeaderBand.jsx';
 import { ReferralsMenu } from '../components/profile/ReferralsMenu.jsx';
 import { StickyMini } from '../components/profile/StickyMini.jsx';
 import { useHeaderGone } from '../hooks/useHeaderGone.js';
-import { arrivedText, contractCell, nextStepCell, stageCell, stateChipText, teamCell } from '../lib/profileBand.js';
+import { ageText, arrivedText, clientSinceCell, contractCell, nextStepCell, stageCell, stateChipText, teamCell } from '../lib/profileBand.js';
 import { TimelineBar } from '../components/profile/TimelineBar.jsx';
 import { TimelineEvent } from '../components/profile/TimelineEvent.jsx';
 import { upNextOf } from '../lib/upNext.js';
@@ -983,6 +983,8 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
       ? contractCell({ lead, contracts: leadContracts, now: bandNow, thresholdDays: contractThresholdDays })
       : stageCell({ lead, statuses, funnels: safeFunnels, interactions, now: bandNow }),
     team: teamCell(lead),
+    age: ageText(lead, bandNow),
+    since: isClient ? clientSinceCell({ lead, contracts: leadContracts, now: bandNow }) : null,
   };
 
   // "Próximo passo" do cabeçalho: volta o registro para Tudo, limpa a busca, vai
@@ -1077,6 +1079,22 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                 <span className="min-w-0 truncate text-[12.5px] text-muted-foreground">
                   {isClient ? profileState.hint : (arrivedText(lead, bandNow) || profileState.hint)}
                 </span>
+                {/* Idade e tempo de casa, à vista (pedido do Johnny, 22/10/2026).
+                    Sem nascimento, quem edita o cadastro tem o atalho até o campo. */}
+                {band.age ? (
+                  <span className="shrink-0 text-[12.5px] font-medium text-slate-700 dark:text-slate-200">{band.age}</span>
+                ) : canEditCadastro && (
+                  <button
+                    type="button"
+                    onClick={() => openCadastro('identidade', 'birthDate')}
+                    className="shrink-0 rounded text-[12.5px] text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground focus-visible:anel-foco"
+                  >
+                    Idade não informada
+                  </button>
+                )}
+                {band.since && (
+                  <span title={band.since.title} className="shrink-0 text-[12.5px] font-medium text-slate-700 dark:text-slate-200">{band.since.text}</span>
+                )}
               </div>
               {/* nome. Editar o cadastro é pela aba Cadastro. */}
               <div className="flex items-center flex-wrap gap-2 gap-y-1">
