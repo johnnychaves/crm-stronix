@@ -233,6 +233,32 @@ describe('viewRowsOf', () => {
     ]);
   });
 
+  it('endereço parcial (a importação grava só a cidade) mostra as linhas, com Adicionar nas vazias', () => {
+    const parcial = { ...whole, cep: '', street: '', number: '', complement: '', neighborhood: '', city: 'Canoas', state: '' };
+    expect(viewRowsOf('endereco', parcial, HOJE)).toEqual([
+      { key: 'street', label: 'Rua', value: null, field: 'street' },
+      { key: 'neighborhood', label: 'Bairro', value: null, field: 'neighborhood' },
+      { key: 'city', label: 'Cidade', value: 'Canoas', field: 'city' },
+      { key: 'cep', label: 'CEP', value: null, field: 'cep' },
+    ]);
+    // O anel e o estado continuam pedindo rua, número e cidade.
+    expect(sectionStatus('endereco', parcial)).toEqual({ ok: false, n: 1, text: 'Falta endereço' });
+  });
+
+  it('endereço só com o CEP também não é vazio', () => {
+    const soCep = { ...whole, cep: '90035-190', street: '', number: '', complement: '', neighborhood: '', city: '', state: '' };
+    expect(viewRowsOf('endereco', soCep, HOJE).find((r) => r.key === 'cep').value).toBe('90035-190');
+  });
+
+  it('emergência sem nome mostra o telefone gravado', () => {
+    const semNome = { ...whole, emgName: '', emgPhone: '(51) 9 8811-2200', emgRelation: '' };
+    expect(viewRowsOf('emergencia', semNome, HOJE)).toEqual([
+      { key: 'emgName', label: 'Nome', value: null, field: 'emgName' },
+      { key: 'emgPhone', label: 'Telefone', value: '(51) 9 8811-2200', field: 'emgPhone' },
+      { key: 'emgRelation', label: 'Parentesco', value: null, field: 'emgRelation' },
+    ]);
+  });
+
   it('emergência vazia convida a adicionar o contato', () => {
     const vazio = { ...whole, emgName: '', emgPhone: '', emgRelation: '' };
     const [linha] = viewRowsOf('emergencia', vazio, HOJE);

@@ -122,6 +122,9 @@ const row = (key, label, value, extra = {}) => ({ key, label, value: str(value) 
 const join = (parts, sep = ', ') => parts.map(str).filter(Boolean).join(sep);
 const dmy = (input) => str(input).split('-').reverse().join('/');
 
+const ADDRESS_KEYS = FORM_KEYS.endereco;
+const EMERGENCY_KEYS = FORM_KEYS.emergencia;
+
 // As linhas da leitura de cada seção. Valor vazio (value null) é um convite:
 // a tela desenha "Adicionar" e o clique abre a seção no campo `field`.
 export function viewRowsOf(sectionId, form, now = new Date()) {
@@ -144,7 +147,9 @@ export function viewRowsOf(sectionId, form, now = new Date()) {
       return rows;
     }
     case 'endereco':
-      if (!str(form.street)) return [row('street', 'Endereço', '', { addLabel: 'Adicionar endereço' })];
+      // Vazio é sem nenhum campo, a mesma conta do mapOrNull que grava o address:
+      // a importação grava endereço parcial (só a cidade, por exemplo).
+      if (!ADDRESS_KEYS.some((k) => str(form[k]))) return [row('street', 'Endereço', '', { addLabel: 'Adicionar endereço' })];
       return [
         row('street', 'Rua', join([form.street, form.number, form.complement])),
         row('neighborhood', 'Bairro', form.neighborhood),
@@ -152,7 +157,7 @@ export function viewRowsOf(sectionId, form, now = new Date()) {
         row('cep', 'CEP', form.cep),
       ];
     case 'emergencia':
-      if (!str(form.emgName)) return [row('emgName', 'Contato', '', { addLabel: 'Adicionar contato' })];
+      if (!EMERGENCY_KEYS.some((k) => str(form[k]))) return [row('emgName', 'Contato', '', { addLabel: 'Adicionar contato' })];
       return [
         row('emgName', 'Nome', form.emgName),
         row('emgPhone', 'Telefone', form.emgPhone),
