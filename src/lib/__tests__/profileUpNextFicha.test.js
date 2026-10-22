@@ -175,6 +175,19 @@ describe('A seguir na ficha', () => {
     expect(gatilho().disabled).toBe(false);
   });
 
+  it('Não compareceu não tira o foco de quem já foi digitar em outro lugar', async () => {
+    let terminar;
+    writeAppointmentOutcome.mockImplementationOnce(() => new Promise((r) => { terminar = r; }));
+    timeline = [{ id: 'n1', leadId: 'l1', type: 'note', text: 'Obs: Oi.', consultantName: 'Ana Consultora', createdAt: D(10, 14, 10) }];
+    await montar();
+    await escolher('no_show');
+    const busca = document.querySelector('input[type="search"]');
+    busca.focus();
+    await act(async () => { terminar({ promoted: false, negStatusName: null }); });
+    expect(agendarAberto()).toBe(true);
+    expect(document.activeElement).toBe(busca);
+  });
+
   it('se a gravação falha, avisa e o Agendar não abre', async () => {
     writeAppointmentOutcome.mockRejectedValueOnce(new Error('sem rede'));
     await montar();

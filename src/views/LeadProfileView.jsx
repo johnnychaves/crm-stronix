@@ -875,10 +875,13 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   const upNext = upNextOf(lead);
 
   // Remarcar: o Agendar nasce de novo, já no tipo do item. O foco solto vai
-  // para o primeiro passo dele (o StageHead pega o foco que está no body), e o
-  // compositor, que fica acima do A seguir, volta à tela.
+  // para o primeiro passo dele (o StageHead só pega o foco que está no body), e
+  // o compositor, que fica acima do A seguir, volta à tela. O foco só é solto
+  // quando está no A seguir ou no registro, onde o desfecho o deixou: depois da
+  // gravação, quem já foi digitar em outro lugar continua onde está.
   const openScheduleFor = (item) => {
-    document.activeElement?.blur?.();
+    const a = document.activeElement;
+    if (a && (a === registroRef.current || a.closest?.('[aria-label="A seguir"]'))) a.blur();
     setScheduleStart((s) => ({ type: schedulePresetOf(item), n: s.n + 1 }));
     setComposer({ open: true, mode: 'schedule' });
     requestAnimationFrame(() => composerRef.current?.scrollIntoView?.({ block: 'nearest' }));
