@@ -406,7 +406,7 @@ describe('sub-tela no caminho', () => {
   });
 
   it('a ficha lê as abas', () => {
-    const pares = [['linha-do-tempo', 'timeline'], ['contratos', 'contratos'], ['indicacoes', 'referrals']];
+    const pares = [['linha-do-tempo', 'timeline'], ['cadastro', 'cadastro'], ['contratos', 'contratos'], ['indicacoes', 'referrals']];
     for (const [seg, id] of pares) {
       const r = parseAppPath(`/${T}/ficha/AbC/${seg}`);
       expect([r.screen, r.leadId, r.sub], seg).toEqual(['ficha', 'AbC', id]);
