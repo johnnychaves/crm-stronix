@@ -27,8 +27,14 @@ describe('goalHitKeyToRecord', () => {
     expect(goalHitKeyToRecord({ ...base, ready: false })).toBeNull();
   });
 
-  it('total 0: null', () => {
-    expect(goalHitKeyToRecord({ ...base, total: 0 })).toBeNull();
+  // Decisão do Johnny em 21/10/2026: o dia sem tarefa conta como batido. Até
+  // ali ele não era gravado e o painel o contava como meta não cumprida.
+  it('total 0: o dia sem tarefa conta como batido', () => {
+    expect(goalHitKeyToRecord({ ...base, total: 0 })).toBe('ana_2026-09-11');
+  });
+
+  it('sem total calculado: null', () => {
+    expect(goalHitKeyToRecord({ ...base, total: undefined })).toBeNull();
   });
 
   it('pendência maior que 0: null', () => {

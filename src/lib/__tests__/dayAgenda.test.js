@@ -123,14 +123,15 @@ describe('computeDayAgenda — cliente, perda e desfecho', () => {
     expect(rows[0].isClient).toBe(false);
   });
 
-  it('lead perdido fica de fora', () => {
+  it('lead perdido entra, porque pode voltar (decisão de 21/10/2026)', () => {
     const perdido = lead({ id: 'p1', status: 'Perda' });
 
     const { rows } = computeDayAgenda({
       liveLeads: [perdido], agendaLeads: [], usersById: users, viewerId: 'u1', now: NOW,
     });
 
-    expect(rows).toHaveLength(0);
+    expect(rows.map((r) => r.id)).toEqual(['p1']);
+    expect(rows[0].isClient).toBe(false);
   });
 
   it('desfecho de HOJE marca a linha como resolvida e nomeia quem registrou', () => {
