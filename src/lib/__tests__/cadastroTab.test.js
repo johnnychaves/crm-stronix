@@ -258,3 +258,64 @@ describe('CadastroTab: menor de idade', () => {
     expect(form).toMatchObject({ isMinor: true, guardianName: 'Carla Alves', guardianPhone: '(51) 9 7777-6666' });
   });
 });
+
+// Sem internet, com o cache persistente do Firestore, o updateDoc só resolve
+// quando o servidor confirma. A seção não pode ficar presa em "Salvando…".
+describe('CadastroTab: gravação que demora', () => {
+  const pendente = () => {
+    const g = {};
+    const promessa = new Promise((resolve, reject) => { g.resolve = resolve; g.reject = reject; });
+    g.onSave = vi.fn(() => promessa);
+    return g;
+  };
+  async function salvarProfissao(g) {
+    await montar({ onSave: g.onSave });
+    await clicar(porLabel('Editar dados pessoais'));
+    await digitar(campo('profession'), 'Médica');
+    await clicar(botao('Salvar'));
+  }
+
+  it('durante o envio, o Fechar continua ligado e fecha a seção sem desfazer a gravação', async () => {
+    const g = pendente();
+    await salvarProfissao(g);
+    expect(botao('Salvando…').disabled).toBe(true);
+    expect(botao('Fechar').disabled).toBe(false);
+    await clicar(botao('Fechar'));
+    expect(campo('profession')).toBeNull();
+    expect(document.activeElement).toBe(porLabel('Editar dados pessoais'));
+    expect(g.onSave).toHaveBeenCalledTimes(1);
+    expect(g.onSave.mock.calls[0][1].profession).toBe('Médica');
+  });
+
+  it('a resposta que chega depois não mexe na seção aberta agora', async () => {
+    const g = pendente();
+    await salvarProfissao(g);
+    await clicar(botao('Fechar'));
+    await clicar(porLabel('Editar endereço'));
+    await digitar(campo('city'), 'Canoas');
+    const foco = document.activeElement;
+    await act(async () => { g.resolve(false); });
+    expect(campo('city').value).toBe('Canoas');
+    expect(botao('Salvar').disabled).toBe(false);
+    expect(botao('Salvando…')).toBeNull();
+    expect(document.activeElement).toBe(foco);
+  });
+
+  it('a gravação que termina bem depois de fechar não reabre nem rouba o foco', async () => {
+    const g = pendente();
+    await salvarProfissao(g);
+    await clicar(botao('Fechar'));
+    await act(async () => { g.resolve(true); });
+    expect(campo('profession')).toBeNull();
+    expect(document.activeElement).toBe(porLabel('Editar dados pessoais'));
+  });
+
+  it('a gravação que falha depois mostra o erro sem reabrir a seção', async () => {
+    const g = pendente();
+    await salvarProfissao(g);
+    await clicar(botao('Fechar'));
+    await act(async () => { g.reject(new Error('unavailable')); });
+    expect(toast.error).toHaveBeenCalledTimes(1);
+    expect(campo('profession')).toBeNull();
+  });
+});

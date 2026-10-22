@@ -22,11 +22,30 @@ import { CompletenessRing } from './CompletenessRing.jsx';
 // Foco: abrir uma seção leva o cursor ao campo pedido (ou ao primeiro da seção),
 // e fechar devolve o foco ao Editar dela. Os dois botões que abriram somem com a
 // abertura, e sem isto o foco cairia no body.
+//
+// Gravação que demora: sem internet, com o cache persistente do Firestore, a
+// gravação só termina quando o servidor confirma. O Fechar continua ligado
+// durante o envio e fecha a seção sem desfazer nada: a gravação segue na fila.
+// Cada abertura tem um número (`open.n`), e a resposta que chega depois só mexe
+// na seção que a pediu, se ela ainda estiver aberta. A falha que chega depois
+// aparece no aviso, sem reabrir a seção.
+let openSeq = 0;
 export function CadastroTab({ lead, db, request = null, onSave }) {
   const toast = useToast();
-  const [editing, setEditing] = useState(request?.sectionId ?? null);
+  const [open, setOpenState] = useState(() => (request?.sectionId ? { id: request.sectionId, n: ++openSeq } : null));
   const [form, setForm] = useState(() => (request?.sectionId ? readSectionForm(lead, request.sectionId) : null));
-  const [saving, setSaving] = useState(false);
+  const [savingN, setSavingN] = useState(null);
+  const editing = open?.id ?? null;
+  const saving = savingN !== null && savingN === open?.n;
+  // A seção aberta de agora, para quem roda depois de um await, e se a aba ainda
+  // está na tela.
+  const openRef = useRef(open);
+  const setOpen = (next) => { openRef.current = next; setOpenState(next); };
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   // Para onde o foco vai no próximo commit: { id, field } é um campo da seção
   // (ou o primeiro, sem field), e { id, edit: true } é o Editar dela. O número
@@ -54,24 +73,26 @@ export function CadastroTab({ lead, db, request = null, onSave }) {
   const startEdit = (sectionId, field = null) => {
     if (busy) return;
     setForm(readSectionForm(lead, sectionId));
-    setEditing(sectionId);
+    setOpen({ id: sectionId, n: ++openSeq });
     moveFocus({ id: sectionId, field });
   };
   const close = () => {
-    const id = editing;
-    setEditing(null);
+    const id = openRef.current?.id;
+    setOpen(null);
     setForm(null);
-    moveFocus({ id, edit: true });
+    if (id) moveFocus({ id, edit: true });
   };
 
   const save = async () => {
-    const id = editing;
+    const mine = open;
+    const id = mine.id;
     const issue = sectionIssue(id, form);
     if (issue) { toast.warning(issue); return; }
-    setSaving(true);
+    setSavingN(mine.n);
     // Sem gravar, a seção fica aberta e o foco volta a ela: o Salvar desligado
     // durante a gravação o tinha soltado.
     let after = { id, field: null };
+    let saved = false;
     try {
       if (id === 'identidade' && zapMatchKey(form.whatsapp) !== zapMatchKey(lead.whatsapp)) {
         // Conferência fresca: o aviso do campo tem debounce, e o número pode ter
@@ -84,14 +105,17 @@ export function CadastroTab({ lead, db, request = null, onSave }) {
           return;
         }
       }
-      const ok = await onSave(id, form);
-      if (ok !== false) after = null;
+      saved = (await onSave(id, form)) !== false;
     } catch (e) {
       console.error(e);
       toast.error('Erro ao salvar o cadastro. Tente novamente.');
     } finally {
-      setSaving(false);
-      if (after) moveFocus(after); else close();
+      setSavingN((n) => (n === mine.n ? null : n));
+      // Fechada durante o envio, ou outra seção aberta depois: nada aqui mexe
+      // na seção de agora.
+      if (mountedRef.current && openRef.current?.n === mine.n) {
+        if (saved) close(); else moveFocus(after);
+      }
     }
   };
 

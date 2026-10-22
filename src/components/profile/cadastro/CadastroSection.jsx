@@ -56,7 +56,9 @@ export function CadastroSection({ id, whole, editing, locked, saving, canSave, o
               depois do Salvar sumiria quando a seção fecha. */}
           <div inert={saving || undefined} className="@container border-t border-border px-5 py-4">{children}</div>
           <footer className="flex justify-end gap-2 border-t border-border bg-slate-50 px-5 py-3 dark:bg-white/[0.03]">
-            <Btn kind="soft" size="md" onClick={onCancel} disabled={saving}>Cancelar</Btn>
+            {/* Ligado durante o envio: sem internet a gravação só termina quando
+                o servidor confirma, e fechar não a desfaz. */}
+            <Btn kind="soft" size="md" onClick={onCancel}>{saving ? 'Fechar' : 'Cancelar'}</Btn>
             <Btn kind="brand" size="md" icon={<Check size={14} aria-hidden="true" />} onClick={onSave} disabled={saving || !canSave}>
               {saving ? 'Salvando…' : 'Salvar'}
             </Btn>
