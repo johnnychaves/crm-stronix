@@ -91,8 +91,9 @@ export function ContextCard({ lead, sources = [], usersList = [], tagsCatalog = 
     }
   }, [editKey]);
 
-  // Quem pode receber o lead: gente ativa, com login, que vende. É a mesma lista
-  // do Consultor responsável do cadastro completo.
+  // Quem pode receber o lead: gente ativa, com login, que vende. Passar para quem
+  // saiu deixaria o lead órfão, e para um cadastro sem login, sem ninguém que o
+  // edite. O professor não é dono de lead (isSeller, em src/lib/acesso.js).
   const owners = useMemo(
     () => (usersList || []).filter((u) => u?.id && u.name && u.authUid && u.active !== false && !u.superAdminOnly && isSeller(u)),
     [usersList]
@@ -227,7 +228,7 @@ export function ContextCard({ lead, sources = [], usersList = [], tagsCatalog = 
   };
 
   return (
-    <section aria-label="Contexto comercial" className="overflow-hidden rounded-2xl border border-border bg-card shadow-card">
+    <section id="ficha-contexto" aria-label="Contexto comercial" className="overflow-hidden rounded-2xl border border-border bg-card shadow-card">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 pb-3 pt-4 lg:px-6">
         <h3 className="font-display text-[16px] font-semibold tracking-tight">Contexto comercial</h3>
         {canEdit && <span className="text-[12.5px] text-muted-foreground">Clique em um campo para editar</span>}
