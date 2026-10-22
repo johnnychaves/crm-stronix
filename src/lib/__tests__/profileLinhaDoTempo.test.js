@@ -100,4 +100,33 @@ describe('Linha do tempo sem a aba CRM', () => {
     // A rota já descarta o segmento; este é o caso de um chamador que ainda passe a chave.
     expect(ficha({ tab: 'crm' })).toContain('Contexto comercial');
   });
+
+  const hoje = { ...LEAD, appointmentType: 'visita', appointmentScheduledFor: D(2026, 10, 16, 19), appointmentUnit: 'Centro', nextFollowUp: D(2026, 10, 16, 19), nextFollowUpType: 'Visita' };
+
+  it('A seguir de hoje tem Remarcar e Marcar desfecho para quem muda fase', () => {
+    for (const appUser of [GESTOR, CONSULTOR]) {
+      const html = ficha({ lead: hoje, appUser });
+      expect(html).toContain('>Remarcar<');
+      expect(html).toContain('aria-label="Marcar desfecho: Visita"');
+    }
+  });
+
+  it('compromisso de dias à frente só tem Remarcar', () => {
+    const html = ficha({ lead: { ...hoje, appointmentScheduledFor: D(2026, 10, 21, 19), nextFollowUp: D(2026, 10, 21, 19) }, appUser: GESTOR });
+    expect(html).toContain('>Remarcar<');
+    expect(html).not.toContain('aria-label="Marcar desfecho');
+  });
+
+  it('o professor remarca, mas não marca desfecho', () => {
+    const html = ficha({ lead: hoje, appUser: PROFESSOR });
+    expect(html).toContain('>Remarcar<');
+    expect(html).not.toContain('aria-label="Marcar desfecho');
+  });
+
+  it('quem está sem login vinculado não tem ação no A seguir', () => {
+    const html = ficha({ lead: hoje, appUser: SEM_LOGIN });
+    expect(html).toContain('aria-label="A seguir"');
+    expect(html).not.toContain('>Remarcar<');
+    expect(html).not.toContain('aria-label="Marcar desfecho');
+  });
 });

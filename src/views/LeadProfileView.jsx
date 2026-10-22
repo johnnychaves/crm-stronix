@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { collection, doc, deleteDoc, getDocs, updateDoc, writeBatch, query, where, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH, CONTRACTS_PATH, storage } from '../lib/firebase.js';
 import { uploadLeadPhoto, deleteLeadPhoto } from '../lib/leadPhoto.js';
@@ -7,19 +7,18 @@ import { useLeadTimeline } from '../hooks/useLeadTimeline.js';
 import { useReferrals } from '../hooks/useReferrals.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { planStageMove, planLoss, planUpgradeMove, planUpgradeDecline, stageMoveBlockMessage, withStageEntered, reactivationFunnels, REACTIVATED_NOTE } from '../lib/stageMove.js';
-import { canEditLead, isLeadConverted, ZAP_VIA } from '../lib/leads.js';
+import { canEditLead, isLeadConverted } from '../lib/leads.js';
 import { ACTIONS, can, isGestor, isSeller } from '../lib/acesso.js';
 import { normalizeAppointmentType, getSafeDateOrNull } from '../lib/dates.js';
 // firstName vira contactFirstName: o arquivo já tem um firstName local, do próprio lead.
 import { contactLabel, contactOf, firstName as contactFirstName, hasPhone, isMinorNow, telHref, whatsappHref } from '../lib/guardian.js';
-import { fmtBRL } from '../lib/format.js';
 import { hasLiveContract } from '../lib/contracts.js';
 import { isSystemFunnel } from '../lib/funnels.js';
 import { planProfileNote } from '../lib/profileNote.js';
 import { getReferralFunnel, getReferralEntryStage, buildReferralShareLink, buildReferralWhatsAppText, isReferralFunnel } from '../lib/referrals.js';
 import { getUpgradeFunnel, upgradeStageIdOf } from '../lib/upgradeFunnel.js';
 import { commitReferralLink, removeReferralLink } from '../lib/referralsWrites.js';
-import { deriveLeadState, getTone, phaseToneName } from '../lib/leadState.js';
+import { deriveLeadState, getTone } from '../lib/leadState.js';
 import { professorNameById, profileProfessorOf } from '../lib/professores.js';
 import { recordNewAppointment, markConvertingAula } from '../lib/aulasWrites.js';
 import { buildSchedulePatch, appointmentTaskOwnerFor, taskOwnerText } from '../lib/schedulePatch.js';
@@ -42,10 +41,7 @@ import { ScheduleWizard } from '../components/profile/ScheduleWizard.jsx';
 import { ProfileComposer } from '../components/profile/ProfileComposer.jsx';
 import { EMPTY_DRAFTS } from '../lib/quickTexts.js';
 import { lastRecordOf } from '../lib/lastRecord.js';
-import { ZapSignupMarker } from '../components/profile/ZapSignupMarker.jsx';
 import { ContractsTab } from '../components/profile/contracts/ContractsTab.jsx';
-import { TimelineAuthor } from '../components/profile/TimelineAuthor.jsx';
-import { StronizapBadge } from '../components/brand/StronizapMark.jsx';
 import { LossReasonModal } from '../modals/LossReasonModal.jsx';
 import { ReactivateLeadModal } from '../modals/ReactivateLeadModal.jsx';
 import { ContractModal } from '../modals/ContractModal.jsx';
@@ -56,34 +52,24 @@ import { ClientRegistrationModal } from '../modals/ClientRegistrationModal.jsx';
 import { QuickReferralModal } from '../modals/QuickReferralModal.jsx';
 import { ContextCard } from '../components/profile/ContextCard.jsx';
 import { UpNextList } from '../components/profile/UpNextList.jsx';
+import { TimelineBar } from '../components/profile/TimelineBar.jsx';
+import { TimelineEvent } from '../components/profile/TimelineEvent.jsx';
 import { upNextOf } from '../lib/upNext.js';
+import { writeAppointmentOutcome } from '../lib/appointmentOutcome.js';
+import { outcomeOptionsFor, schedulePresetOf } from '../lib/fichaOutcome.js';
 import { saveContextField } from '../lib/contextWrites.js';
 import { FICHA_TABS } from '../lib/routes.js';
 import {
   groupTimeline,
-  timelineStamp,
   classifyInteraction,
-  contractEventOf,
-  parseAppointment,
-  extractStageNameFromInteractionText,
-  isOwnerChangeText,
-  ownerChangeText,
   buildStageTransitions,
   matchesTimelineFilter,
-  timelineTypeLabel,
   TIMELINE_FILTERS,
   TIMELINE_SYSTEM_KIND,
   originLastOnTies,
-  zapScheduleTitle,
-  appointmentOriginText,
   isAppointmentReschedule
 } from '../lib/timeline.js';
-import { ArrowLeft, ArrowRight, Ban, Calendar, CheckCircle, Clock, Copy, CreditCard, FileText, GraduationCap, Handshake, MessageCircle, Pencil, Phone, Plus, RotateCcw, Search, Tag, ThumbsDown, Trash, TrendingUp, User, UserPlus, Users } from 'lucide-react';
-
-// Eventos de contrato que ganham faixa de destaque na linha do tempo: os que
-// mudam a situação do cliente. Trancamento, reativação e correção seguem como
-// linha comum do tipo "Contrato".
-const CONTRACT_MILESTONE_KINDS = new Set(['matricula', 'renovacao', 'cancelamento']);
+import { ArrowLeft, Ban, Calendar, Clock, Copy, CreditCard, FileText, Handshake, MessageCircle, Pencil, Phone, Plus, RotateCcw, Search, Tag, ThumbsDown, Trash, TrendingUp, User, UserPlus } from 'lucide-react';
 
 // Célula da faixa de metadados do cabeçalho: rótulo em versalete sobre o valor.
 // Substituiu a fila de ícones — sem rótulo, "(51) 99184-2270" e "Ana Duarte"
@@ -170,13 +156,27 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // pessoa vai a Contratos e volta: o texto digitado não pode se perder na troca.
   const [composer, setComposer] = useState({ open: false, mode: 'note' });
   const [composerDrafts, setComposerDrafts] = useState(EMPTY_DRAFTS);
-  const openComposer = (mode = 'note') => setComposer({ open: true, mode });
+  // O Remarcar do "A seguir" abre o Agendar já no tipo do item, e `n` remonta o
+  // assistente a cada Remarcar. Abrir o compositor por outro caminho limpa o
+  // tipo, para o próximo Agendar nascer em branco.
+  const [scheduleStart, setScheduleStart] = useState({ type: null, n: 0 });
+  const openComposer = (mode = 'note') => {
+    setScheduleStart((s) => (s.type ? { ...s, type: null } : s));
+    setComposer({ open: true, mode });
+  };
   const closeComposer = () => setComposer({ open: false, mode: 'note' });
   // Quem grava fecha o compositor só se ele ainda está no modo que gravou: a
   // gravação lenta não fecha o compositor que a pessoa já levou a outro modo, e
   // o Reativar lead e o Marcar perda do cabeçalho, que passam pela mudança de
   // fase, só fecham o compositor que estava no Mudar fase.
   const closeComposerIn = (mode) => setComposer((c) => (c.mode === mode ? { open: false, mode: 'note' } : c));
+  const composerRef = useRef(null);
+  // O registro recebe o foco quando o item marcado sai do A seguir, e o evento
+  // que o "Ver no histórico" abriu fica em destaque por um instante.
+  const registroRef = useRef(null);
+  const [savingOutcomeId, setSavingOutcomeId] = useState(null);
+  const [flashId, setFlashId] = useState(null);
+  const flashTimer = useRef(null);
 
   // Foto do cliente: menu (galeria/câmera) + gravação. No perfil não há botão
   // Salvar — escolheu/capturou, sobe pro Storage e grava na hora.
@@ -874,6 +874,62 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // O que vem a seguir (visita, aula, próximo contato), lido dos campos do lead.
   const upNext = upNextOf(lead);
 
+  // Remarcar: o Agendar nasce de novo, já no tipo do item. O foco solto vai
+  // para o primeiro passo dele (o StageHead pega o foco que está no body), e o
+  // compositor, que fica acima do A seguir, volta à tela.
+  const openScheduleFor = (item) => {
+    document.activeElement?.blur?.();
+    setScheduleStart((s) => ({ type: schedulePresetOf(item), n: s.n + 1 }));
+    setComposer({ open: true, mode: 'schedule' });
+    requestAnimationFrame(() => composerRef.current?.scrollIntoView?.({ block: 'nearest' }));
+  };
+  const handleReschedule = (item) => {
+    if (!canTimeline) { toast.warning('Você não tem permissão para agendar neste lead.'); return; }
+    openScheduleFor(item);
+  };
+
+  // Marcar desfecho: o gravador da Meta Diária (writeAppointmentOutcome), com a
+  // regra da Agenda de hoje (outcomeOptionsFor). O Compareceu pode levar o lead
+  // para Negociação, então a trava é a de mudar fase. Quem não veio precisa de
+  // data nova: o Agendar abre na hora, no mesmo tipo, como na Meta Diária.
+  const handleOutcome = async (item, choice) => {
+    if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
+    if (!canMudarFase) { negarAcesso(); return; }
+    if (savingOutcomeId || (choice !== 'attended' && choice !== 'no_show')) return;
+    const options = outcomeOptionsFor(item, { lead, interactions });
+    if (!options) return;
+    // O balão fecha e o botão dele fica desligado, e depois o item sai do A
+    // seguir: o foco espera no registro, onde o desfecho aparece, e nunca cai
+    // no body.
+    registroRef.current?.focus({ preventScroll: true });
+    setSavingOutcomeId(item.id);
+    try {
+      await writeAppointmentOutcome({ db, lead, outcome: choice, appUser, statuses, ...options });
+      toast.success(choice === 'attended' ? `Presença de ${firstName} confirmada.` : `${firstName} marcado como não veio.`);
+      if (choice === 'no_show') openScheduleFor(item);
+    } catch (e) {
+      console.error(e);
+      toast.error('Não foi possível salvar o desfecho. Tente novamente.');
+    } finally {
+      setSavingOutcomeId(null);
+    }
+  };
+
+  // "Ver no histórico": limpa o filtro e a busca, para o registro aparecer,
+  // leva o foco e a tela até ele e o destaca por um instante.
+  const goToEvent = (id) => {
+    setTimelineFilter('all');
+    setTimelineQuery('');
+    setFlashId(id);
+    clearTimeout(flashTimer.current);
+    flashTimer.current = setTimeout(() => setFlashId(null), 1600);
+    requestAnimationFrame(() => {
+      const el = document.getElementById(`ev-${id}`);
+      el?.focus({ preventScroll: true });
+      el?.scrollIntoView?.({ block: 'center' });
+    });
+  };
+
   // Histórico de contratos (aba Contratos): todos os contratos do lead, mais
   // recentes primeiro.
   const leadContracts = (Array.isArray(contratos) ? contratos : [])
@@ -885,9 +941,6 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   const currentContract = leadContracts.find(c => c.id === lead.currentContractId) || null;
 
   // ----- Render helpers -----
-  // Chip de etapa da linha do tempo. A tinta sai do `hex` do tom (12% no fundo,
-  // 30% na borda do destino) e o TEXTO nunca usa o passo 500 — só o 700/300,
-  // senão 11px sobre fundo claro reprova AA (âmbar dá 2.15:1).
   const copyPhone = async (phone) => {
     try {
       await navigator.clipboard.writeText(String(phone || ''));
@@ -895,244 +948,6 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     } catch {
       toast.info('Copie o número manualmente.');
     }
-  };
-
-  const phaseChip = (name, isDestination) => {
-    const t = getTone(phaseToneName(name, statuses));
-    return (
-      <span
-        className={cn(
-          'inline-flex items-center gap-1.5 h-[22px] px-2 rounded-md whitespace-nowrap text-[11px] font-semibold shrink-0',
-          isDestination ? cn('border', t.text, t.darkText) : 'text-slate-500 dark:text-slate-400'
-        )}
-        style={{
-          background: `${t.hex}1f`,
-          ...(isDestination ? { borderColor: `${t.hex}4d` } : null)
-        }}
-      >
-        <span className="size-1.5 rounded-full shrink-0" style={{ background: t.hex }} />
-        {name}
-      </span>
-    );
-  };
-
-  // Renderiza UM evento da trilha (nó + card por tipo). Usa _kind +
-  // getInteractionVisual (ícone) + eventToneName (tom). Só apresentação.
-  // Port fiel, classe por classe, dos corpos de evento de prototype/timeline.jsx,
-  // adaptado às nossas interactions reais — sem fabricar dados que não temos
-  // (✓✓ de leitura, duração/resultado de ligação): a FORMA do card é mantida,
-  // o subelemento ausente é omitido.
-  // Uma linha do REGISTRO. Quatro colunas alinhadas em todas as variantes:
-  // dia e hora (68px) · tipo em versalete (74px) · corpo (resto) · autor (110px).
-  // Cor no feed só aparece em chip de fase, selo de aula e faixa de marco —
-  // todo o resto é neutro, senão vinte eventos viram um arco-íris.
-  const renderTimelineEvent = (i) => {
-    // ---- Variante 5: marco de início do cadastro pelo Stronizap -----------
-    // Régua com a pílula, fora do padrão tabular (modelo C da spec). É o
-    // registro mais antigo do lead, então fecha a linha do tempo por baixo.
-    if (i._kind === 'origin') return <ZapSignupMarker key={i.id} interaction={i} />;
-
-    // "28/09 14:32". O ano fica no bloco do mês.
-    const stamp = timelineStamp(i.createdAt);
-    const typeLabel = timelineTypeLabel(i);
-    const author = i.consultantName || 'Sistema';
-    // Agendamento feito pelo Stronizap: a marca antes do nome e o canal no
-    // detalhe ao passar o mouse (modelo A da spec do agendamento). Só a linha
-    // de agendamento leva isso: o campo via pode aparecer em outras linhas.
-    const zapTitle = i._kind === 'appointment' ? zapScheduleTitle(i) : null;
-    const appt = i._kind === 'appointment' ? parseAppointment(i) : null;
-    const stageName = i._kind === 'status' ? extractStageNameFromInteractionText(i.text) : '';
-    // Troca de responsável: linha simples com o texto sem colchetes, nunca
-    // mudança de fase nem perda (isOwnerChangeText, em lib/timeline.js).
-    const ownerChange = i._kind === 'status' && isOwnerChangeText(i.text);
-    // O evento de contrato vem do próprio texto: tipo, plano e valor dele, e não
-    // os do contrato de hoje (contractEventOf, em lib/timeline.js).
-    const contractEvent = i._kind === 'contract' ? contractEventOf(i.text) : null;
-    const isContractMilestone = Boolean(contractEvent && CONTRACT_MILESTONE_KINDS.has(contractEvent.kind));
-    const contractCancel = contractEvent?.kind === 'cancelamento';
-    const lowerText = String(i.text || '').toLowerCase();
-    // Perda: o status_change que encerra a oportunidade não traz etapa entre
-    // colchetes — vem como "Lead perdido. Motivo: ...".
-    // Evento do funil Upgrade nunca é perda de lead, mesmo que o motivo
-    // configurado diga "Perda de contato".
-    const isLoss = i._kind === 'status' && !stageName && !ownerChange && !/^upgrade: /.test(lowerText) && /perdid|perda/i.test(lowerText);
-    const isWin = i._kind === 'status' && /^venda$/i.test(stageName);
-
-    // Corpo limpo: tira os prefixos que o composer injeta (📲/📞 das conversas,
-    // "Obs:" das notas, ✅/🔄/🔔 dos eventos de sistema). A coluna de TIPO já
-    // diz o que a linha é.
-    const cleanBody = ownerChange ? ownerChangeText(i.text) : String(i.text || '')
-      .replace(/^📲\s*Mensagem WhatsApp enviada:\s*/i, '')
-      .replace(/^📞\s*Ligação:\s*/i, '')
-      .replace(/^OBSERVAÇÃO DO CADASTRO:\s*/i, '')
-      .replace(/^Obs:\s*/i, '')
-      .replace(/^[✅🔄🔔]\s*/u, '')
-      .trim();
-
-    // ---- Variante 4: marco (matrícula, venda, perda) ----------------------
-    // Quebra o padrão tabular numa faixa full-width com régua no topo.
-    if (isContractMilestone || isWin || isLoss) {
-      const lossReason = isLoss
-        ? (String(i.text || '').match(/motivo:\s*([^.·\n]+)/i)?.[1] || '').trim()
-        : '';
-      const band = contractCancel || isLoss
-        ? { ring: 'border-rose-500', bg: 'bg-rose-50 dark:bg-rose-500/10', dot: 'bg-rose-500', Icon: Ban }
-        : isWin
-          ? { ring: 'border-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-500/10', dot: 'bg-emerald-500', Icon: CheckCircle }
-          : { ring: 'border-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-500/10', dot: 'bg-emerald-500', Icon: GraduationCap };
-
-      const title = isLoss
-        ? `Oportunidade encerrada${lossReason ? ` · ${lossReason}` : ''}`
-        : isWin
-          ? 'Virou cliente — etapa Venda'
-          : contractCancel
-            ? (/^renova/i.test(cleanBody) ? 'Renovação cancelada' : 'Contrato cancelado')
-            : contractEvent?.kind === 'renovacao' ? 'Contrato renovado'
-              : (contractEvent?.planName || 'Matrícula fechada');
-
-      const subtitle = isWin ? `Fase alterada por ${author}` : cleanBody;
-
-      // Valor só na matrícula e na renovação, e o do próprio evento.
-      const eventValue = isContractMilestone && !contractCancel ? contractEvent.value : null;
-      const showValue = eventValue != null;
-
-      return (
-        <div key={i.id} className={cn('flex items-center gap-3 border-t-2 px-3.5 py-2.5 my-1', band.ring, band.bg)}>
-          <span className={cn('size-[26px] rounded-full grid place-items-center shrink-0 text-white', band.dot)}>
-            <band.Icon className="size-[13px]" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="text-[13.5px] font-semibold text-slate-900 dark:text-white truncate" title={title}>{title}</div>
-            {subtitle && <div className="text-[11.5px] text-slate-500 dark:text-slate-400 truncate" title={subtitle}>{subtitle}</div>}
-          </div>
-          {showValue && (
-            <span className="font-display text-[17px] font-bold text-emerald-700 dark:text-emerald-300 num shrink-0">
-              {fmtBRL(eventValue)}
-            </span>
-          )}
-          <span className="text-[11px] num text-slate-400 dark:text-slate-500 shrink-0 whitespace-nowrap" title={i.createdAt?.toLocaleString('pt-BR')}>{stamp}</span>
-        </div>
-      );
-    }
-
-    // ---- Corpo das variantes tabulares ------------------------------------
-    let body = null;
-    let typeToneClass = 'text-slate-400 dark:text-slate-500';
-
-    if (i._kind === 'status' && stageName) {
-      // Variante 2: mudança de fase — dois chips e a duração na etapa anterior.
-      const t = stageTransitions[i.id] || {};
-      const destTone = getTone(phaseToneName(stageName, statuses));
-      typeToneClass = cn(destTone.text, destTone.darkText);
-      const durationText = t.days == null
-        ? null
-        : t.fromCreation
-          ? `após ${t.days}d desde o cadastro`
-          : t.from ? `após ${t.days}d em ${t.from}` : null;
-
-      body = (
-        <div className="flex items-center gap-2 flex-wrap">
-          {t.from && (
-            <>
-              {phaseChip(t.from, false)}
-              <ArrowRight size={13} className="text-slate-400 dark:text-slate-500 shrink-0" />
-            </>
-          )}
-          {phaseChip(stageName, true)}
-          {durationText && (
-            <span className="text-[11px] text-slate-400 dark:text-slate-500">{durationText}</span>
-          )}
-        </div>
-      );
-    } else if ((appt && appt.when) || i.appointmentOutcome) {
-      // Variante 3: agendamento e desfecho compartilham o bloco.
-      // O selo sai do campo REAL appointmentOutcome quando existe; o
-      // agendamento em si (ainda sem desfecho) fica em "Agendado".
-      const OUTCOME_SEALS = {
-        attended: { label: 'Compareceu', className: 'bg-emerald-500/[0.12] text-emerald-700 dark:text-emerald-300' },
-        no_show: { label: 'Faltou', className: 'bg-rose-500/[0.12] text-rose-700 dark:text-rose-300' },
-        rescheduled: { label: 'Reagendado', className: 'bg-amber-500/[0.12] text-amber-700 dark:text-amber-300' },
-        cancelled: { label: 'Cancelado', className: 'bg-slate-500/[0.12] text-slate-600 dark:text-slate-300' }
-      };
-      const outcome = OUTCOME_SEALS[i.appointmentOutcome]
-        || { label: 'Agendado', className: 'bg-brand-500/[0.12] text-brand-700 dark:text-brand-300' };
-      const isDone = Boolean(i.appointmentOutcome);
-      // No desfecho não há data no texto: a régua é o próprio evento.
-      const when = (appt && appt.when) || i.createdAt;
-      const title = appt?.label || cleanBody || 'Agendamento';
-      // "Tarefa de <nome>" quando a tarefa do dia ficou com outra pessoa (o
-      // " · tarefa de" do texto, lido pelo parseAppointment): é por aqui que o
-      // dono do lead vê quem vai cuidar da visita, da aula ou do contato.
-      const detail = appt
-        ? [appt.location, appt.taskOwner && `Tarefa de ${appt.taskOwner}`, appt.note, when.toLocaleDateString('pt-BR', { weekday: 'long' })].filter(Boolean).join(' · ')
-        : when.toLocaleDateString('pt-BR', { weekday: 'long' });
-      const origin = outcomeOrigin[i.id];
-
-      body = (
-        <div className="rounded-lg border border-slate-200 dark:border-white/[0.07] bg-slate-50 dark:bg-white/[0.02] px-2.5 py-[7px]">
-          <div className="flex items-center gap-2.5">
-            <div className="w-[34px] shrink-0 text-center">
-              <div className={cn(
-                'font-display text-[16px] font-bold leading-none num',
-                isDone ? 'text-emerald-700 dark:text-emerald-400' : 'text-brand-700 dark:text-brand-300'
-              )}>
-                {String(when.getDate()).padStart(2, '0')}
-              </div>
-              <div className="text-[9px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mt-0.5">
-                {when.toLocaleString('pt-BR', { month: 'short' }).replace('.', '')}
-              </div>
-            </div>
-            <div className="w-px h-[26px] bg-slate-200 dark:bg-white/[0.08] shrink-0" />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-[12.5px] font-semibold text-slate-900 dark:text-white truncate">{title}</span>
-                <span className="text-[11px] num text-slate-500 dark:text-slate-400 shrink-0">
-                  {when.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                </span>
-              </div>
-              <div className="text-[11px] text-slate-400 dark:text-slate-500 truncate">{detail}</div>
-            </div>
-            <span className={cn(
-              'shrink-0 h-[17px] px-1.5 rounded inline-flex items-center text-[9.5px] font-bold uppercase tracking-[.05em]',
-              outcome.className
-            )}>
-              {outcome.label}
-            </span>
-          </div>
-
-          {/* O desfecho aponta de volta pro agendamento que o originou. */}
-          {origin && (
-            <div className="mt-[7px] pt-[7px] border-t border-slate-200 dark:border-white/[0.07] text-[11px] text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
-              {origin.via === ZAP_VIA && <StronizapBadge />}
-              <span>{appointmentOriginText(origin)}</span>
-            </div>
-          )}
-        </div>
-      );
-    } else if (cleanBody) {
-      // Variante 1: linha simples (nota, conversa, sistema).
-      const meta = i.pinned ? 'Anotação fixada' : null;
-      body = (
-        <div>
-          <p className="text-[12.5px] leading-[1.5] text-slate-700 dark:text-slate-200 text-pretty whitespace-pre-wrap">{cleanBody}</p>
-          {meta && <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{meta}</div>}
-        </div>
-      );
-    }
-
-    if (!body) return null;
-
-    return (
-      <div
-        key={i.id}
-        className="grid grid-cols-[68px_74px_1fr_110px] gap-3 items-start py-1.5 border-b border-slate-100 dark:border-white/[0.05] hover:bg-slate-50/70 dark:hover:bg-white/[0.02] transition-colors"
-      >
-        <div className="text-[11px] num text-slate-400 dark:text-slate-500 text-right whitespace-nowrap pt-0.5" title={i.createdAt?.toLocaleString('pt-BR')}>{stamp}</div>
-        <div className={cn('text-[9.5px] font-bold uppercase tracking-[.07em] pt-1', typeToneClass)}>{typeLabel}</div>
-        <div className="min-w-0">{body}</div>
-        <TimelineAuthor author={author} zapTitle={zapTitle} />
-      </div>
-    );
   };
 
   const profileProfessor = profileProfessorOf(lead);
@@ -1512,6 +1327,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
             edit={contextEdit}
             setEdit={setContextEdit}
           />
+          <div ref={composerRef}>
           <ProfileComposer
             open={composer.open}
             mode={composer.mode}
@@ -1523,6 +1339,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
             firstName={firstName}
             whatsappName={contact.viaGuardian ? contactFirstName(contact.name) : null}
             lastText={lastText}
+            onGoto={goToEvent}
             canMudarFase={canMudarFase}
             loading={loading}
             onSubmitText={submitComposerText}
@@ -1554,6 +1371,8 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
             )}
             renderSchedule={() => (
               <ScheduleWizard
+                key={scheduleStart.n}
+                initialTypeId={scheduleStart.type}
                 onConfirm={handleWizardConfirm}
                 onCancel={closeComposer}
                 submitting={loading}
@@ -1563,79 +1382,39 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
               />
             )}
           />
+          </div>
          {/* O registro vive dentro de um card branco: a barra de controles fica
              no topo, separada por uma régua que atravessa o card inteiro. */}
-         <section className="rounded-2xl border border-border bg-card shadow-card overflow-hidden">
-          {/* Barra de controles */}
+         <section
+           ref={registroRef}
+           tabIndex={-1}
+           aria-label="Histórico"
+           className="rounded-2xl border border-border bg-card shadow-card overflow-hidden outline-none focus-visible:anel-foco"
+         >
           {(interactions || []).length > 0 && (
-            <div className="flex items-center gap-2 flex-wrap px-8 py-3 border-b border-border">
-              {TIMELINE_FILTERS.map(f => {
-                const active = timelineFilter === f.id;
-                return (
-                  <button
-                    key={f.id}
-                    type="button"
-                    onClick={() => setTimelineFilter(f.id)}
-                    className={cn(
-                      'h-[29px] px-2.5 rounded-lg text-[12px] font-semibold inline-flex items-center gap-1.5 whitespace-nowrap transition',
-                      'focus-visible:outline-none focus-visible:anel-foco',
-                      active
-                        ? 'bg-[#0E1A40] text-white dark:bg-white dark:text-[#0E1A40]'
-                        : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
-                    )}
-                  >
-                    {f.label}
-                    <span className="num opacity-65">{timelineCounts[f.id] || 0}</span>
-                  </button>
-                );
-              })}
-
-              <div className="flex-1" />
-
-              {/* Interruptor de Sistema: quando desligado, anuncia o que esconde. */}
-              {(systemHiddenCount > 0 || showSystem) && (
-                <button
-                  type="button"
-                  onClick={() => setShowSystem(v => !v)}
-                  aria-pressed={showSystem}
-                  className={cn(
-                    'h-[29px] px-2 rounded-lg text-[12px] font-semibold inline-flex items-center gap-2 whitespace-nowrap border transition',
-                    'focus-visible:outline-none focus-visible:anel-foco',
-                    showSystem
-                      ? 'border-brand-500/40 text-brand-700 dark:text-brand-300'
-                      : 'border-slate-200 dark:border-white/[0.07] text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                  )}
-                >
-                  {/* Chave de verdade (trilho + botão), não um ponto. */}
-                  <span className={cn(
-                    'w-[26px] h-[15px] rounded-full shrink-0 relative transition-colors',
-                    showSystem ? 'bg-brand-600' : 'bg-slate-200 dark:bg-white/[0.14]'
-                  )}>
-                    <span className={cn(
-                      'absolute top-[2px] size-[11px] rounded-full bg-white shadow-sm transition-[left]',
-                      showSystem ? 'left-[13px]' : 'left-[2px]'
-                    )} />
-                  </span>
-                  <span className="whitespace-nowrap">
-                    Sistema{!showSystem && systemHiddenCount > 0 ? ` +${systemHiddenCount}` : ''}
-                  </span>
-                </button>
-              )}
-
-              <div className="relative basis-[220px] shrink min-w-0">
-                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                <input
-                  value={timelineQuery}
-                  onChange={e => setTimelineQuery(e.target.value)}
-                  placeholder="Buscar no histórico"
-                  className="h-[30px] w-full rounded-lg bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[12.5px] pl-8 pr-3 placeholder:text-slate-400 transition"
-                />
-              </div>
-            </div>
+            <TimelineBar
+              filters={TIMELINE_FILTERS}
+              counts={timelineCounts}
+              filter={timelineFilter}
+              onFilter={setTimelineFilter}
+              showSystem={showSystem}
+              systemHiddenCount={systemHiddenCount}
+              onToggleSystem={() => setShowSystem((v) => !v)}
+              query={timelineQuery}
+              onQuery={setTimelineQuery}
+            />
           )}
 
           {/* A seguir: só no registro inteiro, sem filtro nem busca. */}
-          {timelineFilter === 'all' && !timelineQuery && <UpNextList items={upNext} />}
+          {timelineFilter === 'all' && !timelineQuery && (
+            <UpNextList
+              items={upNext}
+              canOutcome={canMudarFase && !isReadOnly}
+              savingId={savingOutcomeId}
+              onReschedule={canTimeline ? handleReschedule : null}
+              onOutcome={handleOutcome}
+            />
+          )}
 
           {/* Timeline */}
           {(interactions || []).length === 0 ? (
@@ -1660,20 +1439,28 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                   cada linha, então o bloco não precisa de régua de dia. */}
               {groupedEvents.map(([label, events]) => (
                 <section key={label} className="mb-5">
-                  <header className="sticky top-0 z-10 flex items-center gap-2 py-2 bg-card/95 backdrop-blur">
-                    <span className="text-[11px] font-semibold uppercase tracking-[.07em] text-slate-500 dark:text-slate-400 whitespace-nowrap">{label}</span>
-                    <div className="flex-1 h-px bg-slate-200/80 dark:bg-white/[0.06]" />
-                    <span className="text-[11px] num text-slate-400 dark:text-slate-500 whitespace-nowrap">
-                      {events.length} {events.length === 1 ? 'evento' : 'eventos'}
+                  <header className="sticky top-0 z-10 flex items-baseline gap-2.5 bg-card/95 py-2.5 backdrop-blur">
+                    <span className="font-display text-[15px] font-semibold tracking-tight">{label}</span>
+                    <span className="num text-[12.5px] text-muted-foreground">
+                      {events.length} {events.length === 1 ? 'registro' : 'registros'}
                     </span>
                   </header>
-                  {events.map(renderTimelineEvent)}
+                  {events.map((i) => (
+                    <TimelineEvent
+                      key={i.id}
+                      i={i}
+                      statuses={statuses}
+                      stageTransitions={stageTransitions}
+                      outcomeOrigin={outcomeOrigin}
+                      flash={flashId === i.id}
+                    />
+                  ))}
                 </section>
               ))}
 
               {/* Marco de origem: fecha o registro com a data de cadastro. */}
               {timelineFilter === 'all' && !timelineQuery && !hasOriginMarker && (
-                <p className="pl-[68px] pt-1 text-[11px] text-slate-400 dark:text-slate-500 whitespace-nowrap">
+                <p className="pl-[126px] pt-1 text-[12px] text-muted-foreground whitespace-nowrap">
                   Início da jornada · {lead.createdAt?.toLocaleDateString('pt-BR') || '—'}
                 </p>
               )}
