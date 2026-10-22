@@ -173,7 +173,9 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   const openComposer = (mode = 'note') => setComposer({ open: true, mode });
   const closeComposer = () => setComposer({ open: false, mode: 'note' });
   // Quem grava fecha o compositor só se ele ainda está no modo que gravou: a
-  // gravação lenta não fecha o compositor que a pessoa já levou a outro modo.
+  // gravação lenta não fecha o compositor que a pessoa já levou a outro modo, e
+  // o Reativar lead e o Marcar perda do cabeçalho, que passam pela mudança de
+  // fase, só fecham o compositor que estava no Mudar fase.
   const closeComposerIn = (mode) => setComposer((c) => (c.mode === mode ? { open: false, mode: 'note' } : c));
 
   // Foto do cliente: menu (galeria/câmera) + gravação. No perfil não há botão
@@ -340,7 +342,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
           { ...plan.patch, upgradeDeclinedAt: serverTimestamp() }
         );
         setLossModalOpen(false);
-        closeComposer();
+        closeComposerIn('status');
       } catch (e) {
         console.error(e);
         toast.error('Não foi possível registrar a recusa.');
@@ -413,7 +415,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
           { text: `${plan.interactionText}${phaseNote ? ` Obs: ${phaseNote}` : ''}`, type: 'status_change' },
           patch
         );
-        closeComposer();
+        closeComposerIn('status');
       } catch (e) {
         console.error(e);
         toast.error('Não foi possível mudar a etapa. Tente novamente.');
@@ -460,7 +462,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
       if (plan.stampConvertedAt) {
         try { await markConvertingAula({ db, leadId: lead.id }); } catch (e) { console.error('markConvertingAula falhou', e); }
       }
-      closeComposer();
+      closeComposerIn('status');
       return true;
     } catch (e) {
       console.error(e);
@@ -670,7 +672,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
       );
 
       toast.success(`Agendamento criado para ${dateStr}.`);
-      closeComposer();
+      closeComposerIn('schedule');
       setLoading(false);
     } catch (e) {
       console.error(e);

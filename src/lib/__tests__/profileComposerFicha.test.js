@@ -145,4 +145,22 @@ describe('o compositor na ficha', () => {
     await act(async () => { terminar(); });
     expect(caixa()).toBeNull();
   });
+
+  it('o Reativar lead com o compositor aberto na Ligação não fecha nem troca o modo', async () => {
+    const perdido = { ...LEAD, status: 'Perda', funnelId: 'f1', lossReason: 'Preço', lostAt: new Date(2026, 9, 1) };
+    await montar('timeline', {
+      lead: perdido,
+      funnels: [{ id: 'f1', name: 'Comercial', isDefault: true }],
+      statuses: [{ id: 's1', funnelId: 'f1', name: 'Novo', order: 0 }, { id: 's2', funnelId: 'f1', name: 'Contato', order: 1 }],
+    });
+    await clicar(botao('Ligação'));
+    await digitar('Resumo pela metade');
+    await clicar(botao('Reativar lead'));
+    await clicar(botao('Contato'));
+    const reativar = [...document.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent.trim() === 'Reativar lead');
+    await clicar(reativar);
+    expect(logInteraction).toHaveBeenCalledTimes(1);
+    expect(caixa().value).toBe('Resumo pela metade');
+    expect(botao('Ligação').getAttribute('aria-pressed')).toBe('true');
+  });
 });
