@@ -123,14 +123,15 @@ describe('computeDayAgenda — cliente, perda e desfecho', () => {
     expect(rows[0].isClient).toBe(false);
   });
 
-  it('lead perdido fica de fora', () => {
+  it('lead perdido entra, porque pode voltar (decisão de 21/10/2026)', () => {
     const perdido = lead({ id: 'p1', status: 'Perda' });
 
     const { rows } = computeDayAgenda({
       liveLeads: [perdido], agendaLeads: [], usersById: users, viewerId: 'u1', now: NOW,
     });
 
-    expect(rows).toHaveLength(0);
+    expect(rows.map((r) => r.id)).toEqual(['p1']);
+    expect(rows[0].isClient).toBe(false);
   });
 
   it('desfecho de HOJE marca a linha como resolvida e nomeia quem registrou', () => {
@@ -141,13 +142,12 @@ describe('computeDayAgenda — cliente, perda e desfecho', () => {
       appointmentOutcomeBy: 'auth-u2',
     });
 
-    const { rows, pending } = computeDayAgenda({
+    const { rows } = computeDayAgenda({
       liveLeads: [veio], agendaLeads: [], usersById: users, viewerId: 'u1', now: NOW,
     });
 
     expect(rows[0].outcome).toBe('attended');
     expect(rows[0].outcomeByName).toBe('Carla');
-    expect(pending).toBe(0);
   });
 
   it('desfecho de OUTRO dia não resolve a linha de hoje (caso da remarcação)', () => {
@@ -159,13 +159,12 @@ describe('computeDayAgenda — cliente, perda e desfecho', () => {
       appointmentOutcomeAt: new Date(2026, 6, 23, 19, 10),
     });
 
-    const { rows, pending } = computeDayAgenda({
+    const { rows } = computeDayAgenda({
       liveLeads: [remarcado], agendaLeads: [], usersById: users, viewerId: 'u1', now: NOW,
     });
 
     expect(rows[0].outcome).toBeNull();
     expect(rows[0].outcomeByName).toBeNull();
-    expect(pending).toBe(1);
   });
 
   it('isMine marca só as linhas do viewer, e o dono é nomeado pelo índice', () => {
@@ -230,21 +229,6 @@ describe('computeDayAgenda — cliente, perda e desfecho', () => {
 
     expect(rows[0].ownerName).toBe('sem consultor');
     expect(rows[0].isMine).toBe(false);
-  });
-
-  it('nextIndex aponta a primeira linha a partir de agora, e -1 se o dia acabou', () => {
-    const passou = lead({ id: 'n1', appointmentScheduledFor: at(14, 30) });
-    const vem = lead({ id: 'n2', appointmentScheduledFor: at(19) });
-
-    const agora = computeDayAgenda({
-      liveLeads: [passou, vem], agendaLeads: [], usersById: users, viewerId: 'u1', now: NOW,
-    });
-    expect(agora.rows[agora.nextIndex].id).toBe('n2');
-
-    const fimDoDia = computeDayAgenda({
-      liveLeads: [passou, vem], agendaLeads: [], usersById: users, viewerId: 'u1', now: at(22),
-    });
-    expect(fimDoDia.nextIndex).toBe(-1);
   });
 });
 

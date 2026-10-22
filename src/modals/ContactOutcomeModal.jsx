@@ -6,7 +6,7 @@ import { formatHourLabel } from '../lib/format.js';
 import { contactDone, contactReschedule, followUpChannelOf } from '../lib/contactGoal.js';
 import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, goalOwnerFields } from '../lib/leads.js';
 import { overdueDaysOf } from '../lib/dailyGoal.js';
-import { dayRefText, whenFromPreset, whenInstant, whenIsFuture } from '../lib/whenPicker.js';
+import { dayRefText, whenFromPreset, whenInstant, whenProblem } from '../lib/whenPicker.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { MotivoField, PopupButton, PopupShell } from '../components/dailygoal/popup/PopupShell.jsx';
 import { OutcomeCards } from '../components/dailygoal/popup/OutcomeCards.jsx';
@@ -56,9 +56,9 @@ function contextOf(lead, categorySlug, now) {
 function ContactOutcomeModal({ onClose, lead, categorySlug = DAILY_GOAL_CATEGORIES.CONTATO_HOJE, initialOutcome = null, appUser, db, onDone }) {
   const toast = useToast();
   // O instante da montagem: o render segue puro, e o envio confere de novo no
-  // relógio, para nunca agendar um contato no passado. Marcar para hoje mais
-  // tarde é caso real (mensagem sem resposta de manhã) e não joga o lead em
-  // Atrasados: a Meta classifica o atraso por dia (dailyGoal.js).
+  // relógio. O Reagendar só aceita a partir de amanhã (decisão do Johnny,
+  // 21/10/2026, whenProblem com fromTomorrow): para mais tarde hoje, o contato
+  // novo ficava com a marca de feito do dia e sumia da Meta.
   const [nowMs] = useState(() => Date.now());
   const [outcome, setOutcome] = useState(Object.values(OUTCOMES).includes(initialOutcome) ? initialOutcome : OUTCOMES.FEITO);
   const [motivo, setMotivo] = useState('');
@@ -70,14 +70,14 @@ function ContactOutcomeModal({ onClose, lead, categorySlug = DAILY_GOAL_CATEGORI
   const categoryLabel = DAILY_GOAL_CATEGORY_LABEL[categorySlug] || 'Contato';
   const reagendar = outcome === OUTCOMES.REAGENDAR;
   const hint = !reagendar ? ''
-    : !whenIsFuture(when, nowMs) ? 'Escolha um dia e horário futuros.'
+    : whenProblem(when, nowMs, { fromTomorrow: true }) ? 'Escolha um dia a partir de amanhã.'
       : !motivoTrimmed ? 'Escreva o motivo do reagendamento.' : '';
 
   const handleConfirm = async () => {
     if (hint || submitting) return;
     const at = reagendar ? whenInstant(when) : null;
-    if (reagendar && !(at && at.getTime() > Date.now())) {
-      toast.warning('Escolha uma data e hora futuras.');
+    if (reagendar && whenProblem(when, Date.now(), { fromTomorrow: true })) {
+      toast.warning('Escolha um dia a partir de amanhã.');
       return;
     }
     setSubmitting(true);
@@ -143,7 +143,7 @@ function ContactOutcomeModal({ onClose, lead, categorySlug = DAILY_GOAL_CATEGORI
       <OutcomeCards question="O contato foi feito?" options={CARDS} value={outcome} onChange={setOutcome} />
       {reagendar && (
         <>
-          <WhenPicker value={when} onChange={setWhen} who="O contato" nowMs={nowMs} />
+          <WhenPicker value={when} onChange={setWhen} who="O contato" nowMs={nowMs} fromTomorrow />
           <MotivoField value={motivo} onChange={setMotivo} />
         </>
       )}

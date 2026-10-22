@@ -2,18 +2,12 @@
 import { describe, it, expect } from 'vitest';
 import { outcomeMenuItems, outcomeTriggerLabel } from '../outcomeMenu.js';
 
-const ids = (items) => items.map((i) => i.id);
-
 describe('outcomeMenuItems', () => {
   it('sem desfecho: Compareceu e Não compareceu', () => {
     expect(outcomeMenuItems({})).toEqual([
       { id: 'attended', label: 'Compareceu', tone: 'success' },
       { id: 'no_show', label: 'Não compareceu', tone: 'danger' },
     ]);
-  });
-
-  it('card A fazer: Remarcou e Cancelou embaixo', () => {
-    expect(ids(outcomeMenuItems({ withMore: true }))).toEqual(['attended', 'no_show', 'rescheduled', 'cancelled']);
   });
 
   it('marcado: só a troca, e o desfazer quando a tela permite', () => {
@@ -24,10 +18,6 @@ describe('outcomeMenuItems', () => {
       { id: 'attended', label: 'Trocar para compareceu', tone: 'success' },
       { id: 'undo', label: 'Desfazer marcação', tone: 'neutral' },
     ]);
-  });
-
-  it('marcado ignora o withMore', () => {
-    expect(ids(outcomeMenuItems({ outcome: 'attended', withMore: true }))).toEqual(['no_show']);
   });
 });
 

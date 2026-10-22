@@ -254,7 +254,7 @@ export function SideCard({ children }) {
 
 // Os estados do dia no lugar do Agora e da fila.
 
-// A meta vazia (nenhuma tarefa hoje): o mesmo texto da tela de hoje.
+// A meta vazia (nenhuma tarefa hoje).
 export function MetaVazia() {
   return (
     <div className={cn(CARD, 'mt-3.5 grid place-items-center px-6 py-14 text-center')}>

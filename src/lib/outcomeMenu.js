@@ -1,14 +1,12 @@
 // Opções do balão "Marcar desfecho" da Meta Diária (OutcomePopover). Puro.
 //   outcome  : desfecho atual ('attended', 'no_show' ou null)
-//   withMore : sem desfecho, oferece também Remarcou e Cancelou (card A fazer
-//              e Próximo compromisso)
 //   canUndo  : com desfecho, oferece Desfazer marcação (só a Agenda de hoje)
-// Os ids são o que o onPick recebe: 'attended', 'no_show', 'rescheduled',
-// 'cancelled' e 'undo'.
+// Os ids são o que o onPick recebe: 'attended', 'no_show' e 'undo'. Remarcou e
+// Cancelou ficam no menu "Mais" do bloco Agora (AgoraCard).
 
 const LABEL = { attended: 'Compareceu', no_show: 'Não compareceu' };
 
-export function outcomeMenuItems({ outcome = null, withMore = false, canUndo = false } = {}) {
+export function outcomeMenuItems({ outcome = null, canUndo = false } = {}) {
   if (outcome === 'attended' || outcome === 'no_show') {
     const other = outcome === 'attended' ? 'no_show' : 'attended';
     const items = [{
@@ -19,15 +17,10 @@ export function outcomeMenuItems({ outcome = null, withMore = false, canUndo = f
     if (canUndo) items.push({ id: 'undo', label: 'Desfazer marcação', tone: 'neutral' });
     return items;
   }
-  const items = [
+  return [
     { id: 'attended', label: LABEL.attended, tone: 'success' },
     { id: 'no_show', label: LABEL.no_show, tone: 'danger' },
   ];
-  if (withMore) {
-    items.push({ id: 'rescheduled', label: 'Remarcou', tone: 'neutral' });
-    items.push({ id: 'cancelled', label: 'Cancelou', tone: 'neutral' });
-  }
-  return items;
 }
 
 export const outcomeTriggerLabel = (outcome) => LABEL[outcome] || 'Marcar desfecho';
