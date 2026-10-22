@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { DAILY_GOAL_CATEGORIES } from '../leads.js';
-import { outcomeOptionsFor, schedulePresetOf } from '../fichaOutcome.js';
+import { appointmentTaskOwnerId, DAILY_GOAL_CATEGORIES, hasGoalDoneTodayFor, isClientLead } from '../leads.js';
+import { outcomeOptionsFor, outcomeRuleFor, schedulePresetOf } from '../fichaOutcome.js';
 
 const D = (m, d, h = 0, mi = 0) => new Date(2026, m - 1, d, h, mi);
 const AGORA = D(10, 16, 10, 20);
@@ -69,5 +69,40 @@ describe('schedulePresetOf', () => {
   it('item desconhecido ou vazio não escolhe tipo', () => {
     expect(schedulePresetOf({ type: 'xyz' })).toBeNull();
     expect(schedulePresetOf(null)).toBeNull();
+  });
+});
+
+// A regra que a Agenda de hoje tinha escrita à mão no markAgendaPresence,
+// copiada aqui como era, para provar que o outcomeRuleFor grava igual nos
+// casos que importam.
+const regraDaAgendaAntiga = (row, categorySlug, interactions, now) => ({
+  promote: !isClientLead(row),
+  writeGoalDone: !hasGoalDoneTodayFor(
+    row, categorySlug, interactions.filter((i) => i.leadId === row.id),
+    new Date(now.getFullYear(), now.getMonth(), now.getDate()), appointmentTaskOwnerId(row)
+  ),
+});
+
+describe('outcomeRuleFor, a regra da Agenda de hoje num lugar só', () => {
+  const VISITA = DAILY_GOAL_CATEGORIES.VISITA_HOJE;
+  const AULA = DAILY_GOAL_CATEGORIES.AULA_HOJE;
+  const casos = [
+    ['lead comum, sem marca', LEAD, VISITA, []],
+    ['cliente', CLIENTE, AULA, [marca({ leadId: 'l2', dailyGoalCategory: AULA, goalOwnerId: 'bruno' })]],
+    ['lead em Perda', { ...LEAD, status: 'Perda' }, VISITA, []],
+    ['marca de hoje do dono da tarefa de agora', LEAD, VISITA, [marca()]],
+    ['marca de hoje de outro dono', LEAD, VISITA, [marca({ goalOwnerId: 'bruno' })]],
+    ['marca de outro dono na visita agendada por ele', { ...LEAD, appointmentOwnerId: 'bruno' }, VISITA, [marca({ goalOwnerId: 'bruno' })]],
+    ['marca de outro lead', LEAD, VISITA, [marca({ leadId: 'outro' })]],
+    ['marca de ontem', LEAD, VISITA, [marca({ createdAt: D(10, 15, 20) })]],
+  ];
+
+  it.each(casos)('%s: igual à regra que a Agenda tinha', (_nome, lead, categorySlug, interactions) => {
+    expect(outcomeRuleFor(lead, categorySlug, { interactions, now: AGORA })).toEqual(regraDaAgendaAntiga(lead, categorySlug, interactions, AGORA));
+  });
+
+  it('cliente não promove, e a marca do dono atual não se repete', () => {
+    expect(outcomeRuleFor(CLIENTE, AULA, { now: AGORA })).toEqual({ promote: false, writeGoalDone: true });
+    expect(outcomeRuleFor(LEAD, VISITA, { interactions: [marca()], now: AGORA })).toEqual({ promote: true, writeGoalDone: false });
   });
 });

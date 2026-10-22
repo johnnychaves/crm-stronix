@@ -3,7 +3,7 @@ import confetti from 'canvas-confetti';
 import { collection, onSnapshot, query, where, serverTimestamp } from 'firebase/firestore';
 import { appId, DAILY_GOAL_HISTORY_PATH } from '../lib/firebase.js';
 import { recordGoalHit as recordGoalHitDoc } from '../lib/dailyGoalHistory.js';
-import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, APPOINTMENT_OUTCOMES, getAppointmentOutcomeMeta, getLeadAppointmentType, getLeadAppointmentDate, hasGoalDoneTodayFor, appointmentTaskOwnerId, goalOwnerFields, isClientLead, outcomeAppliesToAula } from '../lib/leads.js';
+import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, APPOINTMENT_OUTCOMES, getAppointmentOutcomeMeta, getLeadAppointmentType, getLeadAppointmentDate, goalOwnerFields, isClientLead, outcomeAppliesToAula } from '../lib/leads.js';
 import { isMetaParticipant } from '../lib/acesso.js';
 import { logInteraction } from '../lib/interactions.js';
 import { withBucket } from '../lib/leadDerived.js';
@@ -11,6 +11,7 @@ import { stageChangeFields } from '../lib/stageMove.js';
 import { DG_CATEGORY_META, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeRitmo, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, computeVolumeInRange, countMetaDaysInMonth, volumeTargetFor, tomorrowAppointmentsOf, slotTotals, newLeadHandledPatch, renewedGoalDoneInteraction } from '../lib/dailyGoal.js';
 import { followUpChannelOf } from '../lib/contactGoal.js';
 import { computeDayAgenda } from '../lib/dayAgenda.js';
+import { outcomeRuleFor } from '../lib/fichaOutcome.js';
 import { useScreenParams } from '../hooks/useScreenParams.js';
 import { useFrozenWhileIdle, useMinuteClock } from '../hooks/useMinuteClock.js';
 import { frozenDayText } from '../lib/rotinasTela.js';
@@ -321,23 +322,21 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
       }
 
       if (choice !== 'attended' && choice !== 'no_show') return;
-      // Não regrava a marca da Meta se já existe uma de hoje nesta categoria.
-      // Sem isso, dois consultores confirmando a mesma linha (que é o cenário
-      // normal de uma agenda compartilhada) empilham registros na timeline.
-      // Só conta a marca do dono da tarefa de agora: a visita que outra pessoa
-      // fez de manhã no mesmo lead tem a marca dela, e a visita de agora
-      // precisa da sua para contar na Meta de quem a tem.
-      const jaTemMarcaHoje = hasGoalDoneTodayFor(
-        row,
-        row.categorySlug,
-        (interactions || []).filter((i) => i.leadId === row.id),
-        new Date(now.getFullYear(), now.getMonth(), now.getDate()),
-        appointmentTaskOwnerId(row)
-      );
+      // A regra mora no outcomeRuleFor (src/lib/fichaOutcome.js), que o A seguir
+      // da ficha também usa: cliente não promove, e a marca da Meta não se
+      // repete. Sem isso, dois consultores confirmando a mesma linha (que é o
+      // cenário normal de uma agenda compartilhada) empilham registros na
+      // timeline. Só conta a marca do dono da tarefa de agora: a visita que
+      // outra pessoa fez de manhã no mesmo lead tem a marca dela, e a visita de
+      // agora precisa da sua para contar na Meta de quem a tem.
+      const { promote, writeGoalDone } = outcomeRuleFor(row, row.categorySlug, {
+        interactions: (interactions || []).filter((i) => i.leadId === row.id),
+        now,
+      });
       await writeAppointmentOutcome({
         db, lead: row, outcome: choice, categorySlug: row.categorySlug, appUser, statuses,
-        promote: !isCliente,
-        writeGoalDone: !jaTemMarcaHoje,
+        promote,
+        writeGoalDone,
         sourceLabel: 'Agenda do dia',
       });
       toast.success(choice === 'attended'

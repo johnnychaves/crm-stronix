@@ -10,21 +10,24 @@ const CATEGORY_BY_TYPE = {
 // Os ids de tipo do ScheduleWizard (WZ_TYPES).
 const PRESET_BY_TYPE = { visita: 'visita', aula_experimental: 'aula', ligacao: 'ligacao', mensagem: 'mensagem' };
 
+// A regra do desfecho de visita e aula, a mesma da Agenda de hoje
+// (markAgendaPresence, no DailyGoalView), que também a chama: cliente não muda
+// de etapa, e a marca do dia só é gravada quando o dono da tarefa de agora
+// ainda não tem a de hoje nessa categoria. `interactions` são as do lead.
+export function outcomeRuleFor(lead, categorySlug, { interactions = [], now = new Date() } = {}) {
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return {
+    promote: !isClientLead(lead),
+    writeGoalDone: !hasGoalDoneTodayFor(lead, categorySlug, interactions, todayStart, appointmentTaskOwnerId(lead)),
+  };
+}
+
 // As opções que o writeAppointmentOutcome recebe para um item do A seguir, ou
-// null quando o item não tem desfecho (mensagem e ligação). A regra é a da
-// Agenda de hoje (markAgendaPresence, no DailyGoalView): cliente não muda de
-// etapa, e a marca do dia só é gravada quando o dono da tarefa de agora ainda
-// não tem a de hoje nessa categoria. `interactions` são as do lead.
+// null quando o item não tem desfecho (mensagem e ligação).
 export function outcomeOptionsFor(item, { lead, interactions = [], now = new Date() } = {}) {
   const categorySlug = item ? CATEGORY_BY_TYPE[item.type] : null;
   if (!categorySlug || !lead) return null;
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  return {
-    categorySlug,
-    promote: !isClientLead(lead),
-    writeGoalDone: !hasGoalDoneTodayFor(lead, categorySlug, interactions, todayStart, appointmentTaskOwnerId(lead)),
-    sourceLabel: 'Ficha',
-  };
+  return { categorySlug, ...outcomeRuleFor(lead, categorySlug, { interactions, now }), sourceLabel: 'Ficha' };
 }
 
 // O tipo com que o Agendar abre ao remarcar um item do A seguir.
