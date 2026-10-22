@@ -231,8 +231,8 @@ const WzStepBody = ({ stepId, values, set, color, modalities, units, qtyOptions,
       const selectedISO = wzLocalInput(cur);
       return (
         <div className="space-y-3">
+          {/* O título "Dia e horário" já vem do cabeçalho do passo (StageHead). */}
           <div>
-            <div className="mb-2 text-[12.5px] text-muted-foreground">Dia e horário</div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {days.map((o, i) => {
                 const time = slotFor(o.off);
@@ -305,7 +305,9 @@ function wzSummary(stepId, values, professores, ownerOptions) {
       if (!values.responsavel) return null;
       if (values.responsavel === WZ_OWNER_LEAD) return 'Responsável pelo lead';
       return (ownerOptions || []).find(u => u.id === values.responsavel)?.name || 'Outro consultor';
-    case 'datahora':   return values.datahora ? wzFmtDateTime(values.datahora) : null;
+    // Curto, para caber na linha de passos com a hora à vista ("22/10 · 18:00").
+    // O resumo da direita mostra o dia da semana (wzFmtDateTime).
+    case 'datahora':   return values.datahora ? `${values.datahora.toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' })} · ${values.datahora.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' })}` : null;
     default: return null;
   }
 }
