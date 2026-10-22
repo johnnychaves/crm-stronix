@@ -185,7 +185,7 @@ export function ProfileComposer({
                   <button
                     type="button"
                     onClick={() => onGoto(lastText.id)}
-                    className="flex-none rounded text-[12.5px] font-semibold text-brand-700 hover:underline focus-visible:outline-none focus-visible:anel-foco dark:text-brand-300"
+                    className="-my-1 inline-flex h-6 flex-none items-center rounded px-1 text-[12.5px] font-semibold text-brand-700 hover:underline focus-visible:outline-none focus-visible:anel-foco dark:text-brand-300"
                   >
                     Ver no histórico
                   </button>

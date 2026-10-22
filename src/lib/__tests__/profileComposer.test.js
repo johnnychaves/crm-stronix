@@ -198,6 +198,8 @@ describe('ProfileComposer aberto, modos de texto', () => {
     const onGoto = vi.fn();
     await montar({ lastText: { id: 'a', label: 'Anotação', date: new Date(2026, 9, 14, 10), text: 'Oi.' }, onGoto });
     await abrir();
+    // Alvo de pelo menos 24 px de altura (h-6).
+    expect(botao('Ver no histórico').className).toMatch(/(^|\s)h-6(\s|$)/);
     await clicar(botao('Ver no histórico'));
     expect(onGoto).toHaveBeenCalledWith('a');
   });
