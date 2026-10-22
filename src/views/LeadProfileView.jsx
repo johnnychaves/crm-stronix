@@ -133,9 +133,9 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // Só estado de interface. Nada aqui copia campo do lead: ele chega ao vivo
   // (useProfileLead) e muda com a ficha aberta quando outra pessoa mexe nele,
   // então fase e funil são lidos direto do `lead`.
-  // Pedido de abertura do Cadastro vindo do cabeçalho (lápis, "Fez 18 anos"): a
-  // seção e o campo que a aba abre já em edição. O `at` remonta a aba quando o
-  // pedido é novo, mesmo com ela já aberta. É consumido na troca de aba.
+  // Pedido de abertura do Cadastro vindo do cabeçalho ("Fez 18 anos"): a seção
+  // e o campo que a aba abre já em edição. A aba fica montada, e o `at` diz a
+  // ela que o pedido é novo.
   const [cadastroRequest, setCadastroRequest] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -586,22 +586,17 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     }
   };
 
-  // Troca de aba da ficha. O pedido de abertura do Cadastro vale uma vez só.
-  const changeTab = (next) => {
-    if (next !== 'cadastro') setCadastroRequest(null);
-    onTab(next);
-  };
-
-  // Abre o Cadastro, opcionalmente já numa seção e num campo.
+  // Abre o Cadastro, opcionalmente já numa seção e num campo. Sem seção (o
+  // lápis), só troca de aba: a seção que estiver aberta lá continua.
   const openCadastro = (sectionId = null, field = null) => {
-    setCadastroRequest(sectionId ? { sectionId, field, at: Date.now() } : null);
+    if (sectionId) setCadastroRequest({ sectionId, field, at: Date.now() });
     onTab('cadastro');
   };
 
   // O "Adicionar etiqueta" do cabeçalho: as etiquetas se editam no Contexto
   // comercial, na Linha do tempo.
   const goToContext = () => {
-    changeTab('timeline');
+    onTab('timeline');
     setTimeout(() => document.getElementById('ficha-contexto')?.scrollIntoView?.({ block: 'center' }), 0);
   };
 
@@ -1332,7 +1327,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
       </section>
 
       {/* ===== Abas ===== */}
-      <Tabs value={activeProfileTab} onValueChange={changeTab}>
+      <Tabs value={activeProfileTab} onValueChange={onTab}>
         <TabsList variant="line" className="gap-1 border-b border-slate-200 dark:border-white/[0.08] w-full justify-start rounded-none p-0 h-11">
           <TabsTrigger
             value="timeline"
@@ -1414,7 +1409,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                       {upgradeFunnel
                         ? 'Aqui você coloca o cliente no funil Upgrade ou muda a etapa dele lá. A matrícula e o contrato ficam na '
                         : 'O funil Upgrade ainda não foi criado nesta academia: ele nasce quando um gestor abre o app. A matrícula e o contrato ficam na '}
-                      <button type="button" onClick={() => changeTab('contratos')} className="font-semibold underline underline-offset-2">aba Contratos</button>.
+                      <button type="button" onClick={() => onTab('contratos')} className="font-semibold underline underline-offset-2">aba Contratos</button>.
                     </div>
                   </div>
                 )}
@@ -1532,11 +1527,13 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
          </div>
         </TabsContent>
 
-        {/* ----- Aba: Cadastro (só quem edita cadastro) ----- */}
+        {/* ----- Aba: Cadastro (só quem edita cadastro) -----
+            Fica montada quando escondida (forceMount com hidden), para a seção
+            aberta e o texto digitado voltarem com a aba. O hidden a tira da
+            tela, da leitura e do Tab. */}
         {canEditCadastro && (
-          <TabsContent value="cadastro" className="pt-2">
+          <TabsContent value="cadastro" forceMount hidden={activeProfileTab !== 'cadastro'} className="pt-2">
             <CadastroTab
-              key={cadastroRequest?.at ?? 'aba'}
               lead={lead}
               db={db}
               request={cadastroRequest}

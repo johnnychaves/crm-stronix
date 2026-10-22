@@ -16,8 +16,11 @@ import { CompletenessRing } from './CompletenessRing.jsx';
 // grava só as chaves da seção (cadastroWrites.js). O onSave devolve false quando
 // não gravou, e a seção continua aberta com o que foi digitado.
 //
-// `request` ({ sectionId, field, at }) abre a aba já numa seção e num campo
-// (lápis do cabeçalho, "Fez 18 anos"). Quem monta a aba põe `key` no `at`.
+// `request` ({ sectionId, field, at }) abre a seção e o campo pedidos ("Fez 18
+// anos"). A aba fica montada quando escondida, para o texto digitado não sumir
+// na troca de aba, então o pedido novo (outro `at`) é lido no render, sem
+// remontar. Com outra seção aberta, ela fica como está e recebe o foco: o pedido
+// não descarta o que foi digitado.
 //
 // Foco: abrir uma seção leva o cursor ao campo pedido (ou ao primeiro da seção),
 // e fechar devolve o foco ao Editar dela. Os dois botões que abriram somem com a
@@ -26,13 +29,13 @@ import { CompletenessRing } from './CompletenessRing.jsx';
 // Gravação que demora: sem internet, com o cache persistente do Firestore, a
 // gravação só termina quando o servidor confirma. O Fechar continua ligado
 // durante o envio e fecha a seção sem desfazer nada: a gravação segue na fila.
-// Cada abertura tem um número (`open.n`), e a resposta que chega depois só mexe
+// Cada abertura tem uma marca própria (`open.n`), e a resposta que chega depois só mexe
 // na seção que a pediu, se ela ainda estiver aberta. A falha que chega depois
 // aparece no aviso, sem reabrir a seção.
 let openSeq = 0;
 export function CadastroTab({ lead, db, request = null, onSave }) {
   const toast = useToast();
-  const [open, setOpenState] = useState(() => (request?.sectionId ? { id: request.sectionId, n: ++openSeq } : null));
+  const [open, setOpenState] = useState(() => (request?.sectionId ? { id: request.sectionId, n: `pedido-${request.at}` } : null));
   const [form, setForm] = useState(() => (request?.sectionId ? readSectionForm(lead, request.sectionId) : null));
   const [savingN, setSavingN] = useState(null);
   const editing = open?.id ?? null;
@@ -40,45 +43,55 @@ export function CadastroTab({ lead, db, request = null, onSave }) {
   // A seção aberta de agora, para quem roda depois de um await, e se a aba ainda
   // está na tela.
   const openRef = useRef(open);
-  const setOpen = (next) => { openRef.current = next; setOpenState(next); };
+  useEffect(() => { openRef.current = open; });
   const mountedRef = useRef(false);
   useEffect(() => {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
 
-  // Para onde o foco vai no próximo commit: { id, field } é um campo da seção
-  // (ou o primeiro, sem field), e { id, edit: true } é o Editar dela. O número
-  // pede a mudança, porque a seção pode continuar aberta (falha ao gravar).
+  // Para onde o foco vai depois do commit: { id, field } é um campo da seção
+  // (ou o primeiro, sem field), e { id, edit: true } é o Editar dela. Cada pedido
+  // é um objeto novo, então o mesmo alvo pedido duas vezes também move o foco.
   const sectionEls = useRef({});
-  const focusNext = useRef(request?.sectionId ? { id: request.sectionId, field: request.field ?? null } : null);
-  const [focusSeq, setFocusSeq] = useState(0);
-  const moveFocus = (target) => { focusNext.current = target; setFocusSeq((n) => n + 1); };
+  const [focusReq, setFocusReq] = useState(() => (request?.sectionId ? { id: request.sectionId, field: request.field ?? null } : null));
+  const moveFocus = (target) => setFocusReq({ ...target });
   useEffect(() => {
-    const next = focusNext.current;
-    focusNext.current = null;
-    const root = next && sectionEls.current[next.id];
+    const root = focusReq && sectionEls.current[focusReq.id];
     if (!root) return;
-    const target = next.edit
+    const target = focusReq.edit
       ? root.querySelector('[data-cadastro-edit]')
-      : (next.field && root.querySelector(`[name="${next.field}"]`)) || root.querySelector('input, select, textarea');
+      : (focusReq.field && root.querySelector(`[name="${focusReq.field}"]`)) || root.querySelector('input, select, textarea');
     target?.focus();
-  }, [focusSeq]);
+  }, [focusReq]);
 
   const whole = useMemo(() => readClientRegistration(lead), [lead]);
   const pct = computeCompleteness(whole);
   const missing = missingOf(whole);
   const busy = editing !== null;
 
+  // Pedido novo do cabeçalho, lido no render (sem effect e sem remontar a aba).
+  const [seenAt, setSeenAt] = useState(request?.at ?? null);
+  if (request?.sectionId && request.at !== seenAt) {
+    setSeenAt(request.at);
+    if (busy) {
+      setFocusReq({ id: editing, field: editing === request.sectionId ? request.field ?? null : null });
+    } else {
+      setForm(readSectionForm(lead, request.sectionId));
+      setOpenState({ id: request.sectionId, n: `pedido-${request.at}` });
+      setFocusReq({ id: request.sectionId, field: request.field ?? null });
+    }
+  }
+
   const startEdit = (sectionId, field = null) => {
     if (busy) return;
     setForm(readSectionForm(lead, sectionId));
-    setOpen({ id: sectionId, n: ++openSeq });
+    setOpenState({ id: sectionId, n: ++openSeq });
     moveFocus({ id: sectionId, field });
   };
   const close = () => {
     const id = openRef.current?.id;
-    setOpen(null);
+    setOpenState(null);
     setForm(null);
     if (id) moveFocus({ id, edit: true });
   };
