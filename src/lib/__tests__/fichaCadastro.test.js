@@ -143,3 +143,80 @@ describe('aba Cadastro montada na ficha: troca de aba', () => {
     expect(porLabel('Endereço').contains(document.activeElement)).toBe(true);
   });
 });
+
+describe('caminhos do cabeçalho até o Cadastro', () => {
+  it('o lápis do cabeçalho abre a aba Cadastro', async () => {
+    await montar();
+    const lapis = botoes('').find((b) => b.title === 'Editar cadastro');
+    await clicar(lapis);
+    expect(abaAtual).toBe('cadastro');
+    expect(painelCadastro().hidden).toBe(false);
+    expect(porLabel('Identidade')).toBeTruthy();
+  });
+
+  it('o lápis não descarta a seção aberta no Cadastro', async () => {
+    await montar({ aba: 'cadastro' });
+    await clicar(porLabel('Editar endereço'));
+    await digitar(campo('city'), 'Canoas');
+    await irPara('timeline');
+    await clicar(botoes('').find((b) => b.title === 'Editar cadastro'));
+    expect(campo('city').value).toBe('Canoas');
+  });
+
+  it('o "Adicionar etiqueta" leva à Linha do tempo e rola até o Contexto comercial', async () => {
+    const rolou = vi.fn();
+    const antes = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function scrollIntoView() { rolou(this); };
+    try {
+      await montar({ aba: 'cadastro' });
+      await clicar(botoes('Adicionar etiqueta')[0]);
+      expect(abaAtual).toBe('timeline');
+      await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+      expect(rolou).toHaveBeenCalledWith(document.getElementById('ficha-contexto'));
+    } finally {
+      Element.prototype.scrollIntoView = antes;
+    }
+  });
+});
+
+describe('quem não edita cadastro', () => {
+  // O CPF não pode aparecer nem por um instante: o observador olha cada mudança
+  // do documento desde antes da montagem.
+  for (const [quem, appUser] of [['o professor', PROFESSOR], ['quem está sem login vinculado', SEM_LOGIN]]) {
+    it(`${quem}, com /cadastro no endereço, abre a Linha do tempo e nunca vê o CPF`, async () => {
+      let viu = false;
+      const olhar = () => { if (/529\.982\.247-25|52998224725/.test(document.body.textContent)) viu = true; };
+      const observador = new MutationObserver(olhar);
+      observador.observe(document.body, { childList: true, subtree: true, characterData: true });
+      try {
+        await montar({ appUser, aba: 'cadastro' });
+        await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+        olhar();
+      } finally {
+        observador.disconnect();
+      }
+      expect(viu).toBe(false);
+      expect(aba('cadastro')).toBeNull();
+      expect(painelCadastro()).toBeNull();
+      expect(document.body.querySelector('[role="tab"][data-state="active"]').id).toMatch(/-trigger-timeline$/);
+      expect(gravar).not.toHaveBeenCalled();
+    });
+  }
+
+  it('o gravador da ficha recusa sem permissão antes de gravar', async () => {
+    // A aba some para quem não edita cadastro, então o gravador não tem como ser
+    // chamado pela tela: a trava dele é a última defesa, e aqui se confere que
+    // ela vem antes da gravação. O mesmo molde da trava da foto e do contexto.
+    // Caminho de texto: no jsdom o URL é o do navegador, e o fs não o aceita.
+    const { readFileSync } = await import('node:fs');
+    const { dirname, join } = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const fonte = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../views/LeadProfileView.jsx'), 'utf8');
+    const inicio = fonte.indexOf('const handleCadastroSave = async');
+    expect(inicio).toBeGreaterThan(-1);
+    const corpo = fonte.slice(inicio, fonte.indexOf('saveCadastroSection(', inicio));
+    expect(corpo).toMatch(/if \(isReadOnly\) \{[^}]*return false; \}/);
+    expect(corpo).toMatch(/if \(!canEditCadastro\) \{ negarAcesso\(\); return false; \}/);
+    expect(fonte).toMatch(/const canEditCadastro = !isReadOnly && can\(appUser, ACTIONS\.CADASTRO_EDITAR\);/);
+  });
+});
