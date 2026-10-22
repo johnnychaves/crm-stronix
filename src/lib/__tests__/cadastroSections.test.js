@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   CADASTRO_SECTIONS, readSectionForm, buildSectionPatch, sectionIssue,
-  missingOf, sectionStatus, missingHeadline, headlineOf, isComplete, joinList, capFirst, ageOf, viewRowsOf,
+  missingOf, shortcutFieldOf, sectionStatus, missingHeadline, headlineOf, isComplete, joinList, capFirst, ageOf, viewRowsOf,
 } from '../cadastroSections.js';
 import { readClientRegistration } from '../clientRegistration.js';
 
@@ -144,6 +144,15 @@ describe('o que falta', () => {
 
   it('missingOf lista só o que tem rótulo e não está preenchido', () => {
     expect(missingOf(whole).map((m) => m.id)).toEqual(['rg', 'sexo', 'maritalStatus']);
+  });
+
+  it('o atalho do endereço e da emergência cai no primeiro campo vazio do grupo', () => {
+    const item = (id) => missingOf({}).find((m) => m.id === id);
+    expect(shortcutFieldOf(item('address'), {})).toBe('street');
+    expect(shortcutFieldOf(item('address'), { street: 'Rua A', number: '10' })).toBe('city');
+    expect(shortcutFieldOf(item('address'), { street: 'Rua A', city: 'Canoas' })).toBe('number');
+    expect(shortcutFieldOf(item('emergency'), { emgName: 'Rafael' })).toBe('emgPhone');
+    expect(shortcutFieldOf(item('rg'), {})).toBe('rg');
   });
 
   it('sectionStatus diz o que falta em cada seção', () => {

@@ -162,7 +162,8 @@ export const ownerChangeNote = (change) =>
 // entram na conta mas não têm rótulo: são obrigatórios no cadastro do lead, e a
 // aba Cadastro não os oferece como "o que falta". Os outros nove têm rótulo
 // (como a frase "Falta CPF"), a seção da aba onde se preenchem e o campo do
-// formulário onde o cursor cai.
+// formulário onde o cursor cai. Endereço e emergência são um grupo (`fields`):
+// o atalho leva ao primeiro campo vazio dele, e o primeiro do grupo é o `field`.
 const has = (v) => !!str(v);
 export const COMPLETENESS_ITEMS = Object.freeze([
   { id: 'name', ok: (f) => has(f.name) },
@@ -172,8 +173,8 @@ export const COMPLETENESS_ITEMS = Object.freeze([
   { id: 'birthDate', label: 'data de nascimento', section: 'identidade', field: 'birthDate', ok: (f) => has(f.birthDate) },
   { id: 'sexo', label: 'sexo', section: 'identidade', field: 'sexo', ok: (f) => has(f.sexo) },
   { id: 'email', label: 'e-mail', section: 'identidade', field: 'email', ok: (f) => has(f.email) },
-  { id: 'address', label: 'endereço', section: 'endereco', field: 'street', ok: (f) => has(f.street) && has(f.number) && has(f.city) },
-  { id: 'emergency', label: 'contato de emergência', section: 'emergencia', field: 'emgName', ok: (f) => has(f.emgName) && has(f.emgPhone) },
+  { id: 'address', label: 'endereço', section: 'endereco', field: 'street', fields: ['street', 'number', 'city'], ok: (f) => has(f.street) && has(f.number) && has(f.city) },
+  { id: 'emergency', label: 'contato de emergência', section: 'emergencia', field: 'emgName', fields: ['emgName', 'emgPhone'], ok: (f) => has(f.emgName) && has(f.emgPhone) },
   { id: 'maritalStatus', label: 'estado civil', section: 'pessoais', field: 'maritalStatus', ok: (f) => has(f.maritalStatus) },
   { id: 'profession', label: 'profissão', section: 'pessoais', field: 'profession', ok: (f) => has(f.profession) },
 ]);

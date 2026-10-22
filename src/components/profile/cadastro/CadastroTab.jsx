@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { zapMatchKey } from '../../../../api/_zapPhone.js';
-import { LOCKED_HINT, capFirst, headlineOf, isComplete, missingOf, readSectionForm, sectionIssue } from '../../../lib/cadastroSections.js';
+import { LOCKED_HINT, capFirst, headlineOf, isComplete, missingOf, readSectionForm, sectionIssue, shortcutFieldOf } from '../../../lib/cadastroSections.js';
 import { computeCompleteness, readClientRegistration } from '../../../lib/clientRegistration.js';
 import { firstName } from '../../../lib/guardian.js';
 import { useToast } from '../../../contexts/ToastContext.jsx';
@@ -135,7 +135,7 @@ export function CadastroTab({ lead, db, request = null, onSave }) {
                   key={m.id}
                   type="button"
                   disabled={busy}
-                  onClick={() => startEdit(m.section, m.field)}
+                  onClick={() => startEdit(m.section, shortcutFieldOf(m, whole))}
                   title={busy ? LOCKED_HINT : undefined}
                   className="inline-flex h-7 items-center gap-1 rounded-full border border-dashed border-brand-300 px-2.5 text-[12.5px] font-semibold text-brand-700 transition hover:bg-brand-50 focus-visible:outline-none focus-visible:anel-foco disabled:cursor-not-allowed disabled:opacity-50 dark:border-brand-500/40 dark:text-brand-300 dark:hover:bg-brand-500/10"
                 >

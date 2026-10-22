@@ -76,6 +76,10 @@ export function sectionIssue(sectionId, form, now = new Date()) {
 
 export const missingOf = (form) => COMPLETENESS_ITEMS.filter((item) => item.label && !item.ok(form));
 
+// O campo onde o atalho de um item que falta põe o cursor: o primeiro vazio do
+// grupo (endereço e emergência), ou o campo do item.
+export const shortcutFieldOf = (item, form) => (item.fields || [item.field]).find((k) => !str(form[k])) || item.field;
+
 export function joinList(items) {
   if (items.length < 2) return items.join('');
   return `${items.slice(0, -1).join(', ')} e ${items[items.length - 1]}`;

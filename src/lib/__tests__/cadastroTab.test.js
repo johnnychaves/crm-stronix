@@ -102,6 +102,15 @@ describe('CadastroTab', () => {
     expect(campo('street')).toBeNull();
   });
 
+  it('o atalho do endereço leva o cursor ao primeiro campo vazio, e não sempre à rua', async () => {
+    await montar({ lead: { ...LEAD, address: { street: 'Rua A', number: '10' }, emergencyContact: { name: 'Rafael' } } });
+    await clicar(botao('Endereço'));
+    expect(document.activeElement).toBe(campo('city'));
+    await clicar(botao('Cancelar'));
+    await clicar(botao('Contato de emergência'));
+    expect(document.activeElement).toBe(campo('emgPhone'));
+  });
+
   it('o "Adicionar" de uma linha vazia abre a seção no campo certo', async () => {
     await montar();
     const adicionar = [...porLabel('Dados pessoais').querySelectorAll('button')].find((b) => b.textContent.includes('Adicionar'));
