@@ -32,3 +32,20 @@ describe('a novidade das rotinas', () => {
     expect(rotinas.summary).toContain('Na aba Hoje, você acompanha o que cada um já fez, o que está atrasado e as observações do dia.');
   });
 });
+
+describe('textos que apontam para a ficha', () => {
+  // O modal de cadastro saiu (desenho A2): o consultor se troca no Contexto
+  // comercial, na Linha do tempo. A novidade antiga continua no sino.
+  it('nenhuma novidade manda ir ao lápis ou à aba Relacionamento', () => {
+    ANNOUNCEMENTS.forEach((a) => {
+      expect(a.summary, a.id).not.toMatch(/Relacionamento|clique no lápis/);
+    });
+  });
+
+  it('a troca de responsável aponta para o Contexto comercial, com o mesmo id e a mesma data', () => {
+    const troca = ANNOUNCEMENTS.find((a) => a.id === 'troca-responsavel-2026-08');
+    expect(troca.date).toBe('2026-08-26');
+    expect(troca.major).toBeUndefined();
+    expect(troca.summary).toContain('Contexto comercial');
+  });
+});
