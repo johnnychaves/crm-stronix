@@ -37,19 +37,19 @@ const CONFIG = {
 };
 
 let root = null;
-const ficha = (tab) => h(MemoryRouter, { initialEntries: ['/acad/ficha/l1'] },
+const ficha = (tab, extra = {}) => h(MemoryRouter, { initialEntries: ['/acad/ficha/l1'] },
   h(ToastContext.Provider, { value: toast },
     h(LeadProfileContext.Provider, { value: profile },
       h(GeneralConfigContext.Provider, { value: CONFIG },
         h(LeadProfileView, {
           lead: LEAD, tab, onTab: () => {}, onBack: () => {}, appUser: CONSULTOR,
-          statuses: [], tags: [], lossReasons: [], usersList: [CONSULTOR], db: {}, funnels: [],
+          statuses: [], tags: [], lossReasons: [], usersList: [CONSULTOR], db: {}, funnels: [], ...extra,
         })))));
-async function montar(tab = 'timeline') {
+async function montar(tab = 'timeline', extra = {}) {
   const container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
-  await act(async () => { root.render(ficha(tab)); });
+  await act(async () => { root.render(ficha(tab, extra)); });
 }
 const trocarAba = async (tab) => { await act(async () => { root.render(ficha(tab)); }); };
 afterEach(async () => {
@@ -57,6 +57,7 @@ afterEach(async () => {
   document.body.innerHTML = '';
   root = null;
   logInteraction.mockClear();
+  toast.success.mockClear();
 });
 
 const botao = (texto) => [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === texto) || null;
@@ -105,5 +106,25 @@ describe('o compositor na ficha', () => {
     await clicar(botao('Registrar anotação'));
     expect(toast.error).toHaveBeenCalled();
     expect(caixa().value).toBe('Vai pensar');
+  });
+
+  // O Reativar lead do cabeçalho passa pelo handlePhaseConfirm, que agora fecha
+  // o compositor no lugar de trocar a aba dele. O contrato (devolve true quando
+  // gravou) continua, e a janela fecha.
+  it('o Reativar lead ainda grava pela mudança de fase e fecha a janela', async () => {
+    const perdido = { ...LEAD, status: 'Perda', funnelId: 'f1', lossReason: 'Preço', lostAt: new Date(2026, 9, 1) };
+    await montar('timeline', {
+      lead: perdido,
+      funnels: [{ id: 'f1', name: 'Comercial', isDefault: true }],
+      statuses: [{ id: 's1', funnelId: 'f1', name: 'Novo', order: 0 }, { id: 's2', funnelId: 'f1', name: 'Contato', order: 1 }],
+    });
+    await clicar(botao('Reativar lead'));
+    await clicar(botao('Contato'));
+    const reativar = [...document.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent.trim() === 'Reativar lead');
+    await clicar(reativar);
+    expect(logInteraction).toHaveBeenCalledTimes(1);
+    expect(logInteraction.mock.calls[0][3].text).toContain('[Contato]');
+    expect(toast.success).toHaveBeenCalledWith('Lucas Prado reativado em Contato.');
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 });
