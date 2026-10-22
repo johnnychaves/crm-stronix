@@ -40,6 +40,17 @@ describe('WizardStepper', () => {
     expect(document.querySelector('ol').getAttribute('aria-label')).toBe('Passos do agendamento');
   });
 
+  it('o número e o nome do passo bloqueado têm contraste de texto (4,5:1)', async () => {
+    await montar(h(WizardStepper, { steps: passos(() => {}), label: 'Passos', tone: TOM }));
+    const bloqueado = document.querySelectorAll('li')[2];
+    const pecas = [...bloqueado.querySelectorAll('span, b')].filter((el) => el.children.length === 0);
+    expect(pecas.map((el) => el.textContent)).toEqual(['3', 'Dia e horário']);
+    pecas.forEach((el) => {
+      expect(el.className).toContain('text-muted-foreground');
+      expect(el.className).not.toContain('text-slate-400');
+    });
+  });
+
   it('só o passo concluído é botão, e o clique chama o onEdit dele', async () => {
     const onEdit = vi.fn();
     await montar(h(WizardStepper, { steps: passos(onEdit), label: 'Passos', tone: TOM }));

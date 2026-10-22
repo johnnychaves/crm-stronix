@@ -39,7 +39,7 @@ function StepDot({ state, n, tone }) {
     );
   }
   return (
-    <span className="num grid size-7 flex-none place-items-center rounded-full bg-slate-100 text-[12.5px] font-bold text-slate-400 dark:bg-white/[0.05] dark:text-slate-500">
+    <span className="num grid size-7 flex-none place-items-center rounded-full bg-slate-100 text-[12.5px] font-bold text-muted-foreground dark:bg-white/[0.05]">
       {n}
     </span>
   );
@@ -61,7 +61,7 @@ export function WizardStepper({ steps, label, tone }) {
                 <b className={cn('block max-w-[132px] truncate text-[13.5px] font-semibold leading-tight', s.state === 'done' && cn(tone.text, tone.darkText))}>{s.value}</b>
               </>
             ) : (
-              <b className={cn('block max-w-[132px] truncate text-[13.5px] leading-tight', s.state === 'active' ? 'font-semibold' : 'font-medium text-slate-400 dark:text-slate-500')}>{s.title}</b>
+              <b className={cn('block max-w-[132px] truncate text-[13.5px] leading-tight', s.state === 'active' ? 'font-semibold' : 'font-medium text-muted-foreground')}>{s.title}</b>
             )}
           </span>
         );

@@ -796,11 +796,13 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // Classificação + filtro da timeline (helpers compartilhados em lib/timeline.js).
   // O marco de início fica embaixo da observação do cadastro, que nasce no
   // mesmo horário que ele quando o lead vem do Stronizap.
-  const interactionsWithClass = originLastOnTies(
+  // Guardado pela lista que chega do Firestore, para a ficha não reclassificar
+  // o histórico inteiro a cada tecla digitada no compositor.
+  const interactionsWithClass = useMemo(() => originLastOnTies(
     (interactions || []).map(i => ({ ...i, _kind: classifyInteraction(i) }))
-  );
+  ), [interactions]);
   // O último registro de texto, que o compositor mostra ao abrir.
-  const lastText = lastRecordOf(interactionsWithClass);
+  const lastText = useMemo(() => lastRecordOf(interactionsWithClass), [interactionsWithClass]);
 
   // Origem de cada mudança de fase, reconstruída da transição anterior: a origem
   // de uma transição é o destino da transição imediatamente anterior (em ordem

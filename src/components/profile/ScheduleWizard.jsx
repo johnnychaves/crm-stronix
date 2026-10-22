@@ -300,7 +300,8 @@ function wzSummary(stepId, values, professores, ownerOptions) {
       if (values.professor === SOLO_TRAINING) return SOLO_TRAINING_LABEL;
       return values.professor ? (professorNameById(professores, values.professor) || 'Professor selecionado') : null;
     case 'quantidade': return values.quantidade ? `${values.quantidade} ${values.quantidade === 1 ? 'aula' : 'aulas'}` : null;
-    case 'unidade':    return values.unidade ? `Unidade ${values.unidade}` : null;
+    // Só o nome: o título "Unidade" já aparece em cima, na linha de passos.
+    case 'unidade':    return values.unidade || null;
     case 'responsavel':
       if (!values.responsavel) return null;
       if (values.responsavel === WZ_OWNER_LEAD) return 'Responsável pelo lead';

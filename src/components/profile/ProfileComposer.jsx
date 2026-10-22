@@ -33,7 +33,7 @@ const MODES = [
 // Classes escritas por extenso, porque o Tailwind não enxerga nome montado.
 const COLOR = {
   // A Anotação inverte no escuro (fundo claro e texto tinta), como o filtro do registro.
-  ink: { on: 'border-[#0E1A40] bg-[#0E1A40] text-white dark:border-white dark:bg-white dark:text-[#0E1A40]', onTile: 'bg-white/20 text-white dark:bg-[#0E1A40]/10 dark:text-[#0E1A40]', tile: 'bg-[#0E1A40]/10 text-[#0E1A40] dark:bg-white/10 dark:text-white', hover: 'hover:border-[#0E1A40]/40 hover:bg-[#0E1A40]/5' },
+  ink: { on: 'border-[#0E1A40] bg-[#0E1A40] text-white dark:border-white dark:bg-white dark:text-[#0E1A40]', onTile: 'bg-white/20 text-white dark:bg-[#0E1A40]/10 dark:text-[#0E1A40]', tile: 'bg-[#0E1A40]/10 text-[#0E1A40] dark:bg-white/10 dark:text-white', hover: 'hover:border-[#0E1A40]/40 hover:bg-[#0E1A40]/5 dark:hover:border-white/40 dark:hover:bg-white/5' },
   green: { on: 'border-emerald-700 bg-emerald-700 text-white', tile: 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300', hover: 'hover:border-emerald-500/45 hover:bg-emerald-500/5' },
   brand: { on: 'border-brand-600 bg-brand-600 text-white', tile: 'bg-brand-500/12 text-brand-700 dark:text-brand-300', hover: 'hover:border-brand-500/45 hover:bg-brand-500/5' },
   amber: { on: 'border-amber-700 bg-amber-700 text-white', tile: 'bg-amber-500/12 text-amber-700 dark:text-amber-300', hover: 'hover:border-amber-500/45 hover:bg-amber-500/5' },
@@ -41,11 +41,11 @@ const COLOR = {
 };
 
 const TEXT_MODES = {
-  note: { placeholder: () => 'O que aconteceu na conversa? Registre o que ajuda no próximo contato.', submit: 'Registrar anotação', empty: 'Escreva a anotação antes de registrar.' },
+  note: { label: 'Anotação', keys: 'Ctrl e Enter registram', placeholder: () => 'O que aconteceu na conversa? Registre o que ajuda no próximo contato.', submit: 'Registrar anotação', empty: 'Escreva a anotação antes de registrar.' },
   // Menor de idade: a mensagem vai para o responsável (contactOf), então o
   // placeholder usa o nome dele (whatsappName), e não o do aluno.
-  whatsapp: { placeholder: (first, waName) => `Mensagem para ${waName || first}`, submit: 'Enviar pelo WhatsApp', empty: 'Escreva a mensagem antes de enviar.' },
-  call: { placeholder: () => 'Resumo da ligação e o que combinaram.', submit: 'Registrar ligação', empty: 'Resuma a ligação antes de registrar.' },
+  whatsapp: { label: 'Mensagem', keys: 'Ctrl e Enter enviam', placeholder: (first, waName) => `Mensagem para ${waName || first}`, submit: 'Enviar pelo WhatsApp', empty: 'Escreva a mensagem antes de enviar.' },
+  call: { label: 'Ligação', keys: 'Ctrl e Enter registram', placeholder: () => 'Resumo da ligação e o que combinaram.', submit: 'Registrar ligação', empty: 'Resuma a ligação antes de registrar.' },
 };
 const LAST_ICON = { Anotação: Pencil, WhatsApp: MessageCircle, Ligação: Phone };
 const dm = (d) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
@@ -143,7 +143,7 @@ export function ProfileComposer({
   const LastIcon = lastText ? (LAST_ICON[lastText.label] || Pencil) : null;
   return (
     <section aria-label="Registrar" className="rounded-2xl border border-border bg-card p-[18px] shadow-card">
-      <div role="group" aria-label="Tipo de registro" className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
+      <div role="group" aria-label="Tipo de registro" className={cn('grid grid-cols-2 gap-2.5 sm:grid-cols-3', modes.length === 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-5')}>
         {modes.map((m) => {
           const on = mode === m.id;
           const c = COLOR[m.color];
@@ -170,7 +170,7 @@ export function ProfileComposer({
       </div>
 
       <div className="mt-4">
-        {mode === 'status' && renderStatus()}
+        {mode === 'status' && canMudarFase && renderStatus()}
         {mode === 'schedule' && renderSchedule()}
         {textMode && (
           <>
@@ -182,7 +182,7 @@ export function ProfileComposer({
                 </p>
               </div>
             )}
-            <label htmlFor="composer-text" className="sr-only">{MODES.find((m) => m.id === mode).label}</label>
+            <label htmlFor="composer-text" className="sr-only">{textMode.label}</label>
             <textarea
               id="composer-text"
               autoFocus
@@ -215,7 +215,7 @@ export function ProfileComposer({
                 <Avatar name={appUser?.name || 'Você'} size={22} />
                 <span className="truncate">Registrando como {appUser?.name || 'você'}</span>
               </span>
-              <span className="hidden text-[12px] text-muted-foreground sm:inline">Ctrl e Enter registram</span>
+              <span className="hidden text-[12px] text-muted-foreground sm:inline">{textMode.keys}</span>
               <Btn kind="soft" onClick={tryClose} disabled={loading}>Cancelar</Btn>
               <Btn kind="brand" icon={<Check size={13} />} onClick={submit} disabled={loading}>{textMode.submit}</Btn>
             </div>

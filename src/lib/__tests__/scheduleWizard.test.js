@@ -67,7 +67,8 @@ describe('ScheduleWizard em passos horizontais', () => {
     await montar();
     await clicar(botao('Visita'));
     await clicar(botao('Centro'));
-    expect(passos()[1].textContent).toContain('Unidade Centro');
+    // Na linha de passos, o título "Unidade" em cima e só o nome embaixo.
+    expect(passos()[1].textContent).toBe('UnidadeCentro');
     expect(passos()[2].getAttribute('aria-current')).toBe('step');
     expect(botao('Hoje')).not.toBeNull();
   });

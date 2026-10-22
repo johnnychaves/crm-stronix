@@ -21,9 +21,9 @@ let root = null;
 // A ficha é quem guarda se o compositor está aberto, em que modo e os rascunhos
 // (a aba da ficha desmonta o compositor, e o texto digitado não pode ir junto).
 // O harness faz o mesmo, e o botão "alternar" desmonta e monta o compositor.
-function Harness({ onSubmitText, ...props }) {
-  const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState('note');
+function Harness({ onSubmitText, inicial = { open: false, mode: 'note' }, ...props }) {
+  const [open, setOpen] = useState(inicial.open);
+  const [mode, setMode] = useState(inicial.mode);
   const [drafts, setDrafts] = useState(EMPTY_DRAFTS);
   const [shown, setShown] = useState(true);
   return h('div', null,
@@ -335,5 +335,36 @@ describe('ProfileComposer, foco', () => {
     fora.focus();
     await clicar(botao('Cancelar'));
     expect(document.activeElement).toBe(fora);
+  });
+});
+
+describe('ProfileComposer, travas e textos', () => {
+  it('sem permissão para mudar fase, o modo Mudar fase não desenha o assistente', async () => {
+    await montar({ canMudarFase: false, inicial: { open: true, mode: 'status' } });
+    expect(document.body.textContent).not.toContain('PASSOS DA FASE');
+  });
+
+  it('com quatro modos (professor), a grade não deixa coluna vazia', async () => {
+    await montar({ canMudarFase: false });
+    await abrir();
+    const grade = document.body.querySelector('[role="group"][aria-label="Tipo de registro"]');
+    expect(grade.className).toContain('lg:grid-cols-4');
+    expect(grade.className).not.toContain('lg:grid-cols-5');
+  });
+
+  it('no WhatsApp a caixa se chama Mensagem e o Ctrl e Enter enviam', async () => {
+    await montar();
+    await clicar(botao('WhatsApp'));
+    expect(document.body.querySelector('label[for="composer-text"]').textContent).toBe('Mensagem');
+    expect(document.body.textContent).toContain('Ctrl e Enter enviam');
+    await clicar(botao('Anotação'));
+    expect(document.body.querySelector('label[for="composer-text"]').textContent).toBe('Anotação');
+    expect(document.body.textContent).toContain('Ctrl e Enter registram');
+  });
+
+  it('o hover da Anotação tem variante no escuro', async () => {
+    await montar();
+    await clicar(botao('WhatsApp'));
+    expect(botao('Anotação').className).toMatch(/dark:hover:/);
   });
 });
