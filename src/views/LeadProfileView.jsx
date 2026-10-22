@@ -39,6 +39,9 @@ import { PhaseChanger } from '../components/profile/PhaseChanger.jsx';
 import { ReferralsSection } from '../components/profile/ReferralsSection.jsx';
 import { ReferrerPicker } from '../components/profile/ReferrerPicker.jsx';
 import { ScheduleWizard } from '../components/profile/ScheduleWizard.jsx';
+import { ProfileComposer } from '../components/profile/ProfileComposer.jsx';
+import { EMPTY_DRAFTS } from '../lib/quickTexts.js';
+import { lastRecordOf } from '../lib/lastRecord.js';
 import { ZapSignupMarker } from '../components/profile/ZapSignupMarker.jsx';
 import { ContractsTab } from '../components/profile/contracts/ContractsTab.jsx';
 import { TimelineAuthor } from '../components/profile/TimelineAuthor.jsx';
@@ -75,7 +78,7 @@ import {
   appointmentOriginText,
   isAppointmentReschedule
 } from '../lib/timeline.js';
-import { ArrowLeft, ArrowRight, Ban, Calendar, Check, CheckCircle, Clock, Copy, CreditCard, FileText, GraduationCap, Handshake, MessageCircle, Pencil, Phone, Plus, RefreshCw, RotateCcw, Search, Tag, ThumbsDown, Trash, TrendingUp, User, UserPlus, Users } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Ban, Calendar, CheckCircle, Clock, Copy, CreditCard, FileText, GraduationCap, Handshake, MessageCircle, Pencil, Phone, Plus, RotateCcw, Search, Tag, ThumbsDown, Trash, TrendingUp, User, UserPlus, Users } from 'lucide-react';
 
 // Eventos de contrato que ganham faixa de destaque na linha do tempo: os que
 // mudam a situação do cliente. Trancamento, reativação e correção seguem como
@@ -144,7 +147,6 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // (useProfileLead) e muda com a ficha aberta quando outra pessoa mexe nele,
   // então fase e funil são lidos direto do `lead`.
   const [isEditing, setIsEditing] = useState(false);
-  const [note, setNote] = useState('');
   const [loading, setLoading] = useState(false);
 
   const [lossModalOpen, setLossModalOpen] = useState(false);
@@ -163,8 +165,14 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // Threshold de vencimento do contexto (sem prop-drilling) p/ a seção Contrato.
   const { contractThresholdDays, contratos, professores, renewalCheckpoints } = useGeneralConfig();
 
-  // Composer tab — drives which form is shown in the activity Composer card.
-  const [composerTab, setComposerTab] = useState('note');
+  // O compositor da Linha do tempo: aberto ou fechado, em que modo e o rascunho
+  // de cada modo. Tudo mora na ficha porque a aba desmonta o compositor quando a
+  // pessoa vai a Contratos e volta: o texto digitado não pode se perder na troca.
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [composerMode, setComposerMode] = useState('note');
+  const [composerDrafts, setComposerDrafts] = useState(EMPTY_DRAFTS);
+  const openComposer = (mode = 'note') => { setComposerMode(mode); setComposerOpen(true); };
+  const closeComposer = () => { setComposerOpen(false); setComposerMode('note'); };
 
   // Foto do cliente: menu (galeria/câmera) + gravação. No perfil não há botão
   // Salvar — escolheu/capturou, sobe pro Storage e grava na hora.
@@ -330,7 +338,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
           { ...plan.patch, upgradeDeclinedAt: serverTimestamp() }
         );
         setLossModalOpen(false);
-        setComposerTab('note');
+        closeComposer();
       } catch (e) {
         console.error(e);
         toast.error('Não foi possível registrar a recusa.');
@@ -403,7 +411,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
           { text: `${plan.interactionText}${phaseNote ? ` Obs: ${phaseNote}` : ''}`, type: 'status_change' },
           patch
         );
-        setComposerTab('note');
+        closeComposer();
       } catch (e) {
         console.error(e);
         toast.error('Não foi possível mudar a etapa. Tente novamente.');
@@ -450,7 +458,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
       if (plan.stampConvertedAt) {
         try { await markConvertingAula({ db, leadId: lead.id }); } catch (e) { console.error('markConvertingAula falhou', e); }
       }
-      setComposerTab('note');
+      closeComposer();
       return true;
     } catch (e) {
       console.error(e);
@@ -528,19 +536,24 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // Nota comum do composer: só a anotação na timeline (planProfileNote), sem
   // patch no lead. Mudar fase e mover funil ficam no PhaseChanger
   // (handlePhaseConfirm); o agendamento, no ScheduleWizard.
-  const saveInteraction = async () => {
-    if (!canTimeline) { toast.warning('Você não tem permissão para registrar interações neste lead.'); return; }
-    const payload = planProfileNote(note);
-    if (!payload) return;
+  // Recebe o texto do compositor e devolve true quando gravou: só então o
+  // compositor esvazia o rascunho.
+  const saveInteraction = async (text) => {
+    if (!canTimeline) { toast.warning('Você não tem permissão para registrar interações neste lead.'); return false; }
+    const payload = planProfileNote(text);
+    if (!payload) return false;
     setLoading(true);
     try {
       await logInteraction(db, lead, appUser, payload);
-      setNote('');
+      closeComposer();
+      setLoading(false);
+      return true;
     } catch (e) {
       console.error(e);
       toast.error('Erro ao salvar.');
     }
     setLoading(false);
+    return false;
   };
 
   // Edição no lugar do Contexto comercial: grava só o campo que mudou
@@ -548,7 +561,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // cabeçalho. Devolve false quando não gravou, para o editor ficar aberto.
   // `from` é o valor da abertura do editor: as etiquetas gravam só a diferença.
   // O editor aberto mora aqui, e não no card, para o rascunho sobreviver à
-  // troca de aba, como o `note` do compositor.
+  // troca de aba, como o rascunho do compositor.
   const [contextEdit, setContextEdit] = useState(null);
   const handleContextSave = async (field, value, from) => {
     if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return false; }
@@ -655,7 +668,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
       );
 
       toast.success(`Agendamento criado para ${dateStr}.`);
-      setComposerTab('note');
+      closeComposer();
       setLoading(false);
     } catch (e) {
       console.error(e);
@@ -664,61 +677,59 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     }
   };
 
-  // Composer tab handlers — each maps to the existing Firestore patterns.
-  const handleSendWhatsAppMessage = async () => {
-    if (!canTimeline) { toast.warning('Você não tem permissão para registrar interações neste lead.'); return; }
-    const msg = note.trim();
-    if (!msg) { toast.warning('Escreva a mensagem antes de enviar.'); return; }
+  // Os gravadores do WhatsApp e da Ligação também recebem o texto do
+  // compositor e devolvem true quando gravaram.
+  const handleSendWhatsAppMessage = async (text) => {
+    if (!canTimeline) { toast.warning('Você não tem permissão para registrar interações neste lead.'); return false; }
+    const msg = String(text ?? '').trim();
+    if (!msg) { toast.warning('Escreva a mensagem antes de enviar.'); return false; }
     const href = whatsappHref(contact.phone, msg);
-    if (!href) { toast.warning('Lead sem WhatsApp cadastrado.'); return; }
+    if (!href) { toast.warning('Lead sem WhatsApp cadastrado.'); return false; }
     setLoading(true);
     try {
-      // Open WhatsApp Web with the typed message
+      // Abre o WhatsApp com a mensagem digitada e registra o envio na linha do tempo.
       window.open(href, '_blank', 'noopener,noreferrer');
-      // Log the outbound message in the timeline
       await logInteraction(db, lead, appUser, {
         text: `📲 Mensagem WhatsApp enviada: ${msg}`,
         type: 'note'
       });
-      setNote('');
+      closeComposer();
+      setLoading(false);
+      return true;
     } catch (e) {
       console.error(e);
       toast.error('Não foi possível registrar o envio.');
     }
     setLoading(false);
+    return false;
   };
 
-  const handleLogCall = async () => {
-    if (!canTimeline) { toast.warning('Você não tem permissão para registrar interações neste lead.'); return; }
-    const summary = note.trim();
-    if (!summary) { toast.warning('Resuma o que rolou na ligação antes de salvar.'); return; }
+  const handleLogCall = async (text) => {
+    if (!canTimeline) { toast.warning('Você não tem permissão para registrar interações neste lead.'); return false; }
+    const summary = String(text ?? '').trim();
+    if (!summary) { toast.warning('Resuma o que rolou na ligação antes de salvar.'); return false; }
     setLoading(true);
     try {
       await logInteraction(db, lead, appUser, {
         text: `📞 Ligação: ${summary}`,
         type: 'note'
       });
-      setNote('');
+      closeComposer();
+      setLoading(false);
+      return true;
     } catch (e) {
       console.error(e);
       toast.error('Não foi possível registrar a ligação.');
     }
     setLoading(false);
+    return false;
   };
 
-  const handleComposerSubmit = () => {
-    if (composerTab === 'whatsapp') return handleSendWhatsAppMessage();
-    if (composerTab === 'call')     return handleLogCall();
-    // 'note' flui pelo saveInteraction. 'status' (Mudar fase) tem o PhaseChanger
-    // com seus próprios botões; 'schedule' é tratado pelo ScheduleWizard.
-    return saveInteraction();
-  };
-
-  const composerSubmitLabel =
-    composerTab === 'whatsapp' ? 'Enviar' : 'Salvar';
-
-  const resetComposer = () => {
-    setNote('');
+  // O ProfileComposer manda o modo e o texto; cada modo cai no seu gravador.
+  const submitComposerText = (mode, text) => {
+    if (mode === 'whatsapp') return handleSendWhatsAppMessage(text);
+    if (mode === 'call') return handleLogCall(text);
+    return saveInteraction(text);
   };
 
   // ----- Derived computations -----
@@ -784,6 +795,8 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   const interactionsWithClass = originLastOnTies(
     (interactions || []).map(i => ({ ...i, _kind: classifyInteraction(i) }))
   );
+  // O último registro de texto, que o compositor mostra ao abrir.
+  const lastText = lastRecordOf(interactionsWithClass);
 
   // Origem de cada mudança de fase, reconstruída da transição anterior: a origem
   // de uma transição é o destino da transição imediatamente anterior (em ordem
@@ -866,118 +879,6 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   const currentContract = leadContracts.find(c => c.id === lead.currentContractId) || null;
 
   // ----- Render helpers -----
-  const renderComposer = () => (
-    <section className="rounded-2xl border border-border bg-card shadow-card">
-      {/* Tabs */}
-      <div className="px-4 pt-3 flex items-center gap-1 border-b border-slate-100 dark:border-white/[0.05] overflow-x-auto overscroll-x-contain thin-scroll">
-        {[
-          { id: 'note',     label: 'Anotação',   icon: <MessageCircle size={13} /> },
-          { id: 'whatsapp', label: 'WhatsApp',   icon: <MessageCircle size={13} /> },
-          { id: 'call',     label: 'Ligação',    icon: <Phone size={13} /> },
-          // Mudar fase fica fora de quem não muda fase (o professor).
-          ...(canMudarFase ? [{ id: 'status', label: 'Mudar fase', icon: <RefreshCw size={13} /> }] : []),
-          { id: 'schedule', label: 'Agendar',    icon: <Calendar size={13} /> }
-        ].map(t => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setComposerTab(t.id)}
-            className={cn(
-              'inline-flex items-center gap-1.5 h-9 px-3 text-[12.5px] font-medium rounded-t-md transition border-b-2 -mb-px whitespace-nowrap',
-              composerTab === t.id
-                ? 'text-slate-900 dark:text-white border-brand-600'
-                : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 border-transparent'
-            )}
-          >
-            {t.icon}{t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Body */}
-      <div className="p-4">
-        <div className="flex gap-3">
-          <Avatar name={appUser?.name || 'Você'} size={32} />
-          <div className="flex-1 min-w-0 space-y-3">
-
-            {composerTab === 'note' && (
-              <textarea
-                value={note}
-                onChange={e => setNote(e.target.value)}
-                placeholder="O que rolou nessa conversa? Detalhes que vão te ajudar no próximo contato..."
-                rows={3}
-                className="w-full rounded-lg bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[13px] p-3 placeholder:text-slate-400 transition resize-none"
-              />
-            )}
-
-            {composerTab === 'whatsapp' && (
-              <textarea
-                value={note}
-                onChange={e => setNote(e.target.value)}
-                placeholder={`Mensagem para ${contact.viaGuardian ? contactFirstName(contact.name) : firstName}...`}
-                rows={3}
-                className="w-full rounded-lg bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[13px] p-3 placeholder:text-slate-400 transition resize-none"
-              />
-            )}
-
-            {composerTab === 'call' && (
-              <textarea
-                value={note}
-                onChange={e => setNote(e.target.value)}
-                placeholder="Resumo da ligação, próximos passos..."
-                rows={3}
-                className="w-full rounded-lg bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[13px] p-3 placeholder:text-slate-400 transition resize-none"
-              />
-            )}
-
-            {composerTab === 'status' && canMudarFase && (
-              <>
-                {/* Cliente: só o funil Upgrade. O aviso vem ANTES para a pessoa
-                    não montar a mudança inteira e descobrir no confirmar. */}
-                {isClient && (
-                  <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12.5px] leading-[1.45] text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
-                    <FileText size={14} className="mt-0.5 shrink-0" />
-                    <div>
-                      <span className="font-semibold">{firstName} é cliente e não volta a ser lead.</span>{' '}
-                      {upgradeFunnel
-                        ? 'Aqui você coloca o cliente no funil Upgrade ou muda a etapa dele lá. A matrícula e o contrato ficam na '
-                        : 'O funil Upgrade ainda não foi criado nesta academia: ele nasce quando um gestor abre o app. A matrícula e o contrato ficam na '}
-                      <button type="button" onClick={() => onTab('contratos')} className="font-semibold underline underline-offset-2">aba Contratos</button>.
-                    </div>
-                  </div>
-                )}
-                <PhaseChanger
-                  lead={phaseChangerLead}
-                  db={db}
-                  funnels={phaseChangerFunnels}
-                  statuses={statuses}
-                  onConfirm={handlePhaseConfirm}
-                  onCancel={() => setComposerTab('note')}
-                />
-              </>
-            )}
-
-            {composerTab === 'schedule' && (
-              <ScheduleWizard onConfirm={handleWizardConfirm} onCancel={resetComposer} submitting={loading}
-                usersList={activeUsers} leadOwnerName={lead.consultantName || null}
-                leadOwnerId={lead.consultantId || null} />
-            )}
-
-            {composerTab !== 'schedule' && composerTab !== 'status' && (
-              <div className="flex items-center gap-1.5 pt-1">
-                <div className="flex-1"></div>
-                <Btn kind="soft" onClick={resetComposer} disabled={loading}>Cancelar</Btn>
-                <Btn kind="brand" icon={<Check size={13} />} onClick={handleComposerSubmit} disabled={loading}>
-                  {composerSubmitLabel}
-                </Btn>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-
   // Chip de etapa da linha do tempo. A tinta sai do `hex` do tom (12% no fundo,
   // 30% na borda do destino) e o TEXTO nunca usa o passo 500 — só o 700/300,
   // senão 11px sobre fundo claro reprova AA (âmbar dá 2.15:1).
@@ -1605,7 +1506,57 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
             edit={contextEdit}
             setEdit={setContextEdit}
           />
-          {renderComposer()}
+          <ProfileComposer
+            open={composerOpen}
+            mode={composerMode}
+            onOpen={openComposer}
+            onClose={closeComposer}
+            drafts={composerDrafts}
+            onDrafts={setComposerDrafts}
+            appUser={appUser}
+            firstName={firstName}
+            whatsappName={contact.viaGuardian ? contactFirstName(contact.name) : null}
+            lastText={lastText}
+            canMudarFase={canMudarFase}
+            loading={loading}
+            onSubmitText={submitComposerText}
+            renderStatus={() => (
+              <>
+                {/* Cliente: só o funil Upgrade. O aviso vem ANTES para a pessoa
+                    não montar a mudança inteira e descobrir no confirmar. */}
+                {isClient && (
+                  <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12.5px] leading-[1.45] text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
+                    <FileText size={14} className="mt-0.5 shrink-0" />
+                    <div>
+                      <span className="font-semibold">{firstName} é cliente e não volta a ser lead.</span>{' '}
+                      {upgradeFunnel
+                        ? 'Aqui você coloca o cliente no funil Upgrade ou muda a etapa dele lá. A matrícula e o contrato ficam na '
+                        : 'O funil Upgrade ainda não foi criado nesta academia: ele nasce quando um gestor abre o app. A matrícula e o contrato ficam na '}
+                      <button type="button" onClick={() => onTab('contratos')} className="font-semibold underline underline-offset-2">aba Contratos</button>.
+                    </div>
+                  </div>
+                )}
+                <PhaseChanger
+                  lead={phaseChangerLead}
+                  db={db}
+                  funnels={phaseChangerFunnels}
+                  statuses={statuses}
+                  onConfirm={handlePhaseConfirm}
+                  onCancel={closeComposer}
+                />
+              </>
+            )}
+            renderSchedule={() => (
+              <ScheduleWizard
+                onConfirm={handleWizardConfirm}
+                onCancel={closeComposer}
+                submitting={loading}
+                usersList={activeUsers}
+                leadOwnerName={lead.consultantName || null}
+                leadOwnerId={lead.consultantId || null}
+              />
+            )}
+          />
          {/* O registro vive dentro de um card branco: a barra de controles fica
              no topo, separada por uma régua que atravessa o card inteiro. */}
          <section className="rounded-2xl border border-border bg-card shadow-card overflow-hidden">
