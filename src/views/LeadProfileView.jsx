@@ -1412,6 +1412,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
             <UpNextList
               items={upNext}
               canOutcome={canMudarFase && !isReadOnly}
+              loading={loading}
               savingId={savingOutcomeId}
               onReschedule={canTimeline ? handleReschedule : null}
               onOutcome={handleOutcome}

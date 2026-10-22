@@ -11,6 +11,8 @@ import { OutcomePopover } from '../dailygoal/OutcomePopover.jsx';
 //   onOutcome(item, choice)  Marcar desfecho ('attended' ou 'no_show'), só no
 //                            item com canOutcome (só o de hoje) e quando a
 //                            prop canOutcome, a permissão de mudar fase, deixa.
+// Com a ficha gravando (loading) ou um desfecho em gravação (savingId), as duas
+// ações ficam desligadas, como os modos do compositor.
 const KIND = {
   class: { tone: 'teal', Icon: BookOpen },
   visit: { tone: 'violet', Icon: Building2 },
@@ -21,8 +23,9 @@ const dm = (d) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digi
 const hm = (d) => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 const weekday = (d) => d.toLocaleDateString('pt-BR', { weekday: 'long' });
 
-export function UpNextList({ items, canOutcome = false, savingId = null, onReschedule = null, onOutcome = null }) {
+export function UpNextList({ items, canOutcome = false, loading = false, savingId = null, onReschedule = null, onOutcome = null }) {
   if (!items || items.length === 0) return null;
+  const busy = loading || Boolean(savingId);
   return (
     <section aria-label="A seguir" className="px-8 pb-1 pt-4">
       <header className="flex items-center gap-2 py-2">
@@ -64,8 +67,9 @@ export function UpNextList({ items, canOutcome = false, savingId = null, onResch
                     <button
                       type="button"
                       aria-label={`Remarcar: ${item.title}`}
+                      disabled={busy}
                       onClick={() => onReschedule(item)}
-                      className="inline-flex h-7 items-center rounded-lg px-2.5 text-[12px] font-semibold text-slate-700 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:anel-foco dark:text-slate-200 dark:hover:bg-white/[0.06]"
+                      className="inline-flex h-7 items-center rounded-lg px-2.5 text-[12px] font-semibold text-slate-700 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:anel-foco disabled:cursor-default disabled:opacity-60 dark:text-slate-200 dark:hover:bg-white/[0.06]"
                     >
                       Remarcar
                     </button>
@@ -74,7 +78,7 @@ export function UpNextList({ items, canOutcome = false, savingId = null, onResch
                     <OutcomePopover
                       title={item.title}
                       size="sm"
-                      saving={savingId === item.id}
+                      saving={busy}
                       onPick={(choice) => onOutcome(item, choice)}
                     />
                   )}

@@ -72,6 +72,23 @@ describe('UpNextList com ações', () => {
     expect(ids).toEqual(['attended', 'no_show']);
   });
 
+  it('com a ficha gravando, Remarcar e Marcar desfecho ficam desligados', async () => {
+    const onReschedule = vi.fn();
+    await montar({ items: [visitaHoje], canOutcome: true, onOutcome: vi.fn(), onReschedule, loading: true });
+    const remarcar = botoes('Remarcar')[0];
+    expect(remarcar.disabled).toBe(true);
+    expect(gatilho().disabled).toBe(true);
+    await clicar(remarcar);
+    expect(onReschedule).not.toHaveBeenCalled();
+  });
+
+  it('com o desfecho de um item gravando, as ações dos outros também esperam', async () => {
+    const aulaHoje = { ...visitaHoje, id: 'outro', type: 'aula_experimental', kind: 'class', title: 'Aula experimental' };
+    await montar({ items: [visitaHoje, aulaHoje], canOutcome: true, onOutcome: vi.fn(), onReschedule: vi.fn(), savingId: 'appointment' });
+    expect(botoes('Remarcar').every((b) => b.disabled)).toBe(true);
+    expect(document.body.querySelector('[aria-label="Marcar desfecho: Aula experimental"]').disabled).toBe(true);
+  });
+
   it('salvando, o botão de desfecho fica desligado', async () => {
     await montar({ items: [visitaHoje], canOutcome: true, onOutcome: vi.fn(), savingId: 'appointment' });
     expect(gatilho().disabled).toBe(true);

@@ -23,6 +23,8 @@ vi.mock('../../hooks/useLeadTimeline.js', () => ({ useLeadTimeline: () => timeli
 vi.mock('../../hooks/useReferrals.js', () => ({ useReferrals: () => ({ count: 0, items: [], loading: false, reload: () => {} }) }));
 const writeAppointmentOutcome = vi.fn(async () => ({ promoted: false, negStatusName: null }));
 vi.mock('../appointmentOutcome.js', () => ({ writeAppointmentOutcome: (...args) => writeAppointmentOutcome(...args) }));
+const logInteraction = vi.fn(async () => {});
+vi.mock('../interactions.js', () => ({ logInteraction: (...args) => logInteraction(...args) }));
 
 const { LeadProfileView } = await import('../../views/LeadProfileView.jsx');
 
@@ -155,6 +157,22 @@ describe('A seguir na ficha', () => {
     expect(agendarAberto()).toBe(true);
     expect(passos()[0].textContent).toContain('Visita');
     expect(document.activeElement.tagName).toBe('H3');
+  });
+
+  it('com o compositor gravando, Remarcar e Marcar desfecho esperam', async () => {
+    let terminar;
+    logInteraction.mockImplementationOnce(() => new Promise((r) => { terminar = r; }));
+    await montar();
+    await clicar(botao('Registrar o que aconteceu com Lucas'));
+    const caixa = document.querySelector('#composer-text');
+    const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+    await act(async () => { set.call(caixa, 'Vai pensar'); caixa.dispatchEvent(new Event('input', { bubbles: true })); });
+    await clicar(botao('Registrar anotação'));
+    expect(botao('Remarcar').disabled).toBe(true);
+    expect(gatilho().disabled).toBe(true);
+    await act(async () => { terminar(); });
+    expect(botao('Remarcar').disabled).toBe(false);
+    expect(gatilho().disabled).toBe(false);
   });
 
   it('se a gravação falha, avisa e o Agendar não abre', async () => {
