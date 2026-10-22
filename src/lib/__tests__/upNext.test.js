@@ -20,7 +20,7 @@ describe('upNextOf', () => {
       nextFollowUp: D(10, 21, 19), nextFollowUpType: 'Visita', nextFollowUpNote: 'Trazer documento'
     };
     const [item] = upNextOf(lead, AGORA);
-    expect(item).toMatchObject({ id: 'appointment', type: 'visita', kind: 'visit', title: 'Visita', overdue: false, canOutcome: true });
+    expect(item).toMatchObject({ id: 'appointment', type: 'visita', kind: 'visit', title: 'Visita', overdue: false, canOutcome: false });
     expect(item.detail).toBe('Unidade Centro · Trazer documento');
     expect(item.when).toEqual(D(10, 21, 19));
   });
@@ -147,6 +147,23 @@ describe('upNextOf', () => {
   it('contato que já passou leva atrasado', () => {
     const [item] = upNextOf({ nextFollowUp: D(10, 15, 18), nextFollowUpType: 'Ligação' }, AGORA);
     expect(item).toMatchObject({ id: 'contact', overdue: true });
+  });
+
+  // A Meta Diária também só marca o desfecho do compromisso de hoje e do que já
+  // passou. O que passou só aparece enquanto é o eco do próximo contato.
+  it('o desfecho só pode ser marcado para compromisso de hoje ou já vencido', () => {
+    const base = { appointmentType: 'visita', appointmentUnit: 'Centro' };
+    const hoje = upNextOf({ ...base, appointmentScheduledFor: D(10, 16, 19) }, AGORA)[0];
+    const passado = upNextOf({ ...base, appointmentScheduledFor: D(10, 15, 19), nextFollowUp: D(10, 15, 19), nextFollowUpType: 'Visita' }, AGORA)[0];
+    const amanha = upNextOf({ ...base, appointmentScheduledFor: D(10, 17, 9) }, AGORA)[0];
+    expect(hoje.canOutcome).toBe(true);
+    expect(passado.canOutcome).toBe(true);
+    expect(amanha.canOutcome).toBe(false);
+  });
+
+  it('o próximo contato nunca tem desfecho', () => {
+    const [item] = upNextOf({ nextFollowUp: D(10, 16, 18), nextFollowUpType: 'Ligação' }, AGORA);
+    expect(item.canOutcome).toBe(false);
   });
 });
 
