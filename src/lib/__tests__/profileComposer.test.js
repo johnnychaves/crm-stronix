@@ -186,11 +186,20 @@ describe('ProfileComposer aberto, modos de texto', () => {
     expect(caixa().value).toBe('Segunda');
   });
 
-  it('mostra o último registro, sem o link do histórico', async () => {
+  it('mostra o último registro, e só tem o link do histórico quando a ficha o liga', async () => {
     await montar({ lastText: { id: 'a', label: 'Anotação', date: new Date(2026, 9, 14, 10), text: 'Pediu para ligar depois.' } });
     await abrir();
     expect(document.body.textContent).toContain('Anotação, 14/10');
     expect(document.body.textContent).toContain('Pediu para ligar depois.');
+    expect(botao('Ver no histórico')).toBeNull();
+  });
+
+  it('Ver no histórico chama onGoto com o id do registro', async () => {
+    const onGoto = vi.fn();
+    await montar({ lastText: { id: 'a', label: 'Anotação', date: new Date(2026, 9, 14, 10), text: 'Oi.' }, onGoto });
+    await abrir();
+    await clicar(botao('Ver no histórico'));
+    expect(onGoto).toHaveBeenCalledWith('a');
   });
 });
 
