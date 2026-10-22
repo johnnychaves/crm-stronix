@@ -4,6 +4,7 @@ import {
   readClientRegistration,
   buildClientRegistrationPatch,
   computeCompleteness,
+  COMPLETENESS_ITEMS,
   ownerChangeFor,
   ownerChangeNote,
   registrationGuardianIssue,
@@ -306,5 +307,42 @@ describe('responsável do menor na edição', () => {
   it('validação: WhatsApp do aluno igual ao do responsável não passa', () => {
     const f = { ...readClientRegistration(menor(), HOJE), whatsapp: '(11) 9 1234-5678' };
     expect(registrationGuardianIssue(f, HOJE)).toBe('Esse é o telefone do responsável. Se o aluno não tem WhatsApp próprio, deixe em branco.');
+  });
+});
+
+describe('COMPLETENESS_ITEMS', () => {
+  it('são as onze conferências do medidor, na ordem de sempre', () => {
+    expect(COMPLETENESS_ITEMS.map((i) => i.id)).toEqual([
+      'name', 'whatsapp', 'cpf', 'rg', 'birthDate', 'sexo', 'email',
+      'address', 'emergency', 'maritalStatus', 'profession',
+    ]);
+  });
+
+  it('só as nove que se completam depois têm rótulo, seção e campo', () => {
+    const comRotulo = COMPLETENESS_ITEMS.filter((i) => i.label);
+    expect(comRotulo.map((i) => i.id)).toEqual([
+      'cpf', 'rg', 'birthDate', 'sexo', 'email', 'address', 'emergency', 'maritalStatus', 'profession',
+    ]);
+    comRotulo.forEach((i) => {
+      expect(i.section, i.id).toBeTruthy();
+      expect(i.field, i.id).toBeTruthy();
+    });
+    expect(COMPLETENESS_ITEMS.find((i) => i.id === 'name').label).toBeUndefined();
+    expect(COMPLETENESS_ITEMS.find((i) => i.id === 'whatsapp').label).toBeUndefined();
+  });
+
+  it('endereço pede rua, número e cidade; emergência pede nome e telefone', () => {
+    const endereco = COMPLETENESS_ITEMS.find((i) => i.id === 'address');
+    const emergencia = COMPLETENESS_ITEMS.find((i) => i.id === 'emergency');
+    expect(endereco.ok({ street: 'Rua A', number: '10' })).toBe(false);
+    expect(endereco.ok({ street: 'Rua A', number: '10', city: 'Porto Alegre' })).toBe(true);
+    expect(emergencia.ok({ emgName: 'Rafael' })).toBe(false);
+    expect(emergencia.ok({ emgName: 'Rafael', emgPhone: '(51) 9 8811-2200' })).toBe(true);
+  });
+
+  it('a porcentagem continua a mesma conta', () => {
+    expect(computeCompleteness({})).toBe(0);
+    expect(computeCompleteness(baseForm())).toBe(100);
+    expect(computeCompleteness({ ...baseForm(), rg: '', sexo: '', maritalStatus: '' })).toBe(73);
   });
 });
