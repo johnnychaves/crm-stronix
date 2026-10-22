@@ -148,7 +148,8 @@ export const WIKI_ARTICLES = [
       { t: 'p', text: 'Clicar em qualquer card, resultado de busca ou linha de lista abre a ficha. Ela é o histórico completo daquela pessoa com a academia.' },
 
       { t: 'h', text: 'O cabeçalho' },
-      { t: 'p', text: 'O topo responde quatro perguntas de uma vez: em que estado a pessoa está, qual o contato, quem é o consultor responsável e qual o próximo passo agendado. Ao lado do nome ficam as ações de WhatsApp, ligar e, para cliente, o link de indicação.' },
+      { t: 'p', text: 'Embaixo do nome, uma faixa responde quatro perguntas de uma vez: qual o próximo passo, em que etapa o lead está (ou, para aluno, quanto falta do contrato), qual o contato e quem é a equipe, o consultor e o professor. Clicar no próximo passo leva até ele na Linha do tempo.' },
+      { t: 'p', text: 'Ao lado do nome ficam o WhatsApp, o Ligar, o Marcar venda (no lead) e, para aluno, o botão Indicações, com quantas pessoas ele já indicou. Marcar perda e excluir ficam no botão de três pontinhos, Mais ações. Ao rolar a ficha, uma barra fina com o nome, o WhatsApp e o Ligar fica presa no alto.' },
 
       { t: 'h', text: 'As abas' },
       { t: 'demo', name: 'ficha', caption: 'A aba Indicações aparece só para alunos.' },
@@ -375,7 +376,7 @@ export const WIKI_ARTICLES = [
       { t: 'p', text: 'Quando o aluno passa vários nomes de uma vez, é mais rápido pela ficha dele:' },
       { t: 'steps', items: [
         'Abra a ficha do aluno que indicou.',
-        'Clique em Indicar, no cabeçalho, e escolha Cadastrar indicação. A aba Indicações tem o mesmo botão.',
+        'Clique em Indicações, no cabeçalho, e escolha Cadastrar indicação. A aba Indicações tem o mesmo botão.',
         'Preencha nome e WhatsApp. Modalidade e dor são opcionais.',
         'Clique em Cadastrar. Os campos limpam para o próximo, e cada cadastrado aparece na lista embaixo.',
       ] },
@@ -411,8 +412,8 @@ export const WIKI_ARTICLES = [
       { t: 'demo', name: 'indicacao-link', caption: 'Copiar ou mandar direto no WhatsApp do aluno.' },
       { t: 'steps', items: [
         'Abra a ficha do aluno.',
-        'Clique em Indicar, no cabeçalho, ao lado do WhatsApp.',
-        'Escolha Copiar link, para mandar do seu jeito, ou Enviar pro cliente, que abre o WhatsApp dele já com a mensagem pronta.',
+        'Clique em Indicações, no cabeçalho, ao lado do Ligar.',
+        'Escolha Copiar link de indicação, para mandar do seu jeito, ou Enviar link pelo WhatsApp, que abre o WhatsApp dele já com a mensagem pronta.',
       ] },
 
       { t: 'h', text: '2. O que o amigo vê' },

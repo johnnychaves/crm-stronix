@@ -823,7 +823,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   const isInReferralFunnel = Boolean(referralFunnel && lead.funnelId === referralFunnel.id);
   const { count: referralsCount, items: referralItems, loading: referralsLoading, reload: reloadReferrals } =
     useReferrals({ db, leadId: lead.id, enabled: isClient, active: activeProfileTab === 'referrals' });
-  // Cadastro à mão de indicações (menu Indicar e aba Indicações). Só existe
+  // Cadastro à mão de indicações (botão Indicações do cabeçalho e aba Indicações). Só existe
   // com o funil Indicações e a etapa de entrada, a mesma trava do "É uma
   // indicação?" do Novo lead, e só para quem pode editar e cadastrar indicação.
   const referralEntry = referralFunnel ? getReferralEntryStage(statuses, referralFunnel.id) : null;
