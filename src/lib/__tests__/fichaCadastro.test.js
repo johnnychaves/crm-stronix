@@ -153,19 +153,11 @@ describe('caminhos do cabeçalho até o Cadastro', () => {
     expect(botoes('Editar cadastro')).toEqual([]);
   });
 
-  it('o "Adicionar etiqueta" leva à Linha do tempo e rola até o Contexto comercial', async () => {
-    const rolou = vi.fn();
-    const antes = Element.prototype.scrollIntoView;
-    Element.prototype.scrollIntoView = function scrollIntoView() { rolou(this); };
-    try {
-      await montar({ aba: 'cadastro' });
-      await clicar(botoes('Adicionar etiqueta')[0]);
-      expect(abaAtual).toBe('timeline');
-      await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
-      expect(rolou).toHaveBeenCalledWith(document.getElementById('ficha-contexto'));
-    } finally {
-      Element.prototype.scrollIntoView = antes;
-    }
+  // O "Adicionar etiqueta" saiu do cabeçalho (pedido do Johnny, 22/10/2026):
+  // as etiquetas se editam no Contexto comercial da Linha do tempo.
+  it('o cabeçalho não tem o "Adicionar etiqueta"', async () => {
+    await montar();
+    expect(botoes('Adicionar etiqueta')).toEqual([]);
   });
 });
 

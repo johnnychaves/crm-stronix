@@ -94,13 +94,15 @@ describe('ficha do professor: compositor da Linha do tempo', () => {
 describe('ficha do professor: cabeçalho', () => {
   // O que cada opção dos menus mostra é dos testes de cada menu: fechado, o
   // conteúdo dele não existe no HTML.
-  const BOTOES = ['title="Alterar foto"', 'aria-label="Mais ações"', 'Adicionar etiqueta'];
+  const BOTOES = ['title="Alterar foto"', 'aria-label="Mais ações"'];
 
-  it('no cliente, o gestor tem foto, etiqueta, Indicações e Mais ações, sem o lápis do cadastro', () => {
+  it('no cliente, o gestor tem foto, Indicações e Mais ações, sem o lápis do cadastro nem o "Adicionar etiqueta"', () => {
     const html = ficha({ lead: cliente(start), tab: 'timeline', appUser: GESTOR, contratos: [start] });
     BOTOES.forEach((b) => expect(html).toContain(b));
     // O lápis ao lado do nome saiu: o caminho é a aba Cadastro.
     expect(html).not.toContain('title="Editar cadastro"');
+    // As etiquetas se editam no Contexto comercial (pedido do Johnny, 22/10/2026).
+    expect(html).not.toContain('Adicionar etiqueta');
     // Em node a contagem não chega (null): o botão e a aba ficam sem número.
     expect(html).toContain('aria-label="Indicações"');
     expect(html).toMatch(/-trigger-referrals"[^>]*>(?:(?!<\/button>).)*Indicações<\/button>/);

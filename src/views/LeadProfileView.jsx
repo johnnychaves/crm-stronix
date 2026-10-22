@@ -74,7 +74,7 @@ import {
   originLastOnTies,
   isAppointmentReschedule
 } from '../lib/timeline.js';
-import { ArrowLeft, Clock, FileText, Handshake, IdCard, MessageCircle, Pencil, Phone, Plus, RotateCcw, Search, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Clock, FileText, Handshake, IdCard, MessageCircle, Pencil, Phone, RotateCcw, Search, TrendingUp } from 'lucide-react';
 
 // Chip de contagem ao lado do label da aba (Linha do tempo / Contratos).
 function TabCount({ n, active }) {
@@ -590,13 +590,6 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     onTab('cadastro');
   };
 
-  // O "Adicionar etiqueta" do cabeçalho: as etiquetas se editam no Contexto
-  // comercial, na Linha do tempo.
-  const goToContext = () => {
-    onTab('timeline');
-    setTimeout(() => document.getElementById('ficha-contexto')?.scrollIntoView?.({ block: 'center' }), 0);
-  };
-
   // Grava uma seção do Cadastro (lib/cadastroWrites.js), só com as chaves dela.
   // A trava é a do cadastro, a mesma do Contexto comercial. Devolve false quando
   // não gravou, e a seção continua aberta com o que foi digitado.
@@ -1094,16 +1087,9 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                   </span>
                 )}
               </div>
-              {/* etiquetas e indicação. A etapa do lead mora na faixa de baixo. */}
-              <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                {(lead.tags || []).length === 0 && canEditCadastro && (
-                  <button
-                    onClick={goToContext}
-                    className="inline-flex items-center gap-1 text-[11.5px] font-medium text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 px-2 py-1 rounded-md border border-dashed border-slate-300 dark:border-white/15 transition"
-                  >
-                    <Plus size={11} /> Adicionar etiqueta
-                  </button>
-                )}
+              {/* etiquetas (só leitura: editar é no Contexto comercial) e indicação.
+                  A etapa do lead mora na faixa de baixo. */}
+              <div className="mt-3 flex flex-wrap items-center gap-1.5 empty:hidden">
                 {(lead.tags || []).map(tName => (
                   <TagBadge key={tName} tagName={tName} tagsArray={tags} />
                 ))}
