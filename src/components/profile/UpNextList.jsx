@@ -9,7 +9,7 @@ import { OutcomePopover } from '../dailygoal/OutcomePopover.jsx';
 // As ações são opcionais: sem a função, o botão não existe.
 //   onReschedule(item)       Remarcar: a ficha abre o Agendar no tipo do item.
 //   onOutcome(item, choice)  Marcar desfecho ('attended' ou 'no_show'), só no
-//                            item com canOutcome (hoje ou vencido) e quando a
+//                            item com canOutcome (só o de hoje) e quando a
 //                            prop canOutcome, a permissão de mudar fase, deixa.
 const KIND = {
   class: { tone: 'teal', Icon: BookOpen },

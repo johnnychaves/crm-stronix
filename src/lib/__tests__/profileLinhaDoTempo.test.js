@@ -117,6 +117,14 @@ describe('Linha do tempo sem a aba CRM', () => {
     expect(html).not.toContain('aria-label="Marcar desfecho');
   });
 
+  it('visita de anteontem sem desfecho só tem Remarcar, como na Agenda de hoje', () => {
+    const anteontem = D(2026, 10, 14, 19);
+    const html = ficha({ lead: { ...hoje, appointmentScheduledFor: anteontem, nextFollowUp: anteontem }, appUser: GESTOR });
+    expect(html).toContain('aria-label="A seguir"');
+    expect(html).toContain('>Remarcar<');
+    expect(html).not.toContain('aria-label="Marcar desfecho');
+  });
+
   it('o professor remarca, mas não marca desfecho', () => {
     const html = ficha({ lead: hoje, appUser: PROFESSOR });
     expect(html).toContain('>Remarcar<');

@@ -888,14 +888,16 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     openScheduleFor(item);
   };
 
-  // Marcar desfecho: o gravador da Meta Diária (writeAppointmentOutcome), com a
-  // regra da Agenda de hoje (outcomeOptionsFor). O Compareceu pode levar o lead
+  // Marcar desfecho, só na visita e na aula de hoje: o gravador da Meta Diária
+  // (writeAppointmentOutcome), com a regra da Agenda de hoje (outcomeOptionsFor). O Compareceu pode levar o lead
   // para Negociação, então a trava é a de mudar fase. Quem não veio precisa de
   // data nova: o Agendar abre na hora, no mesmo tipo, como na Meta Diária.
   const handleOutcome = async (item, choice) => {
     if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
     if (!canMudarFase) { negarAcesso(); return; }
-    if (savingOutcomeId || (choice !== 'attended' && choice !== 'no_show')) return;
+    // Só o compromisso de hoje tem desfecho (canOutcome, do upNextOf): a trava
+    // vale aqui também, e não só no botão.
+    if (savingOutcomeId || !item?.canOutcome || (choice !== 'attended' && choice !== 'no_show')) return;
     const options = outcomeOptionsFor(item, { lead, interactions });
     if (!options) return;
     // O balão fecha e o botão dele fica desligado, e depois o item sai do A

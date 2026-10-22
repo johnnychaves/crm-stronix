@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // As ações do "A seguir" da ficha: Remarcar em todo item e Marcar desfecho só
-// no compromisso de hoje ou vencido, para quem muda fase.
+// no compromisso de hoje, para quem muda fase.
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { createElement as h, act } from 'react';
 import { createRoot } from 'react-dom/client';

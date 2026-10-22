@@ -57,9 +57,11 @@ function appointmentItem(lead, type, when, now, today) {
     detail: join([...(isAula ? aula : visita), taskOf(lead.appointmentOwnerName, when, today), note]),
     when,
     overdue: when.getTime() < now.getTime(),
-    // Desfecho de um compromisso que ainda não chegou não existe: a Meta Diária
-    // também só marca o de hoje e o que já passou.
-    canOutcome: when.getTime() <= endOfDay(now).getTime()
+    // O desfecho só se marca no compromisso de hoje, do começo ao fim do dia
+    // local: a Meta só cria Visitas e Aulas exp. de hoje, e a Agenda de hoje
+    // exige o mesmo dia (isSameLocalDay). O de dias atrás e o de dias à frente
+    // ficam só com o Remarcar.
+    canOutcome: when.getTime() >= today.getTime() && when.getTime() <= endOfDay(now).getTime()
   };
 }
 

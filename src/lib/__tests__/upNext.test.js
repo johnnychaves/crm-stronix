@@ -149,15 +149,22 @@ describe('upNextOf', () => {
     expect(item).toMatchObject({ id: 'contact', overdue: true });
   });
 
-  // A Meta Diária também só marca o desfecho do compromisso de hoje e do que já
-  // passou. O que passou só aparece enquanto é o eco do próximo contato.
-  it('o desfecho só pode ser marcado para compromisso de hoje ou já vencido', () => {
+  // Paridade com a Agenda de hoje (isSameLocalDay): a Meta só cria Visitas e
+  // Aulas exp. de hoje, então o desfecho só é marcado no compromisso de hoje,
+  // do começo ao fim do dia local. O que passou (que só aparece enquanto é o
+  // eco do próximo contato) e o que ainda vai chegar ficam só com o Remarcar.
+  it('o desfecho só pode ser marcado para compromisso de hoje', () => {
     const base = { appointmentType: 'visita', appointmentUnit: 'Centro' };
+    const eco = (d) => ({ ...base, appointmentScheduledFor: d, nextFollowUp: d, nextFollowUpType: 'Visita' });
+    const cedo = upNextOf({ ...base, appointmentScheduledFor: D(10, 16, 7) }, AGORA)[0];
     const hoje = upNextOf({ ...base, appointmentScheduledFor: D(10, 16, 19) }, AGORA)[0];
-    const passado = upNextOf({ ...base, appointmentScheduledFor: D(10, 15, 19), nextFollowUp: D(10, 15, 19), nextFollowUpType: 'Visita' }, AGORA)[0];
-    const amanha = upNextOf({ ...base, appointmentScheduledFor: D(10, 17, 9) }, AGORA)[0];
+    const ontem = upNextOf(eco(D(10, 15, 19)), AGORA)[0];
+    const anteontem = upNextOf(eco(D(10, 14, 23, 59)), AGORA)[0];
+    const amanha = upNextOf({ ...base, appointmentScheduledFor: D(10, 17, 0, 0) }, AGORA)[0];
+    expect(cedo.canOutcome).toBe(true);
     expect(hoje.canOutcome).toBe(true);
-    expect(passado.canOutcome).toBe(true);
+    expect(ontem.canOutcome).toBe(false);
+    expect(anteontem).toMatchObject({ overdue: true, canOutcome: false });
     expect(amanha.canOutcome).toBe(false);
   });
 
