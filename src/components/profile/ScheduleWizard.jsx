@@ -1,19 +1,18 @@
 import { useState, useMemo } from 'react';
-import { BookOpen, Building2, Calendar, Check, Clock, Dumbbell, GraduationCap, MessageCircle, Phone, RefreshCw, UserRound } from 'lucide-react';
+import { BookOpen, Building2, Calendar, Check, Clock, Dumbbell, GraduationCap, MessageCircle, Phone, UserRound } from 'lucide-react';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 import { SOLO_TRAINING, SOLO_TRAINING_LABEL, professorsForModality, professorNameById } from '../../lib/professores.js';
 import { Btn } from '../ui/Btn.jsx';
 import { cn } from '@/lib/utils';
+import { WizardFrame, WizardStepper, StageHead, WizardSummary, WizardProgress, WizardNote } from './WizardLayout.jsx';
 
-// ScheduleWizard — porte fiel (classe por classe) do protótipo
-// design_handoff_perfil_cadastro/prototype/wizard.jsx. Espelha o markup exato do
-// wizard passo-a-passo (tipos Mensagem/Ligação/Visita/Aula; passos liberados em
-// sequência; resumo lateral; barra de progresso; quick slots; confirmar só quando
-// completo). Diferenças obrigatórias vs. o protótipo: ícones do lucide-react no
-// lugar dos globais window['I*']; modalidades/unidades/qtde de aulas vêm das
-// Config Gerais (useGeneralConfig) no lugar dos arrays hardcoded; o passo do meio
-// da aula é "quantidade" (trialClassOptions) renderizado igual ao freepass do
-// protótipo; token azul brand-500 do protótipo → brand-600 no app.
+// ScheduleWizard: o Agendar da ficha. Tipos Mensagem, Ligação, Visita e Aula,
+// passos liberados em sequência, confirmar só quando completo. Desenho A2
+// (WizardLayout): os passos numa linha numerada no topo, só o passo atual
+// embaixo e, à direita, o resumo, o progresso, a anotação e os botões, com
+// altura mínima fixa. Modalidades, unidades e quantidade de aulas vêm das
+// Configurações (useGeneralConfig). `initialTypeId` abre já com o tipo
+// escolhido.
 //
 // CONTRATO: onConfirm devolve { typeId, typeLabel, date, modalidade, professorId,
 // soloTraining, quantidade, unidade, note, contactOwnerId, contactOwnerName } —
@@ -142,13 +141,6 @@ const WzPill = ({ label, hint, selected, color = 'brand', badge, onClick, index 
   );
 };
 
-const WzStepDot = ({ state, n, color = 'brand' }) => {
-  const t = WZ_TONES[color] || WZ_TONES.brand;
-  if (state === 'done') return <span className={cn('w-7 h-7 rounded-full grid place-items-center text-white shrink-0 check-pop', t.strong)}><Check size={14}/></span>;
-  if (state === 'active') return <span className={cn('w-7 h-7 rounded-full grid place-items-center bg-white dark:bg-ink-900 ring-2 text-[12px] font-bold num shrink-0', t.ring, t.darkRing, t.text, t.darkText)}>{n}</span>;
-  return <span className="w-7 h-7 rounded-full grid place-items-center bg-slate-100 dark:bg-white/[0.05] text-slate-400 dark:text-slate-500 text-[12px] font-bold num shrink-0">{n}</span>;
-};
-
 const WzStepBody = ({ stepId, values, set, color, modalities, units, qtyOptions, professores, ownerOptions, leadOwnerName }) => {
   // Dias da Meta Diária (ex.: [1,2,3,4,5] = seg–sex) filtram os cards rápidos de dia.
   const { metaWeekdays } = useGeneralConfig();
@@ -240,7 +232,7 @@ const WzStepBody = ({ stepId, values, set, color, modalities, units, qtyOptions,
       return (
         <div className="space-y-3">
           <div>
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Dia e horário</div>
+            <div className="mb-2 text-[12.5px] text-muted-foreground">Dia e horário</div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {days.map((o, i) => {
                 const time = slotFor(o.off);
@@ -286,7 +278,7 @@ const WzStepBody = ({ stepId, values, set, color, modalities, units, qtyOptions,
             </div>
           </div>
           <div>
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Ou escolha manualmente</div>
+            <div className="mb-2 text-[12.5px] text-muted-foreground">Ou escolha manualmente</div>
             <div className="relative">
               <Calendar size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"/>
               <input type="datetime-local" value={selectedISO}
@@ -318,51 +310,9 @@ function wzSummary(stepId, values, professores, ownerOptions) {
   }
 }
 
-const WzStepRow = ({ stepId, n, state, color, values, set, onEdit, isLast, modalities, units, qtyOptions, professores, ownerOptions, leadOwnerName }) => {
-  const info = WZ_STEP_INFO[stepId]; const t = WZ_TONES[color] || WZ_TONES.brand; const summary = wzSummary(stepId, values, professores, ownerOptions);
-  // 'datahora' é o último passo e nunca colapsa: o resumo já vive no rail lateral,
-  // então mantemos o corpo (cards de dia + calendário) sempre aberto p/ o usuário
-  // revisar/ajustar o horário. A finalização é só pelo botão "Confirmar".
-  const alwaysOpen = stepId === 'datahora';
-  // O dot acompanha: passo aberto-fixo nunca fica "done" (sempre 'active' ou 'locked').
-  const dotState = alwaysOpen && state === 'done' ? 'active' : state;
-  return (
-    <div className="relative flex gap-3">
-      <div className="flex flex-col items-center">
-        <WzStepDot state={dotState} n={n} color={color}/>
-        {!isLast && <div className={cn('conn w-px flex-1 mt-1 mb-1', state==='done' ? t.strong : 'bg-slate-200 dark:bg-white/[0.08]')}></div>}
-      </div>
-      <div className={cn('flex-1 min-w-0', isLast ? 'pb-0' : 'pb-5')}>
-        {state === 'locked' && !alwaysOpen ? (
-          <div className="pt-0.5 opacity-50 select-none"><div className="text-[13.5px] font-semibold text-slate-400 dark:text-slate-500">{info.title}</div></div>
-        ) : state === 'done' && !alwaysOpen ? (
-          <button type="button" onClick={onEdit}
-            className="sum-in w-full text-left group rounded-xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] px-3.5 py-2.5 hover:border-slate-300 dark:hover:border-white/10 transition flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">{info.title}</div>
-              <div className={cn('text-[13.5px] font-semibold truncate mt-0.5', t.text, t.darkText)}>{summary}</div>
-            </div>
-            <span className="inline-flex items-center gap-1 text-[11.5px] font-medium text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-200 whitespace-nowrap shrink-0"><RefreshCw size={12}/> Editar</span>
-          </button>
-        ) : (
-          <div className="step-reveal pt-0.5">
-            <div className="mb-2.5">
-              <div className="text-[14px] font-semibold text-slate-900 dark:text-white">{info.title}</div>
-              {info.hint && <div className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5">{info.hint}</div>}
-            </div>
-            <WzStepBody stepId={stepId} values={values} set={set} color={color}
-              modalities={modalities} units={units} qtyOptions={qtyOptions} professores={professores}
-              ownerOptions={ownerOptions} leadOwnerName={leadOwnerName}/>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
 const WzSummaryCard = ({ type, values, complete, professores }) => {
   if (!type) return null;
-  const t = WZ_TONES[type.color] || WZ_TONES.brand; const Icon = type.Icon;
+  const t = WZ_TONES[type.color] || WZ_TONES.brand;
   const parts = [];
   if (values.modalidade) parts.push(values.modalidade);
   if (values.professor === SOLO_TRAINING) parts.push(SOLO_TRAINING_LABEL);
@@ -373,27 +323,25 @@ const WzSummaryCard = ({ type, values, complete, professores }) => {
   if (values.quantidade) parts.push(`${values.quantidade} ${values.quantidade === 1 ? 'aula' : 'aulas'}`);
   if (values.unidade) parts.push(`Unidade ${values.unidade}`);
   return (
-    <div className={cn('rounded-xl border p-3.5', complete ? cn(t.soft, t.darkSoft, 'border-transparent') : 'bg-slate-50 border-slate-200 dark:bg-white/[0.02] dark:border-white/[0.06]')}>
-      <div className="flex items-start gap-3">
-        <span className={cn('w-9 h-9 rounded-lg grid place-items-center shrink-0', complete ? cn(t.strong, 'text-white') : 'bg-white text-slate-500 dark:bg-white/[0.06] dark:text-slate-400')}><Icon size={16}/></span>
-        <div className="min-w-0 flex-1">
-          <div className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Resumo do agendamento</div>
-          <div className="text-[14px] font-semibold text-slate-900 dark:text-white mt-0.5">{type.label}</div>
-          {parts.length > 0 && <div className="text-[12px] text-slate-600 dark:text-slate-300 mt-0.5">{parts.join(' · ')}</div>}
-          {values.datahora ? (
-            <div className={cn('inline-flex items-center gap-1.5 mt-2 text-[12.5px] font-semibold', t.text, t.darkText)}><Calendar size={13}/> {wzFmtDateTime(values.datahora)}</div>
-          ) : (
-            <div className="inline-flex items-center gap-1.5 mt-2 text-[12px] text-slate-400 dark:text-slate-500"><Clock size={12}/> Falta definir dia e horário</div>
-          )}
-        </div>
-      </div>
-    </div>
+    <WizardSummary tone={t} Icon={type.Icon} label="Resumo do agendamento" title={type.label} complete={complete}>
+      {parts.length > 0 && <p className="mt-px text-[13px] text-slate-600 dark:text-slate-300">{parts.join(', ')}</p>}
+      {values.datahora ? (
+        <span className={cn('mt-2 inline-flex items-center gap-1.5 text-[13px] font-semibold', t.text, t.darkText)}>
+          <Calendar size={13} aria-hidden="true" /> {wzFmtDateTime(values.datahora)}
+        </span>
+      ) : (
+        <span className="mt-2 inline-flex items-center gap-1.5 text-[13px] text-muted-foreground">
+          <Clock size={12} aria-hidden="true" /> Falta definir dia e horário
+        </span>
+      )}
+    </WizardSummary>
   );
 };
 
-function ScheduleWizard({ onConfirm, onCancel, submitting = false, usersList = [], leadOwnerName = null, leadOwnerId = null }) {
+function ScheduleWizard({ onConfirm, onCancel, submitting = false, usersList = [], leadOwnerName = null, leadOwnerId = null, initialTypeId = null }) {
   const { modalities, trialClassOptions, units, professores } = useGeneralConfig();
-  const [typeId, setTypeId] = useState(null);
+  // O tipo pode vir escolhido (o Remarcar do A seguir abre já na visita ou na aula).
+  const [typeId, setTypeId] = useState(WZ_TYPES.some((tp) => tp.id === initialTypeId) ? initialTypeId : null);
   const [values, setValues] = useState({});
   const [editing, setEditing] = useState(null);
   const [note, setNote] = useState('');
@@ -423,7 +371,9 @@ function ScheduleWizard({ onConfirm, onCancel, submitting = false, usersList = [
     return null;
   }, [flow, values]);
 
-  const activeStep = editing || firstIncomplete;
+  // O passo aberto embaixo. O último (dia e horário) nunca fecha: com tudo
+  // preenchido ele continua aberto, para a pessoa ajustar o horário.
+  const active = !type ? 'tipo' : (editing || firstIncomplete || 'datahora');
   const complete = Boolean(type) && firstIncomplete === null;
 
   const setVal = (key, val) => {
@@ -439,17 +389,13 @@ function ScheduleWizard({ onConfirm, onCancel, submitting = false, usersList = [
   const pickType = (id) => { setTypeId(id); setValues({}); setEditing(null); };
   const resetAll = () => { setTypeId(null); setValues({}); setEditing(null); setNote(''); };
 
-  const stepState = (stepId) => {
-    if (stepId === activeStep) return 'active';
-    if (values[stepId] != null && values[stepId] !== '') return 'done';
-    const idx = flow.indexOf(stepId);
-    const firstIdx = activeStep ? flow.indexOf(activeStep) : flow.length;
-    return idx < firstIdx ? 'done' : 'locked';
-  };
-
-  const doneCount = flow.filter(s => values[s]!=null && values[s]!=='').length + 1;
-  const totalCount = flow.length + 1;
   const t = WZ_TONES[color] || WZ_TONES.brand;
+  const steps = [
+    { key: 'tipo', title: 'Tipo', value: type ? type.label : '', onEdit: () => { setTypeId(null); setValues({}); setEditing(null); } },
+    ...flow.map((k) => ({ key: k, title: WZ_STEP_INFO[k].title, value: wzSummary(k, values, professores, ownerOptions) || '', onEdit: () => setEditing(k) })),
+  ].map((s) => ({ ...s, state: s.key === active ? 'active' : s.value ? 'done' : 'locked' }));
+  const doneCount = steps.filter((s) => s.value).length;
+  const totalCount = steps.length;
 
   const handleConfirm = () => {
     if (!complete || !type) return;
@@ -475,84 +421,44 @@ function ScheduleWizard({ onConfirm, onCancel, submitting = false, usersList = [
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-5">
-      {/* stepper */}
-      <div className="min-w-0">
-        {/* step 0 - type */}
-        <div className="relative flex gap-3">
-          <div className="flex flex-col items-center">
-            <WzStepDot state={type ? 'done' : 'active'} n={1} color={color}/>
-            <div className={cn('conn w-px flex-1 mt-1 mb-1', type ? t.strong : 'bg-slate-200 dark:bg-white/[0.08]')}></div>
+    <WizardFrame
+      stepper={<WizardStepper steps={steps} label="Passos do agendamento" tone={t} />}
+      stage={active === 'tipo' ? (
+        <>
+          <StageHead title="O que você quer agendar?" hint="Escolha o tipo para liberar os próximos passos." />
+          <div className="grid grid-cols-2 gap-2">
+            {WZ_TYPES.map((tp, i) => (
+              <WzOptionCard key={tp.id} index={i} Icon={tp.Icon} label={tp.label} hint={tp.desc} color={tp.color} selected={false} onClick={() => pickType(tp.id)}/>
+            ))}
           </div>
-          <div className="flex-1 min-w-0 pb-5">
-            {type ? (
-              <button type="button" onClick={()=>{ setTypeId(null); setValues({}); setEditing(null); }}
-                className="sum-in w-full text-left group rounded-xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] px-3.5 py-2.5 hover:border-slate-300 dark:hover:border-white/10 transition flex items-center gap-3">
-                <span className={cn('w-9 h-9 rounded-lg grid place-items-center shrink-0 text-white', t.strong)}><type.Icon size={16}/></span>
-                <div className="min-w-0 flex-1">
-                  <div className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Tipo de agendamento</div>
-                  <div className={cn('text-[13.5px] font-semibold truncate', t.text, t.darkText)}>{type.label}</div>
-                </div>
-                <span className="inline-flex items-center gap-1 text-[11.5px] font-medium text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-200 whitespace-nowrap shrink-0"><RefreshCw size={12}/> Trocar</span>
-              </button>
-            ) : (
-              <div className="step-reveal pt-0.5">
-                <div className="mb-2.5">
-                  <div className="text-[14px] font-semibold text-slate-900 dark:text-white">O que você quer agendar?</div>
-                  <div className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5">Escolha o tipo para liberar os próximos passos.</div>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  {WZ_TYPES.map((tp, i) => (
-                    <WzOptionCard key={tp.id} index={i} Icon={tp.Icon} label={tp.label} hint={tp.desc} color={tp.color} selected={false} onClick={()=>pickType(tp.id)}/>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {flow.map((stepId, i) => (
-          <WzStepRow key={stepId} stepId={stepId} n={i+2} state={stepState(stepId)} color={color}
-            values={values} set={setVal} onEdit={()=>setEditing(stepId)} isLast={i === flow.length - 1}
+        </>
+      ) : (
+        <>
+          <StageHead title={WZ_STEP_INFO[active].title} hint={WZ_STEP_INFO[active].hint} />
+          <WzStepBody key={active} stepId={active} values={values} set={setVal} color={color}
             modalities={modalities} units={units} qtyOptions={qtyOptions} professores={professores}
             ownerOptions={ownerOptions} leadOwnerName={leadOwnerName}/>
-        ))}
-
-        {type && (
-          <div className="mt-5 pt-5 border-t border-slate-100 dark:border-white/[0.06] step-reveal">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Anotação (opcional)</div>
-            <textarea value={note} onChange={e=>setNote(e.target.value)} rows={2}
-              placeholder="O que precisa ser tratado nesse contato?"
-              className="w-full rounded-lg bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-slate-300 dark:focus:border-white/15 outline-none text-[13px] p-3 placeholder:text-slate-400 resize-none transition"/>
-          </div>
-        )}
-      </div>
-
-      {/* summary rail */}
-      <aside className="self-start space-y-3">
-        {type ? <WzSummaryCard type={type} values={values} complete={complete} professores={professores}/> : (
-          <div className="rounded-xl border border-dashed border-slate-300 dark:border-white/[0.1] p-5 text-center">
-            <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-white/[0.05] grid place-items-center mx-auto mb-2 text-slate-400"><Calendar size={18}/></div>
-            <p className="text-[12.5px] text-slate-500 dark:text-slate-400">Escolha o tipo de agendamento para começar.</p>
-          </div>
-        )}
-        {type && (
-          <div className="rounded-xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] p-3.5">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Progresso</span>
-              <span className="num text-[11.5px] font-semibold text-slate-700 dark:text-slate-200">{doneCount}/{totalCount}</span>
+        </>
+      )}
+      aside={(
+        <>
+          {type ? <WzSummaryCard type={type} values={values} complete={complete} professores={professores}/> : (
+            <div className="rounded-2xl border border-dashed border-border p-5 text-center">
+              <div className="mx-auto mb-2 grid size-10 place-items-center rounded-full bg-slate-100 text-slate-400 dark:bg-white/[0.05]"><Calendar size={18} aria-hidden="true"/></div>
+              <p className="text-[12.5px] text-muted-foreground">Escolha o tipo de agendamento para começar.</p>
             </div>
-            <div className="h-1.5 rounded-full bg-slate-100 dark:bg-white/[0.05] overflow-hidden">
-              <div className={cn('h-full', t.strong)} style={{ width: `${totalCount > 0 ? (doneCount/totalCount)*100 : 0}%`, transition:'width .4s' }}></div>
-            </div>
+          )}
+          {type && <WizardProgress done={doneCount} total={totalCount} tone={t} />}
+          {type && (
+            <WizardNote id="wz-note" label="Anotação (opcional)" placeholder="O que precisa ser tratado nesse contato?" value={note} onChange={setNote} />
+          )}
+          <div className="mt-auto flex flex-col gap-2">
+            <Btn kind="brand" icon={<Check size={14}/>} disabled={!complete || submitting} onClick={handleConfirm}>{submitting ? 'Salvando...' : complete ? 'Confirmar agendamento' : 'Complete os passos'}</Btn>
+            <Btn kind="soft" onClick={()=>{ resetAll(); onCancel && onCancel(); }}>Cancelar</Btn>
           </div>
-        )}
-        <div className="flex flex-col gap-2">
-          <Btn kind="brand" icon={<Check size={14}/>} disabled={!complete || submitting} onClick={handleConfirm}>{submitting ? 'Salvando...' : complete ? 'Confirmar agendamento' : 'Complete os passos'}</Btn>
-          <Btn kind="soft" onClick={()=>{ resetAll(); onCancel && onCancel(); }}>Cancelar</Btn>
-        </div>
-      </aside>
-    </div>
+        </>
+      )}
+    />
   );
 }
 
