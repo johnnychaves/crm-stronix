@@ -4,7 +4,7 @@
 // e sem SDK, e recebe os docs como chegam do Firestore (Timestamp ou Date).
 // Spec: docs/superpowers/specs/2026-09-30-contrato-em-uso-e-historico-design.md
 
-import { CONTRACT_STATUS, closedPausesOf, contractDiscountOf, isImportPause, neverTookEffect } from './contracts.js';
+import { CONTRACT_STATUS, closedPausesOf, contractDiscountOf, deriveContractStatus, isImportPause, neverTookEffect } from './contracts.js';
 import {
   CONTRACT_ORIGIN, closedPauseOf, contractEndOf, contractOriginOf, historyStatusOf, isInUseAt, runningPredecessorOf
 } from './contractHistory.js';
@@ -81,6 +81,25 @@ export function contractsTabModel({ lead, contracts, now = new Date() } = {}) {
     : hero?.status === CONTRACT_STATUS.TRANCADO ? { kind: JOIN_LOCKED, gapDays: 0, overlapDays: 0 }
       : computeSeam(contractEndOf(hero), contractStartOf(next));
   return { latest, hero, next, history, join };
+}
+
+// O destaque já com o status que o card mostra, para a aba Contratos e o
+// cabeçalho da ficha dizerem a mesma coisa. Com próximo contrato, o destaque é
+// o contrato em uso, escolhido por dia do calendário (isInUseAt): no último dia
+// dele, com o fim gravado à meia-noite, o status por instante já diz vencido,
+// mas o card continua o em uso (heroStatus ativo). O destaque que não é o
+// último contrato (o em uso, com o último cancelado) age como se tivesse
+// próximo (likeNext). `closed`: vencido ou cancelado sem próximo, o card
+// fechado (revisão final de 01/10/2026).
+export function contractHeroOf({ lead, contracts, now = new Date(), thresholdDays } = {}) {
+  const model = contractsTabModel({ lead, contracts, now });
+  const { hero, next } = model;
+  const hasContract = Boolean(hero && getSafeDateOrNull(hero.endsAt));
+  const status = hasContract ? (deriveContractStatus(hero, now, thresholdDays) || CONTRACT_STATUS.ATIVO) : null;
+  const likeNext = Boolean(next) || Boolean(hero && lead?.currentContractId && hero.id !== lead.currentContractId);
+  const closed = !likeNext && (status === CONTRACT_STATUS.VENCIDO || status === CONTRACT_STATUS.CANCELADO);
+  const heroStatus = likeNext && status === CONTRACT_STATUS.VENCIDO ? CONTRACT_STATUS.ATIVO : status;
+  return { ...model, hasContract, status, likeNext, closed, heroStatus };
 }
 
 // Outro contrato da pessoa em uso agora (isInUseAt), fora o de `excludeId`,
