@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { Ban, MoreHorizontal, Trash } from 'lucide-react';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -8,7 +9,13 @@ import {
 // tem a permissão (canLoss, canDelete), e o lead em Perda não recebe o
 // canLoss; sem nenhuma, o botão não existe. O gatilho é o DropdownMenuTrigger,
 // pelo mesmo motivo do ReferralsMenu.
+//
+// O Marcar perda abre o LossReasonModal, que ainda não é um Dialog e leva o foco
+// para a lista de motivos. Ela só abre depois de o menu fechar (a lista do menu
+// prende o foco enquanto existe), e o menu não devolve o foco ao botão nesse
+// caso, senão ele ficaria atrás do fundo escuro da janela.
 export function MoreActionsMenu({ isClient, canLoss, lossDisabled, onLoss, canDelete, onDelete }) {
+  const afterClose = useRef(null);
   if (!canLoss && !canDelete) return null;
   return (
     <DropdownMenu>
@@ -19,9 +26,18 @@ export function MoreActionsMenu({ isClient, canLoss, lossDisabled, onLoss, canDe
       >
         <MoreHorizontal size={16} aria-hidden="true" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" sideOffset={6} className="w-52 rounded-xl">
+      <DropdownMenuContent
+        align="end"
+        sideOffset={6}
+        className="w-52 rounded-xl"
+        onCloseAutoFocus={(e) => {
+          const run = afterClose.current;
+          afterClose.current = null;
+          if (run) { e.preventDefault(); run(); }
+        }}
+      >
         {canLoss && (
-          <DropdownMenuItem disabled={lossDisabled} onSelect={onLoss} className="cursor-pointer">
+          <DropdownMenuItem disabled={lossDisabled} onSelect={() => { afterClose.current = onLoss; }} className="cursor-pointer">
             <Ban className="size-4 text-slate-500 dark:text-slate-400" aria-hidden="true" /> Marcar perda
           </DropdownMenuItem>
         )}

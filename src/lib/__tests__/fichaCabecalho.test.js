@@ -142,7 +142,10 @@ describe('cabeçalho da ficha: Próximo passo', () => {
 });
 
 describe('cabeçalho da ficha: Mais ações', () => {
-  it('lead: Marcar perda abre o motivo, e o foco volta ao botão do menu, nunca ao body', async () => {
+  // O LossReasonModal ainda não é um Dialog: devolver o foco ao "Mais ações"
+  // deixava o foco atrás do fundo escuro. O menu não o devolve nesse caso, e a
+  // janela abre com o foco na lista de motivos.
+  it('lead: Marcar perda abre o motivo com o foco na lista, e não no botão do menu atrás dela', async () => {
     await montar({ appUser: CONSULTOR });
     const gatilho = porLabel('Mais ações');
     gatilho.focus();
@@ -151,6 +154,17 @@ describe('cabeçalho da ficha: Mais ações', () => {
     await clicar(item('Marcar perda'));
     await esperar();
     expect(document.body.textContent).toContain('Diga por que esse lead foi perdido.');
+    expect(document.activeElement).not.toBe(gatilho);
+    expect(document.activeElement.tagName).toBe('SELECT');
+  });
+
+  it('fechar o menu sem escolher continua devolvendo o foco ao botão', async () => {
+    await montar({ appUser: CONSULTOR });
+    const gatilho = porLabel('Mais ações');
+    gatilho.focus();
+    await tecla(gatilho, 'Enter');
+    await tecla(document.activeElement, 'Escape');
+    await esperar();
     expect(document.activeElement).toBe(gatilho);
   });
 

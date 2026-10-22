@@ -63,6 +63,8 @@ describe('MoreActionsMenu', () => {
     const props = await montar();
     await abrir();
     await act(async () => { item('Marcar perda').click(); });
+    // A janela do motivo só abre depois de o menu fechar (onCloseAutoFocus).
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
     expect(props.onLoss).toHaveBeenCalledTimes(1);
     await abrir();
     await act(async () => { item('Excluir lead').click(); });
