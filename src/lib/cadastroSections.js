@@ -46,6 +46,9 @@ const PATCH_KEYS = Object.freeze({
 
 const str = (v) => String(v ?? '').trim();
 
+// A dica do Editar e dos atalhos desligados enquanto outra seção está aberta.
+export const LOCKED_HINT = 'Salve ou cancele a seção que está aberta';
+
 export function readSectionForm(lead, sectionId, now = new Date()) {
   const keys = FORM_KEYS[sectionId];
   if (!keys) throw new Error(`Seção de cadastro desconhecida: ${sectionId}`);
