@@ -111,6 +111,23 @@ describe('shouldPromptExpired — quem entra no funil Vencidos', () => {
     expect(shouldPromptExpired(l, NOW, 15)).toBe(true);
   });
 
+  // Bug de 22/10/2026: o Compareceu apaga o eco da aula no próximo contato, e
+  // o cliente vencido voltava ao Vencidos no mesmo dia.
+  it('sai: visita ou aula de hoje, mesmo já passada a hora e sem o eco no próximo contato', () => {
+    const l = cliente({ nextFollowUp: null, appointmentType: 'aula_experimental', appointmentScheduledFor: new Date(2026, 6, 15, 8, 0, 0) });
+    expect(shouldPromptExpired(l, NOW, 15)).toBe(false);
+  });
+
+  it('sai: visita ou aula marcada para o futuro', () => {
+    const l = cliente({ nextFollowUp: null, appointmentType: 'visita', appointmentScheduledFor: new Date(2026, 6, 18, 18, 0, 0) });
+    expect(shouldPromptExpired(l, NOW, 15)).toBe(false);
+  });
+
+  it('entra: a visita ou a aula já foi ontem', () => {
+    const l = cliente({ nextFollowUp: null, appointmentType: 'aula_experimental', appointmentScheduledFor: new Date(2026, 6, 14, 18, 0, 0) });
+    expect(shouldPromptExpired(l, NOW, 15)).toBe(true);
+  });
+
   it('lead nulo não quebra', () => {
     expect(shouldPromptExpired(null, NOW, 15)).toBe(false);
   });
