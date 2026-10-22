@@ -3,7 +3,7 @@
 // Hoje é 30/09/2026, às 10h, como no mockup aprovado.
 import { describe, it, expect } from 'vitest';
 import {
-  contractFactsOf, contractTimelineOf, contractsTabModel, gapText, heroActionsOf, heroCountdownOf, inUseReplacementOf, joinTextOf,
+  contractFactsOf, contractHeroOf, contractTimelineOf, contractsTabModel, gapText, heroActionsOf, heroCountdownOf, inUseReplacementOf, joinTextOf,
   originTextOf, shortContractId, summaryContractOf
 } from '../contractsTab.js';
 import { CONTRACT_STATUS } from '../contracts.js';
@@ -494,5 +494,47 @@ describe('o trancado que a renovação alcançou volta a correr junto com ela', 
     expect(f.status).toBe(CONTRACT_STATUS.CANCELADO);
     expect(originTextOf(f.origin)).toBe('renovação');
     expect(contractFactsOf(emUso, [emUso], HOJE, 30).neverTookEffect).toBe(false);
+  });
+});
+
+// A escolha do destaque com o status do card, que a aba Contratos e o
+// cabeçalho da ficha dividem.
+describe('contractHeroOf: o destaque com o status que o card mostra', () => {
+  it('último dia do contrato em uso com a renovação marcada: vencido por instante, o card segue ativo', () => {
+    const now = new Date(2026, 9, 11, 15, 0);
+    const r = contractHeroOf({ lead: lead('k2'), contracts: [emUso, proximo], now, thresholdDays: 30 });
+    expect(r.hero.id).toBe('k1');
+    expect(r.next.id).toBe('k2');
+    expect(r.status).toBe(CONTRACT_STATUS.VENCIDO);
+    expect(r.heroStatus).toBe(CONTRACT_STATUS.ATIVO);
+    expect(r.likeNext).toBe(true);
+    expect(r.closed).toBe(false);
+  });
+
+  it('último contrato cancelado antes de começar, com outro em uso: o em uso é o destaque e age como se tivesse próximo', () => {
+    const paralelo = K('p1', { startsAt: D(2026, 3, 1), endsAt: D(2027, 3, 1), createdAt: D(2026, 3, 1) });
+    const cancelado = K('c9', { status: 'cancelado', startsAt: D(2026, 11, 1), endsAt: D(2027, 11, 1), cancelledAt: D(2026, 9, 20), createdAt: D(2026, 9, 10) });
+    const r = contractHeroOf({ lead: lead('c9'), contracts: [paralelo, cancelado], now: HOJE, thresholdDays: 30 });
+    expect(r.hero.id).toBe('p1');
+    expect(r.next).toBeNull();
+    expect(r.likeNext).toBe(true);
+    expect(r.closed).toBe(false);
+    expect(r.heroStatus).toBe(CONTRACT_STATUS.ATIVO);
+  });
+
+  it('contrato só no resumo do lead: o destaque vem do resumo', () => {
+    const resumo = lead('k7', { currentPlanName: 'Mensal', currentContractStartsAt: D(2026, 9, 1), currentContractEndsAt: D(2026, 10, 1), currentContractStatus: 'ativo' });
+    const r = contractHeroOf({ lead: resumo, contracts: [], now: HOJE, thresholdDays: 30 });
+    expect(r.hero.fromSummary).toBe(true);
+    expect(r.hasContract).toBe(true);
+    expect(r.status).toBe(CONTRACT_STATUS.A_VENCER);
+    expect(r.likeNext).toBe(false);
+    expect(r.closed).toBe(false);
+  });
+
+  it('sem contrato nenhum: hasContract falso e status null', () => {
+    const r = contractHeroOf({ lead: { id: L }, contracts: [], now: HOJE });
+    expect(r.hasContract).toBe(false);
+    expect(r.status).toBeNull();
   });
 });
