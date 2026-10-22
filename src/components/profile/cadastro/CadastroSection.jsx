@@ -55,7 +55,12 @@ export function CadastroSection({ id, whole, editing, locked, saving, canSave, o
           {/* Durante a gravação o formulário fica parado: o que fosse digitado
               depois do Salvar sumiria quando a seção fecha. */}
           <div inert={saving || undefined} className="@container border-t border-border px-5 py-4">{children}</div>
-          <footer className="flex justify-end gap-2 border-t border-border bg-slate-50 px-5 py-3 dark:bg-white/[0.03]">
+          <footer className="flex flex-wrap items-center justify-end gap-2 border-t border-border bg-slate-50 px-5 py-3 dark:bg-white/[0.03]">
+            {/* À vista, e não só no title do Editar desligado: o teclado não
+                chega a botão desligado. */}
+            <p className="mr-auto text-[12.5px] text-muted-foreground">
+              {saving ? 'Se fechar, a gravação continua.' : 'As outras seções esperam você salvar ou cancelar esta.'}
+            </p>
             {/* Ligado durante o envio: sem internet a gravação só termina quando
                 o servidor confirma, e fechar não a desfaz. */}
             <Btn kind="soft" size="md" onClick={onCancel}>{saving ? 'Fechar' : 'Cancelar'}</Btn>
@@ -75,6 +80,7 @@ export function CadastroSection({ id, whole, editing, locked, saving, canSave, o
                     type="button"
                     disabled={locked}
                     onClick={() => onAdd(r.field)}
+                    aria-label={r.addLabel || `Adicionar ${r.label}`}
                     title={locked ? LOCKED_HINT : undefined}
                     className="inline-flex items-center gap-1 rounded text-[13px] font-semibold text-brand-700 hover:underline focus-visible:outline-none focus-visible:anel-foco disabled:cursor-not-allowed disabled:opacity-50 dark:text-brand-300"
                   >

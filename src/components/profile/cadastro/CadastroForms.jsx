@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { AlertTriangle, Baby, Briefcase, Calendar, IdCard, Mail, Phone, User, Users } from 'lucide-react';
 import { zapMatchKey } from '../../../../api/_zapPhone.js';
 import { isCepComplete, isCpfComplete, isValidCpf, lookupCep } from '../../../lib/brazilLookups.js';
@@ -22,7 +22,8 @@ import { Switch } from '../../ui/switch.jsx';
 // (`@container` no corpo da seção), e não pela largura da janela.
 const GRID = 'grid grid-cols-1 gap-3.5 @xs:grid-cols-6';
 
-function Fld({ label, required, hint, error, className, children }) {
+// `msgId` é o id da dica ou do erro, para o campo apontar com aria-describedby.
+function Fld({ label, required, hint, error, msgId, className, children }) {
   return (
     <div className={cn('flex min-w-0 flex-col gap-1.5', className)}>
       <label className="flex min-w-0 flex-col gap-1.5">
@@ -32,8 +33,8 @@ function Fld({ label, required, hint, error, className, children }) {
         </span>
         {children}
       </label>
-      {hint && !error && <span className="text-[12px] text-muted-foreground">{hint}</span>}
-      {error && <span className="text-[12px] text-rose-700 dark:text-rose-300">{error}</span>}
+      {hint && !error && <span id={msgId} className="text-[12px] text-muted-foreground">{hint}</span>}
+      {error && <span id={msgId} className="text-[12px] text-rose-700 dark:text-rose-300">{error}</span>}
     </div>
   );
 }
@@ -41,6 +42,9 @@ function Fld({ label, required, hint, error, className, children }) {
 const digitsOf = (v) => String(v || '').replace(/\D/g, '');
 
 function IdentityForm({ form, set, lead, db }) {
+  const ids = useId();
+  const cpfMsgId = `${ids}-cpf`;
+  const zapMsgId = `${ids}-zap`;
   const guardianDigits = digitsOf(form.guardianPhone);
   const guardianTooShort = guardianDigits.length > 0 && guardianDigits.length < 10;
   const guardianMatches = useGuardianMatches({ db, phoneDigits: form.isMinor ? guardianDigits : '', excludeId: lead.id });
@@ -76,19 +80,20 @@ function IdentityForm({ form, set, lead, db }) {
   return (
     <div className={GRID}>
       <Fld label="Nome completo" required className="@xs:col-span-6">
-        <StyledInput name="name" aria-required="true" icon={<User size={15} />} value={form.name}
+        <StyledInput autoComplete="off" name="name" aria-required="true" icon={<User size={15} />} value={form.name}
           onChange={(e) => set('name', e.target.value)} placeholder="Nome e sobrenome" />
       </Fld>
 
       <div className="min-w-0 @xs:col-span-3">
         <Fld label={form.isMinor ? 'WhatsApp do aluno' : 'WhatsApp'} required={!form.isMinor} hint={form.isMinor ? 'Opcional' : undefined}>
-          <StyledInput name="whatsapp" icon={<Phone size={15} />} inputMode="numeric" value={form.whatsapp}
+          <StyledInput autoComplete="off" name="whatsapp" icon={<Phone size={15} />} inputMode="numeric" value={form.whatsapp}
             aria-invalid={duplicate ? 'true' : undefined}
+            aria-describedby={duplicate || sameAsGuardian || ownNotice.length > 0 ? zapMsgId : undefined}
             onChange={(e) => set('whatsapp', formatPhone(e.target.value))} placeholder="(51) 9 0000-0000"
             className={duplicate ? '!border-rose-400 focus:!ring-rose-400/15' : (sameAsGuardian ? '!border-amber-400' : '')} />
         </Fld>
         {/* Região viva desde a montagem: o aviso que chega depois do debounce é lido. */}
-        <div aria-live="polite">
+        <div id={zapMsgId} aria-live="polite">
           {duplicate ? (
             <div className="mt-1.5 flex items-start gap-1.5 text-[12px] text-rose-700 dark:text-rose-300">
               <AlertTriangle size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
@@ -105,9 +110,10 @@ function IdentityForm({ form, set, lead, db }) {
         </div>
       </div>
 
-      <Fld label="CPF" error={cpfInvalid ? 'CPF inválido' : undefined} className="@xs:col-span-3">
-        <StyledInput name="cpf" icon={<IdCard size={15} />} inputMode="numeric" value={form.cpf}
+      <Fld label="CPF" error={cpfInvalid ? 'CPF inválido' : undefined} msgId={cpfMsgId} className="@xs:col-span-3">
+        <StyledInput autoComplete="off" name="cpf" icon={<IdCard size={15} />} inputMode="numeric" value={form.cpf}
           aria-invalid={cpfInvalid ? 'true' : undefined}
+          aria-describedby={cpfInvalid ? cpfMsgId : undefined}
           onChange={(e) => set('cpf', formatCPF(e.target.value))} placeholder="000.000.000-00" />
       </Fld>
 
@@ -127,12 +133,12 @@ function IdentityForm({ form, set, lead, db }) {
         {form.isMinor && (
           <div className="grid grid-cols-1 gap-3.5 @xs:grid-cols-2">
             <Fld label="Nome do responsável" required className="@xs:col-span-2">
-              <StyledInput name="guardianName" aria-required="true" icon={<Users size={15} />} value={form.guardianName}
+              <StyledInput autoComplete="off" name="guardianName" aria-required="true" icon={<Users size={15} />} value={form.guardianName}
                 onChange={(e) => set('guardianName', e.target.value)} placeholder="Nome de quem responde pelo aluno" />
             </Fld>
             <div className="min-w-0">
               <Fld label="Telefone do responsável" required>
-                <StyledInput name="guardianPhone" aria-required="true" icon={<Phone size={15} />} inputMode="numeric" value={form.guardianPhone}
+                <StyledInput autoComplete="off" name="guardianPhone" aria-required="true" icon={<Phone size={15} />} inputMode="numeric" value={form.guardianPhone}
                   onChange={(e) => set('guardianPhone', formatPhone(e.target.value))} placeholder="(51) 9 0000-0000"
                   className={guardianTooShort ? '!border-amber-400' : ''} />
               </Fld>
@@ -141,7 +147,7 @@ function IdentityForm({ form, set, lead, db }) {
               )}
             </div>
             <Fld label="Parentesco">
-              <StyledSelect name="guardianRelation" value={form.guardianRelation} onChange={(e) => set('guardianRelation', e.target.value)}>
+              <StyledSelect autoComplete="off" name="guardianRelation" value={form.guardianRelation} onChange={(e) => set('guardianRelation', e.target.value)}>
                 <option value="">Selecione…</option>
                 {GUARDIAN_RELATIONSHIPS.map((r) => <option key={r}>{r}</option>)}
               </StyledSelect>
@@ -156,14 +162,14 @@ function IdentityForm({ form, set, lead, db }) {
       </div>
 
       <Fld label="RG" className="@xs:col-span-3">
-        <StyledInput name="rg" value={form.rg} onChange={(e) => set('rg', e.target.value)} placeholder="Documento de identidade" />
+        <StyledInput autoComplete="off" name="rg" value={form.rg} onChange={(e) => set('rg', e.target.value)} placeholder="Documento de identidade" />
       </Fld>
       <Fld label="Data de nascimento" className="@xs:col-span-3">
-        <StyledInput name="birthDate" type="date" icon={<Calendar size={15} />} value={form.birthDate}
+        <StyledInput autoComplete="off" name="birthDate" type="date" icon={<Calendar size={15} />} value={form.birthDate}
           onChange={(e) => set('birthDate', e.target.value)} />
       </Fld>
       <Fld label="Sexo" className="@xs:col-span-3">
-        <StyledSelect name="sexo" value={form.sexo} onChange={(e) => set('sexo', e.target.value)}>
+        <StyledSelect autoComplete="off" name="sexo" value={form.sexo} onChange={(e) => set('sexo', e.target.value)}>
           <option value="">Selecione…</option>
           <option>Feminino</option>
           <option>Masculino</option>
@@ -171,7 +177,7 @@ function IdentityForm({ form, set, lead, db }) {
         </StyledSelect>
       </Fld>
       <Fld label="E-mail" className="@xs:col-span-6">
-        <StyledInput name="email" type="email" icon={<Mail size={15} />} value={form.email}
+        <StyledInput autoComplete="off" name="email" type="email" icon={<Mail size={15} />} value={form.email}
           onChange={(e) => set('email', e.target.value)} placeholder="email@exemplo.com" />
       </Fld>
     </div>
@@ -198,25 +204,25 @@ function AddressForm({ form, set, setForm }) {
   return (
     <div className={GRID}>
       <Fld label="CEP" hint={cepBusy ? 'Buscando…' : undefined} className="@xs:col-span-2">
-        <StyledInput name="cep" inputMode="numeric" value={form.cep} onChange={(e) => set('cep', e.target.value)} onBlur={onCepBlur} placeholder="00000-000" />
+        <StyledInput autoComplete="off" name="cep" inputMode="numeric" value={form.cep} onChange={(e) => set('cep', e.target.value)} onBlur={onCepBlur} placeholder="00000-000" />
       </Fld>
       <Fld label="Rua" className="@xs:col-span-4">
-        <StyledInput name="street" value={form.street} onChange={(e) => set('street', e.target.value)} placeholder="Av. Exemplo" />
+        <StyledInput autoComplete="off" name="street" value={form.street} onChange={(e) => set('street', e.target.value)} placeholder="Av. Exemplo" />
       </Fld>
       <Fld label="Número" className="@xs:col-span-2">
-        <StyledInput name="number" value={form.number} onChange={(e) => set('number', e.target.value)} placeholder="123" />
+        <StyledInput autoComplete="off" name="number" value={form.number} onChange={(e) => set('number', e.target.value)} placeholder="123" />
       </Fld>
       <Fld label="Complemento" className="@xs:col-span-4">
-        <StyledInput name="complement" value={form.complement} onChange={(e) => set('complement', e.target.value)} placeholder="Sala, andar…" />
+        <StyledInput autoComplete="off" name="complement" value={form.complement} onChange={(e) => set('complement', e.target.value)} placeholder="Sala, andar…" />
       </Fld>
       <Fld label="Bairro" className="@xs:col-span-6">
-        <StyledInput name="neighborhood" value={form.neighborhood} onChange={(e) => set('neighborhood', e.target.value)} placeholder="Centro" />
+        <StyledInput autoComplete="off" name="neighborhood" value={form.neighborhood} onChange={(e) => set('neighborhood', e.target.value)} placeholder="Centro" />
       </Fld>
       <Fld label="Cidade" className="@xs:col-span-4">
-        <StyledInput name="city" value={form.city} onChange={(e) => set('city', e.target.value)} placeholder="Cidade" />
+        <StyledInput autoComplete="off" name="city" value={form.city} onChange={(e) => set('city', e.target.value)} placeholder="Cidade" />
       </Fld>
       <Fld label="UF" className="@xs:col-span-2">
-        <StyledInput name="state" value={form.state} maxLength={2} onChange={(e) => set('state', e.target.value.toUpperCase())} placeholder="UF" />
+        <StyledInput autoComplete="off" name="state" value={form.state} maxLength={2} onChange={(e) => set('state', e.target.value.toUpperCase())} placeholder="UF" />
       </Fld>
     </div>
   );
@@ -226,15 +232,15 @@ function EmergencyForm({ form, set }) {
   return (
     <div className={GRID}>
       <Fld label="Nome" className="@xs:col-span-6">
-        <StyledInput name="emgName" icon={<User size={15} />} value={form.emgName} onChange={(e) => set('emgName', e.target.value)}
+        <StyledInput autoComplete="off" name="emgName" icon={<User size={15} />} value={form.emgName} onChange={(e) => set('emgName', e.target.value)}
           placeholder="Quem acionar" />
       </Fld>
       <Fld label="Telefone" className="@xs:col-span-3">
-        <StyledInput name="emgPhone" icon={<Phone size={15} />} inputMode="numeric" value={form.emgPhone}
+        <StyledInput autoComplete="off" name="emgPhone" icon={<Phone size={15} />} inputMode="numeric" value={form.emgPhone}
           onChange={(e) => set('emgPhone', formatPhone(e.target.value))} placeholder="(51) 9 0000-0000" />
       </Fld>
       <Fld label="Parentesco" className="@xs:col-span-3">
-        <StyledInput name="emgRelation" value={form.emgRelation} onChange={(e) => set('emgRelation', e.target.value)}
+        <StyledInput autoComplete="off" name="emgRelation" value={form.emgRelation} onChange={(e) => set('emgRelation', e.target.value)}
           placeholder="Cônjuge, pai, mãe, amigo…" />
       </Fld>
     </div>
@@ -245,13 +251,13 @@ function PersonalForm({ form, set }) {
   return (
     <div className={GRID}>
       <Fld label="Estado civil" className="@xs:col-span-3">
-        <StyledSelect name="maritalStatus" value={form.maritalStatus} onChange={(e) => set('maritalStatus', e.target.value)}>
+        <StyledSelect autoComplete="off" name="maritalStatus" value={form.maritalStatus} onChange={(e) => set('maritalStatus', e.target.value)}>
           <option value="">Selecione…</option>
           {MARITAL_STATUS_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
         </StyledSelect>
       </Fld>
       <Fld label="Profissão" className="@xs:col-span-3">
-        <StyledInput name="profession" icon={<Briefcase size={15} />} value={form.profession}
+        <StyledInput autoComplete="off" name="profession" icon={<Briefcase size={15} />} value={form.profession}
           onChange={(e) => set('profession', e.target.value)} placeholder="Ex.: Fisioterapeuta" />
       </Fld>
     </div>

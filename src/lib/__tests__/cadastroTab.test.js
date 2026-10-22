@@ -319,3 +319,41 @@ describe('CadastroTab: gravação que demora', () => {
     expect(campo('profession')).toBeNull();
   });
 });
+
+describe('CadastroTab: acessibilidade', () => {
+  it('o "Adicionar" de cada linha vazia diz o que adiciona', async () => {
+    await montar();
+    const rg = porLabel('Adicionar RG');
+    expect(rg).toBeTruthy();
+    expect(porLabel('Identidade').contains(rg)).toBe(true);
+    expect(porLabel('Adicionar Estado civil')).toBeTruthy();
+  });
+
+  it('o "CPF inválido" fica ligado ao campo', async () => {
+    await montar();
+    await clicar(porLabel('Editar identidade'));
+    await digitar(campo('cpf'), '123.456.789-00');
+    const ids = campo('cpf').getAttribute('aria-describedby');
+    expect(ids).toBeTruthy();
+    expect(document.getElementById(ids).textContent).toBe('CPF inválido');
+    expect(campo('cpf').getAttribute('aria-invalid')).toBe('true');
+  });
+
+  it('a seção aberta diz, à vista, que as outras esperam', async () => {
+    await montar();
+    await clicar(porLabel('Editar identidade'));
+    expect(porLabel('Identidade').textContent).toContain('As outras seções esperam você salvar ou cancelar esta.');
+  });
+
+  it('nenhum campo do cadastro deixa o navegador preencher com os dados de quem está logado', async () => {
+    const menor = { ...LEAD, birthDate: null, isMinor: true, guardian: { name: 'Ana', phone: '(51) 9 9555-4444', relationship: 'Mãe' } };
+    await montar({ lead: menor });
+    for (const rotulo of ['Editar identidade', 'Editar endereço', 'Editar contato de emergência', 'Editar dados pessoais']) {
+      await clicar(porLabel(rotulo));
+      const campos = [...document.body.querySelectorAll('input:not([type="hidden"]), select')];
+      expect(campos.length, rotulo).toBeGreaterThan(0);
+      campos.forEach((c) => expect(c.getAttribute('autocomplete'), `${rotulo}: ${c.name}`).toBe('off'));
+      await clicar(botao('Cancelar'));
+    }
+  });
+});

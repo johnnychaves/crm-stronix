@@ -86,6 +86,9 @@ describe('Cadastro da ficha: WhatsApp de outro lead', () => {
     await digitarWhatsapp('(31) 7198-3969');
 
     expect(document.body.textContent).toContain('Já existe: Gabriel · Eduarda de Carvalho (Negociação)');
+    // O aviso fica ligado ao campo, para o leitor de tela o ler junto.
+    const aviso = document.querySelector('input[name="whatsapp"]').getAttribute('aria-describedby');
+    expect(document.getElementById(aviso).textContent).toContain('Já existe: Gabriel');
     await act(async () => { salvar().click(); });
     await esperar(0);
     expect(banco.gravacoes).toEqual([]);
