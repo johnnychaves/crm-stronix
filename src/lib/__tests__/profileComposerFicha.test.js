@@ -2,7 +2,7 @@
 // O compositor ligado à ficha: o rascunho mora na ficha e sobrevive à troca de
 // aba (a aba Linha do tempo desmonta o compositor), e cada modo de texto cai no
 // seu gravador com o texto digitado. Perder anotação é o pior defeito da tela.
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createElement as h, act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { MemoryRouter } from 'react-router';
@@ -183,5 +183,87 @@ describe('o compositor na ficha', () => {
     await act(async () => { caixa().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true })); });
     expect(caixa()).toBeNull();
     expect(document.activeElement).toBe(botao('Registrar o que aconteceu com Lucas'));
+  });
+});
+
+// Cada modo do compositor grava pelo gravador da ficha, com o que a pessoa
+// escolheu ou escreveu, e o compositor fecha depois de gravar.
+describe('o compositor grava pela ficha', () => {
+  const comeca = (prefixo) => [...document.querySelectorAll('button')]
+    .find((b) => b.textContent.replace(/^\d+/, '').trim().startsWith(prefixo)) || null;
+  const linhaFechada = () => botao('Registrar o que aconteceu com Lucas');
+  // O cabeçalho da ficha também tem um botão WhatsApp: o do compositor mora na seção dele.
+  const modo = (texto) => [...document.querySelectorAll('section[aria-label="Registrar"] button')].find((b) => b.textContent.trim() === texto);
+  let abrirJanela;
+  beforeEach(() => {
+    abrirJanela = vi.spyOn(window, 'open').mockImplementation(() => null);
+    // Quarta, 10h: o primeiro dia do Agendar é "Hoje", às 18h.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 9, 21, 10, 0));
+  });
+  afterEach(() => {
+    abrirJanela.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it('Anotação: grava "Obs: texto." e fecha', async () => {
+    await montar();
+    await clicar(linhaFechada());
+    await digitar('Vai pensar');
+    await clicar(botao('Registrar anotação'));
+    expect(logInteraction).toHaveBeenCalledTimes(1);
+    expect(logInteraction.mock.calls[0][3]).toEqual({ text: 'Obs: Vai pensar.', type: 'note' });
+    expect(caixa()).toBeNull();
+    expect(linhaFechada()).not.toBeNull();
+  });
+
+  it('WhatsApp: abre o WhatsApp do lead com o texto e registra o envio', async () => {
+    await montar();
+    await clicar(modo('WhatsApp'));
+    await digitar('Oi, Lucas');
+    await clicar(botao('Enviar pelo WhatsApp'));
+    expect(abrirJanela).toHaveBeenCalledWith('https://wa.me/5511988887777?text=Oi%2C%20Lucas', '_blank', 'noopener,noreferrer');
+    expect(logInteraction.mock.calls[0][3]).toEqual({ text: '📲 Mensagem WhatsApp enviada: Oi, Lucas', type: 'note' });
+    expect(caixa()).toBeNull();
+  });
+
+  it('WhatsApp de um menor: a mensagem vai para o responsável', async () => {
+    const menor = { ...LEAD, isMinor: true, guardian: { name: 'Marina Prado', phone: '11977776666', relationship: 'Mãe' } };
+    await montar('timeline', { lead: menor });
+    await clicar(modo('WhatsApp'));
+    expect(caixa().getAttribute('placeholder')).toBe('Mensagem para Marina');
+    await digitar('Oi, Marina');
+    await clicar(botao('Enviar pelo WhatsApp'));
+    expect(abrirJanela).toHaveBeenCalledWith('https://wa.me/5511977776666?text=Oi%2C%20Marina', '_blank', 'noopener,noreferrer');
+    expect(logInteraction.mock.calls[0][3].text).toBe('📲 Mensagem WhatsApp enviada: Oi, Marina');
+  });
+
+  it('Agendar: do tipo até o Confirmar, grava o agendamento e fecha', async () => {
+    await montar();
+    await clicar(botao('Agendar'));
+    await clicar(comeca('Mensagem'));
+    await clicar(comeca('Hoje'));
+    await clicar(botao('Confirmar agendamento'));
+    expect(logInteraction).toHaveBeenCalledTimes(1);
+    const [, , , payload, patch] = logInteraction.mock.calls[0];
+    expect(payload.text).toMatch(/^🔔 Mensagem agendada p\/ 21\/10\/2026.*18:00\.$/);
+    expect(payload).toMatchObject({ type: 'note', volumeKind: 'mensagem' });
+    expect(patch.nextFollowUp.getHours()).toBe(18);
+    expect(document.body.textContent).not.toContain('Passos do agendamento');
+    expect(linhaFechada()).not.toBeNull();
+  });
+
+  it('Mudar fase: da fase até o Mover, grava a mudança e fecha', async () => {
+    await montar('timeline', {
+      funnels: [{ id: 'f1', name: 'Comercial', isDefault: true }],
+      statuses: [{ id: 's1', funnelId: 'f1', name: 'Novo', order: 0 }, { id: 's2', funnelId: 'f1', name: 'Contato', order: 1 }],
+    });
+    await clicar(botao('Mudar fase'));
+    await clicar(comeca('Contato'));
+    await clicar(botao('Mover para Contato'));
+    expect(logInteraction).toHaveBeenCalledTimes(1);
+    expect(logInteraction.mock.calls[0][3]).toMatchObject({ text: 'Fase alterada para [Contato].', type: 'status_change' });
+    expect(logInteraction.mock.calls[0][4]).toMatchObject({ status: 'Contato' });
+    expect(linhaFechada()).not.toBeNull();
   });
 });
