@@ -2,18 +2,22 @@ import { Search } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 
 // A barra do registro: filtros em pílula (o desenho dos painéis), o interruptor
-// de Sistema e a busca. O rótulo e a contagem ficam colados, com a classe
-// `num opacity-65` da contagem: o profileOriginMarker.test.js lê esse trecho.
+// de Sistema e a busca. Cada pílula se lê "Marcos, 2" (aria-label), porque o
+// rótulo e a contagem colados virariam "Marcos2" no leitor de tela; o
+// profileOriginMarker.test.js lê esse nome. A contagem não leva opacidade: a
+// 65% ela ficava abaixo de 4,5:1.
 export function TimelineBar({ filters, counts, filter, onFilter, showSystem, systemHiddenCount, onToggleSystem, query, onQuery }) {
   return (
     <div role="group" aria-label="Filtros do histórico" className="flex flex-wrap items-center gap-2 border-b border-border px-8 py-3.5">
       {filters.map((f) => {
         const on = filter === f.id;
+        const n = counts[f.id] || 0;
         return (
           <button
             key={f.id}
             type="button"
             aria-pressed={on}
+            aria-label={`${f.label}, ${n}`}
             onClick={() => onFilter(f.id)}
             className={cn(
               'inline-flex h-[34px] items-center gap-[7px] whitespace-nowrap rounded-full border px-3.5 text-[13px] font-medium transition',
@@ -23,7 +27,7 @@ export function TimelineBar({ filters, counts, filter, onFilter, showSystem, sys
                 : 'border-border bg-card text-slate-600 hover:border-brand-200 dark:text-slate-300'
             )}
           >
-            {f.label}<span className="num opacity-65">{counts[f.id] || 0}</span>
+            {f.label}<span className={cn('num', !on && 'text-muted-foreground')}>{n}</span>
           </button>
         );
       })}
@@ -45,8 +49,8 @@ export function TimelineBar({ filters, counts, filter, onFilter, showSystem, sys
           )}
         >
           {/* Chave de verdade (trilho e botão), não um ponto. */}
-          <span className={cn('relative h-4 w-7 flex-none rounded-full transition-colors', showSystem ? 'bg-brand-600' : 'bg-slate-300 dark:bg-white/[0.14]')}>
-            <span className={cn('absolute top-0.5 size-3 rounded-full bg-white shadow-sm transition-[left]', showSystem ? 'left-[14px]' : 'left-0.5')} />
+          <span className={cn('relative h-4 w-7 flex-none rounded-full transition-colors motion-reduce:transition-none', showSystem ? 'bg-brand-600' : 'bg-slate-300 dark:bg-white/[0.14]')}>
+            <span className={cn('absolute top-0.5 size-3 rounded-full bg-white shadow-sm transition-[left] motion-reduce:transition-none', showSystem ? 'left-[14px]' : 'left-0.5')} />
           </span>
           {`Sistema${!showSystem && systemHiddenCount > 0 ? ` +${systemHiddenCount}` : ''}`}
         </button>

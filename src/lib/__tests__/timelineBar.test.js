@@ -33,6 +33,25 @@ describe('TimelineBar', () => {
     expect(pilulas[0].getAttribute('aria-pressed')).toBe('false');
   });
 
+  it('cada pílula se lê com o rótulo e a contagem separados, e a contagem não fica apagada', async () => {
+    await montar({ filter: 'note' });
+    const pilulas = [...document.querySelectorAll('[role="group"][aria-label="Filtros do histórico"] button[aria-pressed]')];
+    expect(pilulas.map((b) => b.getAttribute('aria-label'))).toEqual(['Tudo, 13', 'Conversas, 6', 'Agendamentos, 2', 'Anotações, 1', 'Marcos, 4']);
+    const contagens = pilulas.map((b) => b.querySelector('.num'));
+    contagens.forEach((c) => expect(c.className).not.toMatch(/opacity/));
+    // Na inativa, o cinza do texto de apoio; na ativa, a cor do rótulo.
+    expect(contagens[0].className).toContain('text-muted-foreground');
+    expect(contagens[3].className).not.toContain('text-muted-foreground');
+  });
+
+  it('o botão do interruptor de Sistema não anima com movimento reduzido', async () => {
+    await montar({ systemHiddenCount: 3 });
+    const interruptor = [...document.querySelectorAll('button')].find((b) => b.textContent.startsWith('Sistema'));
+    const animados = [...interruptor.querySelectorAll('span')].filter((el) => /\btransition/.test(el.className));
+    expect(animados.length).toBeGreaterThan(0);
+    animados.forEach((el) => expect(el.className).toContain('motion-reduce:transition-none'));
+  });
+
   it('clicar numa pílula chama onFilter com o id do filtro', async () => {
     const onFilter = vi.fn();
     await montar({ onFilter });
