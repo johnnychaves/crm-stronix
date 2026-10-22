@@ -27,7 +27,7 @@ import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { LeadLink } from '../components/nav/AppLink.jsx';
 import { Btn, IconBtn } from '../components/ui/Btn.jsx';
-import { StatusBadge, TagBadge } from '../components/ui/Badges.jsx';
+import { TagBadge } from '../components/ui/Badges.jsx';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs.jsx';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../components/ui/dialog.jsx';
 import { RingAvatar } from '../components/profile/RingAvatar.jsx';
@@ -988,7 +988,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     next: nextStepCell(lead, bandNow),
     mid: isClient
       ? contractCell({ lead, contracts: leadContracts, now: bandNow, thresholdDays: contractThresholdDays })
-      : stageCell({ lead, statuses, funnels: safeFunnels, now: bandNow }),
+      : stageCell({ lead, statuses, funnels: safeFunnels, interactions, now: bandNow }),
     team: teamCell(lead),
   };
 
@@ -1092,11 +1092,8 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                   <IconBtn icon={<Pencil size={16} />} kind="default" title="Editar cadastro" onClick={() => openCadastro()} />
                 )}
               </div>
-              {/* status + tags */}
+              {/* etiquetas e indicação. A etapa do lead mora na faixa de baixo. */}
               <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                {!isClient && (
-                  <StatusBadge statusName={lead.status} statusesArray={statuses} />
-                )}
                 {(lead.tags || []).length === 0 && canEditCadastro && (
                   <button
                     onClick={goToContext}
@@ -1393,10 +1390,14 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
               {/* Um bloco por mês ("Setembro de 2026"). O dia e a hora vão em
                   cada linha, então o bloco não precisa de régua de dia. No
                   escuro o bg-card é translúcido: o cabeçalho fixo usa a mesma
-                  cor já misturada, opaca, para não virar uma faixa clara. */}
+                  cor já misturada, opaca, para não virar uma faixa clara. Ele
+                  gruda logo abaixo da barra fina (56 px) e o top desconta o
+                  recuo da área que rola (p-4 md:p-8): 56 - 16 e 56 - 32. O card
+                  do registro é overflow-clip, e não overflow-hidden, senão o
+                  card vira o contêiner do sticky e o mês nunca gruda. */}
               {groupedEvents.map(([label, events]) => (
                 <section key={label} className="mb-5">
-                  <header className="sticky top-14 z-10 flex items-baseline gap-2.5 bg-card/95 py-2.5 backdrop-blur dark:bg-[color-mix(in_srgb,var(--page),white_2%)]">
+                  <header className="sticky top-10 z-10 flex md:top-6 items-baseline gap-2.5 bg-card/95 py-2.5 backdrop-blur dark:bg-[color-mix(in_srgb,var(--page),white_2%)]">
                     <span className="font-display text-[15px] font-semibold tracking-tight">{label}</span>
                     <span className="num text-[12.5px] text-muted-foreground">
                       {events.length} {events.length === 1 ? 'registro' : 'registros'}

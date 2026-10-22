@@ -35,6 +35,12 @@ const tecla = async (el, key) => {
   await act(async () => { el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true })); });
 };
 const abrir = () => tecla(gatilho(), 'Enter');
+// O Radix devolve o foco num setTimeout depois de desmontar a lista, e o
+// Cadastrar indicação espera esse passo: duas voltas do relógio.
+const esperar = async () => {
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+};
 const itens = () => [...document.body.querySelectorAll('[role="menuitem"]')];
 const item = (texto) => itens().find((el) => el.textContent.includes(texto));
 
@@ -80,7 +86,21 @@ describe('ReferralsMenu', () => {
     expect(props.onCopy).toHaveBeenCalledTimes(1);
     await abrir();
     await act(async () => { item('Cadastrar indicação').click(); });
+    await esperar();
     expect(props.onRegister).toHaveBeenCalledTimes(1);
+  });
+
+  // A janela de cadastrar indicação devolve o foco a quem estava com ele quando
+  // abriu. Aberta antes de o menu devolver o foco ao botão, ela guardava o item
+  // do menu, que some, e ao fechar o foco caía no body.
+  it('Cadastrar indicação só abre a janela depois de o foco voltar ao botão', async () => {
+    let focoNaHora = null;
+    await montar({ onRegister: () => { focoNaHora = document.activeElement; } });
+    gatilho().focus();
+    await abrir();
+    await tecla(document.activeElement, 'Enter');
+    await esperar();
+    expect(focoNaHora).toBe(gatilho());
   });
 
   it('a opção do WhatsApp é um link para fora, em outra aba', async () => {
@@ -99,8 +119,7 @@ describe('ReferralsMenu', () => {
     await abrir();
     expect(itens()).toHaveLength(3);
     await tecla(document.activeElement, 'Escape');
-    // O Radix devolve o foco num setTimeout, depois de desmontar a lista.
-    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    await esperar();
     expect(itens()).toHaveLength(0);
     expect(document.activeElement).toBe(gatilho());
   });

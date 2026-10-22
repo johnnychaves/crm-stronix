@@ -73,6 +73,12 @@ describe('StickyMini', () => {
     expect(barra().className).toContain('opacity-0');
   });
 
+  it('gruda no topo da área que rola sem ocupar lugar no fluxo', async () => {
+    await render(<StickyMini {...props()} />);
+    const cls = barra().className.split(/\s+/);
+    ['sticky', '-top-4', 'md:-top-8', 'h-14', '-mb-14'].forEach((c) => expect(cls).toContain(c));
+  });
+
   it('a transição respeita o movimento reduzido', async () => {
     await render(<StickyMini {...props()} />);
     expect(barra().className).toContain('motion-reduce:transition-none');

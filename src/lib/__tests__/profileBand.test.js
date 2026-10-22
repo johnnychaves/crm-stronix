@@ -82,6 +82,12 @@ describe('stageCell e stageText', () => {
     expect(cell({ ...LEAD, lastInteractionAt: D(10, 9) })).toMatchObject({ silence: 7, silent: true });
   });
 
+  it('o silêncio pega a interação mais nova do registro quando o campo do lead está atrás', () => {
+    const registro = [{ leadId: 'l1', type: 'daily_goal_done', createdAt: D(10, 14) }];
+    expect(stageCell({ lead: LEAD, statuses: STAGES, funnels: FUNNELS, interactions: registro, now: AGORA }))
+      .toMatchObject({ silence: 2, silent: false });
+  });
+
   it('sem registro, conta do cadastro; sem data de cadastro de verdade, não inventa silêncio', () => {
     expect(cell({ ...LEAD, lastInteractionAt: null }).silence).toBe(26);
     const semData = cell({ ...LEAD, lastInteractionAt: null, createdAtMissing: true });

@@ -64,15 +64,15 @@ const CONFIG = {
 
 let root = null;
 let abaAtual = null;
-function Ficha({ lead, appUser, aba }) {
+function Ficha({ lead, appUser, aba, funnels, statuses }) {
   const [tab, setTab] = useState(aba);
   abaAtual = tab;
   return h(LeadProfileView, {
     lead, tab, onTab: setTab, onBack: () => {}, appUser,
-    statuses: [], tags: [], lossReasons: [{ id: 'r1', name: 'Preço' }], usersList: [GESTOR, CONSULTOR], db: {}, funnels: [],
+    statuses, tags: [], lossReasons: [{ id: 'r1', name: 'Preço' }], usersList: [GESTOR, CONSULTOR], db: {}, funnels,
   });
 }
-async function montar({ lead = LEAD, appUser = GESTOR, aba = 'timeline' } = {}) {
+async function montar({ lead = LEAD, appUser = GESTOR, aba = 'timeline', funnels = [], statuses = [] } = {}) {
   const container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -80,7 +80,7 @@ async function montar({ lead = LEAD, appUser = GESTOR, aba = 'timeline' } = {}) 
     root.render(h(MemoryRouter, { initialEntries: [`/acad/ficha/${lead.id}`] },
       h(ToastContext.Provider, { value: toast },
         h(LeadProfileContext.Provider, { value: profile },
-          h(GeneralConfigContext.Provider, { value: CONFIG }, h(Ficha, { lead, appUser, aba }))))));
+          h(GeneralConfigContext.Provider, { value: CONFIG }, h(Ficha, { lead, appUser, aba, funnels, statuses }))))));
   });
 }
 afterEach(async () => {
@@ -188,6 +188,27 @@ describe('cabeçalho da ficha: Indicações', () => {
     await esperar();
     expect(writeText).toHaveBeenCalledTimes(1);
     expect(toast.success).toHaveBeenCalledWith('Link de indicação copiado.');
+    expect(document.activeElement).toBe(gatilho);
+  });
+
+  // A janela do Cadastrar indicação não tem gatilho próprio (o Radix devolveria
+  // o foco a ele): ela devolve o foco a quem a abriu, o botão Indicações.
+  it('Cadastrar indicação abre a janela, e fechar devolve o foco ao botão Indicações', async () => {
+    const FUNIS = [{ id: 'fi', name: 'Indicações', systemKind: 'referral' }];
+    const ETAPAS = [{ id: 'si', funnelId: 'fi', name: 'Aguardando ação', isEntry: true, order: 0 }];
+    await montar({ lead: CLIENTE, funnels: FUNIS, statuses: ETAPAS });
+    const gatilho = porLabel('Indicações, 2');
+    gatilho.focus();
+    await tecla(gatilho, 'Enter');
+    expect(itens()[0]).toBe('Cadastrar indicação');
+    await tecla(item('Cadastrar indicação'), 'Enter');
+    await esperar();
+    await esperar();
+    const janela = document.body.querySelector('[role="dialog"]');
+    expect(janela).toBeTruthy();
+    await tecla(janela, 'Escape');
+    await esperar();
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
     expect(document.activeElement).toBe(gatilho);
   });
 

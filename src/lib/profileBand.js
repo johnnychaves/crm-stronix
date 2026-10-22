@@ -11,6 +11,7 @@ import { calendarDaysBetween, getSafeDateOrNull } from './dates.js';
 import { getDefaultFunnel, isItemInFunnel } from './funnels.js';
 import { firstName } from './guardian.js';
 import { silenceDaysOf } from './kanban.js';
+import { buildInteractionIndex, lastInteractionDateOf } from './leadStatus.js';
 import { profileProfessorOf } from './professores.js';
 import { stageSinceOf } from './relatorios/leads/parados.js';
 import { upNextOf } from './upNext.js';
@@ -63,9 +64,11 @@ export function nextStepCell(lead, now = new Date()) {
 // Etapa do lead: a posição no funil dele, há quantos dias está nela e há
 // quantos dias não tem registro. O funil é o do lead e, sem ele, o padrão, como
 // no Mudar fase. Os dias na etapa são os do relatório de Leads parados (null
-// quando a entrada não foi gravada), e o silêncio é o do card do Pipeline, que
-// conta do cadastro quando não há registro nenhum.
-export function stageCell({ lead, statuses = [], funnels = [], now = new Date() }) {
+// quando a entrada não foi gravada). O silêncio é o do card do Pipeline: a
+// última interação é a maior entre o lastInteractionAt e o registro da ficha
+// (`interactions`), porque o desfecho da Meta grava interação sem mexer no
+// campo; sem registro nenhum, conta do cadastro, como o relatório.
+export function stageCell({ lead, statuses = [], funnels = [], interactions = [], now = new Date() }) {
   const defaultId = getDefaultFunnel(funnels)?.id;
   const funnelId = lead?.funnelId || defaultId;
   const stages = (statuses || [])
@@ -74,7 +77,8 @@ export function stageCell({ lead, statuses = [], funnels = [], now = new Date() 
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   const since = stageSinceOf(lead);
   const gap = since ? calendarDaysBetween(since, now) : null;
-  const lastDate = getSafeDateOrNull(lead?.lastInteractionAt) || (lead?.createdAtMissing ? null : getSafeDateOrNull(lead?.createdAt));
+  const lastDate = lastInteractionDateOf(lead, buildInteractionIndex(interactions))
+    || (lead?.createdAtMissing ? null : getSafeDateOrNull(lead?.createdAt));
   const silence = silenceDaysOf(lastDate, now);
   return {
     name: lead?.status || '—',
