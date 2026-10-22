@@ -96,11 +96,13 @@ describe('handleContextSave', () => {
   });
 });
 
-describe('cabeçalho: professor responsável', () => {
-  // O trecho da faixa entre "Professor resp." e "Próximo passo".
+describe('cabeçalho: professor na Equipe', () => {
+  // O bloco Equipe, o último da faixa, até as abas.
   const celula = (lead) => {
     const html = ficha(GESTOR, { ...LEAD, ...lead });
-    return html.slice(html.indexOf('Professor resp.'), html.indexOf('Próximo passo'));
+    const de = html.indexOf('>Equipe<');
+    expect(de).toBeGreaterThan(-1);
+    return html.slice(de, html.indexOf('-trigger-timeline'));
   };
 
   it('mostra o professor do cadastro, o mesmo do Contexto comercial, sem a modalidade da aula', () => {
@@ -113,7 +115,7 @@ describe('cabeçalho: professor responsável', () => {
   it('sem professor no cadastro, mostra o da aula experimental, com a modalidade', () => {
     const c = celula({ appointmentProfessorName: 'Marcos Vieira', appointmentModality: 'Pilates' });
     expect(c).toContain('Marcos Vieira');
-    expect(c).toContain('Pilates');
+    expect(c).toContain('professor de Pilates');
   });
 
   it('o professor do cadastro que é o mesmo da aula leva a modalidade', () => {
@@ -121,7 +123,7 @@ describe('cabeçalho: professor responsável', () => {
     expect(c).toContain('Pilates');
   });
 
-  it('sem nenhum dos dois, um traço', () => {
-    expect(celula({})).toContain('—');
+  it('sem nenhum dos dois, diz que não tem professor', () => {
+    expect(celula({})).toContain('Sem professor');
   });
 });
