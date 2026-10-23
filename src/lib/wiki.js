@@ -143,7 +143,7 @@ export const WIKI_ARTICLES = [
     id: 'ficha',
     category: 'inicio',
     title: 'A ficha da pessoa, aba por aba',
-    summary: 'Linha do tempo, dados de CRM, contratos e indicações: o que fica em cada lugar.',
+    summary: 'Linha do tempo, contratos e indicações: o que fica em cada lugar.',
     blocks: [
       { t: 'p', text: 'Clicar em qualquer card, resultado de busca ou linha de lista abre a ficha. Ela é o histórico completo daquela pessoa com a academia.' },
 
@@ -153,8 +153,7 @@ export const WIKI_ARTICLES = [
       { t: 'h', text: 'As abas' },
       { t: 'demo', name: 'ficha', caption: 'A aba Indicações aparece só para alunos.' },
       { t: 'steps', items: [
-        'Linha do tempo: tudo que aconteceu, em ordem. Tem filtros por conversas, agendamentos, anotações e marcos, e um interruptor para mostrar também os eventos de sistema.',
-        'CRM: dados cadastrais, etiquetas e responsável. É onde você corrige informação errada.',
+        'Linha do tempo: no alto, o Contexto comercial, com dor, modalidade, origem, consultor, professor, etiquetas e observação. Clique em um campo para trocar o valor ali mesmo. Logo abaixo fica o campo para registrar o que aconteceu e, no topo do registro, o que vem a seguir. O registro mostra tudo que aconteceu, em ordem, com filtros por conversas, agendamentos, anotações e marcos, e um interruptor para mostrar também os eventos de sistema.',
         'Contratos: plano vigente, histórico completo e as ações de renovar, trancar, cancelar ou corrigir.',
         'Indicações: só para alunos. Mostra o link dele, quem ele trouxe e quantos viraram alunos.',
       ] },
@@ -165,7 +164,7 @@ export const WIKI_ARTICLES = [
         'Mudar fase: move a pessoa no funil sem sair da ficha.',
         'Agendar: marca visita ou aula experimental.',
       ] },
-      { t: 'tip', text: 'Qualquer consultor pode registrar na linha do tempo de qualquer pessoa, mesmo não sendo o responsável, e também pode passar o lead ou o aluno para outro colega pelo campo Consultor responsável, no lápis do cadastro. A troca fica registrada na linha do tempo e quem recebeu é avisado no sino. Editar os dados, marcar venda ou perda continuam com o dono e com o administrador.' },
+      { t: 'tip', text: 'Qualquer consultor pode registrar na linha do tempo de qualquer pessoa, mesmo não sendo o responsável, e também pode passar o lead ou o aluno para outro colega pelo campo Consultor, no Contexto comercial da Linha do tempo. A troca fica registrada na linha do tempo e quem recebeu é avisado no sino. Gestor e consultor também editam os dados e marcam venda ou perda. Excluir a ficha é só do gestor, e o professor só registra e agenda.' },
     ],
   },
 

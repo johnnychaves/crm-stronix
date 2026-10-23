@@ -51,6 +51,11 @@ import { ContractEditModal } from '../modals/ContractEditModal.jsx';
 import { ContractActivateModal } from '../modals/ContractActivateModal.jsx';
 import { ClientRegistrationModal } from '../modals/ClientRegistrationModal.jsx';
 import { QuickReferralModal } from '../modals/QuickReferralModal.jsx';
+import { ContextCard } from '../components/profile/ContextCard.jsx';
+import { UpNextList } from '../components/profile/UpNextList.jsx';
+import { upNextOf } from '../lib/upNext.js';
+import { saveContextField } from '../lib/contextWrites.js';
+import { FICHA_TABS } from '../lib/routes.js';
 import {
   groupTimeline,
   timelineStamp,
@@ -70,7 +75,7 @@ import {
   appointmentOriginText,
   isAppointmentReschedule
 } from '../lib/timeline.js';
-import { ArrowLeft, ArrowRight, Ban, BookOpen, Building2, Calendar, Check, CheckCircle, Clock, Copy, CreditCard, FileText, GraduationCap, Handshake, MessageCircle, Pencil, Phone, Plus, RefreshCw, RotateCcw, Search, Tag, Target, ThumbsDown, Trash, TrendingUp, User, UserPlus, Users } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Ban, Calendar, Check, CheckCircle, Clock, Copy, CreditCard, FileText, GraduationCap, Handshake, MessageCircle, Pencil, Phone, Plus, RefreshCw, RotateCcw, Search, Tag, ThumbsDown, Trash, TrendingUp, User, UserPlus, Users } from 'lucide-react';
 
 // Eventos de contrato que ganham faixa de destaque na linha do tempo: os que
 // mudam a situação do cliente. Trancamento, reativação e correção seguem como
@@ -107,7 +112,7 @@ function TabCount({ n, active }) {
 // abriu direto numa aba nova). onDeleteStart e onDeleteFailed avisam a rota
 // para trocar a ficha por "Excluindo a ficha…" e devolver se a exclusão falhar.
 // listenersActive é o portão de ociosidade do App, repassado à linha do tempo.
-function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFailed, listenersActive = true, appUser, statuses, tags, lossReasons, usersList, db, funnels }) {
+function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFailed, listenersActive = true, appUser, statuses, tags, lossReasons, usersList, db, funnels, sources = [] }) {
   // Timeline por query própria (G2): histórico COMPLETO do lead (índice #10),
   // ao vivo. Antes vinha do prop global filtrado por leadId — que pós-G2 é só o
   // mês corrente. A ficha remonta por lead (key), então o hook não reseta.
@@ -538,6 +543,28 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     setLoading(false);
   };
 
+  // Edição no lugar do Contexto comercial: grava só o campo que mudou
+  // (lib/contextWrites.js). A trava é a do cadastro, a mesma do lápis do
+  // cabeçalho. Devolve false quando não gravou, para o editor ficar aberto.
+  // `from` é o valor da abertura do editor: as etiquetas gravam só a diferença.
+  // O editor aberto mora aqui, e não no card, para o rascunho sobreviver à
+  // troca de aba, como o `note` do compositor.
+  const [contextEdit, setContextEdit] = useState(null);
+  const handleContextSave = async (field, value, from) => {
+    if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return false; }
+    if (!canEditCadastro) { negarAcesso(); return false; }
+    try {
+      const { ok, change } = await saveContextField({ db, lead, appUser, field, value, from, usersList, professores });
+      if (!ok) { toast.warning('Esse campo não pode ser salvo.'); return false; }
+      if (change) toast.success(`${change.toName} agora é o responsável.`);
+      return true;
+    } catch (e) {
+      console.error(e);
+      toast.error('Não foi possível salvar. Tente novamente.');
+      return false;
+    }
+  };
+
   // Grava o agendamento montado no ScheduleWizard. Mantém os campos canônicos
   // (nextFollowUp/nextFollowUpType/appointmentType/appointmentScheduledFor) e
   // grava os extras por tipo (modalidade+professor+quantidade p/ aula; unidade p/ visita).
@@ -704,7 +731,9 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // redirect de propósito: se a pessoa é cliente só se sabe depois de o
   // documento carregar, e um redirect ali trocaria o endereço toda vez que a
   // ficha demora.
-  const activeProfileTab = tab === 'referrals' && !isClient ? 'timeline' : (tab || 'timeline');
+  // Chave que não é aba (a antiga 'crm', por exemplo) também abre a Linha do
+  // tempo, para a ficha nunca ficar sem conteúdo.
+  const activeProfileTab = !Object.hasOwn(FICHA_TABS, tab || '') || (tab === 'referrals' && !isClient) ? 'timeline' : tab;
   // Funil UPGRADE (lib/upgradeFunnel.js): é o único funil que um cliente pode
   // ocupar, e a etapa dele mora em upgradeStageId, não em status.
   const upgradeFunnel = getUpgradeFunnel(safeFunnels);
@@ -823,12 +852,8 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // senão o começo aparece duas vezes.
   const hasOriginMarker = interactionsWithClass.some(i => i._kind === 'origin');
 
-  // Próximos agendamentos (aba CRM): agendamentos futuros, em ordem ascendente.
-  const upcomingAppointments = interactionsWithClass
-    .filter(i => i._kind === 'appointment')
-    .map(i => ({ i, appt: parseAppointment(i) }))
-    .filter(({ appt }) => appt && appt.when instanceof Date && appt.when.getTime() >= Date.now())
-    .sort((a, b) => a.appt.when.getTime() - b.appt.when.getTime());
+  // O que vem a seguir (visita, aula, próximo contato), lido dos campos do lead.
+  const upNext = upNextOf(lead);
 
   // Histórico de contratos (aba Contratos): todos os contratos do lead, mais
   // recentes primeiro.
@@ -1546,13 +1571,6 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
             <TabCount n={(interactions || []).length} active={activeProfileTab === 'timeline'} />
           </TabsTrigger>
           <TabsTrigger
-            value="crm"
-            className="flex-none h-11 px-4 text-[13.5px] font-medium rounded-t-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.06] data-[state=active]:font-semibold data-[state=active]:bg-transparent data-[state=active]:text-slate-900 dark:data-[state=active]:text-white data-[state=active]:[&_svg]:text-brand-600 dark:data-[state=active]:[&_svg]:text-brand-300 after:h-[3px] after:rounded-full after:bg-brand-600"
-          >
-            <Target className="size-[15px]" />
-            CRM
-          </TabsTrigger>
-          <TabsTrigger
             value="contratos"
             className="flex-none h-11 px-4 text-[13.5px] font-medium rounded-t-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.06] data-[state=active]:font-semibold data-[state=active]:bg-transparent data-[state=active]:text-slate-900 dark:data-[state=active]:text-white data-[state=active]:[&_svg]:text-brand-600 dark:data-[state=active]:[&_svg]:text-brand-300 after:h-[3px] after:rounded-full after:bg-brand-600"
           >
@@ -1574,6 +1592,20 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
 
         {/* ----- Aba: Linha do tempo ----- */}
         <TabsContent value="timeline" className="pt-2">
+         {/* Desenho A2: o CRM mora aqui. Contexto comercial, compositor, e o
+             registro com o "A seguir" no topo, numa tela só. */}
+         <div className="flex flex-col gap-4">
+          <ContextCard
+            lead={lead}
+            sources={sources}
+            usersList={usersList}
+            tagsCatalog={tags}
+            canEdit={canEditCadastro}
+            onSave={handleContextSave}
+            edit={contextEdit}
+            setEdit={setContextEdit}
+          />
+          {renderComposer()}
          {/* O registro vive dentro de um card branco: a barra de controles fica
              no topo, separada por uma régua que atravessa o card inteiro. */}
          <section className="rounded-2xl border border-border bg-card shadow-card overflow-hidden">
@@ -1645,6 +1677,9 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
             </div>
           )}
 
+          {/* A seguir: só no registro inteiro, sem filtro nem busca. */}
+          {timelineFilter === 'all' && !timelineQuery && <UpNextList items={upNext} />}
+
           {/* Timeline */}
           {(interactions || []).length === 0 ? (
             <div className="px-8 py-16 grid place-items-center text-center text-slate-400">
@@ -1652,7 +1687,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                 <Clock size={20} className="opacity-50" />
               </div>
               <p className="text-[14px] font-semibold text-slate-700 dark:text-slate-200">Sem histórico ainda</p>
-              <p className="text-[12.5px] max-w-[280px] mt-0.5">Registre uma nota, mensagem ou ligação na aba CRM para começar a história desta pessoa.</p>
+              <p className="text-[12.5px] max-w-[280px] mt-0.5">Registre uma nota, mensagem ou ligação no campo acima para começar a história desta pessoa.</p>
             </div>
           ) : filteredInteractions.length === 0 ? (
             <div className="px-8 py-16 grid place-items-center text-center text-slate-400">
@@ -1688,67 +1723,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
             </div>
           )}
          </section>
-        </TabsContent>
-
-        {/* ----- Aba: CRM ----- */}
-        <TabsContent value="crm" className="pt-2">
-          {/* Coluna única (port de crm.jsx) — sem card de cadastro (vive no modal Editar). */}
-          <div className="space-y-5">
-            {renderComposer()}
-
-              {/* Próximos agendamentos — port de crm.jsx (AppointmentsList) */}
-              <section className="rounded-2xl border border-border bg-card shadow-card">
-                <div className="px-5 py-4 flex items-center justify-between border-b border-slate-100 dark:border-white/[0.05]">
-                  <div className="flex items-center gap-2">
-                    <span className="w-7 h-7 rounded-lg grid place-items-center bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-300"><Calendar size={14} /></span>
-                    <h3 className="text-[14px] font-semibold tracking-tight">Próximos agendamentos</h3>
-                    {upcomingAppointments.length > 0 && (
-                      <span className="num text-[11px] font-bold px-1.5 h-[18px] grid place-items-center rounded-md bg-slate-100 text-slate-500 dark:bg-white/[0.06] dark:text-slate-400">{upcomingAppointments.length}</span>
-                    )}
-                  </div>
-                  <Btn kind="soft" size="sm" icon={<Plus size={13} />} onClick={() => { onTab('crm'); setComposerTab('schedule'); }}>Agendar</Btn>
-                </div>
-                <div className="p-4">
-                  {upcomingAppointments.length === 0 ? (
-                    <div className="py-8 grid place-items-center text-center">
-                      <div className="w-11 h-11 rounded-full bg-slate-100 dark:bg-white/[0.05] grid place-items-center mb-2.5 text-slate-400"><Calendar size={18} /></div>
-                      <p className="text-[13px] font-semibold text-slate-700 dark:text-slate-200">Nenhum agendamento</p>
-                      <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5 max-w-[260px]">Use o painel acima para agendar uma visita, aula, mensagem ou ligação.</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2.5">
-                      {upcomingAppointments.map(({ i, appt }) => {
-                        const apptToneName = appt.kind === 'class' ? 'teal' : appt.kind === 'visit' ? 'violet' : appt.kind === 'call' ? 'amber' : 'emerald';
-                        const aTone = getTone(apptToneName);
-                        const ApptIcon = appt.kind === 'class' ? BookOpen : appt.kind === 'visit' ? Building2 : appt.kind === 'call' ? Phone : MessageCircle;
-                        const apptTime = appt.when.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-                        const isToday = appt.when.toDateString() === new Date().toDateString();
-                        const dayLabel = isToday
-                          ? `Hoje · ${apptTime}`
-                          : `${appt.when.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' }).replace('.', '')} · ${apptTime}`;
-                        return (
-                          <div key={i.id} className="rounded-xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] p-3.5 flex items-center gap-3.5 hover:border-slate-300 dark:hover:border-white/12 transition">
-                            <div className="text-center shrink-0 w-12">
-                              <div className={cn('text-[10px] font-bold uppercase tracking-wider', aTone.text, aTone.darkText)}>{appt.when.toLocaleString('pt-BR', { month: 'short' }).replace('.', '')}</div>
-                              <div className="num text-[22px] font-bold tracking-tight leading-none text-slate-900 dark:text-white">{String(appt.when.getDate()).padStart(2, '0')}</div>
-                            </div>
-                            <div className="w-px h-10 bg-slate-200 dark:bg-white/[0.08]"></div>
-                            <span className={cn('w-9 h-9 rounded-lg grid place-items-center shrink-0', aTone.soft, aTone.text, aTone.darkSoft, aTone.darkText)}><ApptIcon size={16} /></span>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2">
-                                <span className="text-[13.5px] font-semibold text-slate-900 dark:text-white truncate">{appt.label}</span>
-                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300 whitespace-nowrap">Agendado</span>
-                              </div>
-                              <div className="text-[12px] text-slate-500 dark:text-slate-400 num mt-0.5">{dayLabel}</div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </section>
-          </div>
+         </div>
         </TabsContent>
 
         {/* ----- Aba: Contratos ----- */}

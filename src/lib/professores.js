@@ -32,14 +32,13 @@ export function professorNameById(professores, id) {
 }
 
 // O "Professor resp." da ficha: o professor do cadastro (o lápis da ficha grava
-// `professorName`) e, sem ele, o da aula experimental, com a modalidade dela.
+// `professorName`) e, sem ele, o da aula experimental. A modalidade é a da aula,
+// então só vai junto quando o professor mostrado é o da aula.
 // Até 21/10/2026 a ficha lia só o da aula, e trocar o professor no cadastro não
 // mudava nada na tela.
 export function profileProfessorOf(lead) {
-  if (lead?.professorName) return { name: lead.professorName, modality: null };
-  if (lead?.appointmentProfessorName) {
-    return { name: lead.appointmentProfessorName, modality: lead.appointmentModality || null };
-  }
-  return null;
+  const name = lead?.professorName || lead?.appointmentProfessorName;
+  if (!name) return null;
+  return { name, modality: name === lead.appointmentProfessorName ? lead.appointmentModality || null : null };
 }
 

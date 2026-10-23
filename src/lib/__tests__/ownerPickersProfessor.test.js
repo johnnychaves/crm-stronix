@@ -48,7 +48,7 @@ async function montar(elemento) {
   document.body.appendChild(container);
   root = createRoot(container);
   await act(async () => {
-    root.render(h(MemoryRouter, { initialEntries: ['/acad/ficha/l1/crm'] },
+    root.render(h(MemoryRouter, { initialEntries: ['/acad/ficha/l1'] },
       h(ToastContext.Provider, { value: toast },
         h(LeadProfileContext.Provider, { value: profile },
           h(GeneralConfigContext.Provider, { value: CONFIG }, elemento)))));
@@ -68,7 +68,7 @@ const clicar = async (rotulo) => {
 describe('o professor fora das escolhas de pessoa da ficha', () => {
   it('Agendar mensagem: o passo Responsável lista o consultor e não o professor', async () => {
     await montar(h(LeadProfileView, {
-      lead: LEAD, tab: 'crm', onTab: () => {}, onBack: () => {}, appUser: GESTOR,
+      lead: LEAD, tab: 'timeline', onTab: () => {}, onBack: () => {}, appUser: GESTOR,
       statuses: [], tags: [], lossReasons: [], usersList: EQUIPE, db: {}, funnels: [],
     }));
     await clicar('Agendar');

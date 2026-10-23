@@ -40,9 +40,10 @@ export const SETTINGS_SECTIONS = Object.freeze({
   profile: 'perfil-da-academia',
   billing: 'plano-e-faturas',
 });
+// A aba CRM saiu no desenho A2 (16/10/2026): o compositor e o contexto moram na
+// Linha do tempo, e /ficha/<id>/crm cai na regra da sub-tela desconhecida.
 export const FICHA_TABS = Object.freeze({
   timeline: 'linha-do-tempo',
-  crm: 'crm',
   contratos: 'contratos',
   referrals: 'indicacoes',
 });
