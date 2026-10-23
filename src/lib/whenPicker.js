@@ -48,6 +48,28 @@ export const whenIsFuture = (when, nowMs = Date.now()) => {
   return Boolean(at && at.getTime() > nowMs);
 };
 
+// O Reagendar e o "Quando voltar a falar?" só aceitam a partir de amanhã
+// (decisão do Johnny, 21/10/2026). O contato reagendado para mais tarde hoje
+// ficava com a marca de feito do dia: a tarefa nova sumia da Meta como feita,
+// ou nascia pendente no mesmo dia e o dia não batia.
+export const whenIsFromTomorrow = (when, nowMs = Date.now()) => {
+  const at = whenInstant(when);
+  return Boolean(at && calendarDaysBetween(new Date(nowMs), at) >= 1);
+};
+
+// O que falta no "Quando": 'missing' sem dia ou horário, 'today' quando só vale
+// a partir de amanhã e o dia é hoje (ou antes), 'past' quando o instante já
+// passou. Null quando está tudo certo.
+export function whenProblem(when, nowMs = Date.now(), { fromTomorrow = false } = {}) {
+  if (!whenInstant(when)) return 'missing';
+  if (fromTomorrow) return whenIsFromTomorrow(when, nowMs) ? null : 'today';
+  return whenIsFuture(when, nowMs) ? null : 'past';
+}
+
+// Os atalhos de dia do "Quando". A partir de amanhã, sem o "Hoje".
+export const whenPresetsFor = ({ fromTomorrow = false } = {}) =>
+  (fromTomorrow ? WHEN_PRESETS.filter((p) => p.days !== 0) : WHEN_PRESETS);
+
 // "hoje às 16:30", "ontem às 16:30", "amanhã às 16:30" ou "em 14/10 às 16:30".
 export function dayRefText(date, now = new Date()) {
   const diff = calendarDaysBetween(now, date);

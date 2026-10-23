@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { whenFromPreset, whenInstant, whenIsFuture } from '../lib/whenPicker.js';
+import { whenFromPreset, whenInstant, whenProblem } from '../lib/whenPicker.js';
 import { firstName } from '../lib/guardian.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { NoteToggle, PopupButton, PopupShell } from '../components/dailygoal/popup/PopupShell.jsx';
@@ -14,12 +14,13 @@ import { WhenPicker } from '../components/dailygoal/popup/WhenPicker.jsx';
 export function NextContactModal({ lead, contextLabel = 'Tarefa concluída', onPick, onSkip, onClose }) {
   const toast = useToast();
   // O instante da montagem: o render segue puro, e o envio confere de novo no
-  // relógio.
+  // relógio. O próximo contato vale a partir de amanhã, como o Reagendar
+  // (whenProblem com fromTomorrow, decisão do Johnny em 21/10/2026).
   const [nowMs] = useState(() => Date.now());
   const [when, setWhen] = useState(() => whenFromPreset('amanha', '09:00', new Date(nowMs)));
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const hint = whenIsFuture(when, nowMs) ? '' : 'Escolha um dia e horário futuros.';
+  const hint = whenProblem(when, nowMs, { fromTomorrow: true }) ? 'Escolha um dia a partir de amanhã.' : '';
 
   const run = async (fn) => {
     if (submitting) return;
@@ -28,8 +29,8 @@ export function NextContactModal({ lead, contextLabel = 'Tarefa concluída', onP
   };
   const pick = () => run(async () => {
     const at = whenInstant(when);
-    if (!(at && at.getTime() > Date.now())) {
-      toast.warning('Escolha uma data e hora futuras.');
+    if (whenProblem(when, Date.now(), { fromTomorrow: true })) {
+      toast.warning('Escolha um dia a partir de amanhã.');
       return;
     }
     await onPick(at, note);
@@ -51,7 +52,7 @@ export function NextContactModal({ lead, contextLabel = 'Tarefa concluída', onP
         </>
       )}
     >
-      <WhenPicker value={when} onChange={setWhen} who="O contato" nowMs={nowMs} autoFocus />
+      <WhenPicker value={when} onChange={setWhen} who="O contato" nowMs={nowMs} autoFocus fromTomorrow />
       <NoteToggle placeholder="Ex: respondeu no WhatsApp, retornar a proposta" value={note} onChange={setNote} />
       <p className="-mt-1.5 text-[12.5px] text-muted-foreground">Agendar conta como reaquecimento.</p>
     </PopupShell>

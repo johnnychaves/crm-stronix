@@ -6,7 +6,7 @@
 // aba Contratos dizia "Ainda não é cliente" com o chip de contagem em 1.
 
 import { describe, it, expect } from 'vitest';
-import { planStageMove, planLoss, planUpgradeMove, planUpgradeDecline, stageMoveBlockMessage, STAGE_MOVE_BLOCK, stageChangeFields, withStageEntered, matriculaStageChange } from '../stageMove.js';
+import { planStageMove, planLoss, planUpgradeMove, planUpgradeDecline, stageMoveBlockMessage, STAGE_MOVE_BLOCK, stageChangeFields, withStageEntered, matriculaStageChange, reactivationStages, reactivationFunnels } from '../stageMove.js';
 
 const D = (y, m, d) => new Date(y, m - 1, d);
 
@@ -281,5 +281,38 @@ describe('matriculaStageChange: troca para Venda na matrícula', () => {
   it('card projetado de funil de cliente não conta, mesmo sem as marcas de cliente', () => {
     const cardUpgrade = { ...leadEmEtapa, status: 'Aguardando contato', _upgradeCard: true };
     expect(matriculaStageChange(cardUpgrade, true)).toBeNull();
+  });
+});
+
+// Reativar lead (botão da ficha do lead em Perda, 21/10/2026): o lead volta a
+// uma fase aberta de um funil, gravado pelo planStageMove.
+describe('reativar lead', () => {
+  const statuses = [
+    { id: 's3', funnelId: 'f1', name: 'Negociação', order: 2 },
+    { id: 's1', funnelId: 'f1', name: 'Novo', order: 0 },
+    { id: 's2', funnelId: 'f1', name: 'Contato', order: 1 },
+    { id: 's4', funnelId: 'f1', name: 'Matriculado', order: 3 },
+    { id: 's5', funnelId: 'f1', name: 'Venda', order: 4 },
+    { id: 's6', funnelId: 'f1', name: 'Perda', order: 5 },
+    { id: 's7', funnelId: 'fi', name: 'Indicado', order: 0 },
+    { id: 's8', funnelId: 'fv', name: 'Venda', order: 0 }
+  ];
+  const funnels = [{ id: 'f1', name: 'Comercial' }, { id: 'fi', name: 'Indicações', ref: true }, { id: 'fv', name: 'Só fechamento' }];
+  const isReferral = (f) => Boolean(f.ref);
+
+  it('oferece as fases abertas na ordem do quadro, sem Perda e sem as de matrícula', () => {
+    expect(reactivationStages(statuses, 'f1').map((s) => s.name)).toEqual(['Novo', 'Contato', 'Negociação']);
+  });
+
+  it('o funil sem fase aberta sai, e o de Indicações só entra para quem tem indicador', () => {
+    expect(reactivationFunnels(funnels, statuses, { isReferral }).map((f) => f.id)).toEqual(['f1']);
+    expect(reactivationFunnels(funnels, statuses, { isReferral, hasReferrer: true }).map((f) => f.id)).toEqual(['f1', 'fi']);
+  });
+
+  it('a gravação tira o lead da Perda: limpa o motivo e a data e volta ao balde ativo', () => {
+    const perdido = { id: 'l9', status: 'Perda', funnelId: 'f1', lossReason: 'Preço', lostAt: D(2026, 9, 1) };
+    const plan = planStageMove(perdido, 'Contato', { funnelId: 'f1' });
+    expect(plan.ok).toBe(true);
+    expect(plan.patch).toEqual({ status: 'Contato', lossReason: null, lostAt: null, lifecycleBucket: 'ativo' });
   });
 });

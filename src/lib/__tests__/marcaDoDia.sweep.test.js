@@ -32,7 +32,7 @@ describe('a marca do dia da Meta leva o dono da tarefa', () => {
   // nada. A lista é a de hoje: handler novo que grave a marca entra aqui.
   it('acha os handlers que gravam a marca com a categoria', () => {
     expect([...comMarca].sort()).toEqual(
-      ['commitNextContact', 'commitNoNextContact', 'handleGoalDone', 'handleOutcome', 'handleReschedule']
+      ['commitNextContact', 'commitNoNextContact', 'concludeTask', 'handleOutcome', 'handleReschedule']
     );
   });
 
@@ -62,9 +62,10 @@ describe('a marca do dia da Meta leva o dono da tarefa', () => {
 });
 
 // Dois cliques antes de o card sumir gravavam a marca duas vezes. O desfecho de
-// visita ou aula e o Concluir seguram a tarefa enquanto gravam.
+// visita ou aula e o Concluir seguram a tarefa enquanto gravam. A gravação do
+// Concluir mora no concludeTask, que o Desfazer da tela chama depois do prazo.
 describe('a marca do dia não repete no clique duplo', () => {
-  it.each(['handleOutcome', 'handleGoalDone'])('%s segura a tarefa enquanto grava', (nome) => {
+  it.each(['handleOutcome', 'concludeTask'])('%s segura a tarefa enquanto grava', (nome) => {
     const corpo = corpoDe(nome);
     expect(corpo).toContain('claimTask(taskKey)');
     expect(corpo).toContain('releaseTask(taskKey)');
@@ -72,7 +73,7 @@ describe('a marca do dia não repete no clique duplo', () => {
 
   // Colada ao try: o finally sempre a solta. Antes dele, uma conta que falhasse
   // deixava a tarefa presa e o card sem responder.
-  it.each(['handleOutcome', 'handleGoalDone'])('%s pega a trava logo antes do try', (nome) => {
+  it.each(['handleOutcome', 'concludeTask'])('%s pega a trava logo antes do try', (nome) => {
     expect(corpoDe(nome)).toMatch(/if \(!claimTask\(taskKey\)\) return;\n {4}try \{/);
   });
 });
@@ -108,8 +109,8 @@ describe('o Reagendar do card só abre o pop-up', () => {
     expect(corpo).not.toMatch(/logInteraction|updateDoc|nextFollowUp|appointmentScheduledFor/);
   });
 
-  it('o card passa a categoria e a tela liga o botão a ele', () => {
-    expect(META).toContain('onPostpone(task, slug)');
+  it('o bloco Agora passa a categoria e a tela liga o botão a ele', () => {
+    expect(ler('../../components/dailygoal/foco/AgoraCard.jsx')).toContain('onPostpone(lead, slug)');
     expect(META).toContain('onPostpone={handleRescheduleTask}');
     expect(META).not.toContain('handleSnooze');
   });
@@ -121,7 +122,7 @@ describe('o Concluir do Novo lead marca o lead como tratado', () => {
   // A regra de qual categoria grava o campo mora no newLeadHandledPatch, com
   // teste próprio (dailyGoal.test.js). Aqui só se confere que o Concluir passa
   // o patch dele, com a categoria da tarefa.
-  it('handleGoalDone grava o newLeadHandledPatch da categoria', () => {
-    expect(corpoDe('handleGoalDone')).toContain('newLeadHandledPatch(categorySlug)');
+  it('concludeTask grava o newLeadHandledPatch da categoria', () => {
+    expect(corpoDe('concludeTask')).toContain('newLeadHandledPatch(categorySlug)');
   });
 });

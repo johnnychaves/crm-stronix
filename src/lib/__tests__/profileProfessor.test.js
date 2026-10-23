@@ -107,6 +107,21 @@ describe('ficha do professor: cabeçalho', () => {
     expect(html).toContain('>Ligar<');
   });
 
+  it('no lead em Perda, Venda e Perda dão lugar só ao "Reativar lead", e o professor não o tem', () => {
+    const emAberto = ficha({ lead: LEAD, tab: 'timeline', appUser: CONSULTOR });
+    expect(emAberto).not.toContain('Reativar lead');
+    expect(emAberto).toContain('>Marcar venda<');
+    expect(emAberto).toContain('>Marcar perda<');
+    const perdido = { ...LEAD, id: 'l9', status: 'Perda', lossReason: 'Preço', lostAt: D(2026, 9, 20) };
+    const consultor = ficha({ lead: perdido, tab: 'timeline', appUser: CONSULTOR });
+    expect(consultor).toContain('>Reativar lead<');
+    expect(consultor).not.toContain('Marcar venda');
+    expect(consultor).not.toContain('Marcar perda');
+    const prof = ficha({ lead: perdido, tab: 'timeline', appUser: PROFESSOR });
+    expect(prof).not.toContain('Reativar lead');
+    expect(prof).not.toContain('Marcar perda');
+  });
+
   it('num lead, o professor não marca venda nem perda', () => {
     const consultor = ficha({ lead: LEAD, tab: 'timeline', appUser: CONSULTOR });
     expect(consultor).toContain('>Marcar venda<');
@@ -169,5 +184,18 @@ describe('ficha do professor: Indicações só para leitura', () => {
     expect(html).toContain('Nenhuma indicação ainda');
     expect(html).toContain('Quando este cliente indicar alguém, a pessoa aparece aqui com o andamento dela.');
     expect(html).not.toContain('botão Indicar');
+  });
+});
+
+// Bug de 21/10/2026: trocar o professor no cadastro do cliente não mudava o
+// "Professor resp." da ficha, que lia só o professor da aula experimental.
+describe('profileProfessorOf', () => {
+  it('o professor do cadastro vem primeiro; sem ele, o da aula', async () => {
+    const { profileProfessorOf } = await import('../professores.js');
+    expect(profileProfessorOf({ professorName: 'Bia', appointmentProfessorName: 'Caio', appointmentModality: 'Pilates' }))
+      .toEqual({ name: 'Bia', modality: null });
+    expect(profileProfessorOf({ appointmentProfessorName: 'Caio', appointmentModality: 'Pilates' }))
+      .toEqual({ name: 'Caio', modality: 'Pilates' });
+    expect(profileProfessorOf({})).toBeNull();
   });
 });

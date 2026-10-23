@@ -28,7 +28,7 @@ import { FOCO_COMPROMISSOS, FOCO_ORDER, FOCO_GRUPOS } from './metaFocoCodes.js';
 // chama de 0 e 1, são as "urgentes" que o título da aba conta.
 //
 // Uma "entrada" é uma tarefa pendente: { key, slug, lead }. Um lead com duas
-// categorias pendentes vira duas entradas, como na tela de hoje.
+// categorias pendentes vira duas entradas.
 // ============================================================================
 
 const MIN_MS = 60 * 1000;
@@ -61,7 +61,7 @@ export function pendingEntries(processedLeads) {
   return out;
 }
 
-const isAppt = (slug) => slug === C.VISITA_HOJE || slug === C.AULA_HOJE;
+export const isAppt = (slug) => slug === C.VISITA_HOJE || slug === C.AULA_HOJE;
 
 // Milissegundos até o prazo da tarefa (negativo = já passou), ou null quando a
 // tarefa não tem prazo: atrasado, renovação e vencido não têm hora.

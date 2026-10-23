@@ -1,4 +1,4 @@
-import { forwardRef } from 'react';
+import { forwardRef, useEffect, useRef } from 'react';
 import { Calendar, Check, ChevronDown, Clock, ExternalLink, MessageCircle, Phone, SkipForward, X } from 'lucide-react';
 import { DAILY_GOAL_CATEGORIES as C, getLeadAppointmentDate } from '../../../lib/leads.js';
 import { DG_CATEGORY_META } from '../../../lib/dailyGoal.js';
@@ -12,16 +12,16 @@ import { Avatar } from '../../ui/Avatar.jsx';
 import { ContactPhone } from '../../profile/ContactPhone.jsx';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../ui/dropdown-menu.jsx';
 
-// O bloco Agora da Meta nova (mockup B): o único bloco escuro da tela, com a
-// tarefa que o consultor está fazendo. Mostra por que ela está aqui, quem é, a
-// última anotação, até quatro fatos e as ações da categoria. Só apresenta: quem
-// grava são os handlers da Meta, os mesmos da tela de hoje.
+// O bloco Agora da Meta (mockup B): o único bloco escuro da tela, com a tarefa
+// que o consultor está fazendo. Mostra por que ela está aqui, quem é, a última
+// anotação, até quatro fatos e as ações da categoria. Só apresenta: quem grava
+// são os handlers da DailyGoalView.
 //
 // Visita e aula: Compareceu e Não compareceu a qualquer hora, antes ou depois
 // do horário, e o "Mais" com Remarcar e Cancelou (decisão do Johnny, 16/10/2026).
 // Só a que já passou da hora mantém o WhatsApp, para falar com quem faltou. As
-// outras tarefas têm o Reagendar do card de hoje (handleRescheduleTask), que é
-// o único jeito de reagendar um Novo lead.
+// outras tarefas têm o Reagendar (handleRescheduleTask), que é o único jeito
+// de reagendar um Novo lead.
 //
 // O menu "Mais" leva a chave da tarefa: quando o Agora troca de lead com ele
 // aberto (o desfecho chegou por outra tela), o menu fecha, em vez de aplicar o
@@ -40,11 +40,25 @@ const ACT = cn('inline-flex h-[46px] items-center gap-2 rounded-xl border border
 const ACT_MAIN = 'border-accent-500 bg-accent-500 text-ink-900 hover:border-accent-400 hover:bg-accent-400';
 const TAG = 'rounded-full bg-white/[0.12] px-2.5 py-0.5 text-[12px] font-semibold text-white/85';
 
+// A tecla do atalho no botão (useAgoraShortcuts). Some no celular, onde não há
+// teclado; para o leitor de tela o atalho vai no aria-keyshortcuts do botão.
+const Kbd = ({ children }) => (
+  <kbd aria-hidden="true" className="ml-0.5 hidden h-[18px] min-w-[18px] place-items-center rounded-[5px] border border-current px-[5px] font-sans text-[11px] font-semibold leading-none opacity-55 md:inline-grid">
+    {children}
+  </kbd>
+);
+
 export const AgoraCard = forwardRef(function AgoraCard(
-  { entry, why, facts, now, meId, pinned, onUnpin, onSkip, onOutcome, onReschedule, onPostpone, onGoalDone, onWhatsapp, onCall },
+  { entry, why, facts, now, meId, pinned, retorno = false, onUnpin, onSkip, onOutcome, onReschedule, onPostpone, onGoalDone, onWhatsapp, onCall, onRetornoSim, onRetornoNao },
   ref
 ) {
   const { slug, lead } = entry;
+  // A pergunta da volta toma o lugar das ações, e o botão em que o foco estava
+  // some: o foco vai para o "Sim".
+  const simRef = useRef(null);
+  useEffect(() => {
+    if (retorno) simRef.current?.focus();
+  }, [retorno]);
   const Icon = DG_CATEGORY_META[slug].Icon;
   const isAppt = slug === C.VISITA_HOJE || slug === C.AULA_HOJE;
   const apptAt = isAppt ? getLeadAppointmentDate(lead) : null;
@@ -61,13 +75,13 @@ export const AgoraCard = forwardRef(function AgoraCard(
     : null;
 
   const whatsapp = (main) => (
-    <button type="button" className={cn(ACT, main && ACT_MAIN)} onClick={() => onWhatsapp(lead)}>
-      <MessageCircle size={18} aria-hidden="true" /> WhatsApp
+    <button type="button" aria-keyshortcuts="W" className={cn(ACT, main && ACT_MAIN)} onClick={() => onWhatsapp(lead)}>
+      <MessageCircle size={18} aria-hidden="true" /> WhatsApp <Kbd>W</Kbd>
     </button>
   );
   const ligar = (main) => (
-    <button type="button" className={cn(ACT, main && ACT_MAIN)} onClick={() => onCall(lead)}>
-      <Phone size={18} aria-hidden="true" /> Ligar
+    <button type="button" aria-keyshortcuts="L" className={cn(ACT, main && ACT_MAIN)} onClick={() => onCall(lead)}>
+      <Phone size={18} aria-hidden="true" /> Ligar <Kbd>L</Kbd>
     </button>
   );
 
@@ -129,14 +143,24 @@ export const AgoraCard = forwardRef(function AgoraCard(
         </dl>
       )}
 
+      {retorno ? (
+        // Na volta do WhatsApp ou da ligação, a pergunta toma o lugar das ações.
+        <div role="group" aria-label="Confirmar contato" className="mt-6 flex flex-wrap items-center gap-3 rounded-[14px] bg-white/10 px-4 py-3">
+          <p className="mr-auto text-[14.5px] font-medium">Conversou com {firstName(lead.name) || 'o lead'}?</p>
+          <button ref={simRef} type="button" aria-keyshortcuts="C" className={cn(ACT, ACT_MAIN)} onClick={onRetornoSim}>
+            <Check size={18} aria-hidden="true" /> Sim, concluir <Kbd>C</Kbd>
+          </button>
+          <button type="button" className={ACT} onClick={onRetornoNao}>Ainda não</button>
+        </div>
+      ) : (
       <div className="mt-6 flex flex-wrap items-center gap-2.5">
         {isAppt ? (
           <>
-            <button type="button" className={cn(ACT, ACT_MAIN)} onClick={() => onOutcome(lead, 'attended', slug)}>
-              <Check size={18} aria-hidden="true" /> Compareceu
+            <button type="button" aria-keyshortcuts="C" className={cn(ACT, ACT_MAIN)} onClick={() => onOutcome(lead, 'attended', slug)}>
+              <Check size={18} aria-hidden="true" /> Compareceu <Kbd>C</Kbd>
             </button>
-            <button type="button" className={ACT} onClick={() => onOutcome(lead, 'no_show', slug)}>
-              <X size={18} aria-hidden="true" /> Não compareceu
+            <button type="button" aria-keyshortcuts="N" className={ACT} onClick={() => onOutcome(lead, 'no_show', slug)}>
+              <X size={18} aria-hidden="true" /> Não compareceu <Kbd>N</Kbd>
             </button>
             {passou && whatsapp(false)}
             <DropdownMenu key={entry.key}>
@@ -153,8 +177,8 @@ export const AgoraCard = forwardRef(function AgoraCard(
           <>
             {ligacao ? ligar(true) : whatsapp(true)}
             {ligacao ? whatsapp(false) : ligar(false)}
-            <button type="button" className={ACT} onClick={() => onGoalDone(lead, slug, '')}>
-              <Check size={18} aria-hidden="true" /> Concluir
+            <button type="button" aria-keyshortcuts="C" className={ACT} onClick={() => onGoalDone(lead, slug, '')}>
+              <Check size={18} aria-hidden="true" /> Concluir <Kbd>C</Kbd>
             </button>
             <button type="button" className={ACT} onClick={() => onPostpone(lead, slug)}>
               <Calendar size={18} aria-hidden="true" /> Reagendar
@@ -162,10 +186,11 @@ export const AgoraCard = forwardRef(function AgoraCard(
           </>
         )}
       </div>
+      )}
 
       <div className="mt-5 flex items-center gap-5 border-t border-white/[0.12] pt-3.5">
-        <button type="button" onClick={onSkip} className={cn('inline-flex items-center gap-2 rounded px-0.5 py-0.5 text-[13.5px] font-medium text-white/75 hover:text-white', RING)}>
-          <SkipForward size={15} aria-hidden="true" /> Pular por agora
+        <button type="button" aria-keyshortcuts="S" onClick={onSkip} className={cn('inline-flex items-center gap-2 rounded px-0.5 py-0.5 text-[13.5px] font-medium text-white/75 hover:text-white', RING)}>
+          <SkipForward size={15} aria-hidden="true" /> Pular por agora <Kbd>S</Kbd>
         </button>
         <LeadLink leadId={lead.id} draggable={false} className={cn('inline-flex items-center gap-2 rounded px-0.5 py-0.5 text-[13.5px] font-medium text-white/75 hover:text-white', RING)}>
           <ExternalLink size={14} aria-hidden="true" /> Abrir ficha

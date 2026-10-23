@@ -1,7 +1,7 @@
 // Escrita do desfecho de um agendamento (visita/aula) — fonte ÚNICA para os
 // lugares que confirmam presença na Meta Diária: a Agenda de hoje e a correção
-// do "Feitos hoje". O card "A fazer" grava pelo handleOutcome do DailyGoalView,
-// que usa a mesma regra de promoção (planPromotion).
+// do "Feitos hoje". O desfecho do bloco Agora grava pelo handleOutcome do
+// DailyGoalView, que usa a mesma regra de promoção (planPromotion).
 //
 // A rule de leads permite qualquer membro do tenant dar UPDATE desde que o
 // DONO (consultantAuthUid) fique inalterado — este helper nunca o toca, então
