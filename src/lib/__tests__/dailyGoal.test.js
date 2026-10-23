@@ -29,8 +29,9 @@ import {
   clientTouchCount
 } from '../dailyGoal.js';
 import { DAILY_GOAL_CATEGORIES } from '../leads.js';
-import { contactDone, contactReschedule } from '../contactGoal.js';
+import { contactDone, contactReschedule, followUpChannelOf } from '../contactGoal.js';
 import { consumedFields } from '../outcomeCorrection.js';
+import { buildSchedulePatch } from '../schedulePatch.js';
 import { computeDayAgenda } from '../dayAgenda.js';
 
 // Quarta-feira, 15 de julho de 2026, 10:00 local — "agora" de referência.
@@ -1063,6 +1064,81 @@ describe('o contato feito fica com quem tinha a tarefa na marcação', () => {
     const feito = [goalDone(l.id, DAILY_GOAL_CATEGORIES.ATRASADO)];
     expect(byId(slotsDe(ANA, [concluido], feito), l.id).categoryStatus[DAILY_GOAL_CATEGORIES.ATRASADO]).toBe(true);
     expect(slotsDe(BRUNO, [concluido], feito)).toEqual([]);
+  });
+
+  // A visita e a aula gravam o eco no nextFollowUp, por cima do contato
+  // delegado. O dono daquele contato não pode ficar para trás: depois do "Não
+  // veio", o Reagendar transforma o eco em mensagem, e ela ia para a Meta do
+  // Bruno, que recebeu um contato que já não existia.
+  describe('a visita agendada depois de um contato delegado', () => {
+    const visita = new Date(2026, 6, 14, 19, 0);
+    const as16 = new Date(2026, 6, 15, 16, 0);
+
+    it('a Ana agenda a visita, marca "Não veio" e reagenda: o contato fica na Meta dela, e não na do Bruno', () => {
+      const delegado = delegadoAoBruno({ nextFollowUp: new Date(2026, 6, 14, 9, 0), nextFollowUpType: 'Mensagem' });
+      const agendado = { ...delegado, ...buildSchedulePatch({ typeLabel: 'Visita', date: visita, unidade: 'Centro' }) };
+      const naoVeio = { ...agendado, appointmentOutcome: 'no_show' };
+      const reagendado = { ...naoVeio, ...contactReschedule(naoVeio, as16) };
+      expect(slotsDe(BRUNO, [reagendado])).toEqual([]);
+      expect(byId(slotsDe(ANA, [reagendado]), reagendado.id)?.categorySlugs).toContain(CONTATO);
+    });
+
+    it('o lead antigo, com o eco e o dono do Bruno já gravados, volta para a Ana no Reagendar', () => {
+      const antigo = delegadoAoBruno({
+        appointmentType: 'visita', appointmentScheduledFor: visita, nextFollowUp: visita, nextFollowUpType: 'Visita', appointmentOutcome: 'no_show',
+      });
+      const reagendado = { ...antigo, ...contactReschedule(antigo, as16) };
+      expect(slotsDe(BRUNO, [reagendado])).toEqual([]);
+      expect(byId(slotsDe(ANA, [reagendado]), reagendado.id)?.categorySlugs).toContain(CONTATO);
+    });
+
+    // A reprodução da revisão (18/10/2026): o assistente sugere o mesmo horário
+    // para a visita e para a mensagem, e o horário igual não faz da mensagem
+    // com dono um eco. A Meta mostra o contato ao Bruno, e o Reagendar dele o
+    // mantém com ele.
+    it('mensagem passada ao Bruno no mesmo minuto da visita: o Reagendar dele a mantém com ele', () => {
+      const T = new Date(2026, 6, 15, 11, 0);
+      let l = lead({ consultantId: ANA });
+      l = { ...l, ...buildSchedulePatch({ typeLabel: 'Visita', date: new Date(T), unidade: 'Centro' }) };
+      l = { ...l, ...buildSchedulePatch({ typeLabel: 'Mensagem', date: new Date(T), contactOwnerId: BRUNO, contactOwnerName: 'Bruno' }) };
+      expect(byId(slotsDe(BRUNO, [l]), l.id)?.categorySlugs).toEqual([CONTATO]);
+      const amanha = new Date(2026, 6, 16, 9, 0);
+      const reagendado = { ...l, ...contactReschedule(l, amanha) };
+      expect(reagendado.nextFollowUpOwnerId).toBe(BRUNO);
+      expect(tomorrowAppointmentsOf([reagendado], BRUNO)).toEqual([{ lead: reagendado, when: amanha }]);
+      expect(tomorrowAppointmentsOf([reagendado], ANA)).toEqual([]);
+    });
+
+    // O "Próximo contato?" que a Meta abre depois do Compareceu e do Cancelou
+    // (commitNextContact, no DailyGoalView) grava só a data e o tipo. O dono do
+    // contato antigo sai antes, junto com o eco, no desfecho (consumedFields).
+    describe('o "Próximo contato?" depois do desfecho, no lead antigo', () => {
+      const as9 = new Date(2026, 6, 15, 9, 0);
+      const antigoDeHoje = () => delegadoAoBruno({
+        appointmentType: 'visita', appointmentScheduledFor: as9, nextFollowUp: as9, nextFollowUpType: 'Visita',
+      });
+      // O que o commitNextContact grava, com o lead de antes do desfecho.
+      const proximoContato = (l, when) => ({ nextFollowUp: when, nextFollowUpType: followUpChannelOf(l).type });
+
+      for (const outcome of ['attended', 'cancelled']) {
+        it(`${outcome}: o contato novo fica na Meta da Ana, e não na do Bruno`, () => {
+          const antes = antigoDeHoje();
+          const desfecho = { ...antes, appointmentOutcome: outcome, ...consumedFields(outcome, antes) };
+          const depois = { ...desfecho, ...proximoContato(antes, as16) };
+          expect(slotsDe(BRUNO, [depois])).toEqual([]);
+          expect(byId(slotsDe(ANA, [depois]), depois.id)?.categorySlugs).toContain(CONTATO);
+        });
+      }
+
+      it('o contato delegado de verdade, marcado à parte, continua com o Bruno depois do Compareceu', () => {
+        const antes = delegadoAoBruno({
+          appointmentType: 'visita', appointmentScheduledFor: as9, nextFollowUp: as16, nextFollowUpType: 'Mensagem',
+        });
+        const depois = { ...antes, appointmentOutcome: 'attended', ...consumedFields('attended', antes) };
+        expect(byId(slotsDe(BRUNO, [depois]), depois.id)?.categorySlugs).toEqual([CONTATO]);
+        expect(byId(slotsDe(ANA, [depois]), depois.id)?.categorySlugs ?? []).not.toContain(CONTATO);
+      });
+    });
   });
 });
 

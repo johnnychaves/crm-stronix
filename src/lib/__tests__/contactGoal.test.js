@@ -104,4 +104,48 @@ describe('contactReschedule', () => {
     expect(contactOwnerId(depois)).toBe('u-bruno');
     expect(depois.nextFollowUpOwnerName).toBe('Bruno');
   });
+
+  // O eco do agendamento (visita ou aula) não é o contato delegado: o contato
+  // que o Reagendar cria a partir dele é novo e fica com o dono do lead. Lead
+  // antigo, que ficou com o dono do contato anterior por baixo do eco, se acerta
+  // aqui, sem script.
+  describe('Reagendar do eco de um agendamento', () => {
+    const visita = new Date(2026, 6, 14, 19, 0);
+    const ecoComDonoAntigo = (over = {}) => ({
+      consultantId: 'u-ana', nextFollowUpOwnerId: 'u-bruno', nextFollowUpOwnerName: 'Bruno',
+      appointmentType: 'visita', appointmentScheduledFor: visita, nextFollowUp: visita, nextFollowUpType: 'Visita',
+      ...over,
+    });
+
+    it('eco reconhecido pelo tipo: o contato novo fica com o dono do lead', () => {
+      const lead = ecoComDonoAntigo();
+      const patch = contactReschedule(lead, '2026-07-15');
+      expect(patch).toHaveProperty('nextFollowUpOwnerId', null);
+      expect(patch).toHaveProperty('nextFollowUpOwnerName', null);
+      expect(contactOwnerId({ ...lead, ...patch })).toBe('u-ana');
+    });
+
+    it('eco antigo sem tipo, reconhecido pelo horário igual ao do agendamento: o contato novo fica com o dono do lead', () => {
+      for (const nextFollowUpType of [null, undefined, '']) {
+        const lead = ecoComDonoAntigo({ nextFollowUpType, nextFollowUp: new Date(visita) });
+        const patch = contactReschedule(lead, '2026-07-15');
+        expect(patch).toHaveProperty('nextFollowUpOwnerId', null);
+        expect(contactOwnerId({ ...lead, ...patch })).toBe('u-ana');
+      }
+    });
+
+    // O assistente sugere 09:00 para todo dia que não é hoje, então a visita e a
+    // mensagem passada ao colega caem no mesmo minuto no uso normal. Com o tipo
+    // Mensagem, é contato de verdade: a Meta e a prévia mostram ao Bruno, e o
+    // Reagendar dele não pode entregá-lo à Ana.
+    it('mensagem com dono marcada no mesmo minuto da visita continua com quem recebeu', () => {
+      for (const nextFollowUpType of ['Mensagem', 'Ligação']) {
+        const lead = ecoComDonoAntigo({ nextFollowUpType, nextFollowUp: new Date(visita) });
+        const patch = contactReschedule(lead, '2026-07-15');
+        expect(patch).not.toHaveProperty('nextFollowUpOwnerId');
+        expect(patch).not.toHaveProperty('nextFollowUpOwnerName');
+        expect(contactOwnerId({ ...lead, ...patch })).toBe('u-bruno');
+      }
+    });
+  });
 });

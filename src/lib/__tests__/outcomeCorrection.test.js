@@ -12,7 +12,10 @@ import {
   consumedFields,
   isAppointmentEcho,
 } from '../outcomeCorrection.js';
-import { DAILY_GOAL_CATEGORIES } from '../leads.js';
+import { DAILY_GOAL_CATEGORIES, contactOwnerId } from '../leads.js';
+
+// O eco sai com o dono do contato que estava por baixo dele (consumedFields).
+const SEM_DONO = { nextFollowUpOwnerId: null, nextFollowUpOwnerName: null };
 
 const VISITA = DAILY_GOAL_CATEGORIES.VISITA_HOJE;
 const AULA = DAILY_GOAL_CATEGORIES.AULA_HOJE;
@@ -186,13 +189,13 @@ describe('consumedFields: o desfecho tira o eco do agendamento', () => {
   const at = new Date(2026, 9, 17, 10, 0);
 
   it('Compareceu tira o eco e preserva o agendamento', () => {
-    expect(consumedFields('attended', comEco)).toEqual({ nextFollowUp: null });
+    expect(consumedFields('attended', comEco)).toEqual({ nextFollowUp: null, ...SEM_DONO });
   });
 
   // O Cancelou grava também que o lead foi tratado (newLeadHandledAt), porque
   // o agendamento que sai era o sinal disso para a regra do lead novo.
   it('Cancelou tira o eco e o agendamento, e marca o lead como tratado', () => {
-    expect(consumedFields('cancelled', comEco, at)).toEqual({ nextFollowUp: null, appointmentScheduledFor: null, appointmentType: null, newLeadHandledAt: at });
+    expect(consumedFields('cancelled', comEco, at)).toEqual({ nextFollowUp: null, ...SEM_DONO, appointmentScheduledFor: null, appointmentType: null, newLeadHandledAt: at });
   });
 
   it('um contato de verdade marcado à parte fica', () => {
@@ -201,13 +204,55 @@ describe('consumedFields: o desfecho tira o eco do agendamento', () => {
   });
 
   it('cliente segue a mesma regra: a aula cancelada sai e o eco não vira Atrasado', () => {
-    expect(consumedFields('cancelled', cliente, at)).toEqual({ nextFollowUp: null, appointmentScheduledFor: null, appointmentType: null, newLeadHandledAt: at });
-    expect(consumedFields('attended', cliente)).toEqual({ nextFollowUp: null });
+    expect(consumedFields('cancelled', cliente, at)).toEqual({ nextFollowUp: null, ...SEM_DONO, appointmentScheduledFor: null, appointmentType: null, newLeadHandledAt: at });
+    expect(consumedFields('attended', cliente)).toEqual({ nextFollowUp: null, ...SEM_DONO });
   });
 
   it('Não compareceu e Remarcou não tiram nada', () => {
     expect(consumedFields('no_show', comEco)).toEqual({});
     expect(consumedFields('rescheduled', comEco)).toEqual({});
+  });
+
+  // O eco tomou o lugar do contato delegado: o dono daquele contato não vale
+  // mais. Sem tirá-lo junto, o "Próximo contato?" depois do desfecho, que
+  // grava só a data e o tipo, mandava o contato novo para quem tinha recebido o
+  // antigo. É o lead de antes de 18/10/2026, quando agendar a visita ainda não
+  // limpava o dono (buildSchedulePatch).
+  describe('o eco sai com o dono do contato antigo', () => {
+    const daAnaComBruno = { consultantId: 'u-ana', nextFollowUpOwnerId: 'u-bruno', nextFollowUpOwnerName: 'Bruno' };
+
+    it('Compareceu e Cancelou num eco com o dono do Bruno: o próximo contato volta para a Ana', () => {
+      const lead = { ...comEco, ...daAnaComBruno };
+      for (const outcome of ['attended', 'cancelled']) {
+        const depois = { ...lead, ...consumedFields(outcome, lead, at) };
+        expect(depois.nextFollowUpOwnerId).toBeNull();
+        expect(depois.nextFollowUpOwnerName).toBeNull();
+        expect(contactOwnerId(depois)).toBe('u-ana');
+      }
+    });
+
+    // Limite que já existia antes de 18/10/2026: o isAppointmentEcho trata como
+    // eco a mensagem marcada no mesmo minuto da visita, e o desfecho a apaga.
+    // O dono dela fica, porque com o tipo Mensagem ela não é eco para a Meta.
+    it('mensagem com dono no mesmo minuto da visita: o desfecho a apaga, mas não tira o dono', () => {
+      const lead = { ...comEco, nextFollowUp: new Date(agendado), nextFollowUpType: 'Mensagem', ...daAnaComBruno };
+      for (const outcome of ['attended', 'cancelled']) {
+        const patch = consumedFields(outcome, lead, at);
+        expect(patch.nextFollowUp).toBeNull();
+        expect(patch).not.toHaveProperty('nextFollowUpOwnerId');
+        expect(patch).not.toHaveProperty('nextFollowUpOwnerName');
+      }
+    });
+
+    it('o contato delegado de verdade, marcado à parte, continua com o Bruno', () => {
+      const lead = { ...comContato, ...daAnaComBruno };
+      for (const outcome of ['attended', 'cancelled']) {
+        const patch = consumedFields(outcome, lead, at);
+        expect(patch).not.toHaveProperty('nextFollowUpOwnerId');
+        expect(patch).not.toHaveProperty('nextFollowUpOwnerName');
+        expect(contactOwnerId({ ...lead, ...patch })).toBe('u-bruno');
+      }
+    });
   });
 });
 
@@ -233,9 +278,9 @@ describe('o eco sem tipo sai no Compareceu e volta no desfazer', () => {
   const antigo = { appointmentType: 'visita', appointmentScheduledFor: agendado, nextFollowUp: new Date(agendado), nextFollowUpType: null };
 
   it('o Compareceu tira o eco e grava o tipo da visita', () => {
-    expect(consumedFields('attended', antigo)).toEqual({ nextFollowUp: null, nextFollowUpType: 'Visita' });
+    expect(consumedFields('attended', antigo)).toEqual({ nextFollowUp: null, ...SEM_DONO, nextFollowUpType: 'Visita' });
     expect(consumedFields('attended', { ...antigo, appointmentType: 'aula_experimental' }))
-      .toEqual({ nextFollowUp: null, nextFollowUpType: 'Aula Experimental' });
+      .toEqual({ nextFollowUp: null, ...SEM_DONO, nextFollowUpType: 'Aula Experimental' });
   });
 
   it('o desfazer devolve o eco', () => {
@@ -246,6 +291,6 @@ describe('o eco sem tipo sai no Compareceu e volta no desfazer', () => {
   });
 
   it('o eco que já tinha o tipo não muda o tipo', () => {
-    expect(consumedFields('attended', { ...antigo, nextFollowUpType: 'Aula Experimental' })).toEqual({ nextFollowUp: null });
+    expect(consumedFields('attended', { ...antigo, nextFollowUpType: 'Aula Experimental' })).toEqual({ nextFollowUp: null, ...SEM_DONO });
   });
 });

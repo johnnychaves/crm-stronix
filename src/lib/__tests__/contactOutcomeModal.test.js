@@ -184,8 +184,12 @@ describe('ContactOutcomeModal aberto pelo Reagendar do card', () => {
     await clicar('Reagendar', -1);
     const [, , , , patch] = logInteractions.mock.calls[0];
     // Com o tipo 'Visita' mantido e o agendamento apagado, o lead virava uma
-    // visita falsa no dia seguinte.
-    expect(patch).toEqual({ nextFollowUp: new Date(2026, 6, 16, 9, 0), nextFollowUpType: 'Mensagem' });
+    // visita falsa no dia seguinte. O contato que nasce do eco é novo e fica
+    // com o dono do lead (o dono do contato vai null, contactReschedule).
+    expect(patch).toEqual({
+      nextFollowUp: new Date(2026, 6, 16, 9, 0), nextFollowUpType: 'Mensagem',
+      nextFollowUpOwnerId: null, nextFollowUpOwnerName: null,
+    });
   });
 
   it('o Novo lead também reagenda por este pop-up', async () => {

@@ -10,6 +10,7 @@
 //     data" de hoje, que conta como reaquecimento (volumeKind).
 
 import { fromDateInputValue } from './dates.js';
+import { echoContactOwnerCleared } from './outcomeCorrection.js';
 
 // Canal do follow-up derivado do lead (mesma leitura de commitNextContact):
 // Ligação se o nextFollowUpType atual contém "liga", senão Mensagem. Retorna
@@ -42,7 +43,9 @@ export function contactDone(at = new Date()) {
 // preservando o canal do lead. Não toca status/funil. Aceita Date ou string
 // 'yyyy-mm-dd' (formato de <input type="date">). Leva o MESMO contato para
 // outro dia, então não menciona o dono do contato: ele continua com quem tem a
-// tarefa, inclusive o colega que o recebeu.
+// tarefa, inclusive o colega que o recebeu. A exceção é o eco de um agendamento
+// (echoContactOwnerCleared, em outcomeCorrection.js): o contato que nasce dele
+// é novo e fica com o dono do lead, com null explícito.
 //
 // NÃO ENCOSTA no compromisso formal (visita/aula). Até 18/08/2026 este patch
 // zerava appointmentType/appointmentScheduledFor "para não conflitar com a
@@ -53,8 +56,5 @@ export function contactDone(at = new Date()) {
 export function contactReschedule(lead, dateStr) {
   const date = dateStr instanceof Date ? dateStr : fromDateInputValue(dateStr);
   const { type } = followUpChannelOf(lead);
-  return {
-    nextFollowUp: date,
-    nextFollowUpType: type
-  };
+  return { nextFollowUp: date, nextFollowUpType: type, ...echoContactOwnerCleared(lead) };
 }

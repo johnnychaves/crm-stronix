@@ -16,6 +16,9 @@
 
 import { getSafeDateOrNull, fromDateInputValue } from './dates.js';
 import { deriveLeadContractStatus, CONTRACT_STATUS } from './contracts.js';
+// A api/ lê este arquivo (o cartão do Stronizap): outcomeCorrection.js só chega
+// a leads.js e dates.js, sem pacote (newLeadImports.test.js segue a cadeia).
+import { echoContactOwnerCleared } from './outcomeCorrection.js';
 
 // Default da academia (Regras gerais → Renovação de contrato → marcos).
 export const DEFAULT_RENEWAL_CHECKPOINTS = [90, 60, 30];
@@ -151,6 +154,9 @@ export function renewalUndoDecline() {
 //   • renewalHandledCheckpoints += activeCheckpoint (idempotente) → o MARCO
 //     atual conta como RESOLVIDO, some de Renovações. Volta a Renovações só no
 //     PRÓXIMO marco (ex.: 90 → 60), que ainda não está em handled.
+//   • O dono do contato só muda quando o próximo contato era o eco de um
+//     agendamento (echoContactOwnerCleared): aí o contato novo é do dono do
+//     cliente. Um contato delegado de verdade continua com quem o recebeu.
 // NÃO toca status/lifecycleStage: continua cliente (perda de venda != funil).
 // Aceita Date ou string 'yyyy-mm-dd' (formato de <input type="date">).
 //
@@ -166,6 +172,7 @@ export function renewalReschedule(lead, dateStr, activeCheckpoint, followUpType 
   return {
     nextFollowUp: date,
     nextFollowUpType: followUpType,
-    renewalHandledCheckpoints: next
+    renewalHandledCheckpoints: next,
+    ...echoContactOwnerCleared(lead)
   };
 }

@@ -51,8 +51,26 @@ export const isAppointmentEcho = (lead) => {
   return Boolean(next && appt && next.getTime() === appt.getTime());
 };
 
+// O eco tomou o lugar do contato que estava no nextFollowUp, então o dono
+// daquele contato (nextFollowUpOwnerId) não vale mais. Quem tira o eco ou o
+// troca por um contato novo leva junto os dois null, e o contato novo fica com o
+// dono do lead: o desfecho (consumedFields, antes do "Próximo contato?"), o
+// Reagendar (contactReschedule) e o Reagendar da Renovação e do Vencidos
+// (renewalReschedule). Acerta sem script o lead de antes de 18/10/2026, quando
+// agendar a visita ainda deixava o dono para trás.
+// Só vale para o eco pelo tipo ou para o eco antigo sem tipo, reconhecido pelo
+// horário. A mensagem ou a ligação com dono marcada no mesmo minuto da visita
+// (o assistente sugere 09:00 para os dois) é contato de verdade: a Meta e a
+// prévia de amanhã a mostram a quem a recebeu, e o dono dela fica.
+export const echoContactOwnerCleared = (lead) => {
+  const t = lead?.nextFollowUpType;
+  const echo = normalizeAppointmentType(t) || (!String(t || '').trim() && isAppointmentEcho(lead));
+  return echo ? { nextFollowUpOwnerId: null, nextFollowUpOwnerName: null } : {};
+};
+
 // O que o desfecho tira do lead. O Compareceu e o Cancelou tiram o eco do
-// agendamento, senão o lead amanhecia em Atrasados pelo compromisso que já
+// agendamento (com o dono do contato que ele cobria, echoContactOwnerCleared),
+// senão o lead amanhecia em Atrasados pelo compromisso que já
 // aconteceu, e o Cancelou apaga também o agendamento. O Compareceu preserva o
 // agendamento, para a pessoa não sumir de Visitas e Aulas. Um contato de
 // verdade marcado à parte (o de renovação do aluno, por exemplo) fica. Vale
@@ -74,7 +92,7 @@ export function consumedFields(outcome, lead, at = new Date()) {
   if (outcome !== 'attended' && outcome !== 'cancelled') return {};
   const patch = {};
   if (isAppointmentEcho(lead)) {
-    patch.nextFollowUp = null;
+    Object.assign(patch, { nextFollowUp: null }, echoContactOwnerCleared(lead));
     const label = ECHO_TYPE_LABEL[lead?.appointmentType];
     if (outcome === 'attended' && label && !normalizeAppointmentType(lead?.nextFollowUpType)) patch.nextFollowUpType = label;
   }

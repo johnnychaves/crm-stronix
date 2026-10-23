@@ -1050,7 +1050,11 @@ describe('buildScheduleWrites: o que o assistente grava, numa gravação só', (
       // A Ana agenda no próprio lead: a tarefa fica com a dona, e o null
       // explícito não deixa o agendamento herdar quem recebeu o anterior.
       appointmentOwnerId: null,
-      appointmentOwnerName: null
+      appointmentOwnerName: null,
+      // O eco da visita sobrescreve o próximo contato, então o dono do contato
+      // delegado que estava ali sai junto, como no assistente.
+      nextFollowUpOwnerId: null,
+      nextFollowUpOwnerName: null
     });
   });
 
