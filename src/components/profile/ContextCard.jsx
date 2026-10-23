@@ -228,7 +228,7 @@ export function ContextCard({ lead, sources = [], usersList = [], tagsCatalog = 
   };
 
   return (
-    <section id="ficha-contexto" aria-label="Contexto comercial" className="overflow-hidden rounded-2xl border border-border bg-card shadow-card">
+    <section aria-label="Contexto comercial" className="overflow-hidden rounded-2xl border border-border bg-card shadow-card">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 pb-3 pt-4 lg:px-6">
         <h3 className="font-display text-[16px] font-semibold tracking-tight">Contexto comercial</h3>
         {canEdit && <span className="text-[12.5px] text-muted-foreground">Clique em um campo para editar</span>}

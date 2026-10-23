@@ -152,7 +152,7 @@ function Body({ name }) {
               <span style={A('wdSwap')}>Copiar</span>
               <span className="absolute inset-0 grid place-items-center text-emerald-600 dark:text-emerald-400" style={A('wdPop')}>Copiado ✓</span>
             </span>
-            <span className="h-6 px-2 rounded-md bg-emerald-600 text-white text-[9px] font-semibold grid place-items-center">Enviar pro cliente</span>
+            <span className="h-6 px-2 rounded-md bg-emerald-600 text-white text-[9px] font-semibold grid place-items-center">Enviar pelo WhatsApp</span>
           </div>
         </Screen>
       );

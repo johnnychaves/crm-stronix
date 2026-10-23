@@ -145,37 +145,43 @@ describe('aba Cadastro montada na ficha: troca de aba', () => {
 });
 
 describe('caminhos do cabeçalho até o Cadastro', () => {
-  it('o lápis do cabeçalho abre a aba Cadastro', async () => {
+  // O lápis ao lado do nome saiu (pedido do Johnny, 22/10/2026): o caminho é a
+  // aba Cadastro. O único "Editar cadastro" do cabeçalho é o do "Fez 18 anos".
+  it('o cabeçalho não tem mais o lápis de editar o cadastro', async () => {
     await montar();
-    const lapis = botoes('').find((b) => b.title === 'Editar cadastro');
-    await clicar(lapis);
+    expect(botoes('').find((b) => b.title === 'Editar cadastro')).toBeUndefined();
+    expect(botoes('Editar cadastro')).toEqual([]);
+  });
+
+  // O "Adicionar etiqueta" saiu do cabeçalho (pedido do Johnny, 22/10/2026):
+  // as etiquetas se editam no Contexto comercial da Linha do tempo.
+  it('o cabeçalho não tem o "Adicionar etiqueta"', async () => {
+    await montar();
+    expect(botoes('Adicionar etiqueta')).toEqual([]);
+  });
+
+  // Idade e tempo de casa à vista no cabeçalho (pedido do Johnny, 22/10/2026).
+  it('sem nascimento, o "Idade não informada" abre a Identidade com o cursor no nascimento', async () => {
+    await montar();
+    await clicar(botoes('Idade não informada')[0]);
     expect(abaAtual).toBe('cadastro');
-    expect(painelCadastro().hidden).toBe(false);
-    expect(porLabel('Identidade')).toBeTruthy();
+    expect(document.activeElement).toBe(campo('birthDate'));
   });
 
-  it('o lápis não descarta a seção aberta no Cadastro', async () => {
-    await montar({ aba: 'cadastro' });
-    await clicar(porLabel('Editar endereço'));
-    await digitar(campo('city'), 'Canoas');
-    await irPara('timeline');
-    await clicar(botoes('').find((b) => b.title === 'Editar cadastro'));
-    expect(campo('city').value).toBe('Canoas');
+  it('quem não edita o cadastro não vê o "Idade não informada"', async () => {
+    await montar({ appUser: PROFESSOR });
+    expect(botoes('Idade não informada')).toEqual([]);
   });
 
-  it('o "Adicionar etiqueta" leva à Linha do tempo e rola até o Contexto comercial', async () => {
-    const rolou = vi.fn();
-    const antes = Element.prototype.scrollIntoView;
-    Element.prototype.scrollIntoView = function scrollIntoView() { rolou(this); };
-    try {
-      await montar({ aba: 'cadastro' });
-      await clicar(botoes('Adicionar etiqueta')[0]);
-      expect(abaAtual).toBe('timeline');
-      await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
-      expect(rolou).toHaveBeenCalledWith(document.getElementById('ficha-contexto'));
-    } finally {
-      Element.prototype.scrollIntoView = antes;
-    }
+  // O tempo de casa do cliente é coberto pelo profileProfessor.test.js.
+  it('com nascimento, mostra a idade; o lead não tem tempo de casa', async () => {
+    await montar({ lead: FEZ_18 });
+    expect(botoes('Idade não informada')).toEqual([]);
+    const chip = [...document.body.querySelectorAll('span')].find((s) => s.textContent === '18 anos');
+    expect(chip).toBeTruthy();
+    expect(chip.getAttribute('title')).toMatch(/^(Nascida|Nascido|Nascimento) em \d{2}\/\d{2}\/\d{4}$/);
+    expect(chip.parentElement.querySelector('h1')).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/Aluna há|Aluno há|Na casa há/);
   });
 });
 

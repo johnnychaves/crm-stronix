@@ -16,7 +16,8 @@ function LossReasonModal({ lossReasons, onClose, onConfirm }) {
           <h3 className="text-xl font-bold text-red-500 uppercase tracking-tighter">Sinalizar Perda</h3>
         </div>
         <p className="text-xs text-gray-500 dark:text-neutral-400 font-bold mb-6">Diga por que esse lead foi perdido.</p>
-        <select value={reason} onChange={e=>setReason(e.target.value)} className="w-full bg-paper-50 dark:bg-neutral-950 p-4 rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-red-500 text-xs font-bold mb-6 appearance-none">
+        {/* autoFocus: a janela não é um Dialog e não leva o foco para dentro sozinha. */}
+        <select autoFocus value={reason} onChange={e=>setReason(e.target.value)} className="w-full bg-paper-50 dark:bg-neutral-950 p-4 rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-red-500 text-xs font-bold mb-6 appearance-none">
            {options.map(r => <option key={r.id || r.name} value={r.name}>{r.name}</option>)}
         </select>
         <div className="flex gap-3">

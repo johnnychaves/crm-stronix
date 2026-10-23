@@ -18,19 +18,17 @@ import { planProfileNote } from '../lib/profileNote.js';
 import { getReferralFunnel, getReferralEntryStage, buildReferralShareLink, buildReferralWhatsAppText, isReferralFunnel } from '../lib/referrals.js';
 import { getUpgradeFunnel, upgradeStageIdOf } from '../lib/upgradeFunnel.js';
 import { commitReferralLink, removeReferralLink } from '../lib/referralsWrites.js';
-import { deriveLeadState, getTone } from '../lib/leadState.js';
-import { professorNameById, profileProfessorOf } from '../lib/professores.js';
+import { deriveLeadState, getTone, phaseToneName } from '../lib/leadState.js';
+import { professorNameById } from '../lib/professores.js';
 import { recordNewAppointment, markConvertingAula } from '../lib/aulasWrites.js';
 import { buildSchedulePatch, appointmentTaskOwnerFor, taskOwnerText } from '../lib/schedulePatch.js';
 import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { LeadLink } from '../components/nav/AppLink.jsx';
-import { Avatar } from '../components/ui/Avatar.jsx';
-import { Btn, IconBtn } from '../components/ui/Btn.jsx';
-import { StatusBadge, TagBadge } from '../components/ui/Badges.jsx';
+import { Btn } from '../components/ui/Btn.jsx';
+import { TagBadge } from '../components/ui/Badges.jsx';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs.jsx';
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '../components/ui/dropdown-menu.jsx';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../components/ui/dialog.jsx';
 import { RingAvatar } from '../components/profile/RingAvatar.jsx';
 import { PhotoCaptureMenu } from '../components/profile/PhotoCaptureMenu.jsx';
@@ -53,6 +51,12 @@ import { ContextCard } from '../components/profile/ContextCard.jsx';
 import { CadastroTab } from '../components/profile/cadastro/CadastroTab.jsx';
 import { saveCadastroSection } from '../lib/cadastroWrites.js';
 import { UpNextList } from '../components/profile/UpNextList.jsx';
+import { MoreActionsMenu } from '../components/profile/MoreActionsMenu.jsx';
+import { ProfileHeaderBand } from '../components/profile/ProfileHeaderBand.jsx';
+import { ReferralsMenu } from '../components/profile/ReferralsMenu.jsx';
+import { StickyMini } from '../components/profile/StickyMini.jsx';
+import { useHeaderGone } from '../hooks/useHeaderGone.js';
+import { ageChip, arrivedText, clientSinceCell, contractCell, nextStepCell, stageCell, stateChipText, teamCell } from '../lib/profileBand.js';
 import { TimelineBar } from '../components/profile/TimelineBar.jsx';
 import { TimelineEvent } from '../components/profile/TimelineEvent.jsx';
 import { upNextOf } from '../lib/upNext.js';
@@ -70,21 +74,7 @@ import {
   originLastOnTies,
   isAppointmentReschedule
 } from '../lib/timeline.js';
-import { ArrowLeft, Ban, Calendar, Clock, Copy, CreditCard, FileText, Handshake, IdCard, MessageCircle, Pencil, Phone, Plus, RotateCcw, Search, Tag, ThumbsDown, Trash, TrendingUp, User, UserPlus } from 'lucide-react';
-
-// Célula da faixa de metadados do cabeçalho: rótulo em versalete sobre o valor.
-// Substituiu a fila de ícones — sem rótulo, "(51) 99184-2270" e "Ana Duarte"
-// pareciam a mesma categoria de informação.
-const MetaCell = ({ label, children }) => (
-  <div className="min-w-0 px-5 first:pl-0 py-0.5">
-    <div className="text-[9.5px] font-bold uppercase tracking-[.07em] text-slate-400 dark:text-slate-500 whitespace-nowrap">
-      {label}
-    </div>
-    <div className="mt-1 flex items-center gap-1.5 text-[12.5px] font-semibold text-slate-700 dark:text-slate-200 min-w-0">
-      {children}
-    </div>
-  </div>
-);
+import { ArrowLeft, Award, Cake, Clock, FileText, Handshake, IdCard, MessageCircle, Pencil, Phone, RotateCcw, Search, TrendingUp } from 'lucide-react';
 
 // Chip de contagem ao lado do label da aba (Linha do tempo / Contratos).
 function TabCount({ n, active }) {
@@ -102,6 +92,9 @@ function TabCount({ n, active }) {
 // abriu direto numa aba nova). onDeleteStart e onDeleteFailed avisam a rota
 // para trocar a ficha por "Excluindo a ficha…" e devolver se a exclusão falhar.
 // listenersActive é o portão de ociosidade do App, repassado à linha do tempo.
+// Pílula neutra do chip da idade no cabeçalho.
+const CHIP_IDADE = 'inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full bg-muted px-2.5 text-[13px] font-medium text-slate-700 dark:bg-white/10 dark:text-slate-200';
+
 function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFailed, listenersActive = true, appUser, statuses, tags, lossReasons, usersList, db, funnels, sources = [] }) {
   // Timeline por query própria (G2): histórico COMPLETO do lead (índice #10),
   // ao vivo. Antes vinha do prop global filtrado por leadId — que pós-G2 é só o
@@ -175,6 +168,9 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // fase, só fecham o compositor que estava no Mudar fase.
   const closeComposerIn = (mode) => setComposer((c) => (c.mode === mode ? { open: false, mode: 'note' } : c));
   const composerRef = useRef(null);
+  // O cabeçalho que sai por cima da área que rola liga a barra fina.
+  const headerRef = useRef(null);
+  const headerGone = useHeaderGone(headerRef);
   // O registro recebe o foco quando o item marcado sai do A seguir, e o evento
   // que o "Ver no histórico" abriu fica em destaque por um instante.
   const registroRef = useRef(null);
@@ -250,10 +246,14 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     window.open(href);
   };
 
+  const handleCall = () => {
+    const href = telHref(contact.phone);
+    if (href) window.location.href = href;
+  };
 
   const handleDelete = async () => {
     if (!isGestor(appUser)) { negarAcesso(); return; }
-    if (!window.confirm("Excluir este lead permanentemente? Não dá pra desfazer.")) return;
+    if (!window.confirm(`Excluir este ${isClient ? 'cliente' : 'lead'} permanentemente? Não dá pra desfazer.`)) return;
     // A rota troca a ficha por "Excluindo a ficha…" até terminar. Sem isso, o
     // aviso de doc apagado chega antes do fim e a tela piscaria "excluída".
     onDeleteStart?.();
@@ -565,8 +565,8 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   };
 
   // Edição no lugar do Contexto comercial: grava só o campo que mudou
-  // (lib/contextWrites.js). A trava é a do cadastro, a mesma do lápis do
-  // cabeçalho. Devolve false quando não gravou, para o editor ficar aberto.
+  // (lib/contextWrites.js). A trava é a do cadastro, a mesma da aba Cadastro.
+  // Devolve false quando não gravou, para o editor ficar aberto.
   // `from` é o valor da abertura do editor: as etiquetas gravam só a diferença.
   // O editor aberto mora aqui, e não no card, para o rascunho sobreviver à
   // troca de aba, como o rascunho do compositor.
@@ -586,18 +586,11 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     }
   };
 
-  // Abre o Cadastro, opcionalmente já numa seção e num campo. Sem seção (o
-  // lápis), só troca de aba: a seção que estiver aberta lá continua.
+  // Abre o Cadastro, opcionalmente já numa seção e num campo (o "Fez 18
+  // anos"). Sem seção, só troca de aba: a seção que estiver aberta lá continua.
   const openCadastro = (sectionId = null, field = null) => {
     if (sectionId) setCadastroRequest({ sectionId, field, at: Date.now() });
     onTab('cadastro');
-  };
-
-  // O "Adicionar etiqueta" do cabeçalho: as etiquetas se editam no Contexto
-  // comercial, na Linha do tempo.
-  const goToContext = () => {
-    onTab('timeline');
-    setTimeout(() => document.getElementById('ficha-contexto')?.scrollIntoView?.({ block: 'center' }), 0);
   };
 
   // Grava uma seção do Cadastro (lib/cadastroWrites.js), só com as chaves dela.
@@ -826,7 +819,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   const isInReferralFunnel = Boolean(referralFunnel && lead.funnelId === referralFunnel.id);
   const { count: referralsCount, items: referralItems, loading: referralsLoading, reload: reloadReferrals } =
     useReferrals({ db, leadId: lead.id, enabled: isClient, active: activeProfileTab === 'referrals' });
-  // Cadastro à mão de indicações (menu Indicar e aba Indicações). Só existe
+  // Cadastro à mão de indicações (botão Indicações do cabeçalho e aba Indicações). Só existe
   // com o funil Indicações e a etapa de entrada, a mesma trava do "É uma
   // indicação?" do Novo lead, e só para quem pode editar e cadastrar indicação.
   const referralEntry = referralFunnel ? getReferralEntryStage(statuses, referralFunnel.id) : null;
@@ -985,6 +978,33 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // anteriores (repeti-lo duplicava plano, valor e vigência 42px abaixo).
   const currentContract = leadContracts.find(c => c.id === lead.currentContractId) || null;
 
+  // O que a faixa de baixo do cabeçalho mostra (src/lib/profileBand.js).
+  const bandNow = new Date();
+  const band = {
+    next: nextStepCell(lead, bandNow),
+    mid: isClient
+      ? contractCell({ lead, contracts: leadContracts, now: bandNow, thresholdDays: contractThresholdDays })
+      : stageCell({ lead, statuses, funnels: safeFunnels, interactions, now: bandNow }),
+    team: teamCell(lead),
+    age: ageChip(lead, bandNow),
+    since: isClient ? clientSinceCell({ lead, contracts: leadContracts, now: bandNow }) : null,
+  };
+
+  // "Próximo passo" do cabeçalho: volta o registro para Tudo, limpa a busca, vai
+  // para a Linha do tempo pelo mesmo caminho das abas (a aba Cadastro fica
+  // montada e não perde a seção aberta) e põe o foco no item do "A seguir".
+  const goToNext = () => {
+    const id = band.next.item?.id;
+    setTimelineFilter('all');
+    setTimelineQuery('');
+    onTab('timeline');
+    setTimeout(() => {
+      const el = id ? document.getElementById(`next-${id}`) : null;
+      el?.scrollIntoView?.({ block: 'center' });
+      el?.focus?.({ preventScroll: true });
+    }, 0);
+  };
+
   // ----- Render helpers -----
   const copyPhone = async (phone) => {
     try {
@@ -995,14 +1015,28 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     }
   };
 
-  const profileProfessor = profileProfessorOf(lead);
 
   return (
     // 1160px centralizado (medida do handoff). O shell do app libera até
     // 1400/1600px, e nessa largura a linha do tempo vira uma linha de texto
     // longa demais entre a hora e o autor — a leitura do registro depende da
     // coluna curta.
-    <div className="animate-fade-in font-sans max-w-[1160px] mx-auto w-full">
+    // scroll-mt-32 (128 px): a barra fina (56 px) e o mês que gruda embaixo dela
+    // (uns 44 px) cobrem o topo da área que rola, e o foco que volta com
+    // Shift+Tab sumia atrás deles. O padrão é o dos Relatórios.
+    // pb-24: respiro no fim, para o último cartão não encostar no fim da área
+    // que rola (pedido do Johnny, 22/10/2026).
+    <div className="animate-fade-in font-sans max-w-[1160px] mx-auto w-full pb-24 [&_:is(a,button,input,textarea,[tabindex])]:scroll-mt-32">
+      {/* Barra fina: aparece presa no alto quando o cabeçalho sai por cima. */}
+      <StickyMini
+        visible={headerGone}
+        name={lead.name}
+        photoUrl={lead.photoUrl}
+        tone={profileState.tone}
+        stateText={stateChipText(profileState.label)}
+        onWhatsApp={handleWhatsApp}
+        onCall={handleCall}
+      />
       {/* ===== Voltar (a topbar é o shell do app; mantemos o Voltar acima do card) ===== */}
       <button
         onClick={onBack}
@@ -1012,7 +1046,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
       </button>
 
       {/* ===== Cabeçalho (card) — port fiel de header.jsx ===== */}
-      <section className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card overflow-hidden mb-5">
+      <section ref={headerRef} className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card overflow-hidden mb-5">
         <div className="p-5 sm:p-6">
           <div className="flex items-start gap-4 sm:gap-5 flex-wrap">
             {/* Sem o ponto: o anel, o ponto e o texto "CLIENTE ATIVO" diziam a
@@ -1028,48 +1062,60 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
             />
 
             <div className="min-w-[240px] flex-1">
-              {/* lifecycle label */}
-              <div className="flex items-center gap-2 mb-1.5 whitespace-nowrap overflow-hidden">
+              {/* estado: um selo em frase normal, e ao lado de onde o lead veio
+                  ou o que o estado do cliente quer dizer. */}
+              <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2">
                 {profileState.key === 'a_vencer' && (
-                  <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider shrink-0 text-emerald-700 dark:text-emerald-300">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>Ativo
+                  <span className="inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 text-[12.5px] font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+                    <span className="size-1.5 rounded-full bg-emerald-500" aria-hidden="true" />Ativo
                   </span>
                 )}
-                <span className={cn('inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider shrink-0', profileTone.text, profileTone.darkText)}>
-                  <span className={cn('w-2 h-2 rounded-full', profileTone.strong)}></span>{profileState.label}
+                <span className={cn('inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] font-semibold', profileTone.soft, profileTone.text, profileTone.darkSoft, profileTone.darkText)}>
+                  <span className={cn('size-1.5 rounded-full', profileTone.strong)} aria-hidden="true" />
+                  {stateChipText(profileState.label)}
                 </span>
                 {upgradeStage && (
-                  <span className="inline-flex items-center gap-1 h-[18px] px-1.5 rounded-md text-[10px] font-bold uppercase tracking-[.05em] shrink-0 bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300">
-                    <TrendingUp size={10} /> Upgrade · {upgradeStage.name}
+                  <span className="inline-flex h-6 shrink-0 items-center gap-1 rounded-full bg-violet-50 px-2.5 text-[12.5px] font-semibold text-violet-700 dark:bg-violet-500/10 dark:text-violet-300">
+                    <TrendingUp size={11} aria-hidden="true" /> Upgrade · {upgradeStage.name}
                   </span>
                 )}
-                <span className="text-[11.5px] text-slate-400 dark:text-slate-500 truncate">· {profileState.hint}</span>
+                <span className="min-w-0 truncate text-[12.5px] text-muted-foreground">
+                  {isClient ? profileState.hint : (arrivedText(lead, bandNow) || profileState.hint)}
+                </span>
               </div>
-              {/* name + edit */}
+              {/* nome. Editar o cadastro é pela aba Cadastro. */}
               <div className="flex items-center flex-wrap gap-2 gap-y-1">
                 <h1 className="font-display text-[26px] sm:text-[28px] font-bold tracking-tight leading-none truncate">{lead.name}</h1>
+                {/* Idade e tempo de casa em chips ao lado do nome (opção A, escolhida
+                    pelo Johnny em 22/10/2026). Sem nascimento, quem edita o
+                    cadastro tem o atalho até o campo. */}
+                {band.age ? (
+                  <span title={band.age.title} className={CHIP_IDADE}>
+                    <Cake className="size-3.5" aria-hidden="true" />{band.age.text}
+                  </span>
+                ) : canEditCadastro && (
+                  <button
+                    type="button"
+                    onClick={() => openCadastro('identidade', 'birthDate')}
+                    className={cn(CHIP_IDADE, 'hover:bg-slate-200 dark:hover:bg-white/15 focus-visible:anel-foco')}
+                  >
+                    <Cake className="size-3.5" aria-hidden="true" />Idade não informada
+                  </button>
+                )}
+                {band.since && (
+                  <span title={band.since.title} className="inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full bg-brand-50 px-2.5 text-[13px] font-medium text-brand-700 dark:bg-brand-500/10 dark:text-brand-300">
+                    <Award className="size-3.5" aria-hidden="true" />{band.since.text}
+                  </span>
+                )}
                 {isMinorNow(lead) && (
-                  <span className="shrink-0 inline-flex items-center h-[20px] px-2 rounded-md text-[10.5px] font-bold uppercase tracking-[.05em] bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300">
+                  <span className="inline-flex h-6 shrink-0 items-center rounded-full bg-brand-50 px-2.5 text-[12.5px] font-semibold text-brand-700 dark:bg-brand-500/10 dark:text-brand-300">
                     Menor de idade
                   </span>
                 )}
-                {canEditCadastro && (
-                  <IconBtn icon={<Pencil size={16} />} kind="default" title="Editar cadastro" onClick={() => openCadastro()} />
-                )}
               </div>
-              {/* status + tags */}
-              <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                {!isClient && (
-                  <StatusBadge statusName={lead.status} statusesArray={statuses} />
-                )}
-                {(lead.tags || []).length === 0 && canEditCadastro && (
-                  <button
-                    onClick={goToContext}
-                    className="inline-flex items-center gap-1 text-[11.5px] font-medium text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 px-2 py-1 rounded-md border border-dashed border-slate-300 dark:border-white/15 transition"
-                  >
-                    <Plus size={11} /> Adicionar etiqueta
-                  </button>
-                )}
+              {/* etiquetas (só leitura: editar é no Contexto comercial) e indicação.
+                  A etapa do lead mora na faixa de baixo. */}
+              <div className="mt-3 flex flex-wrap items-center gap-1.5 empty:hidden">
                 {(lead.tags || []).map(tName => (
                   <TagBadge key={tName} tagName={tName} tagsArray={tags} />
                 ))}
@@ -1109,205 +1155,70 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
               </div>
             </div>
 
-            {/* actions */}
-            <div className="flex items-center gap-2 flex-wrap ml-auto">
-              {/* Ações de contato sem moldura: só ícone e rótulo. O que precisa
-                  de peso visual são Venda e Perda, logo ao lado. */}
-              <Btn kind="ghost" size="md" icon={<MessageCircle size={14} />} onClick={handleWhatsApp}>WhatsApp</Btn>
-              {/* O menu Indicar inteiro (cadastrar, copiar e enviar o link) é de
-                  quem cadastra indicação. O professor fica sem ele. */}
+            {/* ações */}
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              <Btn kind="brand" size="md" icon={<MessageCircle size={14} />} onClick={handleWhatsApp}>WhatsApp</Btn>
+              <Btn kind="secondary" size="md" icon={<Phone size={14} />} onClick={handleCall}>Ligar</Btn>
+              {/* O botão Indicações (cadastrar, copiar o link e mandar pelo
+                  WhatsApp) é de quem cadastra indicação, e só do cliente. O
+                  professor fica sem ele. */}
               {isClient && canIndicar && (
-                <DropdownMenu>
-                  {/* Botão do próprio trigger, não o Btn: o Btn não encaminha
-                      ref nem as props que o Radix injeta, então com `asChild`
-                      o menu não abria. Estilo espelha o Btn ghost tamanho md. */}
-                  <DropdownMenuTrigger className="inline-flex items-center gap-1.5 h-9 px-3.5 text-[12.5px] rounded-lg font-semibold whitespace-nowrap transition active:scale-[.98] text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/[0.06] data-[state=open]:bg-slate-100 dark:data-[state=open]:bg-white/[0.06]">
-                    <Handshake size={14} /> Indicar
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" sideOffset={6} className="w-56 rounded-xl">
-                    {canQuickReferral && (
-                      <DropdownMenuItem onSelect={() => setQuickReferralOpen(true)} className="cursor-pointer">
-                        <UserPlus className="size-4 text-brand-600 dark:text-brand-300" /> Cadastrar indicação
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuItem onClick={copyReferralLink} className="cursor-pointer">
-                      <Copy className="size-4 text-slate-500" /> Copiar link
-                    </DropdownMenuItem>
-                    {referralWaHref && (
-                      <DropdownMenuItem asChild className="cursor-pointer">
-                        <a href={referralWaHref} target="_blank" rel="noopener noreferrer">
-                          <MessageCircle className="size-4 text-emerald-600 dark:text-emerald-400" /> {contact.viaGuardian ? 'Enviar pro responsável' : 'Enviar pro cliente'}
-                        </a>
-                      </DropdownMenuItem>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <ReferralsMenu
+                  count={referralsCount}
+                  canRegister={canQuickReferral}
+                  onRegister={() => setQuickReferralOpen(true)}
+                  onCopy={copyReferralLink}
+                  whatsappHref={referralWaHref}
+                  toGuardian={contact.viaGuardian}
+                />
               )}
-              <Btn
-                kind="ghost"
-                size="md"
-                icon={<Phone size={14} />}
-                onClick={() => { const href = telHref(contact.phone); if (href) window.location.href = href; }}
-              >
-                Ligar
-              </Btn>
-              {/* Venda/Perda só fazem sentido p/ LEAD: cliente já converteu e gere
-                  o contrato pela aba Contratos (Renovar / Cancelar). Venda abre o
-                  contrato e Perda muda a fase, então cada um segue a sua ação. */}
-              {!isClient && (canContrato || canMudarFase) && (
-                <>
-                  <div className="w-px h-6 bg-slate-200 dark:bg-white/[0.08] mx-0.5 hidden sm:block"></div>
-                  {/* Lead em Perda: Venda e Perda saem, e fica só o "Reativar
-                      lead", que o devolve a uma fase do funil. Reativado, os dois
-                      voltam. */}
-                  {lead.status === 'Perda' ? (
-                    canMudarFase && (
-                      <Btn
-                        kind="brand"
-                        size="md"
-                        icon={<RotateCcw size={14} />}
-                        onClick={() => setReactivateOpen(true)}
-                        disabled={loading || reactivateFunnels.length === 0}
-                      >
-                        Reativar lead
-                      </Btn>
-                    )
-                  ) : (
-                    <>
-                      {canContrato && (
-                        <Btn
-                          kind="success"
-                          size="md"
-                          icon={<TrendingUp size={14} />}
-                          onClick={handleWin}
-                          disabled={lead.status === 'Venda' || loading}
-                          title={lead.status === 'Venda' ? 'Lead já marcado como venda' : 'Marcar venda'}
-                        >
-                          Marcar venda
-                        </Btn>
-                      )}
-                      {canMudarFase && (
-                        <Btn
-                          kind="danger"
-                          size="md"
-                          icon={<Ban size={14} />}
-                          onClick={() => setLossModalOpen(true)}
-                          disabled={loading}
-                          title="Marcar perda"
-                        >
-                          Marcar perda
-                        </Btn>
-                      )}
-                    </>
-                  )}
-                </>
+              {/* Venda só faz sentido para LEAD: o cliente já converteu e gere o
+                  contrato pela aba Contratos (Renovar, Cancelar). Lead em Perda
+                  troca a Venda pelo "Reativar lead", que o devolve a uma fase do
+                  funil. A perda e a exclusão moram em "Mais ações". */}
+              {!isClient && lead.status !== 'Perda' && canContrato && (
+                <Btn
+                  kind="success"
+                  size="md"
+                  icon={<TrendingUp size={14} />}
+                  onClick={handleWin}
+                  disabled={lead.status === 'Venda' || loading}
+                >
+                  Marcar venda
+                </Btn>
               )}
-              {isGestor(appUser) && (
-                <IconBtn icon={<Trash size={15} />} kind="danger" title="Excluir lead" onClick={handleDelete} />
+              {!isClient && lead.status === 'Perda' && canMudarFase && (
+                <Btn
+                  kind="secondary"
+                  size="md"
+                  icon={<RotateCcw size={14} />}
+                  onClick={() => setReactivateOpen(true)}
+                  disabled={loading || reactivateFunnels.length === 0}
+                >
+                  Reativar lead
+                </Btn>
               )}
+              <MoreActionsMenu
+                isClient={isClient}
+                canLoss={!isClient && lead.status !== 'Perda' && canMudarFase}
+                lossDisabled={loading}
+                onLoss={() => setLossModalOpen(true)}
+                canDelete={isGestor(appUser)}
+                onDelete={handleDelete}
+              />
             </div>
           </div>
 
-          {/* Faixa de metadados: quatro células rotuladas, separadas por régua. */}
-          <div className="mt-5 pt-4 border-t border-slate-100 dark:border-white/[0.05] grid grid-cols-2 lg:grid-cols-4 gap-y-3 divide-x divide-slate-100 dark:divide-white/[0.06]">
-            <MetaCell label={contact.viaGuardian ? 'Contato (responsável)' : 'Contato'}>
-              {contact.viaGuardian ? (
-                <div className="min-w-0 flex flex-col gap-0.5">
-                  {/* O número nunca trunca: é o dado que o consultor precisa
-                      discar, e "(mãe)" pode ceder espaço antes dele. */}
-                  <span className="flex items-center gap-1.5 min-w-0">
-                    <span className="num whitespace-nowrap">{contact.phone || '—'}</span>
-                    {contact.phone && (
-                      <button
-                        type="button"
-                        onClick={() => copyPhone(contact.phone)}
-                        title="Copiar número do responsável"
-                        aria-label="Copiar número do responsável"
-                        className="shrink-0 size-5 grid place-items-center rounded text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 transition focus-visible:outline-none focus-visible:anel-foco"
-                      >
-                        <Copy size={12} />
-                      </button>
-                    )}
-                  </span>
-                  <span className="truncate text-[11.5px] font-medium text-muted-foreground" title={contactLabel(contact)}>
-                    {contactLabel(contact)}
-                  </span>
-                  {hasPhone(lead.whatsapp) && (
-                    <span className="flex items-center gap-1.5 min-w-0 text-[11.5px] font-medium text-muted-foreground">
-                      <span className="num whitespace-nowrap">Aluno · {lead.whatsapp}</span>
-                      <button
-                        type="button"
-                        onClick={() => copyPhone(lead.whatsapp)}
-                        title="Copiar número do aluno"
-                        aria-label="Copiar número do aluno"
-                        className="shrink-0 size-5 grid place-items-center rounded text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 transition focus-visible:outline-none focus-visible:anel-foco"
-                      >
-                        <Copy size={12} />
-                      </button>
-                    </span>
-                  )}
-                </div>
-              ) : (
-                <>
-                  <span className="num truncate">{contact.phone || '—'}</span>
-                  {contact.phone && (
-                    <button
-                      type="button"
-                      onClick={() => copyPhone(contact.phone)}
-                      title="Copiar número"
-                      aria-label="Copiar número"
-                      className="shrink-0 size-5 grid place-items-center rounded text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 transition focus-visible:outline-none focus-visible:anel-foco"
-                    >
-                      <Copy size={12} />
-                    </button>
-                  )}
-                </>
-              )}
-            </MetaCell>
-
-            <MetaCell label="Consultor resp.">
-              {lead.consultantName ? (
-                <>
-                  <Avatar name={lead.consultantName} size={19} />
-                  <span className="truncate">{lead.consultantName}</span>
-                </>
-              ) : <span className="text-slate-400 dark:text-slate-500 font-normal">Sem responsável</span>}
-            </MetaCell>
-
-            <MetaCell label="Professor resp.">
-              {profileProfessor ? (
-                <>
-                  <Avatar name={profileProfessor.name} size={19} />
-                  <span className="truncate">{profileProfessor.name}</span>
-                  {profileProfessor.modality && (
-                    <span className="text-slate-400 dark:text-slate-500 font-normal truncate">· {profileProfessor.modality}</span>
-                  )}
-                </>
-              ) : <span className="text-slate-400 dark:text-slate-500 font-normal">—</span>}
-            </MetaCell>
-
-            <MetaCell label="Próximo passo">
-              {lead.nextFollowUp ? (
-                <>
-                  <Calendar size={13} className="shrink-0 text-slate-400 dark:text-slate-500" />
-                  <span className="text-brand-700 dark:text-brand-300 truncate">
-                    {lead.nextFollowUpType || 'Próximo contato'}
-                  </span>
-                  {/* A data cede espaço antes do rótulo: em coluna estreita ela
-                      trunca, mas o compromisso (o que importa) continua legível. */}
-                  <span className="num font-normal text-slate-500 dark:text-slate-400 truncate">
-                    {/* "seg 03/08" — o pt-BR devolve "seg., 03/08". */}
-                    {lead.nextFollowUp.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' }).replace('.,', '').replace(',', '')} · {lead.nextFollowUp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <Calendar size={13} className="shrink-0 text-slate-400 dark:text-slate-500" />
-                  <span className="text-slate-400 dark:text-slate-500 font-normal">Sem próximo contato</span>
-                </>
-              )}
-            </MetaCell>
-          </div>
+          <ProfileHeaderBand
+            band={band}
+            isClient={isClient}
+            tone={getTone(phaseToneName(lead.status, statuses))}
+            contact={contact}
+            contactText={contactLabel(contact)}
+            studentPhone={hasPhone(lead.whatsapp) ? lead.whatsapp : null}
+            onGoNext={goToNext}
+            onCopyPhone={copyPhone}
+          />
           {contact.missingOwnPhone && (
             <div className="mt-3 flex items-center flex-wrap gap-2">
               <p className="text-[12px] font-medium text-amber-700 dark:text-amber-300">
@@ -1361,7 +1272,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
             >
               <Handshake className="size-[15px]" />
               Indicações
-              <TabCount n={referralsCount ?? 0} active={activeProfileTab === 'referrals'} />
+              {referralsCount != null && <TabCount n={referralsCount} active={activeProfileTab === 'referrals'} />}
             </TabsTrigger>
           )}
         </TabsList>
@@ -1443,7 +1354,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
            ref={registroRef}
            tabIndex={-1}
            aria-label="Histórico"
-           className="rounded-2xl border border-border bg-card shadow-card overflow-hidden outline-none focus-visible:anel-foco"
+           className="rounded-2xl border border-border bg-card shadow-card overflow-clip outline-none focus-visible:anel-foco"
          >
           {(interactions || []).length > 0 && (
             <TimelineBar
@@ -1493,10 +1404,14 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
               {/* Um bloco por mês ("Setembro de 2026"). O dia e a hora vão em
                   cada linha, então o bloco não precisa de régua de dia. No
                   escuro o bg-card é translúcido: o cabeçalho fixo usa a mesma
-                  cor já misturada, opaca, para não virar uma faixa clara. */}
+                  cor já misturada, opaca, para não virar uma faixa clara. Ele
+                  gruda logo abaixo da barra fina (56 px) e o top desconta o
+                  recuo da área que rola (p-4 md:p-8): 56 - 16 e 56 - 32. O card
+                  do registro é overflow-clip, e não overflow-hidden, senão o
+                  card vira o contêiner do sticky e o mês nunca gruda. */}
               {groupedEvents.map(([label, events]) => (
                 <section key={label} className="mb-5">
-                  <header className="sticky top-0 z-10 flex items-baseline gap-2.5 bg-card/95 py-2.5 backdrop-blur dark:bg-[color-mix(in_srgb,var(--page),white_2%)]">
+                  <header className="sticky top-10 z-10 flex md:top-6 items-baseline gap-2.5 bg-card/95 py-2.5 backdrop-blur dark:bg-[color-mix(in_srgb,var(--page),white_2%)]">
                     <span className="font-display text-[15px] font-semibold tracking-tight">{label}</span>
                     <span className="num text-[12.5px] text-muted-foreground">
                       {events.length} {events.length === 1 ? 'registro' : 'registros'}

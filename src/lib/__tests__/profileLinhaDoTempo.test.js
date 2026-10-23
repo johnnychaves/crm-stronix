@@ -138,6 +138,54 @@ describe('Linha do tempo sem a aba CRM', () => {
     expect(html).not.toContain('aria-label="Marcar desfecho');
   });
 
+  describe('cabeçalho', () => {
+    // A barra fina (56 px) e o mês que gruda embaixo dela cobrem o topo da área
+    // que rola: quem volta com Shift+Tab via o foco sumir atrás deles.
+    it('os focáveis da ficha têm margem de rolagem para não ficarem atrás da barra fina e do mês', () => {
+      const html = ficha();
+      const raiz = html.match(/<div class="([^"]*max-w-\[1160px\][^"]*)"/);
+      expect(raiz).toBeTruthy();
+      // O renderToString escreve o & como &amp;.
+      expect(raiz[1].replaceAll('&amp;', '&').split(' ')).toContain('[&_:is(a,button,input,textarea,[tabindex])]:scroll-mt-32');
+    });
+
+    it('a faixa de baixo tem os quatro blocos, em frase normal', () => {
+      const html = ficha();
+      ['Próximo passo', 'Etapa', 'Contato', 'Equipe'].forEach((rotulo) => expect(html).toContain(`>${rotulo}<`));
+      expect(html).not.toContain('Consultor resp.');
+      expect(html).not.toContain('Professor resp.');
+      expect(html).toContain('Júlia Andrade');
+    });
+
+    it('o selo do estado sai em frase normal, e o lead diz de onde veio', () => {
+      const html = ficha();
+      expect(html).toContain('>Lead<');
+      expect(html).not.toContain('>LEAD<');
+      expect(html).toContain('Chegou por Instagram em 01/09.');
+    });
+
+    it('a barra fina existe, escondida, fora da leitura e repete o nome', () => {
+      const html = ficha();
+      const barra = html.slice(html.indexOf('data-slot="ficha-mini"'));
+      expect(barra).toMatch(/^data-slot="ficha-mini" aria-hidden="true" inert=""/);
+      expect(barra).toContain('Rafael Moreira');
+    });
+
+    it('o próximo passo é a visita marcada, e é um botão', () => {
+      const marcado = { ...LEAD, appointmentType: 'visita', appointmentScheduledFor: D(2026, 10, 21, 19), appointmentUnit: 'Centro', nextFollowUp: D(2026, 10, 21, 19), nextFollowUpType: 'Visita' };
+      expect(ficha({ lead: marcado })).toContain('aria-label="Ver o próximo passo no A seguir: Visita qua, 21/10 às 19:00. Unidade Centro"');
+      expect(ficha()).toContain('Sem próximo passo');
+    });
+
+    it('WhatsApp e Ligar ficam à vista para todos, e o professor fica sem Venda e sem Mais ações', () => {
+      const prof = ficha({ appUser: PROFESSOR });
+      expect(prof).toContain('>WhatsApp<');
+      expect(prof).toContain('>Ligar<');
+      expect(prof).not.toContain('Marcar venda');
+      expect(prof).not.toContain('aria-label="Mais ações"');
+    });
+  });
+
   describe('aba Cadastro', () => {
     it('o gestor tem a aba, e o endereço dela abre a leitura com o que falta', () => {
       const html = ficha({ tab: 'cadastro', appUser: GESTOR });

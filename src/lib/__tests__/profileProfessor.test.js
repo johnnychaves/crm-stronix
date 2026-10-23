@@ -1,7 +1,8 @@
 // O professor na ficha (spec docs/superpowers/specs/2026-10-02-professor-e-faltosos-design.md,
 // "O que ele vê"). Ele registra Anotação, WhatsApp, Ligação e Agendar. Não
-// tem Mudar fase, lápis, foto, etiqueta, Indicar, Marcar venda, Marcar perda
-// nem Excluir, e Contratos e Indicações aparecem sem botão.
+// tem Mudar fase, foto, etiqueta, o botão Indicações, Marcar venda nem
+// o menu Mais ações (Marcar perda e Excluir), e as abas Contratos e Indicações
+// aparecem sem botão.
 // A ficha inteira é renderizada em node (renderToString), no molde de
 // profileContractsTab.test.js. Cada caso renderiza também o gestor ou o
 // consultor, para provar que o texto procurado existe quando o botão aparece.
@@ -91,46 +92,71 @@ describe('ficha do professor: compositor da Linha do tempo', () => {
 });
 
 describe('ficha do professor: cabeçalho', () => {
-  const BOTOES = ['title="Editar cadastro"', 'title="Alterar foto"', 'title="Excluir lead"', 'Adicionar etiqueta'];
+  // O que cada opção dos menus mostra é dos testes de cada menu: fechado, o
+  // conteúdo dele não existe no HTML.
+  const BOTOES = ['title="Alterar foto"', 'aria-label="Mais ações"'];
 
-  it('no cliente, o gestor tem lápis, foto, etiqueta, Indicar e Excluir', () => {
+  it('no cliente, o gestor tem foto, Indicações e Mais ações, sem o lápis do cadastro nem o "Adicionar etiqueta"', () => {
     const html = ficha({ lead: cliente(start), tab: 'timeline', appUser: GESTOR, contratos: [start] });
     BOTOES.forEach((b) => expect(html).toContain(b));
-    expect(html).toMatch(/ Indicar<\/button>/);
+    // O lápis ao lado do nome saiu: o caminho é a aba Cadastro.
+    expect(html).not.toContain('title="Editar cadastro"');
+    // As etiquetas se editam no Contexto comercial (pedido do Johnny, 22/10/2026).
+    expect(html).not.toContain('Adicionar etiqueta');
+    // Em node a contagem não chega (null): o botão e a aba ficam sem número.
+    expect(html).toContain('aria-label="Indicações"');
+    expect(html).toMatch(/-trigger-referrals"[^>]*>(?:(?!<\/button>).)*Indicações<\/button>/);
+  });
+
+  // Idade e tempo de casa à vista no cabeçalho (pedido do Johnny, 22/10/2026).
+  it('no cliente, o tempo de casa conta da primeira matrícula, com a data no title, para todos', () => {
+    [GESTOR, PROFESSOR].forEach((appUser) => {
+      const html = ficha({ lead: cliente(start), tab: 'timeline', appUser, contratos: [start] });
+      expect(html).toMatch(/title="Primeira matrícula em 11\/10\/2025"[^>]*><svg[^>]*aria-hidden="true"[^>]*>(?:(?!<\/svg>).)*<\/svg>(?:Aluna|Aluno|Na casa) há /);
+    });
+  });
+
+  it('sem nascimento, só quem edita o cadastro vê o "Idade não informada"', () => {
+    expect(ficha({ lead: cliente(start), tab: 'timeline', appUser: GESTOR, contratos: [start] })).toContain('Idade não informada');
+    expect(ficha({ lead: cliente(start), tab: 'timeline', appUser: PROFESSOR, contratos: [start] })).not.toContain('Idade não informada');
   });
 
   it('no cliente, o professor só chama: WhatsApp e Ligar', () => {
     const html = ficha({ lead: cliente(start), tab: 'timeline', appUser: PROFESSOR, contratos: [start] });
     BOTOES.forEach((b) => expect(html).not.toContain(b));
-    expect(html).not.toMatch(/ Indicar<\/button>/);
+    expect(html).not.toContain('aria-label="Indicações');
     expect(html).toContain('>WhatsApp<');
     expect(html).toContain('>Ligar<');
   });
 
-  it('no lead em Perda, Venda e Perda dão lugar só ao "Reativar lead", e o professor não o tem', () => {
+  // O lead em Perda tem o "Reativar lead" à vista, no lugar da Venda, e o menu
+  // Mais ações não oferece "Marcar perda" (o canLoss do menu é falso). O
+  // conteúdo do menu é coberto pelo moreActionsMenu.test.js e pelo
+  // fichaCabecalho.test.js, com a ficha montada.
+  it('no lead em Perda, a Venda dá lugar ao "Reativar lead", e o professor não o tem', () => {
     const emAberto = ficha({ lead: LEAD, tab: 'timeline', appUser: CONSULTOR });
     expect(emAberto).not.toContain('Reativar lead');
     expect(emAberto).toContain('>Marcar venda<');
-    expect(emAberto).toContain('>Marcar perda<');
+    expect(emAberto).toContain('aria-label="Mais ações"');
     const perdido = { ...LEAD, id: 'l9', status: 'Perda', lossReason: 'Preço', lostAt: D(2026, 9, 20) };
     const consultor = ficha({ lead: perdido, tab: 'timeline', appUser: CONSULTOR });
     expect(consultor).toContain('>Reativar lead<');
     expect(consultor).not.toContain('Marcar venda');
-    expect(consultor).not.toContain('Marcar perda');
+    // Sem a perda e sem a exclusão (só do gestor), o menu nem existe.
+    expect(consultor).not.toContain('aria-label="Mais ações"');
+    expect(ficha({ lead: perdido, tab: 'timeline', appUser: GESTOR })).toContain('aria-label="Mais ações"');
     const prof = ficha({ lead: perdido, tab: 'timeline', appUser: PROFESSOR });
     expect(prof).not.toContain('Reativar lead');
-    expect(prof).not.toContain('Marcar perda');
+    expect(prof).not.toContain('aria-label="Mais ações"');
   });
 
   it('num lead, o professor não marca venda nem perda', () => {
     const consultor = ficha({ lead: LEAD, tab: 'timeline', appUser: CONSULTOR });
     expect(consultor).toContain('>Marcar venda<');
-    expect(consultor).toContain('>Marcar perda<');
-    // A exclusão continua só do gestor.
-    expect(consultor).not.toContain('title="Excluir lead"');
+    expect(consultor).toContain('aria-label="Mais ações"');
     const prof = ficha({ lead: LEAD, tab: 'timeline', appUser: PROFESSOR });
     expect(prof).not.toContain('Marcar venda');
-    expect(prof).not.toContain('Marcar perda');
+    expect(prof).not.toContain('aria-label="Mais ações"');
     expect(prof).toContain('>Ligar<');
   });
 
@@ -173,17 +199,17 @@ describe('ficha do professor: Indicações só para leitura', () => {
     const prof = ficha({ lead: cliente(start), tab: 'referrals', appUser: PROFESSOR, contratos: [start] });
     expect(prof).toContain('Nenhuma indicação ainda');
     expect(prof).not.toContain('Cadastrar indicação');
-    expect(prof).not.toContain('botão Indicar');
+    expect(prof).not.toContain('botão Indicações');
   });
 
-  it('ReferralsSection com canRefer falso não manda procurar o Indicar', () => {
+  it('ReferralsSection com canRefer falso não manda procurar o botão Indicações', () => {
     const html = renderToString(
       createElement(MemoryRouter, { initialEntries: ['/acad/ficha/c1/indicacoes'] },
         createElement(LeadProfileContext.Provider, { value: profile },
           createElement(ReferralsSection, { items: [], loading: false, canRefer: false }))));
     expect(html).toContain('Nenhuma indicação ainda');
     expect(html).toContain('Quando este cliente indicar alguém, a pessoa aparece aqui com o andamento dela.');
-    expect(html).not.toContain('botão Indicar');
+    expect(html).not.toContain('botão Indicações');
   });
 });
 

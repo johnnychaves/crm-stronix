@@ -40,7 +40,14 @@ export function UpNextList({ items, canOutcome = false, loading = false, savingI
           const { Icon } = k;
           const showOutcome = Boolean(canOutcome && item.canOutcome && onOutcome);
           return (
-            <li key={item.id} className="flex items-center gap-3.5 rounded-xl border border-dashed border-border px-3.5 py-2.5">
+            // A âncora `next-<id>` é para onde o Próximo passo do cabeçalho
+            // leva o foco (goToNext, na ficha).
+            <li
+              key={item.id}
+              id={`next-${item.id}`}
+              tabIndex={-1}
+              className="flex items-center gap-3.5 rounded-xl border border-dashed border-border px-3.5 py-2.5 focus-visible:outline-none focus-visible:anel-foco"
+            >
               <div className="w-12 flex-none text-center">
                 <div className="num text-[13px] font-semibold leading-tight">{dm(item.when)}</div>
                 <div className="num text-[12px] text-muted-foreground">{hm(item.when)}</div>

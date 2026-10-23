@@ -15,8 +15,8 @@ import { Btn } from '../components/ui/Btn.jsx';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { cn } from '../lib/utils.js';
 
-// Cadastro de indicações à mão, pela ficha do cliente (menu Indicar e aba
-// Indicações). Um indicado depois do outro: Cadastrar grava, limpa os campos e
+// Cadastro de indicações à mão, pela ficha do cliente (botão Indicações do
+// cabeçalho e aba Indicações). Um indicado depois do outro: Cadastrar grava, limpa os campos e
 // volta o cursor para o Nome, e cada gravado entra na lista ao lado.
 // Dois painéis (desenho aprovado pelo Johnny em 30/09/2026): à esquerda, quem
 // indica e o formulário; à direita, o contador e a lista do que já foi
@@ -52,6 +52,10 @@ export function QuickReferralModal({ db, appUser, referrer, referralFunnelId, en
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   const nameRef = useRef(null);
+  // Quem abriu a janela (o botão Indicações ou o Cadastrar da aba). A janela não
+  // tem gatilho próprio, e sem isto o Radix não teria a quem devolver o foco,
+  // que caía no body ao fechar.
+  const [openedFrom] = useState(() => document.activeElement);
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
   const modalidadeLabelId = useId();
   const firstName = String(referrer?.name || '').trim().split(/\s+/)[0] || 'o cliente';
@@ -113,7 +117,15 @@ export function QuickReferralModal({ db, appUser, referrer, referralFunnelId, en
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
       {/* sm:max-w-*: o DialogContent traz sm:max-w-lg, e só a mesma variante o troca. */}
-      <DialogContent className="sm:max-w-[760px] max-h-[90vh] overflow-y-auto rounded-2xl border-border p-0 gap-0">
+      <DialogContent
+        className="sm:max-w-[760px] max-h-[90vh] overflow-y-auto rounded-2xl border-border p-0 gap-0"
+        onCloseAutoFocus={(e) => {
+          if (openedFrom?.isConnected && openedFrom !== document.body) {
+            e.preventDefault();
+            openedFrom.focus();
+          }
+        }}
+      >
         <div className="grid grid-cols-1 md:grid-cols-[1.25fr_1fr]">
           {/* Esquerda: quem indica e o formulário */}
           <div className="p-5 sm:p-6">

@@ -32,6 +32,15 @@ const clicar = async (el) => { await act(async () => { el.click(); }); };
 const gatilho = () => document.body.querySelector('[aria-label="Marcar desfecho: Visita"]');
 
 describe('UpNextList com ações', () => {
+  it('cada item tem uma âncora que o Próximo passo do cabeçalho usa, focável só pelo código', async () => {
+    await montar({ items: [visitaHoje, ligacao] });
+    const item = document.body.querySelector('#next-appointment');
+    expect(item).toBeTruthy();
+    expect(document.body.querySelector('#next-contact')).toBeTruthy();
+    expect(item.getAttribute('tabindex')).toBe('-1');
+    expect(item.className).toContain('focus-visible:anel-foco');
+  });
+
   it('sem as funções, só mostra: nenhum botão', async () => {
     await montar({ items: [visitaHoje] });
     expect(document.body.querySelectorAll('button')).toHaveLength(0);
