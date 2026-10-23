@@ -11,6 +11,7 @@ import { getDefaultFunnel, isItemInFunnel } from '../lib/funnels.js';
 import { isClientFunnel } from '../lib/crm/scope.js';
 import { buildInteractionIndex, lastInteractionDateOf } from '../lib/leadStatus.js';
 import { usePagedLeads } from '../hooks/usePagedLeads.js';
+import { useLatestRef } from '../hooks/useLatestRef.js';
 import { useRenewalBoard } from '../hooks/useRenewalBoard.js';
 import { useLeadCount } from '../hooks/useLeadCount.js';
 import { getExpiredFunnel, splitExpiredForBoard } from '../lib/expiredFunnel.js';
@@ -862,6 +863,13 @@ const [isPanning, setIsPanning] = useState(false);
     lostReload();
     setCountEpoch((e) => e + 1);
   }, [lostReload]);
+  // As recargas que rodam depois de uma gravação: o `onDone` do ContractModal e os handlers que
+  // esperam o `await` (mover de etapa, recusar o upgrade, marcar perda). Esses callbacks são da
+  // renderização em que a pessoa agiu, e com a internet fora a gravação pode terminar depois de o
+  // mês ou o funil do quadro terem mudado: pelo closure, as recargas buscariam a consulta velha e
+  // poriam os leads dela na coluna de agora. Por este ref são sempre as da última renderização,
+  // e toda chamada de uma delas passa por aqui (a varredura dos chamadores do modal cobra).
+  const reloadsRef = useLatestRef({ refreshLost, renewalReload, upgradeReload, wonReload });
   // Total no header da Perda: a contagem do servidor vale quando NÃO há refino
   // client-side (respFilter/onlyOverdue). Com refino, cai no tamanho da página
   // refinada (undefined → a coluna usa columnLeads.length), como era antes.
@@ -1021,12 +1029,14 @@ const handleKanbanMouseMove = (e) => {
       if (plan.stampConvertedAt) {
         try { await markConvertingAula({ db, leadId: lead.id }); } catch (e) { console.error('markConvertingAula falhou', e); }
       }
-      if (lead.status === 'Perda') refreshLost(); // saiu da Perda: refaz query+contagem
+      // Saiu da Perda: refaz query+contagem. Pelo ref, porque a gravação acima pode terminar depois
+      // de o quadro ter trocado de mês ou de funil (internet fora), e aí vale a consulta de agora.
+      if (lead.status === 'Perda') reloadsRef.current.refreshLost();
     } catch (err) {
       console.error("Erro Kanban:", err);
       toast.error('Não foi possível mover o lead. Tente novamente.');
     }
-  }, [db, appUser, selectedFunnelId, toast, refreshLost]);
+  }, [db, appUser, selectedFunnelId, toast, reloadsRef]);
 
   // A Venda no Kanban agora abre o ContractModal (plano/valor/vigência) em vez
   // de gravar direto — mesmo fluxo da ficha. A escrita do contrato + resumo do
@@ -1129,14 +1139,14 @@ const handleKanbanMouseMove = (e) => {
         { text: plan.interactionText, type: 'status_change' },
         { ...plan.patch, upgradeDeclinedAt: serverTimestamp() }
       );
-      upgradeReload();
+      reloadsRef.current.upgradeReload(); // pelo ref: a consulta de agora, se o quadro mudou na espera
       setUpgradeCountEpoch((e) => e + 1);
       toast.success('Recusa registrada. O cliente saiu do funil Upgrade e segue cliente.');
     } catch (err) {
       console.error('Erro ao registrar recusa de upgrade', err);
       toast.error('Não foi possível registrar a recusa.');
     }
-  }, [appUser, db, toast, upgradeReload]);
+  }, [appUser, db, toast, reloadsRef]);
 
   // "Não vai renovar": a MESMA flag que a Meta Diária usa. A pessoa NÃO vira
   // lead perdido — segue cliente, com ficha e contratos, e continua na aba
@@ -1358,7 +1368,9 @@ const handleKanbanMouseMove = (e) => {
       // conversão histórica de aula a desfazer.
 
       setLossModalLeadId(null);
-      refreshLost(); // query da coluna Perda não é ao vivo — refaz fetch+contagem
+      // A coluna Perda não é ao vivo: refaz fetch+contagem, pelo ref (a consulta de agora, se o
+      // quadro mudou de mês ou de funil enquanto a gravação esperava a internet).
+      reloadsRef.current.refreshLost();
     } catch (err) {
       console.error(err);
       toast.error('Não foi possível registrar a perda. Tente novamente.');
@@ -1717,7 +1729,10 @@ const handleKanbanMouseMove = (e) => {
           appUser={appUser}
           db={db}
           onClose={() => setMatriculaLead(null)}
-          onDone={() => {
+          onDone={({ stale } = {}) => {
+            // `stale`: o modal já foi fechado pelo X (gravação pendente sem internet) e pode
+            // ter sido reaberto. O quadro recarrega do mesmo jeito, porque a gravação valeu,
+            // mas o modal de agora não fecha.
             // Matricular um lead que estava na Perda tira ele do bucket 'perda':
             // como a coluna Perda não é ao vivo, refaz a query+contagem senão
             // fica card fantasma / total inflado. Só quando veio da Perda.
@@ -1734,14 +1749,14 @@ const handleKanbanMouseMove = (e) => {
             // Fechou pelo Upgrade: o contrato novo tirou o cliente do funil
             // (buildMatriculaWrites), então o board precisa recarregar.
             const wasUpgrade = Boolean(matriculaLead?._upgradeCard);
-            setMatriculaLead(null);
-            if (wasPerda) refreshLost();
-            if (wasRenewal) renewalReload();
-            if (wasUpgrade) upgradeReload();
+            if (!stale) setMatriculaLead(null);
+            if (wasPerda) reloadsRef.current.refreshLost();
+            if (wasRenewal) reloadsRef.current.renewalReload();
+            if (wasUpgrade) reloadsRef.current.upgradeReload();
             if (wasUpgrade) setUpgradeCountEpoch((e) => e + 1);
             // A venda recém-fechada precisa aparecer na coluna do mês, que
             // também não é ao vivo.
-            wonReload();
+            reloadsRef.current.wonReload();
           }}
         />
       )}
