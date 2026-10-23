@@ -847,10 +847,9 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
 
   // O contrato do "Renovou" ou do "Reativou" foi salvo: grava a marca do dia,
   // senão a tarefa continua pendente (renewedGoalDoneInteraction). Fechar o
-  // contrato sem salvar não grava nada, e a tarefa segue aberta.
-  const handleRenewalContractSaved = async () => {
-    const target = matriculaTarget;
-    setMatriculaTarget(null);
+  // contrato sem salvar não grava nada, e a tarefa segue aberta. Recebe o alvo
+  // do modal que salvou, e quem fecha o modal é o onDone dele.
+  const handleRenewalContractSaved = async (target) => {
     const mark = target && renewedGoalDoneInteraction(target.categorySlug);
     if (!mark) return;
     try {
@@ -944,7 +943,9 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
           mode="renovacao"
           renewedFromId={matriculaTarget.lead.currentContractId || null}
           onClose={() => setMatriculaTarget(null)}
-          onDone={handleRenewalContractSaved}
+          // `stale`: o modal já foi fechado pelo X (gravação pendente sem internet) e pode ter sido reaberto; não fecha o de agora.
+          // A marca do dia vale nos dois casos, porque o contrato foi salvo, e vai para o alvo deste modal.
+          onDone={({ stale } = {}) => { if (!stale) setMatriculaTarget(null); handleRenewalContractSaved(matriculaTarget); }}
         />
       )}
 

@@ -52,11 +52,11 @@ function ClosedCard({ hero, facts, status, vigencia, isReadOnly, loading, onEnro
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="font-display text-[17px] font-bold tracking-tight">{facts.planName || 'Plano'}</h3>
-            <span className={cn('inline-flex items-center h-5 px-[7px] rounded-md text-[9.5px] font-bold uppercase tracking-[.05em]', tone.block, tone.fg)}>
+            <span className={cn('inline-flex h-6 items-center rounded-full px-2.5 text-[12px] font-semibold whitespace-nowrap', tone.block, tone.fg)}>
               {CONTRACT_STATUS_LABEL[status]}
             </span>
           </div>
-          <div className="num text-[11.5px] text-muted-foreground mt-1">
+          <div className="num text-[12.5px] text-muted-foreground mt-1">
             {cancelled
               ? `Cancelado${facts.cancelledAt ? ` em ${fmtDia(facts.cancelledAt)}` : ''}${facts.cancelReason ? ` · ${facts.cancelReason}` : ''}`
               : `Venceu há ${Math.abs(vigencia?.daysLeft ?? 0)} dias · ${fmtDia(getSafeDateOrNull(hero.endsAt))}`}
@@ -71,7 +71,7 @@ function ClosedCard({ hero, facts, status, vigencia, isReadOnly, loading, onEnro
       </div>
       <div className="flex items-center gap-2 flex-wrap px-5 py-3 bg-slate-50 dark:bg-white/[0.03]">
         {!isReadOnly && <Btn kind="enroll" icon={<UserPlus size={14} />} onClick={onEnroll} disabled={loading}>Nova matrícula</Btn>}
-        <span className="text-[11.5px] text-muted-foreground">
+        <span className="text-[12.5px] text-muted-foreground">
           {cancelled ? `Interrompido a ${pct}% da vigência.` : 'O cliente conta como inativo até renovar.'}
         </span>
       </div>
