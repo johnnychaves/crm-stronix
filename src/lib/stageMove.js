@@ -103,6 +103,30 @@ export function planStageMove(lead, targetStatus, { funnelId = null } = {}) {
   };
 }
 
+// Reativar lead (o botão da ficha do lead em Perda, pedido do Johnny em
+// 21/10/2026): o consultor escolhe o funil e a fase em que o lead volta, e a
+// gravação é a do planStageMove, que limpa o motivo e a data da perda. As
+// fases oferecidas são as abertas do funil, na ordem do quadro: Perda e as
+// de matrícula (Venda e as com nome de matrícula) ficam fora, porque reativar
+// devolve o lead ao funil, não o matricula.
+export const REACTIVATED_NOTE = 'lead reativado';
+
+export function reactivationStages(statuses, funnelId) {
+  return (statuses || [])
+    .filter((s) => s?.funnelId === funnelId && s.name && s.name !== 'Perda' && !isConvertedStatusName(s.name))
+    .sort((a, b) => (a.order || 0) - (b.order || 0));
+}
+
+// Os funis de destino: os que o "Mudar fase" da ficha oferece ao lead, com
+// alguma fase aberta. O de Indicações só entra para quem já tem o indicador,
+// porque mover para ele pede o vínculo, que o "Mudar fase" coleta e a
+// reativação não.
+export function reactivationFunnels(funnels, statuses, { isReferral = () => false, hasReferrer = false } = {}) {
+  return (funnels || []).filter((f) =>
+    f?.id && (hasReferrer || !isReferral(f)) && reactivationStages(statuses, f.id).length > 0
+  );
+}
+
 // Perda: lead comum vira Perda; cliente no funil Upgrade sai do Upgrade
 // (planUpgradeDecline); cliente fora dele continua barrado.
 export function planLoss(lead) {

@@ -11,7 +11,8 @@ import {
   appointmentTaskOwnerId,
   TASK_OWNER_GOAL_CATEGORIES,
   isTaskOwnerGoalCategory,
-  isClientLead
+  isClientLead,
+  APPOINTMENT_GOAL_CATEGORIES
 } from './leads.js';
 import { getSafeDateOrNull, normalizeAppointmentType } from './dates.js';
 import { shouldPromptRenewal, DEFAULT_RENEWAL_CHECKPOINTS, DEFAULT_RENEWAL_GRACE_DAYS } from './renewalGoal.js';
@@ -192,6 +193,20 @@ export function newLeadDueOf(lead) {
 export const newLeadHandledPatch = (categorySlug, at = new Date()) =>
   (categorySlug === DAILY_GOAL_CATEGORIES.NOVO_24H ? { newLeadHandledAt: at } : null);
 
+// A marca do dia que o "Renovou" (Renovação) e o "Reativou" (Contrato vencido)
+// gravam depois que o contrato novo é salvo. Até 21/10/2026 os dois só abriam o
+// contrato e não gravavam marca: a tarefa seguia pendente na cópia do cliente
+// que a Meta tinha e o dia não batia. Devolve null fora dessas duas categorias.
+export function renewedGoalDoneInteraction(categorySlug) {
+  if (categorySlug === DAILY_GOAL_CATEGORIES.RENOVACAO) {
+    return { text: '✅ Renovação — Meta Diária concluída (renovou).', type: 'daily_goal_done', dailyGoalCategory: categorySlug };
+  }
+  if (categorySlug === DAILY_GOAL_CATEGORIES.VENCIDO) {
+    return { text: '✅ Contrato vencido — Meta Diária concluída (reativou).', type: 'daily_goal_done', dailyGoalCategory: categorySlug };
+  }
+  return null;
+}
+
 // O prazo do próximo contato: o nextFollowUp, ou o do lead novo sem próximo passo.
 export const followUpDueOf = (lead) => lead?.nextFollowUp || newLeadDueOf(lead);
 
@@ -230,6 +245,44 @@ export function buildInteractionsByLead(interactions) {
     if (arr) arr.push(i); else map.set(i.leadId, [i]);
   });
   return map;
+}
+
+// Quantas interações do mês tocam um cliente que a Meta lê por consulta única (a
+// renovação e o contato marcado para hoje, useRenewalClients e
+// useClientsWithContactToday, que não são ao vivo). Quando o número muda, o App
+// relê essas duas listas, e a Meta não precisa de F5 depois de um desfecho, de
+// um contrato ou de uma troca no cadastro do cliente. Conta a interação em
+// cliente da base (`clientIds`) e a de quem está logado num lead fora da
+// assinatura de leads ativos (`liveIds`): é o cliente que ganhou agora um
+// contato para hoje e ainda não está na base. O resto não conta, para cada
+// ação num lead comum não reler as listas.
+export function clientTouchCount(interactions, clientIds, liveIds, userId) {
+  let n = 0;
+  (interactions || []).forEach((i) => {
+    if (!i?.leadId) return;
+    if (clientIds.has(i.leadId)) n += 1;
+    else if (userId && i.actorId === userId && !liveIds.has(i.leadId)) n += 1;
+  });
+  return n;
+}
+
+// A base da Meta com quem tem visita ou aula hoje (`dayLeads`, a leitura ao
+// vivo do useDayAgenda), a mesma lista da Agenda de hoje, Perda incluída. A
+// base de leads ativos não traz cliente, e o "contato marcado para hoje"
+// (useClientsWithContactToday) só o traz pelo eco do agendamento, que o
+// Compareceu apaga: depois de um F5 a aula feita sumiria da Meta.
+// A cópia da agenda vence a da base. A do "contato marcado para hoje" é lida
+// uma vez na abertura do app, e o cliente com aula hoje está nas duas, por
+// causa do eco: com a cópia velha, a Agenda de hoje e o "Feitos hoje" seguiam
+// sem o Compareceu marcado (bug de 21/10/2026). A dos leads ativos também é ao
+// vivo, então trocar uma pela outra não perde nada.
+export function withDayAgendaLeads(baseLeads, dayLeads) {
+  const extra = dayLeads || [];
+  if (!extra.length) return baseLeads || [];
+  const byId = new Map();
+  (baseLeads || []).forEach((l) => byId.set(l.id, l));
+  extra.forEach((l) => { if (l?.id) byId.set(l.id, l); });
+  return Array.from(byId.values());
 }
 
 // Monta os "slots" da meta de UM consultor: cada lead alvo sai com
@@ -329,7 +382,10 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
   const addAppointmentTodayIfDue = (lead) => {
     // Dono da TAREFA do agendamento, que pode não ser o dono do lead.
     if (!ownsAppointmentTask(lead)) return;
-    if (lead.status === 'Venda' || lead.status === 'Perda') return;
+    // Toda visita e toda aula de hoje contam, em qualquer fase e com qualquer
+    // contrato, Perda incluída, como na Agenda de hoje (decisão do Johnny,
+    // 21/10/2026: o lead perdido pode voltar). O Compareceu não tira o lead da
+    // Perda (planPromotion).
     const apptType = getLeadAppointmentType(lead);
     const apptDate = getLeadAppointmentDate(lead);
     if (!(apptDate >= todayStart && apptDate <= todayEnd)) return;
@@ -394,7 +450,13 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
     // (renewalGraceDays) e sem contato marcado para hoje/futuro. Cobrado TODO
     // dia enquanto durar o período; sai por desfecho (reativou / não vai voltar
     // / reagendou) ou quando o período acaba. Regra em src/lib/expiredGoal.js.
-    if (shouldPromptExpired(lead, nowRef, renewalGraceDays)) {
+    // O "Contato feito" de hoje no cliente vencido já tratou o cliente: ele
+    // apaga o próximo contato, e sem esta guarda o Vencidos voltava a cobrá-lo
+    // no mesmo dia, como tarefa nova e pendente (bug de 21/10/2026).
+    if (
+      shouldPromptExpired(lead, nowRef, renewalGraceDays) &&
+      !isMarkedDoneToday(lead, DAILY_GOAL_CATEGORIES.CONTATO_HOJE)
+    ) {
       addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.vencido, DAILY_GOAL_CATEGORIES.VENCIDO);
     }
   });
@@ -437,10 +499,19 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
   // seguinte agendado por outra pessoa troca o dono da tarefa do agendamento, e
   // o "Contato feito" limpa o próximo contato que o colega recebeu, e a tarefa
   // feita não muda de Meta por isso. Mesmo guard dos leads dele: cliente não
-  // tem visita nem aula, e o contato de cliente feito hoje continua fora desta
-  // lista, como antes.
+  // tem o contato aqui. O cliente entra com o contato feito hoje (o contato de
+  // renovação reagendado), para a tarefa concluída seguir como feita depois do
+  // "Contato feito", que apaga o próximo contato. A visita e a aula do cliente e
+  // da Perda entram, como no pendente.
   (leads || []).forEach(lead => {
-    if (lead.lifecycleStage === 'cliente' || lead.status === 'Venda' || lead.status === 'Perda') return;
+    if (isClientLead(lead)) {
+      addDoneToday(lead, TASK_OWNER_GOAL_CATEGORIES);
+      return;
+    }
+    if (lead.status === 'Perda') {
+      addDoneToday(lead, APPOINTMENT_GOAL_CATEGORIES);
+      return;
+    }
     addDoneToday(lead, TASK_OWNER_GOAL_CATEGORIES);
   });
 

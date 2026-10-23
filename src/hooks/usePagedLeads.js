@@ -56,10 +56,15 @@ export function usePagedLeads({ db, path, spec, specKey, mapDoc, enabled = true 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [hasMore, setHasMore] = useState(true);
+  // A chave da última leitura que terminou. `ready` diz que a lista é a da
+  // consulta de agora: o `loading` começa falso e só vira verdadeiro no effect,
+  // então no primeiro render (e na troca de consulta) ele não basta.
+  const [doneKey, setDoneKey] = useState(null);
   const lastDocRef = useRef(null);
 
   const fetchPage = useCallback(async (reset) => {
     if (!enabled || !spec) return;
+    const key = specKey;
     setLoading(true);
     setError(null);
     try {
@@ -76,8 +81,9 @@ export function usePagedLeads({ db, path, spec, specKey, mapDoc, enabled = true 
       setError(e);
     } finally {
       setLoading(false);
+      if (reset) setDoneKey(key);
     }
-  }, [db, path, spec, mapDoc, enabled]);
+  }, [db, path, spec, specKey, mapDoc, enabled]);
 
   // Reseta e recarrega a 1ª página quando a spec (por specKey) muda.
   useEffect(() => {
@@ -100,5 +106,7 @@ export function usePagedLeads({ db, path, spec, specKey, mapDoc, enabled = true 
   const loadMore = useCallback(() => { if (!loading && hasMore) fetchPage(false); }, [loading, hasMore, fetchPage]);
   const reload = useCallback(() => fetchPage(true), [fetchPage]);
 
-  return { items, loading, error, hasMore, loadMore, reload, patchItem };
+  const ready = !enabled || (doneKey === specKey && !loading);
+
+  return { items, loading, ready, error, hasMore, loadMore, reload, patchItem };
 }

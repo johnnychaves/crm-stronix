@@ -246,18 +246,22 @@ describe('ContactOutcomeModal na família de pop-ups', () => {
     expect(payloads[0].text).toContain('Motivo do reagendamento: Não atendeu');
   });
 
-  it('o horário que já passou trava o Reagendar e diz por quê', async () => {
+  // Decisão do Johnny em 21/10/2026: o Reagendar só aceita a partir de amanhã.
+  // Para mais tarde hoje, o contato novo ficava com a marca de feito do dia.
+  it('o Reagendar não oferece hoje e trava o dia de hoje', async () => {
     await montar({ lead: delegado, initialOutcome: 'reagendar' });
     await escreverMotivo('Pediu para falar depois.');
-    await clicar('Hoje');
-    const hora = document.querySelector('input[type="time"]');
+    expect(botoes('Hoje')).toHaveLength(0);
+    await clicar('Outro dia');
+    const dia = document.querySelector('input[type="date"]');
+    expect(dia.min).toBe('2026-07-16');
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
     await act(async () => {
-      setter.call(hora, '09:30');
-      hora.dispatchEvent(new Event('input', { bubbles: true }));
+      setter.call(dia, '2026-07-15');
+      dia.dispatchEvent(new Event('input', { bubbles: true }));
     });
-    expect(document.querySelector('[role="status"]').textContent).toBe('Escolha um dia e horário futuros.');
-    expect(document.body.textContent).toContain('Esse horário já passou.');
+    expect(document.querySelector('[role="status"]').textContent).toBe('Escolha um dia a partir de amanhã.');
+    expect(document.body.textContent).toContain('Reagende a partir de amanhã.');
     expect(botoes('Reagendar').at(-1).disabled).toBe(true);
   });
 

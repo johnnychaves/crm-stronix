@@ -70,8 +70,8 @@ export function computeDayAgenda({
 
   const rows = [];
   byId.forEach((lead) => {
-    if (lead.status === 'Perda') return;
-
+    // A Perda entra, como na Meta (decisão do Johnny, 21/10/2026: o lead
+    // perdido pode voltar). O desfecho não tira o lead da Perda.
     const type = getLeadAppointmentType(lead);
     if (type !== 'visita' && type !== 'aula_experimental') return;
 

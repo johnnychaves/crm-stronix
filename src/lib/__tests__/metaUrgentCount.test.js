@@ -75,3 +75,25 @@ describe('MetaUrgentCount', () => {
     root = createRoot(host);
   });
 });
+
+// O App usa o total e as pendências daqui no selo do menu e na gravação do dia
+// batido. Até 21/10/2026 o App os calculava sem relógio. O aviso leva as listas
+// de onde saiu, para o App não gravar o dia com a conta de uma base velha.
+describe('MetaUrgentCount: total e pendências do dia', () => {
+  it('avisa o total e as pendências com as listas da conta', () => {
+    const onProgress = vi.fn();
+    const leads = [VISITA, CONTATO];
+    const interactions = [];
+    act(() => root.render(h(MetaUrgentCount, {
+      leads, interactions, userId: 'u1', renewalCheckpoints: [90, 60, 30], renewalGraceDays: undefined, onChange, onProgress,
+    })));
+    expect(onProgress).toHaveBeenLastCalledWith({ leads, interactions, total: 2, pending: 2 });
+
+    const feito = [{ leadId: 'contato', type: 'daily_goal_done', dailyGoalCategory: 'contato_hoje', goalOwnerId: 'u1', createdAt: at(14, 0) }];
+    act(() => root.render(h(MetaUrgentCount, {
+      leads, interactions: feito, userId: 'u1', renewalCheckpoints: [90, 60, 30], renewalGraceDays: undefined, onChange, onProgress,
+    })));
+    expect(onProgress).toHaveBeenLastCalledWith({ leads, interactions: feito, total: 2, pending: 1 });
+  });
+});
+

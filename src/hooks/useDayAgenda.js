@@ -18,14 +18,17 @@ import { appId, LEADS_PATH } from '../lib/firebase.js';
 import { normalizeLeadDoc } from '../lib/leads.js';
 
 export function useDayAgenda({ db, enabled = true, dayKey }) {
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // A resposta guarda a chave da leitura que a trouxe. O App, que não remonta
+  // no "Acessar como", passa a sessão no `dayKey`: até a leitura nova chegar, a
+  // lista é vazia, e nunca a da academia ou do dia de antes. Com a leitura
+  // pausada (`enabled` falso, a pausa por inatividade) a última resposta fica.
+  const key = String(dayKey);
+  const [data, setData] = useState({ key: null, items: [], loaded: false });
 
   useEffect(() => {
     if (!db || !enabled) return undefined;
-    // dayKey não é lido aqui: entra só como dependência para a janela ser
-    // recriada na virada da meia-noite com a aba aberta.
-    void dayKey;
+    // dayKey recria a janela na virada da meia-noite com a aba aberta e marca
+    // de que leitura veio a resposta.
 
     const start = new Date();
     start.setHours(0, 0, 0, 0);
@@ -41,17 +44,17 @@ export function useDayAgenda({ db, enabled = true, dayKey }) {
     const unsub = onSnapshot(
       q,
       (snap) => {
-        setItems(snap.docs.map(normalizeLeadDoc));
-        setLoading(false);
+        setData({ key: String(dayKey), items: snap.docs.map(normalizeLeadDoc), loaded: true });
       },
       (err) => {
         console.error('useDayAgenda onSnapshot falhou', err);
-        setLoading(false);
+        setData((prev) => (prev.key === String(dayKey) ? { ...prev, loaded: true } : { key: String(dayKey), items: [], loaded: true }));
       }
     );
 
     return () => unsub();
   }, [db, enabled, dayKey]);
 
-  return { items, loading };
+  const current = data.key === key;
+  return { items: current ? data.items : [], loading: !(current && data.loaded) };
 }

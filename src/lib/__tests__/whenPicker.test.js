@@ -1,7 +1,7 @@
 // O "Quando" dos pop-ups da Meta Diária: os atalhos de dia, o instante que vai
 // para a gravação, a trava de horário futuro e as frases.
 import { describe, it, expect } from 'vitest';
-import { WHEN_PRESETS, whenFromPreset, whenInstant, whenIsFuture, whenText, dayRefText, dayLabel, hourOf, isoDay } from '../whenPicker.js';
+import { WHEN_PRESETS, whenFromPreset, whenInstant, whenIsFuture, whenIsFromTomorrow, whenProblem, whenPresetsFor, whenText, dayRefText, dayLabel, hourOf, isoDay } from '../whenPicker.js';
 
 // Sexta, 16/10/2026, 14:00.
 const AGORA = new Date(2026, 9, 16, 14, 0);
@@ -48,3 +48,28 @@ describe('whenPicker', () => {
     expect(isoDay(new Date(2026, 0, 3))).toBe('2026-01-03');
   });
 });
+
+// O Reagendar e o "Quando voltar a falar?" valem a partir de amanhã (decisão do
+// Johnny, 21/10/2026).
+describe('whenPicker a partir de amanhã', () => {
+  const AGORA_MS = new Date(2026, 9, 16, 14, 0).getTime();
+
+  it('hoje mais tarde não vale; amanhã cedo vale', () => {
+    expect(whenIsFromTomorrow({ date: '2026-10-16', time: '23:00' }, AGORA_MS)).toBe(false);
+    expect(whenIsFromTomorrow({ date: '2026-10-17', time: '00:30' }, AGORA_MS)).toBe(true);
+  });
+
+  it('whenProblem diz o que falta', () => {
+    expect(whenProblem({ date: '', time: '09:00' }, AGORA_MS)).toBe('missing');
+    expect(whenProblem({ date: '2026-10-16', time: '09:00' }, AGORA_MS)).toBe('past');
+    expect(whenProblem({ date: '2026-10-16', time: '18:00' }, AGORA_MS)).toBeNull();
+    expect(whenProblem({ date: '2026-10-16', time: '18:00' }, AGORA_MS, { fromTomorrow: true })).toBe('today');
+    expect(whenProblem({ date: '2026-10-17', time: '09:00' }, AGORA_MS, { fromTomorrow: true })).toBeNull();
+  });
+
+  it('os atalhos a partir de amanhã não têm o Hoje', () => {
+    expect(whenPresetsFor({ fromTomorrow: true }).map((p) => p.id)).not.toContain('hoje');
+    expect(whenPresetsFor().map((p) => p.id)).toContain('hoje');
+  });
+});
+

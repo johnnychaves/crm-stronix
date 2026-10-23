@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react';
-import { buildInteractionsByLead, computeDailyGoalSlots } from '../../lib/dailyGoal.js';
+import { buildInteractionsByLead, computeDailyGoalSlots, slotTotals } from '../../lib/dailyGoal.js';
 import { pendingEntries, urgentCount } from '../../lib/metaFoco.js';
 import { useMinuteClock } from '../../hooks/useMinuteClock.js';
 
@@ -21,14 +21,24 @@ import { useMinuteClock } from '../../hooks/useMinuteClock.js';
 // a aba em segundo plano é justamente a que fica parada, e é nela que o número
 // precisa andar. Com as leituras pausadas, uma tarefa feita em outro aparelho
 // pode continuar contando até a pessoa voltar à aba.
-export function MetaUrgentCount({ leads, interactions, userId, renewalCheckpoints, renewalGraceDays, onChange }) {
+//
+// O mesmo cálculo dá o total e as pendências do dia (`onProgress`), que o App
+// usa no selo do menu e na gravação do dia batido. Até 21/10/2026 o App
+// calculava os dois sem relógio, e o dia não batia quando só o relógio mudava a
+// Meta. O aviso leva as listas de onde saiu (`leads` e `interactions`), para o
+// App não gravar o dia com a conta de uma base que ainda estava chegando.
+export function MetaUrgentCount({ leads, interactions, userId, renewalCheckpoints, renewalGraceDays, onChange, onProgress }) {
   const now = useMinuteClock();
   const byLead = useMemo(() => buildInteractionsByLead(interactions), [interactions]);
-  const n = useMemo(() => {
+  const { n, total, pending } = useMemo(() => {
     const slots = computeDailyGoalSlots(leads, byLead, userId, renewalCheckpoints, renewalGraceDays, now);
-    return urgentCount(pendingEntries(slots), now);
+    const { totalSlots, doneSlots } = slotTotals(slots);
+    return { n: urgentCount(pendingEntries(slots), now), total: totalSlots, pending: totalSlots - doneSlots };
   }, [leads, byLead, userId, renewalCheckpoints, renewalGraceDays, now]);
   useEffect(() => { onChange(n); }, [n, onChange]);
   useEffect(() => () => onChange(0), [onChange]);
+  useEffect(() => {
+    if (onProgress) onProgress({ leads, interactions, total, pending });
+  }, [leads, interactions, total, pending, onProgress]);
   return null;
 }

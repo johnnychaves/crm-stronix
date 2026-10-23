@@ -46,7 +46,7 @@ export function useRenewalClients({ db, contractThresholdDays, renewalCheckpoint
 
   const spec = useMemo(() => renewalClientsQuerySpec(win.start, win.end), [win.start, win.end]);
 
-  const { items, loading } = usePagedLeads({
+  const { items, loading, ready, reload } = usePagedLeads({
     db, path: LEADS_PATH, spec,
     specKey: `renewal:${contractThresholdDays}:${(renewalCheckpoints || []).join(',')}:${expiredWindowDays}:${reloadKey}`,
     // Mesmo shape do prop global (a Meta Diária no G1d injeta estes clientes na
@@ -64,5 +64,5 @@ export function useRenewalClients({ db, contractThresholdDays, renewalCheckpoint
     );
   }, [items, contractThresholdDays]);
 
-  return { clients, candidates: items || [], loading };
+  return { clients, candidates: items || [], loading, ready, reload };
 }

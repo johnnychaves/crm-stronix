@@ -8,10 +8,9 @@ import { isMetaParticipant } from '../lib/acesso.js';
 import { logInteraction } from '../lib/interactions.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { stageChangeFields } from '../lib/stageMove.js';
-import { DG_CATEGORY_META, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeRitmo, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, computeVolumeInRange, countMetaDaysInMonth, volumeTargetFor, tomorrowAppointmentsOf, slotTotals, newLeadHandledPatch } from '../lib/dailyGoal.js';
+import { DG_CATEGORY_META, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeRitmo, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, computeVolumeInRange, countMetaDaysInMonth, volumeTargetFor, tomorrowAppointmentsOf, slotTotals, newLeadHandledPatch, renewedGoalDoneInteraction } from '../lib/dailyGoal.js';
 import { followUpChannelOf } from '../lib/contactGoal.js';
 import { computeDayAgenda } from '../lib/dayAgenda.js';
-import { useDayAgenda } from '../hooks/useDayAgenda.js';
 import { useScreenParams } from '../hooks/useScreenParams.js';
 import { useFrozenWhileIdle, useMinuteClock } from '../hooks/useMinuteClock.js';
 import { frozenDayText } from '../lib/rotinasTela.js';
@@ -172,7 +171,7 @@ export function TomorrowApptRow({ lead, when }) {
 // DAILY GOAL VIEW (META DIÁRIA)
 // ==========================================
 
-function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, listenersActive = true }) {
+function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuses, db, usersList, listenersActive = true }) {
   const toast = useToast();
   // A categoria aberta vem do endereço: F5 mantém e o link abre na mesma
   // categoria.
@@ -215,7 +214,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
   // Renovação: popup de desfecho (8b) ao concluir a tarefa + fluxo de
   // matrícula/renovação existente quando o desfecho é "Renovou".
   const [renewalTarget, setRenewalTarget] = useState(null); // { lead, activeCheckpoint } | null
-  const [matriculaTarget, setMatriculaTarget] = useState(null); // lead | null
+  const [matriculaTarget, setMatriculaTarget] = useState(null); // { lead, categorySlug } | null
   // Contato: popup de desfecho (8b) ao concluir a tarefa de Contato Hoje
   // (feito / reagendar). Só para a categoria Contato — atrasado segue no
   // NextContactModal antigo.
@@ -281,8 +280,8 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
     return m;
   }, [usersList]);
 
-  const { items: agendaLeads } = useDayAgenda({ db, enabled: listenersActive, dayKey: todayKey });
-
+  // agendaLeads: os agendamentos de hoje, lidos ao vivo no App (useDayAgenda),
+  // que também põe na Meta quem tem visita ou aula hoje, em qualquer fase.
   const dayAgenda = useMemo(
     () => computeDayAgenda({ liveLeads: leads, agendaLeads, usersById, viewerId: appUser.id, now }),
     [leads, agendaLeads, usersById, appUser, now]
@@ -837,9 +836,28 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
   // gravaram tudo dentro do próprio RenewalOutcomeModal — só fecha.
   const handleRenewalOutcomeDone = (outcome) => {
     const renewedLead = renewalTarget?.lead || null;
+    const categorySlug = renewalTarget?.variant === 'vencido'
+      ? DAILY_GOAL_CATEGORIES.VENCIDO
+      : DAILY_GOAL_CATEGORIES.RENOVACAO;
     setRenewalTarget(null);
     if (outcome === 'renovou' && renewedLead) {
-      setMatriculaTarget(renewedLead);
+      setMatriculaTarget({ lead: renewedLead, categorySlug });
+    }
+  };
+
+  // O contrato do "Renovou" ou do "Reativou" foi salvo: grava a marca do dia,
+  // senão a tarefa continua pendente (renewedGoalDoneInteraction). Fechar o
+  // contrato sem salvar não grava nada, e a tarefa segue aberta.
+  const handleRenewalContractSaved = async () => {
+    const target = matriculaTarget;
+    setMatriculaTarget(null);
+    const mark = target && renewedGoalDoneInteraction(target.categorySlug);
+    if (!mark) return;
+    try {
+      await logInteraction(db, target.lead, appUser, mark);
+    } catch (err) {
+      console.error('Erro ao marcar a renovação na Meta:', err);
+      toast.error('O contrato foi salvo, mas a tarefa não foi marcada como feita. Conclua pela Meta.');
     }
   };
 
@@ -920,13 +938,13 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
 
       {matriculaTarget && (
         <ContractModal
-          lead={matriculaTarget}
+          lead={matriculaTarget.lead}
           appUser={appUser}
           db={db}
           mode="renovacao"
-          renewedFromId={matriculaTarget.currentContractId || null}
+          renewedFromId={matriculaTarget.lead.currentContractId || null}
           onClose={() => setMatriculaTarget(null)}
-          onDone={() => setMatriculaTarget(null)}
+          onDone={handleRenewalContractSaved}
         />
       )}
 

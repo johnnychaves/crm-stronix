@@ -7,7 +7,7 @@ import { CONTRACT_CANCEL_REASONS } from '../lib/contracts.js';
 import { renewalDecline, renewalReschedule } from '../lib/renewalGoal.js';
 import { expiredLabel } from '../lib/expiredGoal.js';
 import { DAILY_GOAL_CATEGORIES } from '../lib/leads.js';
-import { whenFromPreset, whenInstant, whenIsFuture } from '../lib/whenPicker.js';
+import { whenFromPreset, whenInstant, whenProblem } from '../lib/whenPicker.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { ChoiceChips, MotivoField, NoteToggle, PopupButton, PopupLabel, PopupNote, PopupShell } from '../components/dailygoal/popup/PopupShell.jsx';
 import { OutcomeCards } from '../components/dailygoal/popup/OutcomeCards.jsx';
@@ -90,7 +90,7 @@ function RenewalOutcomeModal({ onClose, lead, appUser, db, activeCheckpoint, var
 
   const hint = outcome === OUTCOMES.NAO_RENOVA ? (reason ? '' : 'Escolha o motivo da perda.')
     : outcome !== OUTCOMES.REAGENDAR ? ''
-      : !whenIsFuture(when, nowMs) ? 'Escolha um dia e horário futuros.'
+      : whenProblem(when, nowMs, { fromTomorrow: true }) ? 'Escolha um dia a partir de amanhã.'
         : !motivoTrimmed ? 'Escreva o motivo do reagendamento.' : '';
 
   const cards = [
@@ -103,8 +103,8 @@ function RenewalOutcomeModal({ onClose, lead, appUser, db, activeCheckpoint, var
   const handleConfirm = async () => {
     if (hint || submitting) return;
     const at = outcome === OUTCOMES.REAGENDAR ? whenInstant(when) : null;
-    if (outcome === OUTCOMES.REAGENDAR && !(at && at.getTime() > Date.now())) {
-      toast.warning('Escolha uma data e hora futuras.');
+    if (outcome === OUTCOMES.REAGENDAR && whenProblem(when, Date.now(), { fromTomorrow: true })) {
+      toast.warning('Escolha um dia a partir de amanhã.');
       return;
     }
 
@@ -189,7 +189,7 @@ function RenewalOutcomeModal({ onClose, lead, appUser, db, activeCheckpoint, var
       )}
       {outcome === OUTCOMES.REAGENDAR && (
         <>
-          <WhenPicker value={when} onChange={setWhen} who="O contato" nowMs={nowMs} />
+          <WhenPicker value={when} onChange={setWhen} who="O contato" nowMs={nowMs} fromTomorrow />
           <MotivoField value={motivo} onChange={setMotivo} />
         </>
       )}
