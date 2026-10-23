@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 // O professor não é dono de lead nem recebe tarefa de contato (spec
 // docs/superpowers/specs/2026-10-02-professor-e-faltosos-design.md, "Professor
-// e consultor"). As duas escolhas de pessoa da ficha deixam o professor de
-// fora: o "Consultor responsável" do Editar cadastro e o passo "Responsável"
-// do Agendar mensagem. As duas só existem com o balão aberto, então a ficha é
-// montada em jsdom e clicada, como em contractActivateModal.test.js.
+// e consultor"). As escolhas de pessoa da ficha deixam o professor de fora:
+// aqui, o passo "Responsável" do Agendar mensagem. A escolha só existe com o
+// balão aberto, então a ficha é montada em jsdom e clicada, como em
+// contractActivateModal.test.js. A escolha de consultor do Contexto comercial
+// tem o teste dela em contextCard.test.js.
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { createElement as h, act } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -21,7 +22,6 @@ vi.mock('../firebase.js', () => ({
 vi.mock('../../hooks/useLeadTimeline.js', () => ({ useLeadTimeline: () => [] }));
 
 const { LeadProfileView } = await import('../../views/LeadProfileView.jsx');
-const { ClientRegistrationModal } = await import('../../modals/ClientRegistrationModal.jsx');
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -76,15 +76,5 @@ describe('o professor fora das escolhas de pessoa da ficha', () => {
     expect(document.body.textContent).toContain('Responsável pelo lead (Bruno Gestor)');
     expect(document.body.textContent).toContain('Ana Consultora');
     expect(document.body.textContent).not.toContain('Rafa Professor');
-  });
-
-  it('Editar cadastro: o Consultor responsável lista o consultor e não o professor', async () => {
-    await montar(h(ClientRegistrationModal, {
-      open: true, onClose: () => {}, lead: LEAD, appUser: GESTOR, db: null, usersList: EQUIPE, tags: [],
-    }));
-    await clicar('Relacionamento');
-    const opcoes = [...document.querySelectorAll('option')].map((o) => o.textContent);
-    expect(opcoes).toContain('Ana Consultora');
-    expect(opcoes).not.toContain('Rafa Professor');
   });
 });

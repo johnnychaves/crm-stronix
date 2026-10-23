@@ -86,6 +86,11 @@ const caixa = () => document.body.querySelector('textarea');
 const campoEtiqueta = () => document.body.querySelector('input[aria-label="Nova etiqueta"]');
 
 describe('ContextCard: leitura', () => {
+  it('a raiz tem a âncora que o "Adicionar etiqueta" do cabeçalho usa', async () => {
+    await montar();
+    expect(document.getElementById('ficha-contexto')).toBe(document.body.querySelector('[aria-label="Contexto comercial"]'));
+  });
+
   it('mostra os sete campos com o que está gravado', async () => {
     await montar();
     const t = document.body.textContent;

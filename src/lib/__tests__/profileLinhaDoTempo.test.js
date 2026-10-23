@@ -137,4 +137,39 @@ describe('Linha do tempo sem a aba CRM', () => {
     expect(html).not.toContain('>Remarcar<');
     expect(html).not.toContain('aria-label="Marcar desfecho');
   });
+
+  describe('aba Cadastro', () => {
+    it('o gestor tem a aba, e o endereço dela abre a leitura com o que falta', () => {
+      const html = ficha({ tab: 'cadastro', appUser: GESTOR });
+      expect(html).toContain('-trigger-cadastro');
+      expect(html).toContain('para completar o cadastro');
+      expect(html).toContain('aria-label="Identidade"');
+    });
+
+    it('o consultor também tem a aba', () => {
+      const html = ficha({ tab: 'cadastro', appUser: CONSULTOR });
+      expect(html).toContain('-trigger-cadastro');
+      expect(html).toContain('aria-label="Identidade"');
+    });
+
+    it('o professor não tem a aba, e o endereço dela abre a Linha do tempo', () => {
+      const html = ficha({ tab: 'cadastro', appUser: PROFESSOR });
+      expect(html).not.toContain('-trigger-cadastro');
+      expect(html).not.toContain('para completar o cadastro');
+      expect(html).toContain('aria-label="Contexto comercial"');
+    });
+
+    it('sem login vinculado (só leitura) também não tem a aba', () => {
+      const html = ficha({ tab: 'cadastro', appUser: SEM_LOGIN });
+      expect(html).not.toContain('-trigger-cadastro');
+      expect(html).not.toContain('para completar o cadastro');
+    });
+
+    it('a aba vem logo depois da Linha do tempo', () => {
+      const html = ficha({ tab: 'timeline', appUser: GESTOR });
+      expect(html.indexOf('-trigger-timeline')).toBeGreaterThan(-1);
+      expect(html.indexOf('-trigger-cadastro')).toBeGreaterThan(html.indexOf('-trigger-timeline'));
+      expect(html.indexOf('-trigger-contratos')).toBeGreaterThan(html.indexOf('-trigger-cadastro'));
+    });
+  });
 });

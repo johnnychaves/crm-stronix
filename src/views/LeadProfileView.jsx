@@ -48,9 +48,10 @@ import { ContractModal } from '../modals/ContractModal.jsx';
 import { ContractOutcomeModal } from '../modals/ContractOutcomeModal.jsx';
 import { ContractEditModal } from '../modals/ContractEditModal.jsx';
 import { ContractActivateModal } from '../modals/ContractActivateModal.jsx';
-import { ClientRegistrationModal } from '../modals/ClientRegistrationModal.jsx';
 import { QuickReferralModal } from '../modals/QuickReferralModal.jsx';
 import { ContextCard } from '../components/profile/ContextCard.jsx';
+import { CadastroTab } from '../components/profile/cadastro/CadastroTab.jsx';
+import { saveCadastroSection } from '../lib/cadastroWrites.js';
 import { UpNextList } from '../components/profile/UpNextList.jsx';
 import { TimelineBar } from '../components/profile/TimelineBar.jsx';
 import { TimelineEvent } from '../components/profile/TimelineEvent.jsx';
@@ -69,7 +70,7 @@ import {
   originLastOnTies,
   isAppointmentReschedule
 } from '../lib/timeline.js';
-import { ArrowLeft, Ban, Calendar, Clock, Copy, CreditCard, FileText, Handshake, MessageCircle, Pencil, Phone, Plus, RotateCcw, Search, Tag, ThumbsDown, Trash, TrendingUp, User, UserPlus } from 'lucide-react';
+import { ArrowLeft, Ban, Calendar, Clock, Copy, CreditCard, FileText, Handshake, IdCard, MessageCircle, Pencil, Phone, Plus, RotateCcw, Search, Tag, ThumbsDown, Trash, TrendingUp, User, UserPlus } from 'lucide-react';
 
 // Célula da faixa de metadados do cabeçalho: rótulo em versalete sobre o valor.
 // Substituiu a fila de ícones — sem rótulo, "(51) 99184-2270" e "Ana Duarte"
@@ -132,7 +133,10 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // Só estado de interface. Nada aqui copia campo do lead: ele chega ao vivo
   // (useProfileLead) e muda com a ficha aberta quando outra pessoa mexe nele,
   // então fase e funil são lidos direto do `lead`.
-  const [isEditing, setIsEditing] = useState(false);
+  // Pedido de abertura do Cadastro vindo do cabeçalho ("Fez 18 anos"): a seção
+  // e o campo que a aba abre já em edição. A aba fica montada, e o `at` diz a
+  // ela que o pedido é novo.
+  const [cadastroRequest, setCadastroRequest] = useState(null);
   const [loading, setLoading] = useState(false);
 
   const [lossModalOpen, setLossModalOpen] = useState(false);
@@ -582,6 +586,37 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     }
   };
 
+  // Abre o Cadastro, opcionalmente já numa seção e num campo. Sem seção (o
+  // lápis), só troca de aba: a seção que estiver aberta lá continua.
+  const openCadastro = (sectionId = null, field = null) => {
+    if (sectionId) setCadastroRequest({ sectionId, field, at: Date.now() });
+    onTab('cadastro');
+  };
+
+  // O "Adicionar etiqueta" do cabeçalho: as etiquetas se editam no Contexto
+  // comercial, na Linha do tempo.
+  const goToContext = () => {
+    onTab('timeline');
+    setTimeout(() => document.getElementById('ficha-contexto')?.scrollIntoView?.({ block: 'center' }), 0);
+  };
+
+  // Grava uma seção do Cadastro (lib/cadastroWrites.js), só com as chaves dela.
+  // A trava é a do cadastro, a mesma do Contexto comercial. Devolve false quando
+  // não gravou, e a seção continua aberta com o que foi digitado.
+  const handleCadastroSave = async (sectionId, form) => {
+    if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return false; }
+    if (!canEditCadastro) { negarAcesso(); return false; }
+    try {
+      await saveCadastroSection({ db, lead, sectionId, form });
+      toast.success('Cadastro salvo!');
+      return true;
+    } catch (e) {
+      console.error(e);
+      toast.error('Erro ao salvar o cadastro. Tente novamente.');
+      return false;
+    }
+  };
+
   // Grava o agendamento montado no ScheduleWizard. Mantém os campos canônicos
   // (nextFollowUp/nextFollowUpType/appointmentType/appointmentScheduledFor) e
   // grava os extras por tipo (modalidade+professor+quantidade p/ aula; unidade p/ visita).
@@ -742,13 +777,18 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // Ciclo de vida (cliente) p/ os selos do cabeçalho e a aba Indicações.
   const isClient = lead.lifecycleStage === 'cliente' || isLeadConverted(lead);
   // Aba ativa da ficha, vinda do endereço. A aba Indicações só existe para
-  // cliente, então um link dela numa ficha de lead abre a Linha do tempo. Não é
-  // redirect de propósito: se a pessoa é cliente só se sabe depois de o
-  // documento carregar, e um redirect ali trocaria o endereço toda vez que a
-  // ficha demora.
+  // cliente, e a aba Cadastro só para quem edita cadastro (o professor e quem
+  // está sem login não a veem). Um link de uma aba que a pessoa não tem abre a
+  // Linha do tempo. Não é redirect de propósito: se a pessoa é cliente só se
+  // sabe depois de o documento carregar, e um redirect ali trocaria o endereço
+  // toda vez que a ficha demora.
   // Chave que não é aba (a antiga 'crm', por exemplo) também abre a Linha do
   // tempo, para a ficha nunca ficar sem conteúdo.
-  const activeProfileTab = !Object.hasOwn(FICHA_TABS, tab || '') || (tab === 'referrals' && !isClient) ? 'timeline' : tab;
+  const activeProfileTab = !Object.hasOwn(FICHA_TABS, tab || '')
+    || (tab === 'referrals' && !isClient)
+    || (tab === 'cadastro' && !canEditCadastro)
+    ? 'timeline'
+    : tab;
   // Funil UPGRADE (lib/upgradeFunnel.js): é o único funil que um cliente pode
   // ocupar, e a etapa dele mora em upgradeStageId, não em status.
   const upgradeFunnel = getUpgradeFunnel(safeFunnels);
@@ -1014,7 +1054,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                   </span>
                 )}
                 {canEditCadastro && (
-                  <IconBtn icon={<Pencil size={16} />} kind="default" title="Editar cadastro" onClick={() => setIsEditing(true)} />
+                  <IconBtn icon={<Pencil size={16} />} kind="default" title="Editar cadastro" onClick={() => openCadastro()} />
                 )}
               </div>
               {/* status + tags */}
@@ -1024,7 +1064,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                 )}
                 {(lead.tags || []).length === 0 && canEditCadastro && (
                   <button
-                    onClick={() => setIsEditing(true)}
+                    onClick={goToContext}
                     className="inline-flex items-center gap-1 text-[11.5px] font-medium text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 px-2 py-1 rounded-md border border-dashed border-slate-300 dark:border-white/15 transition"
                   >
                     <Plus size={11} /> Adicionar etiqueta
@@ -1275,7 +1315,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
               </p>
               {canEditCadastro && (
                 <button
-                  onClick={() => setIsEditing(true)}
+                  onClick={() => openCadastro('identidade', 'whatsapp')}
                   className="inline-flex items-center gap-1 text-[11.5px] font-medium text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 px-2 py-1 rounded-md border border-dashed border-slate-300 dark:border-white/15 transition"
                 >
                   Editar cadastro
@@ -1297,6 +1337,15 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
             Linha do tempo
             <TabCount n={(interactions || []).length} active={activeProfileTab === 'timeline'} />
           </TabsTrigger>
+          {canEditCadastro && (
+            <TabsTrigger
+              value="cadastro"
+              className="flex-none h-11 px-4 text-[13.5px] font-medium rounded-t-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.06] data-[state=active]:font-semibold data-[state=active]:bg-transparent data-[state=active]:text-slate-900 dark:data-[state=active]:text-white data-[state=active]:[&_svg]:text-brand-600 dark:data-[state=active]:[&_svg]:text-brand-300 after:h-[3px] after:rounded-full after:bg-brand-600"
+            >
+              <IdCard className="size-[15px]" />
+              Cadastro
+            </TabsTrigger>
+          )}
           <TabsTrigger
             value="contratos"
             className="flex-none h-11 px-4 text-[13.5px] font-medium rounded-t-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.06] data-[state=active]:font-semibold data-[state=active]:bg-transparent data-[state=active]:text-slate-900 dark:data-[state=active]:text-white data-[state=active]:[&_svg]:text-brand-600 dark:data-[state=active]:[&_svg]:text-brand-300 after:h-[3px] after:rounded-full after:bg-brand-600"
@@ -1478,6 +1527,21 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
          </div>
         </TabsContent>
 
+        {/* ----- Aba: Cadastro (só quem edita cadastro) -----
+            Fica montada quando escondida (forceMount com hidden), para a seção
+            aberta e o texto digitado voltarem com a aba. O hidden a tira da
+            tela, da leitura e do Tab. */}
+        {canEditCadastro && (
+          <TabsContent value="cadastro" forceMount hidden={activeProfileTab !== 'cadastro'} className="pt-2">
+            <CadastroTab
+              lead={lead}
+              db={db}
+              request={cadastroRequest}
+              onSave={handleCadastroSave}
+            />
+          </TabsContent>
+        )}
+
         {/* ----- Aba: Contratos ----- */}
         <TabsContent value="contratos" className="pt-2">
           <ContractsTab
@@ -1518,15 +1582,6 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
         onClose={() => setPhotoMenuOpen(false)}
         onPicked={handlePhotoPicked}
         onRemove={lead.photoUrl ? handlePhotoRemove : null}
-      />
-      <ClientRegistrationModal
-        open={isEditing}
-        onClose={() => setIsEditing(false)}
-        lead={lead}
-        appUser={appUser}
-        db={db}
-        usersList={usersList}
-        tags={tags}
       />
       {reactivateOpen && (
         <ReactivateLeadModal
