@@ -17,10 +17,10 @@ const render = (props) => renderToString(
     createElement(LeadProfileContext.Provider, { value: profile }, createElement(ReferralsSection, props))));
 
 describe('ReferralsSection', () => {
-  it('vazio com onAdd: convida a cadastrar e cita o Indicar', () => {
+  it('vazio com onAdd: convida a cadastrar e cita o botão Indicações', () => {
     const html = render({ items: [], loading: false, onAdd: () => {} });
     expect(html).toContain('Cadastrar indicação');
-    expect(html).toContain('Indicar');
+    expect(html).toContain('botão Indicações');
   });
 
   it('lista com onAdd: o botão fica em cima', () => {

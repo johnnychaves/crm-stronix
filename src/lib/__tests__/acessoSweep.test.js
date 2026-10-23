@@ -53,7 +53,7 @@ const codigo = (file) => stripComments(readFileSync(file, 'utf8'));
 // por pessoa. Cada uma passa pelo isSeller: o professor não
 // é dono de lead e não vende. Busca de nome (o chip do filtro, o autor da
 // linha do tempo) continua com o usersList inteiro. As listas de Clientes, da
-// ficha, do cadastro do cliente e de Metas & ritmo também passam pelo
+// ficha, do Contexto comercial da ficha e de Metas & ritmo também passam pelo
 // isSeller. Tela nova com lista de pessoas entra aqui.
 const LISTAS_DE_QUEM_VENDE = [
   'views/KanbanView.jsx',
@@ -66,7 +66,7 @@ const LISTAS_DE_QUEM_VENDE = [
   // Já passam pelo isSeller desde as Tasks 6 e 8.
   'views/ClientsView.jsx',
   'views/LeadProfileView.jsx',
-  'modals/ClientRegistrationModal.jsx',
+  'components/profile/ContextCard.jsx',
   'views/settings/PaceSection.jsx',
   // Rotinas: quem pode seguir modelo (routineParticipants).
   'lib/rotinas.js',

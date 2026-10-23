@@ -1,20 +1,22 @@
 import { useState } from 'react';
-import { Kanban, ArrowRight, Check, TrendingUp, Ban } from 'lucide-react';
+import { ArrowRight, Ban, Check, Kanban, RefreshCw, TrendingUp } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { Btn } from '../ui/Btn.jsx';
 import { phaseToneName, getTone } from '../../lib/leadState.js';
 import { isReferralFunnel } from '../../lib/referrals.js';
 import { ReferrerPicker } from './ReferrerPicker.jsx';
+import { WizardFrame, WizardStepper, StageHead, WizardSummary, WizardProgress, WizardNote, WizardOption } from './WizardLayout.jsx';
 
-// ── Mudar fase: funil selecionável + pipeline visual + outcomes + transição ──
-// Porte fiel do protótipo (design_handoff_perfil_cadastro/prototype/phase.jsx)
-// usando DADOS REAIS do app. Props:
+// ── Mudar fase: funil, nova fase e, quando preciso, indicador ──────────────
+// Desenho A2: os passos numa linha no topo, só o passo atual embaixo, e o
+// resumo, a observação e os botões à direita (WizardLayout). A lógica é a de
+// antes: Venda e Perda caem nos fluxos próprios da ficha, mover para o funil de
+// Indicações sem vínculo exige o indicador. Props:
 //   lead     : { funnelId, status, ... }
 //   funnels  : [{ id, name }]
 //   statuses : [{ id, name, funnelId, color, order }]
-//   onConfirm({ funnelId, targetStatus, note }) (targetStatus = NOME) · onCancel()
+//   onConfirm({ funnelId, targetStatus, note, referrer }) · onCancel()
 // Outcomes do funil são fixos: win = 'Venda', loss = 'Perda'.
-// Token: azul primário do protótipo (brand-500=#2B59FF) → brand-600 no app.
 
 const WIN_NAME = 'Venda';
 const LOSS_NAME = 'Perda';
@@ -40,106 +42,23 @@ const PhaseBadge = ({ stage, statuses, size = 'md' }) => {
   );
 };
 
-const PhaseNode = ({ stage, i, len, progressIdx, curIdx, targetIdx, hasTarget, sameFunnel, statuses, onClick }) => {
-  const t = getTone(phaseToneName(stage.name, statuses));
-  const isTarget = i === targetIdx;
-  const done = i < progressIdx;
-  const isCurrent = !hasTarget && sameFunnel && i === curIdx;
-  const leftPassed = i <= progressIdx;
-  const rightPassed = i + 1 <= progressIdx;
-  return (
-    <button type="button" onClick={onClick} className="flex-1 min-w-[78px] group">
-      <div className="flex items-center">
-        <div
-          className={cn(
-            'h-[3px] flex-1 rounded-full transition-colors',
-            i === 0 ? 'invisible' : leftPassed ? 'bg-brand-600' : 'bg-slate-200 dark:bg-white/[0.08]'
-          )}
-        ></div>
-        <span
-          className={cn(
-            'relative w-7 h-7 rounded-full grid place-items-center shrink-0 transition',
-            isTarget
-              ? cn(t.strong, 'text-white ring-4', `${t.ring}/30`)
-              : done
-                ? 'bg-brand-600 text-white'
-                : isCurrent
-                  ? cn('bg-white dark:bg-ink-900 ring-2', t.ring, t.text, t.darkText)
-                  : 'bg-slate-100 dark:bg-white/[0.05] text-slate-400 dark:text-slate-500 group-hover:bg-slate-200 dark:group-hover:bg-white/[0.1]'
-          )}
-        >
-          {done || isTarget ? (
-            <Check size={13} />
-          ) : isCurrent ? (
-            <span className={cn('w-2 h-2 rounded-full', t.strong)}></span>
-          ) : (
-            <span className="text-[11px] font-bold num">{i + 1}</span>
-          )}
-        </span>
-        <div
-          className={cn(
-            'h-[3px] flex-1 rounded-full transition-colors',
-            i === len - 1 ? 'invisible' : rightPassed ? 'bg-brand-600' : 'bg-slate-200 dark:bg-white/[0.08]'
-          )}
-        ></div>
-      </div>
-      <div
-        className={cn(
-          'text-center mt-2 text-[11px] font-semibold leading-tight px-0.5',
-          isCurrent ? 'text-slate-900 dark:text-white' : isTarget ? cn(t.text, t.darkText) : 'text-slate-500 dark:text-slate-400'
-        )}
-      >
-        {stage.name}
-      </div>
-    </button>
-  );
-};
-
-const OutcomeCard = ({ name, icon, color, desc, selected, onClick }) => {
-  const t = getTone(color);
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'flex-1 text-left rounded-xl border p-3 transition group',
-        selected
-          ? cn(t.soft, t.darkSoft, 'border-transparent ring-2', `${t.ring}/40`)
-          : 'bg-white border-slate-200 hover:border-slate-300 dark:bg-white/[0.02] dark:border-white/[0.07] dark:hover:border-white/15'
-      )}
-    >
-      <div className="flex items-center gap-2.5">
-        <span
-          className={cn(
-            'w-9 h-9 rounded-lg grid place-items-center shrink-0',
-            selected ? cn(t.strong, 'text-white') : cn(t.soft, t.text, t.darkSoft, t.darkText)
-          )}
-        >
-          {icon}
-        </span>
-        <div className="min-w-0">
-          <div className={cn('text-[13.5px] font-semibold', selected ? cn(t.text, t.darkText) : 'text-slate-900 dark:text-white')}>{name}</div>
-          <div className="text-[11.5px] text-slate-500 dark:text-slate-400">{desc}</div>
-        </div>
-        {selected && (
-          <span className={cn('ml-auto w-5 h-5 rounded-full grid place-items-center text-white shrink-0', t.strong)}>
-            <Check size={12} />
-          </span>
-        )}
-      </div>
-    </button>
-  );
+const noteTexts = (targetName) => {
+  if (targetName === LOSS_NAME) return { label: 'Motivo da perda (recomendado)', placeholder: 'O que levou à perda?' };
+  if (targetName === WIN_NAME) return { label: 'Detalhes da venda', placeholder: 'Plano, valor, o que foi combinado' };
+  return { label: 'Observação (opcional)', placeholder: 'Por que mudou de fase?' };
 };
 
 const PhaseChanger = ({ lead, db = null, funnels = [], statuses = [], onConfirm, onCancel }) => {
   const originalFunnelId = lead?.funnelId || funnels[0]?.id || '';
   const originalFunnel = funnels.find((f) => f.id === originalFunnelId) || funnels[0];
   const originalStage = lead?.status || '';
+  const firstName = (lead?.name || '').split(' ')[0] || 'o lead';
 
   const [funnelId, setFunnelId] = useState(originalFunnelId);
   const [target, setTarget] = useState(null); // {name,color}
   const [note, setNote] = useState('');
   const [referrer, setReferrer] = useState(null); // cliente indicador (funil de Indicações)
+  const [editing, setEditing] = useState(null); // passo reaberto pelo clique na linha
 
   const funnel = funnels.find((f) => f.id === funnelId) || funnels[0];
   // Estágios = statuses filtrados pelo funil + ordenados.
@@ -151,7 +70,6 @@ const PhaseChanger = ({ lead, db = null, funnels = [], statuses = [], onConfirm,
 
   const targetIdx = target ? LINEAR.findIndex((s) => s.name === target.name) : -1;
   const hasTarget = !!target;
-  const progressIdx = targetIdx >= 0 ? targetIdx : curIdx;
   const changed = hasTarget && !(sameFunnel && target.name === originalStage);
   const isAdvance = changed && targetIdx >= 0 && curIdx >= 0 && targetIdx > curIdx;
 
@@ -164,191 +82,141 @@ const PhaseChanger = ({ lead, db = null, funnels = [], statuses = [], onConfirm,
     target.name !== WIN_NAME && target.name !== LOSS_NAME;
 
   const curStage = { name: originalStage };
-  const tgtTone = target ? getTone(phaseToneName(target.name, statuses)) : null;
+  const idleTone = getTone(phaseToneName(originalStage, statuses));
+  const tgtTone = target ? getTone(phaseToneName(target.name, statuses)) : idleTone;
+  const winTone = getTone(phaseToneName(WIN_NAME, statuses));
+  const lossTone = getTone(phaseToneName(LOSS_NAME, statuses));
+  const brand = getTone('brand');
 
-  const winColor = phaseToneName(WIN_NAME, statuses);
-  const lossColor = phaseToneName(LOSS_NAME, statuses);
+  // O passo aberto embaixo: o que a pessoa reabriu pela linha, ou o que falta.
+  const active = editing || (!target ? 'fase' : needsReferrer && !referrer ? 'indicador' : 'fase');
+  const steps = [
+    { key: 'funil', title: 'Funil', value: funnel?.name || '' },
+    { key: 'fase', title: 'Nova fase', value: target?.name || '' },
+    ...(needsReferrer ? [{ key: 'indicador', title: 'Indicador', value: referrer?.name || '' }] : []),
+  ].map((s) => ({ ...s, state: s.key === active ? 'active' : s.value ? 'done' : 'locked', onEdit: () => setEditing(s.key) }));
+  const doneCount = steps.filter((s) => s.value).length;
 
   const pickFunnel = (id) => {
     setFunnelId(id);
     setTarget(null);
     setReferrer(null);
+    setEditing(null);
   };
+  const pickTarget = (name) => {
+    setTarget({ name, color: phaseToneName(name, statuses) });
+    setEditing(null);
+  };
+  const ready = changed && !(needsReferrer && !referrer);
+  const nt = noteTexts(target?.name);
 
-  return (
-    <div className="space-y-4">
-      {/* Seletor de funil */}
-      <div>
-        <div className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">Funil de vendas</div>
-        <div className="flex flex-wrap gap-1.5">
-          {funnels.map((f) => {
-            const active = f.id === funnelId;
-            return (
-              <button
-                key={f.id}
-                type="button"
-                onClick={() => pickFunnel(f.id)}
-                className={cn(
-                  'inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12.5px] font-semibold transition',
-                  active
-                    ? 'bg-brand-600 text-white shadow-[0_4px_12px_-4px_rgba(43,89,255,.5)]'
-                    : 'bg-white text-slate-600 border border-slate-200 hover:border-slate-300 dark:bg-white/[0.03] dark:text-slate-300 dark:border-white/[0.08] dark:hover:border-white/15'
-                )}
-              >
-                <Kanban size={13} className={active ? 'text-white' : 'text-slate-400'} />
-                {f.name}
-                {f.id === originalFunnelId && (
-                  <span
-                    className={cn(
-                      'text-[9px] font-bold px-1 py-0.5 rounded',
-                      active ? 'bg-white/20' : 'bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-400'
-                    )}
-                  >
-                    ATUAL
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
+  const stage = active === 'funil' ? (
+    <>
+      <StageHead key="funil" title="Funil" hint={`Em qual funil ${firstName} deve ficar?`} />
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+        {funnels.map((f) => (
+          <WizardOption
+            key={f.id}
+            tone={brand}
+            Icon={Kanban}
+            label={f.name}
+            hint={f.id === originalFunnelId ? 'Funil atual' : 'Mover para outro funil'}
+            selected={f.id === funnelId}
+            onClick={() => pickFunnel(f.id)}
+          />
+        ))}
       </div>
-
-      {/* Fase atual / mudança de funil */}
-      <div className="flex items-center gap-2 flex-wrap text-[12px]">
-        <span className="font-semibold uppercase tracking-wider text-[10.5px] text-slate-400 dark:text-slate-500">Fase atual</span>
-        {originalStage && <PhaseBadge stage={curStage} statuses={statuses} />}
-        {originalFunnel && (
-          <span className="text-slate-400 dark:text-slate-500">
-            no funil <span className="font-semibold text-slate-600 dark:text-slate-300">{originalFunnel.name}</span>
-          </span>
-        )}
-        {!sameFunnel && funnel && (
-          <span className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-brand-700 dark:text-brand-300 bg-brand-50 dark:bg-brand-500/10 px-2 py-0.5 rounded-md">
-            <ArrowRight size={12} /> migrando para {funnel.name}
-          </span>
-        )}
-      </div>
-
-      {/* Stepper do pipeline */}
-      <div className="rounded-xl border border-slate-200 dark:border-white/[0.06] bg-slate-50/60 dark:bg-white/[0.02] p-4 overflow-x-auto overscroll-x-contain thin-scroll">
-        <div className="flex min-w-[440px]">
-          {LINEAR.map((s, i) => (
-            <PhaseNode
+    </>
+  ) : active === 'indicador' ? (
+    <>
+      <StageHead key="indicador" title="Quem indicou?" hint="O funil de Indicações só recebe leads ligados a um cliente indicador." />
+      <ReferrerPicker db={db} value={referrer} onSelect={(r) => { setReferrer(r); setEditing(null); }} excludeId={lead?.id} />
+    </>
+  ) : (
+    <>
+      <StageHead key="fase" title="Nova fase" hint={`Para onde ${firstName} vai agora?`} />
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+        {LINEAR.map((s, i) => {
+          const isCurrent = sameFunnel && s.name === originalStage;
+          const hint = isCurrent
+            ? 'Fase atual'
+            : curIdx >= 0
+              ? `${i > curIdx ? 'Avança' : 'Volta'} ${Math.abs(i - curIdx)} ${Math.abs(i - curIdx) === 1 ? 'etapa' : 'etapas'}`
+              : `Etapa ${i + 1}`;
+          return (
+            <WizardOption
               key={s.id || s.name}
-              stage={s}
-              i={i}
-              len={LINEAR.length}
-              progressIdx={progressIdx}
-              curIdx={curIdx}
-              targetIdx={targetIdx}
-              hasTarget={hasTarget}
-              sameFunnel={sameFunnel}
-              statuses={statuses}
-              onClick={() => setTarget({ name: s.name, color: phaseToneName(s.name, statuses) })}
+              tone={getTone(phaseToneName(s.name, statuses))}
+              tile={<b className="num text-[14px]">{i + 1}</b>}
+              label={s.name}
+              hint={hint}
+              selected={target?.name === s.name}
+              current={isCurrent}
+              onClick={() => pickTarget(s.name)}
             />
-          ))}
+          );
+        })}
+      </div>
+      <div className="mt-4 border-t border-border pt-3.5">
+        <div className="mb-2 text-[12.5px] text-muted-foreground">Encerrar o ciclo</div>
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+          <WizardOption tone={winTone} Icon={TrendingUp} label={WIN_NAME} hint="Lead virou matrícula" selected={target?.name === WIN_NAME} onClick={() => pickTarget(WIN_NAME)} />
+          <WizardOption tone={lossTone} Icon={Ban} label={LOSS_NAME} hint="Oportunidade encerrada" selected={target?.name === LOSS_NAME} onClick={() => pickTarget(LOSS_NAME)} />
         </div>
       </div>
+    </>
+  );
 
-      {/* Outcomes */}
-      <div>
-        <div className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">Encerrar o ciclo</div>
-        <div className="flex gap-2.5 flex-col sm:flex-row">
-          <OutcomeCard
-            name={WIN_NAME}
-            icon={<TrendingUp size={16} />}
-            color={winColor}
-            desc="Lead virou matrícula"
-            selected={target && target.name === WIN_NAME}
-            onClick={() => setTarget({ name: WIN_NAME, color: winColor })}
-          />
-          <OutcomeCard
-            name={LOSS_NAME}
-            icon={<Ban size={16} />}
-            color={lossColor}
-            desc="Oportunidade encerrada"
-            selected={target && target.name === LOSS_NAME}
-            onClick={() => setTarget({ name: LOSS_NAME, color: lossColor })}
-          />
-        </div>
-      </div>
+  const kindText = !changed ? ''
+    : target.name === LOSS_NAME || target.name === WIN_NAME ? 'Encerra o ciclo.'
+      : !sameFunnel ? `${originalFunnel?.name} para ${funnel?.name}.`
+        : isAdvance ? `Avança ${targetIdx - curIdx} ${targetIdx - curIdx === 1 ? 'etapa' : 'etapas'}.`
+          : curIdx >= 0 && targetIdx >= 0 ? `Volta ${curIdx - targetIdx} ${curIdx - targetIdx === 1 ? 'etapa' : 'etapas'}.` : '';
 
-      {/* Transição + motivo */}
-      {changed && (
-        <div className={cn('rounded-xl border border-transparent p-4 ring-1 ring-inset', tgtTone.soft, tgtTone.darkSoft, `${tgtTone.ring}/25`)}>
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <PhaseBadge stage={curStage} statuses={statuses} />
-            <ArrowRight size={15} className="text-slate-400" />
-            <PhaseBadge stage={target} statuses={statuses} />
-            {!sameFunnel && (
-              <span className="text-[11px] font-semibold text-brand-600 dark:text-brand-300 ml-1">
-                · {originalFunnel?.name} → {funnel?.name}
-              </span>
-            )}
-            {isAdvance && sameFunnel && (
-              <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-300 ml-1">
-                +{targetIdx - curIdx} etapa{targetIdx - curIdx > 1 ? 's' : ''}
-              </span>
-            )}
-          </div>
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            rows={2}
-            placeholder={
-              target.name === LOSS_NAME
-                ? 'Motivo da perda (recomendado)…'
-                : target.name === WIN_NAME
-                  ? 'Detalhes da venda (plano, valor)…'
-                  : 'Por que mudou de fase? (opcional)'
-            }
-            className="mt-3 w-full rounded-lg bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08] focus:border-slate-300 dark:focus:border-white/15 outline-none text-[13px] p-3 placeholder:text-slate-400 resize-none transition"
-          />
-        </div>
-      )}
-
-      {/* Indicador obrigatório ao entrar no funil de Indicações */}
-      {needsReferrer && (
-        <div className="rounded-xl border border-emerald-200 dark:border-emerald-500/25 bg-emerald-50/50 dark:bg-emerald-500/[0.05] p-4">
-          <div className="text-[10.5px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-300 mb-2">Quem indicou?</div>
-          <ReferrerPicker db={db} value={referrer} onSelect={setReferrer} excludeId={lead?.id} />
-          <p className="text-[11.5px] text-emerald-700/80 dark:text-emerald-300/80 mt-2">
-            O funil de Indicações só recebe leads vinculados a um cliente indicador.
+  const aside = (
+    <>
+      <WizardSummary tone={tgtTone} Icon={RefreshCw} label="Resumo da mudança" complete={changed}>
+        {changed ? (
+          <>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              {originalStage && <PhaseBadge stage={curStage} statuses={statuses} />}
+              <ArrowRight size={14} className="text-slate-400" aria-hidden="true" />
+              <PhaseBadge stage={target} statuses={statuses} />
+            </div>
+            {kindText && <p className="mt-1 text-[13px] text-slate-600 dark:text-slate-300">{kindText}</p>}
+          </>
+        ) : (
+          <p className="mt-0.5 text-[13px] text-slate-600 dark:text-slate-300">
+            {originalStage ? `${firstName} está em ${originalStage}.` : 'Escolha a nova fase.'}
           </p>
-        </div>
-      )}
-
-      {/* Ações */}
-      <div className="flex items-center gap-1.5">
+        )}
+      </WizardSummary>
+      <WizardProgress done={doneCount} total={steps.length} tone={tgtTone} />
+      {hasTarget && <WizardNote id="ph-note" label={nt.label} placeholder={nt.placeholder} value={note} onChange={setNote} />}
+      <div className="mt-auto flex flex-col gap-2">
         {(target || !sameFunnel) && (
           <button
             type="button"
-            onClick={() => {
-              setTarget(null);
-              setFunnelId(originalFunnelId);
-              setNote('');
-            }}
-            className="text-[12px] font-medium text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+            onClick={() => { setTarget(null); setFunnelId(originalFunnelId); setNote(''); setReferrer(null); setEditing(null); }}
+            className="self-start text-[12.5px] font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:anel-foco"
           >
             Limpar seleção
           </button>
         )}
-        <div className="flex-1"></div>
-        <Btn kind="soft" size="sm" onClick={onCancel}>
-          Cancelar
-        </Btn>
         <Btn
           kind={target && target.name === WIN_NAME ? 'success' : target && target.name === LOSS_NAME ? 'danger' : 'brand'}
-          size="sm"
           icon={<Check size={13} />}
-          disabled={!changed || (needsReferrer && !referrer)}
-          onClick={() => changed && !(needsReferrer && !referrer) && onConfirm?.({ funnelId, targetStatus: target.name, note, referrer })}
+          disabled={!ready}
+          onClick={() => ready && onConfirm?.({ funnelId, targetStatus: target.name, note, referrer })}
         >
-          {changed ? (needsReferrer && !referrer ? 'Vincule o indicador' : `Mover para ${target.name}`) : 'Selecione a fase'}
+          {changed ? (needsReferrer && !referrer ? 'Vincule o indicador' : `Mover para ${target.name}`) : 'Escolha a nova fase'}
         </Btn>
+        <Btn kind="soft" onClick={onCancel}>Cancelar</Btn>
       </div>
-    </div>
+    </>
   );
+
+  return <WizardFrame stepper={<WizardStepper steps={steps} label="Passos da mudança de fase" tone={tgtTone} />} stage={stage} aside={aside} />;
 };
 
 export { PhaseChanger };

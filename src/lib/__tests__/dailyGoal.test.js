@@ -788,6 +788,56 @@ describe('computeDailyGoalSlots — funil Vencidos', () => {
     expect(slugsOf(out, 'v1')).toEqual([DAILY_GOAL_CATEGORIES.CONTATO_HOJE]);
     expect(slotTotals(out)).toMatchObject({ totalSlots: 1, doneSlots: 1 });
   });
+
+  // Bug de 22/10/2026: o Compareceu e o Cancelou apagam o eco da aula no
+  // próximo contato, e o mesmo cliente voltava como "Contrato vencido" no
+  // bloco Agora, como se o comparecimento não tivesse sido gravado.
+  describe('visita e aula de hoje no cliente vencido', () => {
+    const hoje8 = new Date(2026, 6, 15, 8, 0);
+    const marca = (lead, category) => new Map([[lead.id, [{
+      leadId: lead.id,
+      type: 'daily_goal_done',
+      dailyGoalCategory: category,
+      goalOwnerId: CONSULTOR,
+      createdAt: new Date(2026, 6, 15, 9, 30)
+    }]]]);
+    const comAgendamento = (appointmentType, nextFollowUpType) => clienteVencido({
+      appointmentType,
+      appointmentScheduledFor: hoje8,
+      nextFollowUp: hoje8,
+      nextFollowUpType
+    });
+
+    it('depois do Compareceu da aula, o Vencidos não volta e a aula fica feita; no dia seguinte volta', () => {
+      const antes = comAgendamento('aula_experimental', 'Aula Experimental');
+      const lead = { ...antes, ...consumedFields('attended', antes), appointmentOutcome: 'attended' };
+      expect(lead.nextFollowUp).toBeNull();
+      const out = computeDailyGoalSlots([lead], marca(lead, DAILY_GOAL_CATEGORIES.AULA_HOJE), CONSULTOR, [90, 60, 30], 15);
+      expect(slugsOf(out, 'v1')).toEqual([DAILY_GOAL_CATEGORIES.AULA_HOJE]);
+      expect(slotTotals(out)).toMatchObject({ totalSlots: 1, doneSlots: 1 });
+
+      const amanha = new Date(2026, 6, 16, 10, 0);
+      vi.setSystemTime(amanha);
+      const depois = computeDailyGoalSlots([lead], new Map(), CONSULTOR, [90, 60, 30], 15, amanha);
+      expect(slugsOf(depois, 'v1')).toEqual([DAILY_GOAL_CATEGORIES.VENCIDO]);
+    });
+
+    it('depois do Cancelou da aula, o Vencidos não volta no mesmo dia', () => {
+      const antes = comAgendamento('aula_experimental', 'Aula Experimental');
+      const lead = { ...antes, ...consumedFields('cancelled', antes, new Date(2026, 6, 15, 9, 30)) };
+      expect(lead.appointmentScheduledFor).toBeNull();
+      const out = computeDailyGoalSlots([lead], marca(lead, DAILY_GOAL_CATEGORIES.AULA_HOJE), CONSULTOR, [90, 60, 30], 15);
+      expect(slugsOf(out, 'v1')).not.toContain(DAILY_GOAL_CATEGORIES.VENCIDO);
+    });
+
+    it('depois do Compareceu da visita, o Vencidos não volta', () => {
+      const antes = comAgendamento('visita', 'Visita');
+      const lead = { ...antes, ...consumedFields('attended', antes), appointmentOutcome: 'attended' };
+      const out = computeDailyGoalSlots([lead], marca(lead, DAILY_GOAL_CATEGORIES.VISITA_HOJE), CONSULTOR, [90, 60, 30], 15);
+      expect(slugsOf(out, 'v1')).toEqual([DAILY_GOAL_CATEGORIES.VISITA_HOJE]);
+      expect(slotTotals(out)).toMatchObject({ totalSlots: 1, doneSlots: 1 });
+    });
+  });
 });
 
 describe('renewedGoalDoneInteraction', () => {

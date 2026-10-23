@@ -27,10 +27,10 @@ function SummaryBlock({ label, value, accent }) {
 }
 
 // Conteúdo da aba Indicações da ficha do CLIENTE: resumo + lista dos indicados.
-// O menu Indicar vive no cabeçalho da ficha, ao lado do WhatsApp. `onAdd`
+// O botão Indicações vive no cabeçalho da ficha, ao lado do Ligar. `onAdd`
 // (opcional) liga o botão de cadastrar indicação à mão; a ficha só passa
 // quando a academia tem o funil Indicações e a pessoa pode editar.
-// `canRefer` (padrão true) diz se quem vê tem o menu Indicar. O professor não
+// `canRefer` (padrão true) diz se quem vê tem o botão Indicações. O professor não
 // tem (src/lib/acesso.js), então o aviso de vazio não manda procurar o botão.
 // O estado de cada indicado é derivado AO VIVO do doc dele (deriveLeadState/
 // isClientLead) — desfazer uma Venda reflete aqui sozinho.
@@ -61,8 +61,8 @@ export function ReferralsSection({ items, loading, onAdd = null, canRefer = true
           {!canRefer ? 'Quando este cliente indicar alguém, a pessoa aparece aqui com o andamento dela.' : (
             <>
               {onAdd
-                ? 'Use o botão Indicar, no topo da ficha, para cadastrar as indicações do cliente ou mandar o link para ele convidar os amigos. Também dá para cadastrar um lead novo escolhendo a origem Indicação.'
-                : 'Use o botão Indicar, no topo da ficha, para mandar o link para o cliente convidar os amigos, ou cadastre um lead novo escolhendo a origem Indicação.'}
+                ? 'Use o botão Indicações, no topo da ficha, para cadastrar as indicações do cliente ou mandar o link para ele convidar os amigos. Também dá para cadastrar um lead novo escolhendo a origem Indicação.'
+                : 'Use o botão Indicações, no topo da ficha, para mandar o link para o cliente convidar os amigos, ou cadastre um lead novo escolhendo a origem Indicação.'}
               {' '}Os indicados aparecem aqui com o andamento de cada um.
             </>
           )}

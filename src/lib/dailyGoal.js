@@ -447,15 +447,19 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
     }
 
     // 7. Vencidos — CLIENTE com contrato vencido dentro do período configurado
-    // (renewalGraceDays) e sem contato marcado para hoje/futuro. Cobrado TODO
+    // (renewalGraceDays) e sem contato, visita ou aula marcada para hoje/futuro. Cobrado TODO
     // dia enquanto durar o período; sai por desfecho (reativou / não vai voltar
     // / reagendou) ou quando o período acaba. Regra em src/lib/expiredGoal.js.
     // O "Contato feito" de hoje no cliente vencido já tratou o cliente: ele
     // apaga o próximo contato, e sem esta guarda o Vencidos voltava a cobrá-lo
-    // no mesmo dia, como tarefa nova e pendente (bug de 21/10/2026).
+    // no mesmo dia, como tarefa nova e pendente (bug de 21/10/2026). Vale o
+    // mesmo para a visita e a aula de hoje: o Cancelou apaga o agendamento, que
+    // segurava a cobrança em shouldPromptExpired (bug de 22/10/2026).
     if (
       shouldPromptExpired(lead, nowRef, renewalGraceDays) &&
-      !isMarkedDoneToday(lead, DAILY_GOAL_CATEGORIES.CONTATO_HOJE)
+      !isMarkedDoneToday(lead, DAILY_GOAL_CATEGORIES.CONTATO_HOJE) &&
+      !isMarkedDoneToday(lead, DAILY_GOAL_CATEGORIES.VISITA_HOJE) &&
+      !isMarkedDoneToday(lead, DAILY_GOAL_CATEGORIES.AULA_HOJE)
     ) {
       addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.vencido, DAILY_GOAL_CATEGORIES.VENCIDO);
     }

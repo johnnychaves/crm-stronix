@@ -65,7 +65,7 @@ export const ANNOUNCEMENTS = [
     eyebrow: 'Novidade',
     title: 'Passar um lead para outro consultor',
     summary:
-      'Agora não precisa mais chamar o gestor para trocar o responsável. Abra a ficha, clique no lápis, vá em Relacionamento e escolha o novo consultor. A troca fica registrada na linha do tempo e quem recebeu vê o aviso aqui no sino.',
+      'Agora não precisa mais chamar o gestor para trocar o responsável. Abra a ficha e, no Contexto comercial da Linha do tempo, clique em Consultor e escolha o novo responsável. A troca fica registrada na linha do tempo e quem recebeu vê o aviso aqui no sino.',
   },
   {
     id: 'foto-cliente-2026-08',

@@ -117,7 +117,7 @@ describe('routeDecision: professor', () => {
   it('as telas dele abrem de primeira, com a aba da ficha', () => {
     const dele = [
       `/${T}/meta-diaria`, `/${T}/clientes`, `/${T}/ficha`, `/${T}/ficha/AbC`,
-      `/${T}/ficha/AbC/crm`, `/${T}/ficha/AbC/contratos`, `/${T}/ficha/AbC/indicacoes`,
+      `/${T}/ficha/AbC/linha-do-tempo`, `/${T}/ficha/AbC/contratos`, `/${T}/ficha/AbC/indicacoes`,
     ];
     for (const p of dele) {
       expect(decide(p, professor), p).toEqual({ kind: 'ok' });
@@ -128,12 +128,14 @@ describe('routeDecision: professor', () => {
   it('a correção de academia mantém a tela dele, com o filtro, e descarta a ficha de outra academia', () => {
     expect(decide('/clientes', professor, { search: '?sit=ativo' })).toEqual(casa(`/${T}/clientes?sit=ativo`, { screen: 'clientes' }));
     expect(decide('/outra/meta-diaria', professor)).toEqual(casa(`/${T}/meta-diaria`, { screen: 'dailyGoal' }));
-    expect(decide('/ficha/AbC/crm', professor)).toEqual(casa(`/${T}/ficha/AbC/crm`, { screen: 'ficha', leadId: 'AbC', sub: 'crm' }));
+    expect(decide('/ficha/AbC/contratos', professor)).toEqual(casa(`/${T}/ficha/AbC/contratos`, { screen: 'ficha', leadId: 'AbC', sub: 'contratos' }));
     expect(decide('/outra/ficha/AbC', professor)).toEqual(meta());
   });
 
   it('aba desconhecida da ficha abre a ficha, sem aviso', () => {
     expect(decide(`/${T}/ficha/AbC/xyz`, professor)).toEqual(casa(`/${T}/ficha/AbC`, { screen: 'ficha', leadId: 'AbC' }));
+    // A aba CRM saiu (desenho A2): o endereço antigo cai na Linha do tempo.
+    expect(decide(`/${T}/ficha/AbC/crm`, professor)).toEqual(casa(`/${T}/ficha/AbC`, { screen: 'ficha', leadId: 'AbC' }));
   });
 
   it('gestor e consultor não mudam: o endereço curto continua sendo o Operacional', () => {

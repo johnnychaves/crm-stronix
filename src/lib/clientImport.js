@@ -94,8 +94,8 @@ export const parseImportDate = (raw, now = new Date()) => {
   return null;
 };
 
-// Valores que o select de sexo do app conhece (AddLeadModal /
-// ClientRegistrationModal). Texto desconhecido passa como veio.
+// Valores que o select de sexo do app conhece (AddLeadModal e o Cadastro da
+// ficha). Texto desconhecido passa como veio.
 export const normalizeSexo = (raw) => {
   const s = normalizeName(raw);
   if (!s) return null;

@@ -90,7 +90,7 @@ function Body({ name }) {
       return (
         <Screen>
           <div className="flex gap-3 border-b border-slate-200 dark:border-white/[0.08] pb-1.5 mb-2">
-            {['Linha do tempo', 'CRM', 'Contratos'].map((t) => (
+            {['Linha do tempo', 'Cadastro', 'Contratos'].map((t) => (
               <span key={t} className="text-[9px] font-medium text-slate-400 dark:text-slate-500">{t}</span>
             ))}
             <span className="text-[9px] font-bold text-brand-600 dark:text-brand-300 border-b-2 border-brand-600 pb-1.5 -mb-[7px]" style={A('wdTab')}>
@@ -152,7 +152,7 @@ function Body({ name }) {
               <span style={A('wdSwap')}>Copiar</span>
               <span className="absolute inset-0 grid place-items-center text-emerald-600 dark:text-emerald-400" style={A('wdPop')}>Copiado ✓</span>
             </span>
-            <span className="h-6 px-2 rounded-md bg-emerald-600 text-white text-[9px] font-semibold grid place-items-center">Enviar pro cliente</span>
+            <span className="h-6 px-2 rounded-md bg-emerald-600 text-white text-[9px] font-semibold grid place-items-center">Enviar pelo WhatsApp</span>
           </div>
         </Screen>
       );
