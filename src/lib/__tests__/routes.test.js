@@ -405,12 +405,17 @@ describe('sub-tela no caminho', () => {
     }
   });
 
-  it('a ficha lê as quatro abas', () => {
-    const pares = [['linha-do-tempo', 'timeline'], ['crm', 'crm'], ['contratos', 'contratos'], ['indicacoes', 'referrals']];
+  it('a ficha lê as abas', () => {
+    const pares = [['linha-do-tempo', 'timeline'], ['cadastro', 'cadastro'], ['contratos', 'contratos'], ['indicacoes', 'referrals']];
     for (const [seg, id] of pares) {
       const r = parseAppPath(`/${T}/ficha/AbC/${seg}`);
       expect([r.screen, r.leadId, r.sub], seg).toEqual(['ficha', 'AbC', id]);
     }
+  });
+
+  it('o endereço antigo da aba CRM abre a ficha sem aba (sub-tela desconhecida)', () => {
+    const r = parseAppPath(`/${T}/ficha/AbC/crm`);
+    expect([r.screen, r.leadId, r.sub, r.subUnknown]).toEqual(['ficha', 'AbC', null, true]);
   });
 
   it('Relatórios lê os submenus, abre sem submenu e marca o desconhecido', () => {

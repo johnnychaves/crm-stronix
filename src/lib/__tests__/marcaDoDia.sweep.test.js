@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 const ler = (rel) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
 const META = ler('../../views/DailyGoalView.jsx');
 const MODAL_DO_CONTATO = ler('../../modals/ContactOutcomeModal.jsx');
+const REGRA_DO_DESFECHO = ler('../fichaOutcome.js');
 
 // Os handlers `const nome = async (...) => { ... };` da view, cada um até a
 // primeira linha que só fecha a função com dois espaços de recuo (o mesmo
@@ -52,12 +53,17 @@ describe('a marca do dia da Meta leva o dono da tarefa', () => {
 
   // Dois cliques na mesma linha da Agenda não repetem a marca. A conferência é
   // pela marca do dono da tarefa de agora: a marca da visita que outra pessoa
-  // fez de manhã no mesmo lead não pode impedir a marca da visita de agora.
+  // fez de manhã no mesmo lead não pode impedir a marca da visita de agora. A
+  // regra mora no outcomeRuleFor (src/lib/fichaOutcome.js), que a Agenda e o A
+  // seguir da ficha chamam; o fichaOutcome.test.js a compara com a regra que a
+  // Agenda tinha escrita à mão.
   it('a Agenda de hoje confere a marca do dono da tarefa antes de gravar outra', () => {
     const agenda = corpoDe('markAgendaPresence');
-    expect(agenda).toContain('hasGoalDoneTodayFor(');
-    expect(agenda).toContain('appointmentTaskOwnerId(row)');
-    expect(agenda).not.toMatch(/hasGoalDoneToday\(/);
+    expect(agenda).toContain('outcomeRuleFor(row, row.categorySlug');
+    expect(agenda).toContain('writeGoalDone,');
+    expect(REGRA_DO_DESFECHO).toContain('hasGoalDoneTodayFor(');
+    expect(REGRA_DO_DESFECHO).toContain('appointmentTaskOwnerId(lead)');
+    expect(REGRA_DO_DESFECHO).not.toMatch(/hasGoalDoneToday\(/);
   });
 });
 

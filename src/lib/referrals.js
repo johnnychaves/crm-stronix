@@ -228,7 +228,7 @@ export const buildReferralWhatsAppText = ({ firstName, link }) =>
   `Oi${firstName ? ` ${firstName}` : ''}! Esse é o seu link de indicação 🤝\n` +
   `Manda pros amigos que querem treinar: quando alguém se cadastrar por ele, a indicação entra no seu nome.\n${link}`;
 
-// Cadastro rápido de indicação pela ficha do cliente (menu Indicar e aba
+// Cadastro rápido de indicação pela ficha do cliente (botão Indicações e aba
 // Indicações). Monta o formulário no formato do Novo lead, para o
 // buildNewLeadDoc gravar igual aos outros cadastros: funil Indicações, etapa
 // de entrada e origem Indicação. Dor e modalidade são opcionais.

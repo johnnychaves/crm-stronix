@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { collection, doc, deleteDoc, getDocs, updateDoc, writeBatch, query, where, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH, CONTRACTS_PATH, storage } from '../lib/firebase.js';
 import { uploadLeadPhoto, deleteLeadPhoto } from '../lib/leadPhoto.js';
@@ -7,12 +7,11 @@ import { useLeadTimeline } from '../hooks/useLeadTimeline.js';
 import { useReferrals } from '../hooks/useReferrals.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { planStageMove, planLoss, planUpgradeMove, planUpgradeDecline, stageMoveBlockMessage, withStageEntered, reactivationFunnels, REACTIVATED_NOTE } from '../lib/stageMove.js';
-import { canEditLead, isLeadConverted, ZAP_VIA } from '../lib/leads.js';
+import { canEditLead, isLeadConverted } from '../lib/leads.js';
 import { ACTIONS, can, isGestor, isSeller } from '../lib/acesso.js';
 import { normalizeAppointmentType, getSafeDateOrNull } from '../lib/dates.js';
 // firstName vira contactFirstName: o arquivo já tem um firstName local, do próprio lead.
 import { contactLabel, contactOf, firstName as contactFirstName, hasPhone, isMinorNow, telHref, whatsappHref } from '../lib/guardian.js';
-import { fmtBRL } from '../lib/format.js';
 import { hasLiveContract } from '../lib/contracts.js';
 import { isSystemFunnel } from '../lib/funnels.js';
 import { planProfileNote } from '../lib/profileNote.js';
@@ -20,18 +19,16 @@ import { getReferralFunnel, getReferralEntryStage, buildReferralShareLink, build
 import { getUpgradeFunnel, upgradeStageIdOf } from '../lib/upgradeFunnel.js';
 import { commitReferralLink, removeReferralLink } from '../lib/referralsWrites.js';
 import { deriveLeadState, getTone, phaseToneName } from '../lib/leadState.js';
-import { professorNameById, profileProfessorOf } from '../lib/professores.js';
+import { professorNameById } from '../lib/professores.js';
 import { recordNewAppointment, markConvertingAula } from '../lib/aulasWrites.js';
 import { buildSchedulePatch, appointmentTaskOwnerFor, taskOwnerText } from '../lib/schedulePatch.js';
 import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { LeadLink } from '../components/nav/AppLink.jsx';
-import { Avatar } from '../components/ui/Avatar.jsx';
-import { Btn, IconBtn } from '../components/ui/Btn.jsx';
-import { StatusBadge, TagBadge } from '../components/ui/Badges.jsx';
+import { Btn } from '../components/ui/Btn.jsx';
+import { TagBadge } from '../components/ui/Badges.jsx';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs.jsx';
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '../components/ui/dropdown-menu.jsx';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../components/ui/dialog.jsx';
 import { RingAvatar } from '../components/profile/RingAvatar.jsx';
 import { PhotoCaptureMenu } from '../components/profile/PhotoCaptureMenu.jsx';
@@ -39,57 +36,45 @@ import { PhaseChanger } from '../components/profile/PhaseChanger.jsx';
 import { ReferralsSection } from '../components/profile/ReferralsSection.jsx';
 import { ReferrerPicker } from '../components/profile/ReferrerPicker.jsx';
 import { ScheduleWizard } from '../components/profile/ScheduleWizard.jsx';
-import { ZapSignupMarker } from '../components/profile/ZapSignupMarker.jsx';
+import { ProfileComposer } from '../components/profile/ProfileComposer.jsx';
+import { EMPTY_DRAFTS } from '../lib/quickTexts.js';
+import { lastRecordOf } from '../lib/lastRecord.js';
 import { ContractsTab } from '../components/profile/contracts/ContractsTab.jsx';
-import { TimelineAuthor } from '../components/profile/TimelineAuthor.jsx';
-import { StronizapBadge } from '../components/brand/StronizapMark.jsx';
 import { LossReasonModal } from '../modals/LossReasonModal.jsx';
 import { ReactivateLeadModal } from '../modals/ReactivateLeadModal.jsx';
 import { ContractModal } from '../modals/ContractModal.jsx';
 import { ContractOutcomeModal } from '../modals/ContractOutcomeModal.jsx';
 import { ContractEditModal } from '../modals/ContractEditModal.jsx';
 import { ContractActivateModal } from '../modals/ContractActivateModal.jsx';
-import { ClientRegistrationModal } from '../modals/ClientRegistrationModal.jsx';
 import { QuickReferralModal } from '../modals/QuickReferralModal.jsx';
+import { ContextCard } from '../components/profile/ContextCard.jsx';
+import { CadastroTab } from '../components/profile/cadastro/CadastroTab.jsx';
+import { saveCadastroSection } from '../lib/cadastroWrites.js';
+import { UpNextList } from '../components/profile/UpNextList.jsx';
+import { MoreActionsMenu } from '../components/profile/MoreActionsMenu.jsx';
+import { ProfileHeaderBand } from '../components/profile/ProfileHeaderBand.jsx';
+import { ReferralsMenu } from '../components/profile/ReferralsMenu.jsx';
+import { StickyMini } from '../components/profile/StickyMini.jsx';
+import { useHeaderGone } from '../hooks/useHeaderGone.js';
+import { ageChip, arrivedText, clientSinceCell, contractCell, nextStepCell, stageCell, stateChipText, teamCell } from '../lib/profileBand.js';
+import { TimelineBar } from '../components/profile/TimelineBar.jsx';
+import { TimelineEvent } from '../components/profile/TimelineEvent.jsx';
+import { upNextOf } from '../lib/upNext.js';
+import { writeAppointmentOutcome } from '../lib/appointmentOutcome.js';
+import { outcomeOptionsFor, schedulePresetOf } from '../lib/fichaOutcome.js';
+import { saveContextField } from '../lib/contextWrites.js';
+import { FICHA_TABS } from '../lib/routes.js';
 import {
   groupTimeline,
-  timelineStamp,
   classifyInteraction,
-  contractEventOf,
-  parseAppointment,
-  extractStageNameFromInteractionText,
-  isOwnerChangeText,
-  ownerChangeText,
   buildStageTransitions,
   matchesTimelineFilter,
-  timelineTypeLabel,
   TIMELINE_FILTERS,
   TIMELINE_SYSTEM_KIND,
   originLastOnTies,
-  zapScheduleTitle,
-  appointmentOriginText,
   isAppointmentReschedule
 } from '../lib/timeline.js';
-import { ArrowLeft, ArrowRight, Ban, BookOpen, Building2, Calendar, Check, CheckCircle, Clock, Copy, CreditCard, FileText, GraduationCap, Handshake, MessageCircle, Pencil, Phone, Plus, RefreshCw, RotateCcw, Search, Tag, Target, ThumbsDown, Trash, TrendingUp, User, UserPlus, Users } from 'lucide-react';
-
-// Eventos de contrato que ganham faixa de destaque na linha do tempo: os que
-// mudam a situação do cliente. Trancamento, reativação e correção seguem como
-// linha comum do tipo "Contrato".
-const CONTRACT_MILESTONE_KINDS = new Set(['matricula', 'renovacao', 'cancelamento']);
-
-// Célula da faixa de metadados do cabeçalho: rótulo em versalete sobre o valor.
-// Substituiu a fila de ícones — sem rótulo, "(51) 99184-2270" e "Ana Duarte"
-// pareciam a mesma categoria de informação.
-const MetaCell = ({ label, children }) => (
-  <div className="min-w-0 px-5 first:pl-0 py-0.5">
-    <div className="text-[9.5px] font-bold uppercase tracking-[.07em] text-slate-400 dark:text-slate-500 whitespace-nowrap">
-      {label}
-    </div>
-    <div className="mt-1 flex items-center gap-1.5 text-[12.5px] font-semibold text-slate-700 dark:text-slate-200 min-w-0">
-      {children}
-    </div>
-  </div>
-);
+import { ArrowLeft, Award, Cake, Clock, FileText, Handshake, IdCard, MessageCircle, Pencil, Phone, RotateCcw, Search, TrendingUp } from 'lucide-react';
 
 // Chip de contagem ao lado do label da aba (Linha do tempo / Contratos).
 function TabCount({ n, active }) {
@@ -107,7 +92,10 @@ function TabCount({ n, active }) {
 // abriu direto numa aba nova). onDeleteStart e onDeleteFailed avisam a rota
 // para trocar a ficha por "Excluindo a ficha…" e devolver se a exclusão falhar.
 // listenersActive é o portão de ociosidade do App, repassado à linha do tempo.
-function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFailed, listenersActive = true, appUser, statuses, tags, lossReasons, usersList, db, funnels }) {
+// Pílula neutra do chip da idade no cabeçalho.
+const CHIP_IDADE = 'inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full bg-muted px-2.5 text-[13px] font-medium text-slate-700 dark:bg-white/10 dark:text-slate-200';
+
+function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFailed, listenersActive = true, appUser, statuses, tags, lossReasons, usersList, db, funnels, sources = [] }) {
   // Timeline por query própria (G2): histórico COMPLETO do lead (índice #10),
   // ao vivo. Antes vinha do prop global filtrado por leadId — que pós-G2 é só o
   // mês corrente. A ficha remonta por lead (key), então o hook não reseta.
@@ -138,8 +126,10 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // Só estado de interface. Nada aqui copia campo do lead: ele chega ao vivo
   // (useProfileLead) e muda com a ficha aberta quando outra pessoa mexe nele,
   // então fase e funil são lidos direto do `lead`.
-  const [isEditing, setIsEditing] = useState(false);
-  const [note, setNote] = useState('');
+  // Pedido de abertura do Cadastro vindo do cabeçalho ("Fez 18 anos"): a seção
+  // e o campo que a aba abre já em edição. A aba fica montada, e o `at` diz a
+  // ela que o pedido é novo.
+  const [cadastroRequest, setCadastroRequest] = useState(null);
   const [loading, setLoading] = useState(false);
 
   const [lossModalOpen, setLossModalOpen] = useState(false);
@@ -158,8 +148,35 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // Threshold de vencimento do contexto (sem prop-drilling) p/ a seção Contrato.
   const { contractThresholdDays, contratos, professores, renewalCheckpoints } = useGeneralConfig();
 
-  // Composer tab — drives which form is shown in the activity Composer card.
-  const [composerTab, setComposerTab] = useState('note');
+  // O compositor da Linha do tempo: aberto ou fechado, em que modo e o rascunho
+  // de cada modo. Tudo mora na ficha porque a aba desmonta o compositor quando a
+  // pessoa vai a Contratos e volta: o texto digitado não pode se perder na troca.
+  const [composer, setComposer] = useState({ open: false, mode: 'note' });
+  const [composerDrafts, setComposerDrafts] = useState(EMPTY_DRAFTS);
+  // O Remarcar do "A seguir" abre o Agendar já no tipo do item, e `n` remonta o
+  // assistente a cada Remarcar. Abrir o compositor por outro caminho limpa o
+  // tipo, para o próximo Agendar nascer em branco.
+  const [scheduleStart, setScheduleStart] = useState({ type: null, n: 0 });
+  const openComposer = (mode = 'note') => {
+    setScheduleStart((s) => (s.type ? { ...s, type: null } : s));
+    setComposer({ open: true, mode });
+  };
+  const closeComposer = () => setComposer({ open: false, mode: 'note' });
+  // Quem grava fecha o compositor só se ele ainda está no modo que gravou: a
+  // gravação lenta não fecha o compositor que a pessoa já levou a outro modo, e
+  // o Reativar lead e o Marcar perda do cabeçalho, que passam pela mudança de
+  // fase, só fecham o compositor que estava no Mudar fase.
+  const closeComposerIn = (mode) => setComposer((c) => (c.mode === mode ? { open: false, mode: 'note' } : c));
+  const composerRef = useRef(null);
+  // O cabeçalho que sai por cima da área que rola liga a barra fina.
+  const headerRef = useRef(null);
+  const headerGone = useHeaderGone(headerRef);
+  // O registro recebe o foco quando o item marcado sai do A seguir, e o evento
+  // que o "Ver no histórico" abriu fica em destaque por um instante.
+  const registroRef = useRef(null);
+  const [savingOutcomeId, setSavingOutcomeId] = useState(null);
+  const [flashId, setFlashId] = useState(null);
+  const flashTimer = useRef(null);
 
   // Foto do cliente: menu (galeria/câmera) + gravação. No perfil não há botão
   // Salvar — escolheu/capturou, sobe pro Storage e grava na hora.
@@ -229,10 +246,14 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     window.open(href);
   };
 
+  const handleCall = () => {
+    const href = telHref(contact.phone);
+    if (href) window.location.href = href;
+  };
 
   const handleDelete = async () => {
     if (!isGestor(appUser)) { negarAcesso(); return; }
-    if (!window.confirm("Excluir este lead permanentemente? Não dá pra desfazer.")) return;
+    if (!window.confirm(`Excluir este ${isClient ? 'cliente' : 'lead'} permanentemente? Não dá pra desfazer.`)) return;
     // A rota troca a ficha por "Excluindo a ficha…" até terminar. Sem isso, o
     // aviso de doc apagado chega antes do fim e a tela piscaria "excluída".
     onDeleteStart?.();
@@ -325,7 +346,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
           { ...plan.patch, upgradeDeclinedAt: serverTimestamp() }
         );
         setLossModalOpen(false);
-        setComposerTab('note');
+        closeComposerIn('status');
       } catch (e) {
         console.error(e);
         toast.error('Não foi possível registrar a recusa.');
@@ -398,7 +419,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
           { text: `${plan.interactionText}${phaseNote ? ` Obs: ${phaseNote}` : ''}`, type: 'status_change' },
           patch
         );
-        setComposerTab('note');
+        closeComposerIn('status');
       } catch (e) {
         console.error(e);
         toast.error('Não foi possível mudar a etapa. Tente novamente.');
@@ -445,7 +466,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
       if (plan.stampConvertedAt) {
         try { await markConvertingAula({ db, leadId: lead.id }); } catch (e) { console.error('markConvertingAula falhou', e); }
       }
-      setComposerTab('note');
+      closeComposerIn('status');
       return true;
     } catch (e) {
       console.error(e);
@@ -523,19 +544,70 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // Nota comum do composer: só a anotação na timeline (planProfileNote), sem
   // patch no lead. Mudar fase e mover funil ficam no PhaseChanger
   // (handlePhaseConfirm); o agendamento, no ScheduleWizard.
-  const saveInteraction = async () => {
-    if (!canTimeline) { toast.warning('Você não tem permissão para registrar interações neste lead.'); return; }
-    const payload = planProfileNote(note);
-    if (!payload) return;
+  // Recebe o texto do compositor e devolve true quando gravou: só então o
+  // compositor esvazia o rascunho.
+  const saveInteraction = async (text) => {
+    if (!canTimeline) { toast.warning('Você não tem permissão para registrar interações neste lead.'); return false; }
+    const payload = planProfileNote(text);
+    if (!payload) return false;
     setLoading(true);
     try {
       await logInteraction(db, lead, appUser, payload);
-      setNote('');
+      closeComposerIn('note');
+      setLoading(false);
+      return true;
     } catch (e) {
       console.error(e);
       toast.error('Erro ao salvar.');
     }
     setLoading(false);
+    return false;
+  };
+
+  // Edição no lugar do Contexto comercial: grava só o campo que mudou
+  // (lib/contextWrites.js). A trava é a do cadastro, a mesma da aba Cadastro.
+  // Devolve false quando não gravou, para o editor ficar aberto.
+  // `from` é o valor da abertura do editor: as etiquetas gravam só a diferença.
+  // O editor aberto mora aqui, e não no card, para o rascunho sobreviver à
+  // troca de aba, como o rascunho do compositor.
+  const [contextEdit, setContextEdit] = useState(null);
+  const handleContextSave = async (field, value, from) => {
+    if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return false; }
+    if (!canEditCadastro) { negarAcesso(); return false; }
+    try {
+      const { ok, change } = await saveContextField({ db, lead, appUser, field, value, from, usersList, professores });
+      if (!ok) { toast.warning('Esse campo não pode ser salvo.'); return false; }
+      if (change) toast.success(`${change.toName} agora é o responsável.`);
+      return true;
+    } catch (e) {
+      console.error(e);
+      toast.error('Não foi possível salvar. Tente novamente.');
+      return false;
+    }
+  };
+
+  // Abre o Cadastro, opcionalmente já numa seção e num campo (o "Fez 18
+  // anos"). Sem seção, só troca de aba: a seção que estiver aberta lá continua.
+  const openCadastro = (sectionId = null, field = null) => {
+    if (sectionId) setCadastroRequest({ sectionId, field, at: Date.now() });
+    onTab('cadastro');
+  };
+
+  // Grava uma seção do Cadastro (lib/cadastroWrites.js), só com as chaves dela.
+  // A trava é a do cadastro, a mesma do Contexto comercial. Devolve false quando
+  // não gravou, e a seção continua aberta com o que foi digitado.
+  const handleCadastroSave = async (sectionId, form) => {
+    if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return false; }
+    if (!canEditCadastro) { negarAcesso(); return false; }
+    try {
+      await saveCadastroSection({ db, lead, sectionId, form });
+      toast.success('Cadastro salvo!');
+      return true;
+    } catch (e) {
+      console.error(e);
+      toast.error('Erro ao salvar o cadastro. Tente novamente.');
+      return false;
+    }
   };
 
   // Grava o agendamento montado no ScheduleWizard. Mantém os campos canônicos
@@ -628,7 +700,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
       );
 
       toast.success(`Agendamento criado para ${dateStr}.`);
-      setComposerTab('note');
+      closeComposerIn('schedule');
       setLoading(false);
     } catch (e) {
       console.error(e);
@@ -637,61 +709,59 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     }
   };
 
-  // Composer tab handlers — each maps to the existing Firestore patterns.
-  const handleSendWhatsAppMessage = async () => {
-    if (!canTimeline) { toast.warning('Você não tem permissão para registrar interações neste lead.'); return; }
-    const msg = note.trim();
-    if (!msg) { toast.warning('Escreva a mensagem antes de enviar.'); return; }
+  // Os gravadores do WhatsApp e da Ligação também recebem o texto do
+  // compositor e devolvem true quando gravaram.
+  const handleSendWhatsAppMessage = async (text) => {
+    if (!canTimeline) { toast.warning('Você não tem permissão para registrar interações neste lead.'); return false; }
+    const msg = String(text ?? '').trim();
+    if (!msg) { toast.warning('Escreva a mensagem antes de enviar.'); return false; }
     const href = whatsappHref(contact.phone, msg);
-    if (!href) { toast.warning('Lead sem WhatsApp cadastrado.'); return; }
+    if (!href) { toast.warning('Lead sem WhatsApp cadastrado.'); return false; }
     setLoading(true);
     try {
-      // Open WhatsApp Web with the typed message
+      // Abre o WhatsApp com a mensagem digitada e registra o envio na linha do tempo.
       window.open(href, '_blank', 'noopener,noreferrer');
-      // Log the outbound message in the timeline
       await logInteraction(db, lead, appUser, {
         text: `📲 Mensagem WhatsApp enviada: ${msg}`,
         type: 'note'
       });
-      setNote('');
+      closeComposerIn('whatsapp');
+      setLoading(false);
+      return true;
     } catch (e) {
       console.error(e);
       toast.error('Não foi possível registrar o envio.');
     }
     setLoading(false);
+    return false;
   };
 
-  const handleLogCall = async () => {
-    if (!canTimeline) { toast.warning('Você não tem permissão para registrar interações neste lead.'); return; }
-    const summary = note.trim();
-    if (!summary) { toast.warning('Resuma o que rolou na ligação antes de salvar.'); return; }
+  const handleLogCall = async (text) => {
+    if (!canTimeline) { toast.warning('Você não tem permissão para registrar interações neste lead.'); return false; }
+    const summary = String(text ?? '').trim();
+    if (!summary) { toast.warning('Resuma o que rolou na ligação antes de salvar.'); return false; }
     setLoading(true);
     try {
       await logInteraction(db, lead, appUser, {
         text: `📞 Ligação: ${summary}`,
         type: 'note'
       });
-      setNote('');
+      closeComposerIn('call');
+      setLoading(false);
+      return true;
     } catch (e) {
       console.error(e);
       toast.error('Não foi possível registrar a ligação.');
     }
     setLoading(false);
+    return false;
   };
 
-  const handleComposerSubmit = () => {
-    if (composerTab === 'whatsapp') return handleSendWhatsAppMessage();
-    if (composerTab === 'call')     return handleLogCall();
-    // 'note' flui pelo saveInteraction. 'status' (Mudar fase) tem o PhaseChanger
-    // com seus próprios botões; 'schedule' é tratado pelo ScheduleWizard.
-    return saveInteraction();
-  };
-
-  const composerSubmitLabel =
-    composerTab === 'whatsapp' ? 'Enviar' : 'Salvar';
-
-  const resetComposer = () => {
-    setNote('');
+  // O ProfileComposer manda o modo e o texto; cada modo cai no seu gravador.
+  const submitComposerText = (mode, text) => {
+    if (mode === 'whatsapp') return handleSendWhatsAppMessage(text);
+    if (mode === 'call') return handleLogCall(text);
+    return saveInteraction(text);
   };
 
   // ----- Derived computations -----
@@ -700,11 +770,18 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // Ciclo de vida (cliente) p/ os selos do cabeçalho e a aba Indicações.
   const isClient = lead.lifecycleStage === 'cliente' || isLeadConverted(lead);
   // Aba ativa da ficha, vinda do endereço. A aba Indicações só existe para
-  // cliente, então um link dela numa ficha de lead abre a Linha do tempo. Não é
-  // redirect de propósito: se a pessoa é cliente só se sabe depois de o
-  // documento carregar, e um redirect ali trocaria o endereço toda vez que a
-  // ficha demora.
-  const activeProfileTab = tab === 'referrals' && !isClient ? 'timeline' : (tab || 'timeline');
+  // cliente, e a aba Cadastro só para quem edita cadastro (o professor e quem
+  // está sem login não a veem). Um link de uma aba que a pessoa não tem abre a
+  // Linha do tempo. Não é redirect de propósito: se a pessoa é cliente só se
+  // sabe depois de o documento carregar, e um redirect ali trocaria o endereço
+  // toda vez que a ficha demora.
+  // Chave que não é aba (a antiga 'crm', por exemplo) também abre a Linha do
+  // tempo, para a ficha nunca ficar sem conteúdo.
+  const activeProfileTab = !Object.hasOwn(FICHA_TABS, tab || '')
+    || (tab === 'referrals' && !isClient)
+    || (tab === 'cadastro' && !canEditCadastro)
+    ? 'timeline'
+    : tab;
   // Funil UPGRADE (lib/upgradeFunnel.js): é o único funil que um cliente pode
   // ocupar, e a etapa dele mora em upgradeStageId, não em status.
   const upgradeFunnel = getUpgradeFunnel(safeFunnels);
@@ -742,7 +819,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   const isInReferralFunnel = Boolean(referralFunnel && lead.funnelId === referralFunnel.id);
   const { count: referralsCount, items: referralItems, loading: referralsLoading, reload: reloadReferrals } =
     useReferrals({ db, leadId: lead.id, enabled: isClient, active: activeProfileTab === 'referrals' });
-  // Cadastro à mão de indicações (menu Indicar e aba Indicações). Só existe
+  // Cadastro à mão de indicações (botão Indicações do cabeçalho e aba Indicações). Só existe
   // com o funil Indicações e a etapa de entrada, a mesma trava do "É uma
   // indicação?" do Novo lead, e só para quem pode editar e cadastrar indicação.
   const referralEntry = referralFunnel ? getReferralEntryStage(statuses, referralFunnel.id) : null;
@@ -752,9 +829,13 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // Classificação + filtro da timeline (helpers compartilhados em lib/timeline.js).
   // O marco de início fica embaixo da observação do cadastro, que nasce no
   // mesmo horário que ele quando o lead vem do Stronizap.
-  const interactionsWithClass = originLastOnTies(
+  // Guardado pela lista que chega do Firestore, para a ficha não reclassificar
+  // o histórico inteiro a cada tecla digitada no compositor.
+  const interactionsWithClass = useMemo(() => originLastOnTies(
     (interactions || []).map(i => ({ ...i, _kind: classifyInteraction(i) }))
-  );
+  ), [interactions]);
+  // O último registro de texto, que o compositor mostra ao abrir.
+  const lastText = useMemo(() => lastRecordOf(interactionsWithClass), [interactionsWithClass]);
 
   // Origem de cada mudança de fase, reconstruída da transição anterior: a origem
   // de uma transição é o destino da transição imediatamente anterior (em ordem
@@ -823,12 +904,69 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // senão o começo aparece duas vezes.
   const hasOriginMarker = interactionsWithClass.some(i => i._kind === 'origin');
 
-  // Próximos agendamentos (aba CRM): agendamentos futuros, em ordem ascendente.
-  const upcomingAppointments = interactionsWithClass
-    .filter(i => i._kind === 'appointment')
-    .map(i => ({ i, appt: parseAppointment(i) }))
-    .filter(({ appt }) => appt && appt.when instanceof Date && appt.when.getTime() >= Date.now())
-    .sort((a, b) => a.appt.when.getTime() - b.appt.when.getTime());
+  // O que vem a seguir (visita, aula, próximo contato), lido dos campos do lead.
+  const upNext = upNextOf(lead);
+
+  // Remarcar: o Agendar nasce de novo, já no tipo do item. O foco solto vai
+  // para o primeiro passo dele (o StageHead só pega o foco que está no body), e
+  // o compositor, que fica acima do A seguir, volta à tela. O foco só é solto
+  // quando está no A seguir ou no registro, onde o desfecho o deixou: depois da
+  // gravação, quem já foi digitar em outro lugar continua onde está.
+  const openScheduleFor = (item) => {
+    const a = document.activeElement;
+    if (a && (a === registroRef.current || a.closest?.('[aria-label="A seguir"]'))) a.blur();
+    setScheduleStart((s) => ({ type: schedulePresetOf(item), n: s.n + 1 }));
+    setComposer({ open: true, mode: 'schedule' });
+    requestAnimationFrame(() => composerRef.current?.scrollIntoView?.({ block: 'nearest' }));
+  };
+  const handleReschedule = (item) => {
+    if (!canTimeline) { toast.warning('Você não tem permissão para agendar neste lead.'); return; }
+    openScheduleFor(item);
+  };
+
+  // Marcar desfecho, só na visita e na aula de hoje: o gravador da Meta Diária
+  // (writeAppointmentOutcome), com a regra da Agenda de hoje (outcomeOptionsFor). O Compareceu pode levar o lead
+  // para Negociação, então a trava é a de mudar fase. Quem não veio precisa de
+  // data nova: o Agendar abre na hora, no mesmo tipo, como na Meta Diária.
+  const handleOutcome = async (item, choice) => {
+    if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
+    if (!canMudarFase) { negarAcesso(); return; }
+    // Só o compromisso de hoje tem desfecho (canOutcome, do upNextOf): a trava
+    // vale aqui também, e não só no botão.
+    if (savingOutcomeId || !item?.canOutcome || (choice !== 'attended' && choice !== 'no_show')) return;
+    const options = outcomeOptionsFor(item, { lead, interactions });
+    if (!options) return;
+    // O balão fecha e o botão dele fica desligado, e depois o item sai do A
+    // seguir: o foco espera no registro, onde o desfecho aparece, e nunca cai
+    // no body.
+    registroRef.current?.focus({ preventScroll: true });
+    setSavingOutcomeId(item.id);
+    try {
+      await writeAppointmentOutcome({ db, lead, outcome: choice, appUser, statuses, ...options });
+      toast.success(choice === 'attended' ? `Presença de ${firstName} confirmada.` : `${firstName} marcado como não veio.`);
+      if (choice === 'no_show') openScheduleFor(item);
+    } catch (e) {
+      console.error(e);
+      toast.error('Não foi possível salvar o desfecho. Tente novamente.');
+    } finally {
+      setSavingOutcomeId(null);
+    }
+  };
+
+  // "Ver no histórico": limpa o filtro e a busca, para o registro aparecer,
+  // leva o foco e a tela até ele e o destaca por um instante.
+  const goToEvent = (id) => {
+    setTimelineFilter('all');
+    setTimelineQuery('');
+    setFlashId(id);
+    clearTimeout(flashTimer.current);
+    flashTimer.current = setTimeout(() => setFlashId(null), 1600);
+    requestAnimationFrame(() => {
+      const el = document.getElementById(`ev-${id}`);
+      el?.focus({ preventScroll: true });
+      el?.scrollIntoView?.({ block: 'center' });
+    });
+  };
 
   // Histórico de contratos (aba Contratos): todos os contratos do lead, mais
   // recentes primeiro.
@@ -840,122 +978,34 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // anteriores (repeti-lo duplicava plano, valor e vigência 42px abaixo).
   const currentContract = leadContracts.find(c => c.id === lead.currentContractId) || null;
 
+  // O que a faixa de baixo do cabeçalho mostra (src/lib/profileBand.js).
+  const bandNow = new Date();
+  const band = {
+    next: nextStepCell(lead, bandNow),
+    mid: isClient
+      ? contractCell({ lead, contracts: leadContracts, now: bandNow, thresholdDays: contractThresholdDays })
+      : stageCell({ lead, statuses, funnels: safeFunnels, interactions, now: bandNow }),
+    team: teamCell(lead),
+    age: ageChip(lead, bandNow),
+    since: isClient ? clientSinceCell({ lead, contracts: leadContracts, now: bandNow }) : null,
+  };
+
+  // "Próximo passo" do cabeçalho: volta o registro para Tudo, limpa a busca, vai
+  // para a Linha do tempo pelo mesmo caminho das abas (a aba Cadastro fica
+  // montada e não perde a seção aberta) e põe o foco no item do "A seguir".
+  const goToNext = () => {
+    const id = band.next.item?.id;
+    setTimelineFilter('all');
+    setTimelineQuery('');
+    onTab('timeline');
+    setTimeout(() => {
+      const el = id ? document.getElementById(`next-${id}`) : null;
+      el?.scrollIntoView?.({ block: 'center' });
+      el?.focus?.({ preventScroll: true });
+    }, 0);
+  };
+
   // ----- Render helpers -----
-  const renderComposer = () => (
-    <section className="rounded-2xl border border-border bg-card shadow-card">
-      {/* Tabs */}
-      <div className="px-4 pt-3 flex items-center gap-1 border-b border-slate-100 dark:border-white/[0.05] overflow-x-auto overscroll-x-contain thin-scroll">
-        {[
-          { id: 'note',     label: 'Anotação',   icon: <MessageCircle size={13} /> },
-          { id: 'whatsapp', label: 'WhatsApp',   icon: <MessageCircle size={13} /> },
-          { id: 'call',     label: 'Ligação',    icon: <Phone size={13} /> },
-          // Mudar fase fica fora de quem não muda fase (o professor).
-          ...(canMudarFase ? [{ id: 'status', label: 'Mudar fase', icon: <RefreshCw size={13} /> }] : []),
-          { id: 'schedule', label: 'Agendar',    icon: <Calendar size={13} /> }
-        ].map(t => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setComposerTab(t.id)}
-            className={cn(
-              'inline-flex items-center gap-1.5 h-9 px-3 text-[12.5px] font-medium rounded-t-md transition border-b-2 -mb-px whitespace-nowrap',
-              composerTab === t.id
-                ? 'text-slate-900 dark:text-white border-brand-600'
-                : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 border-transparent'
-            )}
-          >
-            {t.icon}{t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Body */}
-      <div className="p-4">
-        <div className="flex gap-3">
-          <Avatar name={appUser?.name || 'Você'} size={32} />
-          <div className="flex-1 min-w-0 space-y-3">
-
-            {composerTab === 'note' && (
-              <textarea
-                value={note}
-                onChange={e => setNote(e.target.value)}
-                placeholder="O que rolou nessa conversa? Detalhes que vão te ajudar no próximo contato..."
-                rows={3}
-                className="w-full rounded-lg bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[13px] p-3 placeholder:text-slate-400 transition resize-none"
-              />
-            )}
-
-            {composerTab === 'whatsapp' && (
-              <textarea
-                value={note}
-                onChange={e => setNote(e.target.value)}
-                placeholder={`Mensagem para ${contact.viaGuardian ? contactFirstName(contact.name) : firstName}...`}
-                rows={3}
-                className="w-full rounded-lg bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[13px] p-3 placeholder:text-slate-400 transition resize-none"
-              />
-            )}
-
-            {composerTab === 'call' && (
-              <textarea
-                value={note}
-                onChange={e => setNote(e.target.value)}
-                placeholder="Resumo da ligação, próximos passos..."
-                rows={3}
-                className="w-full rounded-lg bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[13px] p-3 placeholder:text-slate-400 transition resize-none"
-              />
-            )}
-
-            {composerTab === 'status' && canMudarFase && (
-              <>
-                {/* Cliente: só o funil Upgrade. O aviso vem ANTES para a pessoa
-                    não montar a mudança inteira e descobrir no confirmar. */}
-                {isClient && (
-                  <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12.5px] leading-[1.45] text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
-                    <FileText size={14} className="mt-0.5 shrink-0" />
-                    <div>
-                      <span className="font-semibold">{firstName} é cliente e não volta a ser lead.</span>{' '}
-                      {upgradeFunnel
-                        ? 'Aqui você coloca o cliente no funil Upgrade ou muda a etapa dele lá. A matrícula e o contrato ficam na '
-                        : 'O funil Upgrade ainda não foi criado nesta academia: ele nasce quando um gestor abre o app. A matrícula e o contrato ficam na '}
-                      <button type="button" onClick={() => onTab('contratos')} className="font-semibold underline underline-offset-2">aba Contratos</button>.
-                    </div>
-                  </div>
-                )}
-                <PhaseChanger
-                  lead={phaseChangerLead}
-                  db={db}
-                  funnels={phaseChangerFunnels}
-                  statuses={statuses}
-                  onConfirm={handlePhaseConfirm}
-                  onCancel={() => setComposerTab('note')}
-                />
-              </>
-            )}
-
-            {composerTab === 'schedule' && (
-              <ScheduleWizard onConfirm={handleWizardConfirm} onCancel={resetComposer} submitting={loading}
-                usersList={activeUsers} leadOwnerName={lead.consultantName || null}
-                leadOwnerId={lead.consultantId || null} />
-            )}
-
-            {composerTab !== 'schedule' && composerTab !== 'status' && (
-              <div className="flex items-center gap-1.5 pt-1">
-                <div className="flex-1"></div>
-                <Btn kind="soft" onClick={resetComposer} disabled={loading}>Cancelar</Btn>
-                <Btn kind="brand" icon={<Check size={13} />} onClick={handleComposerSubmit} disabled={loading}>
-                  {composerSubmitLabel}
-                </Btn>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-
-  // Chip de etapa da linha do tempo. A tinta sai do `hex` do tom (12% no fundo,
-  // 30% na borda do destino) e o TEXTO nunca usa o passo 500 — só o 700/300,
-  // senão 11px sobre fundo claro reprova AA (âmbar dá 2.15:1).
   const copyPhone = async (phone) => {
     try {
       await navigator.clipboard.writeText(String(phone || ''));
@@ -965,252 +1015,28 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     }
   };
 
-  const phaseChip = (name, isDestination) => {
-    const t = getTone(phaseToneName(name, statuses));
-    return (
-      <span
-        className={cn(
-          'inline-flex items-center gap-1.5 h-[22px] px-2 rounded-md whitespace-nowrap text-[11px] font-semibold shrink-0',
-          isDestination ? cn('border', t.text, t.darkText) : 'text-slate-500 dark:text-slate-400'
-        )}
-        style={{
-          background: `${t.hex}1f`,
-          ...(isDestination ? { borderColor: `${t.hex}4d` } : null)
-        }}
-      >
-        <span className="size-1.5 rounded-full shrink-0" style={{ background: t.hex }} />
-        {name}
-      </span>
-    );
-  };
-
-  // Renderiza UM evento da trilha (nó + card por tipo). Usa _kind +
-  // getInteractionVisual (ícone) + eventToneName (tom). Só apresentação.
-  // Port fiel, classe por classe, dos corpos de evento de prototype/timeline.jsx,
-  // adaptado às nossas interactions reais — sem fabricar dados que não temos
-  // (✓✓ de leitura, duração/resultado de ligação): a FORMA do card é mantida,
-  // o subelemento ausente é omitido.
-  // Uma linha do REGISTRO. Quatro colunas alinhadas em todas as variantes:
-  // dia e hora (68px) · tipo em versalete (74px) · corpo (resto) · autor (110px).
-  // Cor no feed só aparece em chip de fase, selo de aula e faixa de marco —
-  // todo o resto é neutro, senão vinte eventos viram um arco-íris.
-  const renderTimelineEvent = (i) => {
-    // ---- Variante 5: marco de início do cadastro pelo Stronizap -----------
-    // Régua com a pílula, fora do padrão tabular (modelo C da spec). É o
-    // registro mais antigo do lead, então fecha a linha do tempo por baixo.
-    if (i._kind === 'origin') return <ZapSignupMarker key={i.id} interaction={i} />;
-
-    // "28/09 14:32". O ano fica no bloco do mês.
-    const stamp = timelineStamp(i.createdAt);
-    const typeLabel = timelineTypeLabel(i);
-    const author = i.consultantName || 'Sistema';
-    // Agendamento feito pelo Stronizap: a marca antes do nome e o canal no
-    // detalhe ao passar o mouse (modelo A da spec do agendamento). Só a linha
-    // de agendamento leva isso: o campo via pode aparecer em outras linhas.
-    const zapTitle = i._kind === 'appointment' ? zapScheduleTitle(i) : null;
-    const appt = i._kind === 'appointment' ? parseAppointment(i) : null;
-    const stageName = i._kind === 'status' ? extractStageNameFromInteractionText(i.text) : '';
-    // Troca de responsável: linha simples com o texto sem colchetes, nunca
-    // mudança de fase nem perda (isOwnerChangeText, em lib/timeline.js).
-    const ownerChange = i._kind === 'status' && isOwnerChangeText(i.text);
-    // O evento de contrato vem do próprio texto: tipo, plano e valor dele, e não
-    // os do contrato de hoje (contractEventOf, em lib/timeline.js).
-    const contractEvent = i._kind === 'contract' ? contractEventOf(i.text) : null;
-    const isContractMilestone = Boolean(contractEvent && CONTRACT_MILESTONE_KINDS.has(contractEvent.kind));
-    const contractCancel = contractEvent?.kind === 'cancelamento';
-    const lowerText = String(i.text || '').toLowerCase();
-    // Perda: o status_change que encerra a oportunidade não traz etapa entre
-    // colchetes — vem como "Lead perdido. Motivo: ...".
-    // Evento do funil Upgrade nunca é perda de lead, mesmo que o motivo
-    // configurado diga "Perda de contato".
-    const isLoss = i._kind === 'status' && !stageName && !ownerChange && !/^upgrade: /.test(lowerText) && /perdid|perda/i.test(lowerText);
-    const isWin = i._kind === 'status' && /^venda$/i.test(stageName);
-
-    // Corpo limpo: tira os prefixos que o composer injeta (📲/📞 das conversas,
-    // "Obs:" das notas, ✅/🔄/🔔 dos eventos de sistema). A coluna de TIPO já
-    // diz o que a linha é.
-    const cleanBody = ownerChange ? ownerChangeText(i.text) : String(i.text || '')
-      .replace(/^📲\s*Mensagem WhatsApp enviada:\s*/i, '')
-      .replace(/^📞\s*Ligação:\s*/i, '')
-      .replace(/^OBSERVAÇÃO DO CADASTRO:\s*/i, '')
-      .replace(/^Obs:\s*/i, '')
-      .replace(/^[✅🔄🔔]\s*/u, '')
-      .trim();
-
-    // ---- Variante 4: marco (matrícula, venda, perda) ----------------------
-    // Quebra o padrão tabular numa faixa full-width com régua no topo.
-    if (isContractMilestone || isWin || isLoss) {
-      const lossReason = isLoss
-        ? (String(i.text || '').match(/motivo:\s*([^.·\n]+)/i)?.[1] || '').trim()
-        : '';
-      const band = contractCancel || isLoss
-        ? { ring: 'border-rose-500', bg: 'bg-rose-50 dark:bg-rose-500/10', dot: 'bg-rose-500', Icon: Ban }
-        : isWin
-          ? { ring: 'border-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-500/10', dot: 'bg-emerald-500', Icon: CheckCircle }
-          : { ring: 'border-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-500/10', dot: 'bg-emerald-500', Icon: GraduationCap };
-
-      const title = isLoss
-        ? `Oportunidade encerrada${lossReason ? ` · ${lossReason}` : ''}`
-        : isWin
-          ? 'Virou cliente — etapa Venda'
-          : contractCancel
-            ? (/^renova/i.test(cleanBody) ? 'Renovação cancelada' : 'Contrato cancelado')
-            : contractEvent?.kind === 'renovacao' ? 'Contrato renovado'
-              : (contractEvent?.planName || 'Matrícula fechada');
-
-      const subtitle = isWin ? `Fase alterada por ${author}` : cleanBody;
-
-      // Valor só na matrícula e na renovação, e o do próprio evento.
-      const eventValue = isContractMilestone && !contractCancel ? contractEvent.value : null;
-      const showValue = eventValue != null;
-
-      return (
-        <div key={i.id} className={cn('flex items-center gap-3 border-t-2 px-3.5 py-2.5 my-1', band.ring, band.bg)}>
-          <span className={cn('size-[26px] rounded-full grid place-items-center shrink-0 text-white', band.dot)}>
-            <band.Icon className="size-[13px]" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="text-[13.5px] font-semibold text-slate-900 dark:text-white truncate" title={title}>{title}</div>
-            {subtitle && <div className="text-[11.5px] text-slate-500 dark:text-slate-400 truncate" title={subtitle}>{subtitle}</div>}
-          </div>
-          {showValue && (
-            <span className="font-display text-[17px] font-bold text-emerald-700 dark:text-emerald-300 num shrink-0">
-              {fmtBRL(eventValue)}
-            </span>
-          )}
-          <span className="text-[11px] num text-slate-400 dark:text-slate-500 shrink-0 whitespace-nowrap" title={i.createdAt?.toLocaleString('pt-BR')}>{stamp}</span>
-        </div>
-      );
-    }
-
-    // ---- Corpo das variantes tabulares ------------------------------------
-    let body = null;
-    let typeToneClass = 'text-slate-400 dark:text-slate-500';
-
-    if (i._kind === 'status' && stageName) {
-      // Variante 2: mudança de fase — dois chips e a duração na etapa anterior.
-      const t = stageTransitions[i.id] || {};
-      const destTone = getTone(phaseToneName(stageName, statuses));
-      typeToneClass = cn(destTone.text, destTone.darkText);
-      const durationText = t.days == null
-        ? null
-        : t.fromCreation
-          ? `após ${t.days}d desde o cadastro`
-          : t.from ? `após ${t.days}d em ${t.from}` : null;
-
-      body = (
-        <div className="flex items-center gap-2 flex-wrap">
-          {t.from && (
-            <>
-              {phaseChip(t.from, false)}
-              <ArrowRight size={13} className="text-slate-400 dark:text-slate-500 shrink-0" />
-            </>
-          )}
-          {phaseChip(stageName, true)}
-          {durationText && (
-            <span className="text-[11px] text-slate-400 dark:text-slate-500">{durationText}</span>
-          )}
-        </div>
-      );
-    } else if ((appt && appt.when) || i.appointmentOutcome) {
-      // Variante 3: agendamento e desfecho compartilham o bloco.
-      // O selo sai do campo REAL appointmentOutcome quando existe; o
-      // agendamento em si (ainda sem desfecho) fica em "Agendado".
-      const OUTCOME_SEALS = {
-        attended: { label: 'Compareceu', className: 'bg-emerald-500/[0.12] text-emerald-700 dark:text-emerald-300' },
-        no_show: { label: 'Faltou', className: 'bg-rose-500/[0.12] text-rose-700 dark:text-rose-300' },
-        rescheduled: { label: 'Reagendado', className: 'bg-amber-500/[0.12] text-amber-700 dark:text-amber-300' },
-        cancelled: { label: 'Cancelado', className: 'bg-slate-500/[0.12] text-slate-600 dark:text-slate-300' }
-      };
-      const outcome = OUTCOME_SEALS[i.appointmentOutcome]
-        || { label: 'Agendado', className: 'bg-brand-500/[0.12] text-brand-700 dark:text-brand-300' };
-      const isDone = Boolean(i.appointmentOutcome);
-      // No desfecho não há data no texto: a régua é o próprio evento.
-      const when = (appt && appt.when) || i.createdAt;
-      const title = appt?.label || cleanBody || 'Agendamento';
-      // "Tarefa de <nome>" quando a tarefa do dia ficou com outra pessoa (o
-      // " · tarefa de" do texto, lido pelo parseAppointment): é por aqui que o
-      // dono do lead vê quem vai cuidar da visita, da aula ou do contato.
-      const detail = appt
-        ? [appt.location, appt.taskOwner && `Tarefa de ${appt.taskOwner}`, appt.note, when.toLocaleDateString('pt-BR', { weekday: 'long' })].filter(Boolean).join(' · ')
-        : when.toLocaleDateString('pt-BR', { weekday: 'long' });
-      const origin = outcomeOrigin[i.id];
-
-      body = (
-        <div className="rounded-lg border border-slate-200 dark:border-white/[0.07] bg-slate-50 dark:bg-white/[0.02] px-2.5 py-[7px]">
-          <div className="flex items-center gap-2.5">
-            <div className="w-[34px] shrink-0 text-center">
-              <div className={cn(
-                'font-display text-[16px] font-bold leading-none num',
-                isDone ? 'text-emerald-700 dark:text-emerald-400' : 'text-brand-700 dark:text-brand-300'
-              )}>
-                {String(when.getDate()).padStart(2, '0')}
-              </div>
-              <div className="text-[9px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mt-0.5">
-                {when.toLocaleString('pt-BR', { month: 'short' }).replace('.', '')}
-              </div>
-            </div>
-            <div className="w-px h-[26px] bg-slate-200 dark:bg-white/[0.08] shrink-0" />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-[12.5px] font-semibold text-slate-900 dark:text-white truncate">{title}</span>
-                <span className="text-[11px] num text-slate-500 dark:text-slate-400 shrink-0">
-                  {when.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                </span>
-              </div>
-              <div className="text-[11px] text-slate-400 dark:text-slate-500 truncate">{detail}</div>
-            </div>
-            <span className={cn(
-              'shrink-0 h-[17px] px-1.5 rounded inline-flex items-center text-[9.5px] font-bold uppercase tracking-[.05em]',
-              outcome.className
-            )}>
-              {outcome.label}
-            </span>
-          </div>
-
-          {/* O desfecho aponta de volta pro agendamento que o originou. */}
-          {origin && (
-            <div className="mt-[7px] pt-[7px] border-t border-slate-200 dark:border-white/[0.07] text-[11px] text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
-              {origin.via === ZAP_VIA && <StronizapBadge />}
-              <span>{appointmentOriginText(origin)}</span>
-            </div>
-          )}
-        </div>
-      );
-    } else if (cleanBody) {
-      // Variante 1: linha simples (nota, conversa, sistema).
-      const meta = i.pinned ? 'Anotação fixada' : null;
-      body = (
-        <div>
-          <p className="text-[12.5px] leading-[1.5] text-slate-700 dark:text-slate-200 text-pretty whitespace-pre-wrap">{cleanBody}</p>
-          {meta && <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{meta}</div>}
-        </div>
-      );
-    }
-
-    if (!body) return null;
-
-    return (
-      <div
-        key={i.id}
-        className="grid grid-cols-[68px_74px_1fr_110px] gap-3 items-start py-1.5 border-b border-slate-100 dark:border-white/[0.05] hover:bg-slate-50/70 dark:hover:bg-white/[0.02] transition-colors"
-      >
-        <div className="text-[11px] num text-slate-400 dark:text-slate-500 text-right whitespace-nowrap pt-0.5" title={i.createdAt?.toLocaleString('pt-BR')}>{stamp}</div>
-        <div className={cn('text-[9.5px] font-bold uppercase tracking-[.07em] pt-1', typeToneClass)}>{typeLabel}</div>
-        <div className="min-w-0">{body}</div>
-        <TimelineAuthor author={author} zapTitle={zapTitle} />
-      </div>
-    );
-  };
-
-  const profileProfessor = profileProfessorOf(lead);
 
   return (
     // 1160px centralizado (medida do handoff). O shell do app libera até
     // 1400/1600px, e nessa largura a linha do tempo vira uma linha de texto
     // longa demais entre a hora e o autor — a leitura do registro depende da
     // coluna curta.
-    <div className="animate-fade-in font-sans max-w-[1160px] mx-auto w-full">
+    // scroll-mt-32 (128 px): a barra fina (56 px) e o mês que gruda embaixo dela
+    // (uns 44 px) cobrem o topo da área que rola, e o foco que volta com
+    // Shift+Tab sumia atrás deles. O padrão é o dos Relatórios.
+    // pb-24: respiro no fim, para o último cartão não encostar no fim da área
+    // que rola (pedido do Johnny, 22/10/2026).
+    <div className="animate-fade-in font-sans max-w-[1160px] mx-auto w-full pb-24 [&_:is(a,button,input,textarea,[tabindex])]:scroll-mt-32">
+      {/* Barra fina: aparece presa no alto quando o cabeçalho sai por cima. */}
+      <StickyMini
+        visible={headerGone}
+        name={lead.name}
+        photoUrl={lead.photoUrl}
+        tone={profileState.tone}
+        stateText={stateChipText(profileState.label)}
+        onWhatsApp={handleWhatsApp}
+        onCall={handleCall}
+      />
       {/* ===== Voltar (a topbar é o shell do app; mantemos o Voltar acima do card) ===== */}
       <button
         onClick={onBack}
@@ -1220,7 +1046,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
       </button>
 
       {/* ===== Cabeçalho (card) — port fiel de header.jsx ===== */}
-      <section className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card overflow-hidden mb-5">
+      <section ref={headerRef} className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card overflow-hidden mb-5">
         <div className="p-5 sm:p-6">
           <div className="flex items-start gap-4 sm:gap-5 flex-wrap">
             {/* Sem o ponto: o anel, o ponto e o texto "CLIENTE ATIVO" diziam a
@@ -1236,48 +1062,60 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
             />
 
             <div className="min-w-[240px] flex-1">
-              {/* lifecycle label */}
-              <div className="flex items-center gap-2 mb-1.5 whitespace-nowrap overflow-hidden">
+              {/* estado: um selo em frase normal, e ao lado de onde o lead veio
+                  ou o que o estado do cliente quer dizer. */}
+              <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2">
                 {profileState.key === 'a_vencer' && (
-                  <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider shrink-0 text-emerald-700 dark:text-emerald-300">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>Ativo
+                  <span className="inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 text-[12.5px] font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+                    <span className="size-1.5 rounded-full bg-emerald-500" aria-hidden="true" />Ativo
                   </span>
                 )}
-                <span className={cn('inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider shrink-0', profileTone.text, profileTone.darkText)}>
-                  <span className={cn('w-2 h-2 rounded-full', profileTone.strong)}></span>{profileState.label}
+                <span className={cn('inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] font-semibold', profileTone.soft, profileTone.text, profileTone.darkSoft, profileTone.darkText)}>
+                  <span className={cn('size-1.5 rounded-full', profileTone.strong)} aria-hidden="true" />
+                  {stateChipText(profileState.label)}
                 </span>
                 {upgradeStage && (
-                  <span className="inline-flex items-center gap-1 h-[18px] px-1.5 rounded-md text-[10px] font-bold uppercase tracking-[.05em] shrink-0 bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300">
-                    <TrendingUp size={10} /> Upgrade · {upgradeStage.name}
+                  <span className="inline-flex h-6 shrink-0 items-center gap-1 rounded-full bg-violet-50 px-2.5 text-[12.5px] font-semibold text-violet-700 dark:bg-violet-500/10 dark:text-violet-300">
+                    <TrendingUp size={11} aria-hidden="true" /> Upgrade · {upgradeStage.name}
                   </span>
                 )}
-                <span className="text-[11.5px] text-slate-400 dark:text-slate-500 truncate">· {profileState.hint}</span>
+                <span className="min-w-0 truncate text-[12.5px] text-muted-foreground">
+                  {isClient ? profileState.hint : (arrivedText(lead, bandNow) || profileState.hint)}
+                </span>
               </div>
-              {/* name + edit */}
+              {/* nome. Editar o cadastro é pela aba Cadastro. */}
               <div className="flex items-center flex-wrap gap-2 gap-y-1">
                 <h1 className="font-display text-[26px] sm:text-[28px] font-bold tracking-tight leading-none truncate">{lead.name}</h1>
+                {/* Idade e tempo de casa em chips ao lado do nome (opção A, escolhida
+                    pelo Johnny em 22/10/2026). Sem nascimento, quem edita o
+                    cadastro tem o atalho até o campo. */}
+                {band.age ? (
+                  <span title={band.age.title} className={CHIP_IDADE}>
+                    <Cake className="size-3.5" aria-hidden="true" />{band.age.text}
+                  </span>
+                ) : canEditCadastro && (
+                  <button
+                    type="button"
+                    onClick={() => openCadastro('identidade', 'birthDate')}
+                    className={cn(CHIP_IDADE, 'hover:bg-slate-200 dark:hover:bg-white/15 focus-visible:anel-foco')}
+                  >
+                    <Cake className="size-3.5" aria-hidden="true" />Idade não informada
+                  </button>
+                )}
+                {band.since && (
+                  <span title={band.since.title} className="inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full bg-brand-50 px-2.5 text-[13px] font-medium text-brand-700 dark:bg-brand-500/10 dark:text-brand-300">
+                    <Award className="size-3.5" aria-hidden="true" />{band.since.text}
+                  </span>
+                )}
                 {isMinorNow(lead) && (
-                  <span className="shrink-0 inline-flex items-center h-[20px] px-2 rounded-md text-[10.5px] font-bold uppercase tracking-[.05em] bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300">
+                  <span className="inline-flex h-6 shrink-0 items-center rounded-full bg-brand-50 px-2.5 text-[12.5px] font-semibold text-brand-700 dark:bg-brand-500/10 dark:text-brand-300">
                     Menor de idade
                   </span>
                 )}
-                {canEditCadastro && (
-                  <IconBtn icon={<Pencil size={16} />} kind="default" title="Editar cadastro" onClick={() => setIsEditing(true)} />
-                )}
               </div>
-              {/* status + tags */}
-              <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                {!isClient && (
-                  <StatusBadge statusName={lead.status} statusesArray={statuses} />
-                )}
-                {(lead.tags || []).length === 0 && canEditCadastro && (
-                  <button
-                    onClick={() => setIsEditing(true)}
-                    className="inline-flex items-center gap-1 text-[11.5px] font-medium text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 px-2 py-1 rounded-md border border-dashed border-slate-300 dark:border-white/15 transition"
-                  >
-                    <Plus size={11} /> Adicionar etiqueta
-                  </button>
-                )}
+              {/* etiquetas (só leitura: editar é no Contexto comercial) e indicação.
+                  A etapa do lead mora na faixa de baixo. */}
+              <div className="mt-3 flex flex-wrap items-center gap-1.5 empty:hidden">
                 {(lead.tags || []).map(tName => (
                   <TagBadge key={tName} tagName={tName} tagsArray={tags} />
                 ))}
@@ -1317,205 +1155,70 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
               </div>
             </div>
 
-            {/* actions */}
-            <div className="flex items-center gap-2 flex-wrap ml-auto">
-              {/* Ações de contato sem moldura: só ícone e rótulo. O que precisa
-                  de peso visual são Venda e Perda, logo ao lado. */}
-              <Btn kind="ghost" size="md" icon={<MessageCircle size={14} />} onClick={handleWhatsApp}>WhatsApp</Btn>
-              {/* O menu Indicar inteiro (cadastrar, copiar e enviar o link) é de
-                  quem cadastra indicação. O professor fica sem ele. */}
+            {/* ações */}
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              <Btn kind="brand" size="md" icon={<MessageCircle size={14} />} onClick={handleWhatsApp}>WhatsApp</Btn>
+              <Btn kind="secondary" size="md" icon={<Phone size={14} />} onClick={handleCall}>Ligar</Btn>
+              {/* O botão Indicações (cadastrar, copiar o link e mandar pelo
+                  WhatsApp) é de quem cadastra indicação, e só do cliente. O
+                  professor fica sem ele. */}
               {isClient && canIndicar && (
-                <DropdownMenu>
-                  {/* Botão do próprio trigger, não o Btn: o Btn não encaminha
-                      ref nem as props que o Radix injeta, então com `asChild`
-                      o menu não abria. Estilo espelha o Btn ghost tamanho md. */}
-                  <DropdownMenuTrigger className="inline-flex items-center gap-1.5 h-9 px-3.5 text-[12.5px] rounded-lg font-semibold whitespace-nowrap transition active:scale-[.98] text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/[0.06] data-[state=open]:bg-slate-100 dark:data-[state=open]:bg-white/[0.06]">
-                    <Handshake size={14} /> Indicar
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" sideOffset={6} className="w-56 rounded-xl">
-                    {canQuickReferral && (
-                      <DropdownMenuItem onSelect={() => setQuickReferralOpen(true)} className="cursor-pointer">
-                        <UserPlus className="size-4 text-brand-600 dark:text-brand-300" /> Cadastrar indicação
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuItem onClick={copyReferralLink} className="cursor-pointer">
-                      <Copy className="size-4 text-slate-500" /> Copiar link
-                    </DropdownMenuItem>
-                    {referralWaHref && (
-                      <DropdownMenuItem asChild className="cursor-pointer">
-                        <a href={referralWaHref} target="_blank" rel="noopener noreferrer">
-                          <MessageCircle className="size-4 text-emerald-600 dark:text-emerald-400" /> {contact.viaGuardian ? 'Enviar pro responsável' : 'Enviar pro cliente'}
-                        </a>
-                      </DropdownMenuItem>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <ReferralsMenu
+                  count={referralsCount}
+                  canRegister={canQuickReferral}
+                  onRegister={() => setQuickReferralOpen(true)}
+                  onCopy={copyReferralLink}
+                  whatsappHref={referralWaHref}
+                  toGuardian={contact.viaGuardian}
+                />
               )}
-              <Btn
-                kind="ghost"
-                size="md"
-                icon={<Phone size={14} />}
-                onClick={() => { const href = telHref(contact.phone); if (href) window.location.href = href; }}
-              >
-                Ligar
-              </Btn>
-              {/* Venda/Perda só fazem sentido p/ LEAD: cliente já converteu e gere
-                  o contrato pela aba Contratos (Renovar / Cancelar). Venda abre o
-                  contrato e Perda muda a fase, então cada um segue a sua ação. */}
-              {!isClient && (canContrato || canMudarFase) && (
-                <>
-                  <div className="w-px h-6 bg-slate-200 dark:bg-white/[0.08] mx-0.5 hidden sm:block"></div>
-                  {/* Lead em Perda: Venda e Perda saem, e fica só o "Reativar
-                      lead", que o devolve a uma fase do funil. Reativado, os dois
-                      voltam. */}
-                  {lead.status === 'Perda' ? (
-                    canMudarFase && (
-                      <Btn
-                        kind="brand"
-                        size="md"
-                        icon={<RotateCcw size={14} />}
-                        onClick={() => setReactivateOpen(true)}
-                        disabled={loading || reactivateFunnels.length === 0}
-                      >
-                        Reativar lead
-                      </Btn>
-                    )
-                  ) : (
-                    <>
-                      {canContrato && (
-                        <Btn
-                          kind="success"
-                          size="md"
-                          icon={<TrendingUp size={14} />}
-                          onClick={handleWin}
-                          disabled={lead.status === 'Venda' || loading}
-                          title={lead.status === 'Venda' ? 'Lead já marcado como venda' : 'Marcar venda'}
-                        >
-                          Marcar venda
-                        </Btn>
-                      )}
-                      {canMudarFase && (
-                        <Btn
-                          kind="danger"
-                          size="md"
-                          icon={<Ban size={14} />}
-                          onClick={() => setLossModalOpen(true)}
-                          disabled={loading}
-                          title="Marcar perda"
-                        >
-                          Marcar perda
-                        </Btn>
-                      )}
-                    </>
-                  )}
-                </>
+              {/* Venda só faz sentido para LEAD: o cliente já converteu e gere o
+                  contrato pela aba Contratos (Renovar, Cancelar). Lead em Perda
+                  troca a Venda pelo "Reativar lead", que o devolve a uma fase do
+                  funil. A perda e a exclusão moram em "Mais ações". */}
+              {!isClient && lead.status !== 'Perda' && canContrato && (
+                <Btn
+                  kind="success"
+                  size="md"
+                  icon={<TrendingUp size={14} />}
+                  onClick={handleWin}
+                  disabled={lead.status === 'Venda' || loading}
+                >
+                  Marcar venda
+                </Btn>
               )}
-              {isGestor(appUser) && (
-                <IconBtn icon={<Trash size={15} />} kind="danger" title="Excluir lead" onClick={handleDelete} />
+              {!isClient && lead.status === 'Perda' && canMudarFase && (
+                <Btn
+                  kind="secondary"
+                  size="md"
+                  icon={<RotateCcw size={14} />}
+                  onClick={() => setReactivateOpen(true)}
+                  disabled={loading || reactivateFunnels.length === 0}
+                >
+                  Reativar lead
+                </Btn>
               )}
+              <MoreActionsMenu
+                isClient={isClient}
+                canLoss={!isClient && lead.status !== 'Perda' && canMudarFase}
+                lossDisabled={loading}
+                onLoss={() => setLossModalOpen(true)}
+                canDelete={isGestor(appUser)}
+                onDelete={handleDelete}
+              />
             </div>
           </div>
 
-          {/* Faixa de metadados: quatro células rotuladas, separadas por régua. */}
-          <div className="mt-5 pt-4 border-t border-slate-100 dark:border-white/[0.05] grid grid-cols-2 lg:grid-cols-4 gap-y-3 divide-x divide-slate-100 dark:divide-white/[0.06]">
-            <MetaCell label={contact.viaGuardian ? 'Contato (responsável)' : 'Contato'}>
-              {contact.viaGuardian ? (
-                <div className="min-w-0 flex flex-col gap-0.5">
-                  {/* O número nunca trunca: é o dado que o consultor precisa
-                      discar, e "(mãe)" pode ceder espaço antes dele. */}
-                  <span className="flex items-center gap-1.5 min-w-0">
-                    <span className="num whitespace-nowrap">{contact.phone || '—'}</span>
-                    {contact.phone && (
-                      <button
-                        type="button"
-                        onClick={() => copyPhone(contact.phone)}
-                        title="Copiar número do responsável"
-                        aria-label="Copiar número do responsável"
-                        className="shrink-0 size-5 grid place-items-center rounded text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 transition focus-visible:outline-none focus-visible:anel-foco"
-                      >
-                        <Copy size={12} />
-                      </button>
-                    )}
-                  </span>
-                  <span className="truncate text-[11.5px] font-medium text-muted-foreground" title={contactLabel(contact)}>
-                    {contactLabel(contact)}
-                  </span>
-                  {hasPhone(lead.whatsapp) && (
-                    <span className="flex items-center gap-1.5 min-w-0 text-[11.5px] font-medium text-muted-foreground">
-                      <span className="num whitespace-nowrap">Aluno · {lead.whatsapp}</span>
-                      <button
-                        type="button"
-                        onClick={() => copyPhone(lead.whatsapp)}
-                        title="Copiar número do aluno"
-                        aria-label="Copiar número do aluno"
-                        className="shrink-0 size-5 grid place-items-center rounded text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 transition focus-visible:outline-none focus-visible:anel-foco"
-                      >
-                        <Copy size={12} />
-                      </button>
-                    </span>
-                  )}
-                </div>
-              ) : (
-                <>
-                  <span className="num truncate">{contact.phone || '—'}</span>
-                  {contact.phone && (
-                    <button
-                      type="button"
-                      onClick={() => copyPhone(contact.phone)}
-                      title="Copiar número"
-                      aria-label="Copiar número"
-                      className="shrink-0 size-5 grid place-items-center rounded text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 transition focus-visible:outline-none focus-visible:anel-foco"
-                    >
-                      <Copy size={12} />
-                    </button>
-                  )}
-                </>
-              )}
-            </MetaCell>
-
-            <MetaCell label="Consultor resp.">
-              {lead.consultantName ? (
-                <>
-                  <Avatar name={lead.consultantName} size={19} />
-                  <span className="truncate">{lead.consultantName}</span>
-                </>
-              ) : <span className="text-slate-400 dark:text-slate-500 font-normal">Sem responsável</span>}
-            </MetaCell>
-
-            <MetaCell label="Professor resp.">
-              {profileProfessor ? (
-                <>
-                  <Avatar name={profileProfessor.name} size={19} />
-                  <span className="truncate">{profileProfessor.name}</span>
-                  {profileProfessor.modality && (
-                    <span className="text-slate-400 dark:text-slate-500 font-normal truncate">· {profileProfessor.modality}</span>
-                  )}
-                </>
-              ) : <span className="text-slate-400 dark:text-slate-500 font-normal">—</span>}
-            </MetaCell>
-
-            <MetaCell label="Próximo passo">
-              {lead.nextFollowUp ? (
-                <>
-                  <Calendar size={13} className="shrink-0 text-slate-400 dark:text-slate-500" />
-                  <span className="text-brand-700 dark:text-brand-300 truncate">
-                    {lead.nextFollowUpType || 'Próximo contato'}
-                  </span>
-                  {/* A data cede espaço antes do rótulo: em coluna estreita ela
-                      trunca, mas o compromisso (o que importa) continua legível. */}
-                  <span className="num font-normal text-slate-500 dark:text-slate-400 truncate">
-                    {/* "seg 03/08" — o pt-BR devolve "seg., 03/08". */}
-                    {lead.nextFollowUp.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' }).replace('.,', '').replace(',', '')} · {lead.nextFollowUp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <Calendar size={13} className="shrink-0 text-slate-400 dark:text-slate-500" />
-                  <span className="text-slate-400 dark:text-slate-500 font-normal">Sem próximo contato</span>
-                </>
-              )}
-            </MetaCell>
-          </div>
+          <ProfileHeaderBand
+            band={band}
+            isClient={isClient}
+            tone={getTone(phaseToneName(lead.status, statuses))}
+            contact={contact}
+            contactText={contactLabel(contact)}
+            studentPhone={hasPhone(lead.whatsapp) ? lead.whatsapp : null}
+            onGoNext={goToNext}
+            onCopyPhone={copyPhone}
+          />
           {contact.missingOwnPhone && (
             <div className="mt-3 flex items-center flex-wrap gap-2">
               <p className="text-[12px] font-medium text-amber-700 dark:text-amber-300">
@@ -1523,7 +1226,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
               </p>
               {canEditCadastro && (
                 <button
-                  onClick={() => setIsEditing(true)}
+                  onClick={() => openCadastro('identidade', 'whatsapp')}
                   className="inline-flex items-center gap-1 text-[11.5px] font-medium text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 px-2 py-1 rounded-md border border-dashed border-slate-300 dark:border-white/15 transition"
                 >
                   Editar cadastro
@@ -1545,13 +1248,15 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
             Linha do tempo
             <TabCount n={(interactions || []).length} active={activeProfileTab === 'timeline'} />
           </TabsTrigger>
-          <TabsTrigger
-            value="crm"
-            className="flex-none h-11 px-4 text-[13.5px] font-medium rounded-t-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.06] data-[state=active]:font-semibold data-[state=active]:bg-transparent data-[state=active]:text-slate-900 dark:data-[state=active]:text-white data-[state=active]:[&_svg]:text-brand-600 dark:data-[state=active]:[&_svg]:text-brand-300 after:h-[3px] after:rounded-full after:bg-brand-600"
-          >
-            <Target className="size-[15px]" />
-            CRM
-          </TabsTrigger>
+          {canEditCadastro && (
+            <TabsTrigger
+              value="cadastro"
+              className="flex-none h-11 px-4 text-[13.5px] font-medium rounded-t-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.06] data-[state=active]:font-semibold data-[state=active]:bg-transparent data-[state=active]:text-slate-900 dark:data-[state=active]:text-white data-[state=active]:[&_svg]:text-brand-600 dark:data-[state=active]:[&_svg]:text-brand-300 after:h-[3px] after:rounded-full after:bg-brand-600"
+            >
+              <IdCard className="size-[15px]" />
+              Cadastro
+            </TabsTrigger>
+          )}
           <TabsTrigger
             value="contratos"
             className="flex-none h-11 px-4 text-[13.5px] font-medium rounded-t-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.06] data-[state=active]:font-semibold data-[state=active]:bg-transparent data-[state=active]:text-slate-900 dark:data-[state=active]:text-white data-[state=active]:[&_svg]:text-brand-600 dark:data-[state=active]:[&_svg]:text-brand-300 after:h-[3px] after:rounded-full after:bg-brand-600"
@@ -1567,82 +1272,114 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
             >
               <Handshake className="size-[15px]" />
               Indicações
-              <TabCount n={referralsCount ?? 0} active={activeProfileTab === 'referrals'} />
+              {referralsCount != null && <TabCount n={referralsCount} active={activeProfileTab === 'referrals'} />}
             </TabsTrigger>
           )}
         </TabsList>
 
         {/* ----- Aba: Linha do tempo ----- */}
         <TabsContent value="timeline" className="pt-2">
+         {/* Desenho A2: o CRM mora aqui. Contexto comercial, compositor, e o
+             registro com o "A seguir" no topo, numa tela só. */}
+         <div className="flex flex-col gap-4">
+          <ContextCard
+            lead={lead}
+            sources={sources}
+            usersList={usersList}
+            tagsCatalog={tags}
+            canEdit={canEditCadastro}
+            onSave={handleContextSave}
+            edit={contextEdit}
+            setEdit={setContextEdit}
+          />
+          <div ref={composerRef}>
+          <ProfileComposer
+            open={composer.open}
+            mode={composer.mode}
+            onOpen={openComposer}
+            onClose={closeComposer}
+            drafts={composerDrafts}
+            onDrafts={setComposerDrafts}
+            appUser={appUser}
+            firstName={firstName}
+            whatsappName={contact.viaGuardian ? contactFirstName(contact.name) : null}
+            lastText={lastText}
+            onGoto={goToEvent}
+            canMudarFase={canMudarFase}
+            loading={loading}
+            onSubmitText={submitComposerText}
+            renderStatus={() => (
+              <>
+                {/* Cliente: só o funil Upgrade. O aviso vem ANTES para a pessoa
+                    não montar a mudança inteira e descobrir no confirmar. */}
+                {isClient && (
+                  <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12.5px] leading-[1.45] text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
+                    <FileText size={14} className="mt-0.5 shrink-0" />
+                    <div>
+                      <span className="font-semibold">{firstName} é cliente e não volta a ser lead.</span>{' '}
+                      {upgradeFunnel
+                        ? 'Aqui você coloca o cliente no funil Upgrade ou muda a etapa dele lá. A matrícula e o contrato ficam na '
+                        : 'O funil Upgrade ainda não foi criado nesta academia: ele nasce quando um gestor abre o app. A matrícula e o contrato ficam na '}
+                      <button type="button" onClick={() => onTab('contratos')} className="font-semibold underline underline-offset-2">aba Contratos</button>.
+                    </div>
+                  </div>
+                )}
+                <PhaseChanger
+                  lead={phaseChangerLead}
+                  db={db}
+                  funnels={phaseChangerFunnels}
+                  statuses={statuses}
+                  onConfirm={handlePhaseConfirm}
+                  onCancel={closeComposer}
+                />
+              </>
+            )}
+            renderSchedule={() => (
+              <ScheduleWizard
+                key={scheduleStart.n}
+                initialTypeId={scheduleStart.type}
+                onConfirm={handleWizardConfirm}
+                onCancel={closeComposer}
+                submitting={loading}
+                usersList={activeUsers}
+                leadOwnerName={lead.consultantName || null}
+                leadOwnerId={lead.consultantId || null}
+              />
+            )}
+          />
+          </div>
          {/* O registro vive dentro de um card branco: a barra de controles fica
              no topo, separada por uma régua que atravessa o card inteiro. */}
-         <section className="rounded-2xl border border-border bg-card shadow-card overflow-hidden">
-          {/* Barra de controles */}
+         <section
+           ref={registroRef}
+           tabIndex={-1}
+           aria-label="Histórico"
+           className="rounded-2xl border border-border bg-card shadow-card overflow-clip outline-none focus-visible:anel-foco"
+         >
           {(interactions || []).length > 0 && (
-            <div className="flex items-center gap-2 flex-wrap px-8 py-3 border-b border-border">
-              {TIMELINE_FILTERS.map(f => {
-                const active = timelineFilter === f.id;
-                return (
-                  <button
-                    key={f.id}
-                    type="button"
-                    onClick={() => setTimelineFilter(f.id)}
-                    className={cn(
-                      'h-[29px] px-2.5 rounded-lg text-[12px] font-semibold inline-flex items-center gap-1.5 whitespace-nowrap transition',
-                      'focus-visible:outline-none focus-visible:anel-foco',
-                      active
-                        ? 'bg-[#0E1A40] text-white dark:bg-white dark:text-[#0E1A40]'
-                        : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
-                    )}
-                  >
-                    {f.label}
-                    <span className="num opacity-65">{timelineCounts[f.id] || 0}</span>
-                  </button>
-                );
-              })}
+            <TimelineBar
+              filters={TIMELINE_FILTERS}
+              counts={timelineCounts}
+              filter={timelineFilter}
+              onFilter={setTimelineFilter}
+              showSystem={showSystem}
+              systemHiddenCount={systemHiddenCount}
+              onToggleSystem={() => setShowSystem((v) => !v)}
+              query={timelineQuery}
+              onQuery={setTimelineQuery}
+            />
+          )}
 
-              <div className="flex-1" />
-
-              {/* Interruptor de Sistema: quando desligado, anuncia o que esconde. */}
-              {(systemHiddenCount > 0 || showSystem) && (
-                <button
-                  type="button"
-                  onClick={() => setShowSystem(v => !v)}
-                  aria-pressed={showSystem}
-                  className={cn(
-                    'h-[29px] px-2 rounded-lg text-[12px] font-semibold inline-flex items-center gap-2 whitespace-nowrap border transition',
-                    'focus-visible:outline-none focus-visible:anel-foco',
-                    showSystem
-                      ? 'border-brand-500/40 text-brand-700 dark:text-brand-300'
-                      : 'border-slate-200 dark:border-white/[0.07] text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                  )}
-                >
-                  {/* Chave de verdade (trilho + botão), não um ponto. */}
-                  <span className={cn(
-                    'w-[26px] h-[15px] rounded-full shrink-0 relative transition-colors',
-                    showSystem ? 'bg-brand-600' : 'bg-slate-200 dark:bg-white/[0.14]'
-                  )}>
-                    <span className={cn(
-                      'absolute top-[2px] size-[11px] rounded-full bg-white shadow-sm transition-[left]',
-                      showSystem ? 'left-[13px]' : 'left-[2px]'
-                    )} />
-                  </span>
-                  <span className="whitespace-nowrap">
-                    Sistema{!showSystem && systemHiddenCount > 0 ? ` +${systemHiddenCount}` : ''}
-                  </span>
-                </button>
-              )}
-
-              <div className="relative basis-[220px] shrink min-w-0">
-                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                <input
-                  value={timelineQuery}
-                  onChange={e => setTimelineQuery(e.target.value)}
-                  placeholder="Buscar no histórico"
-                  className="h-[30px] w-full rounded-lg bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[12.5px] pl-8 pr-3 placeholder:text-slate-400 transition"
-                />
-              </div>
-            </div>
+          {/* A seguir: só no registro inteiro, sem filtro nem busca. */}
+          {timelineFilter === 'all' && !timelineQuery && (
+            <UpNextList
+              items={upNext}
+              canOutcome={canMudarFase && !isReadOnly}
+              loading={loading}
+              savingId={savingOutcomeId}
+              onReschedule={canTimeline ? handleReschedule : null}
+              onOutcome={handleOutcome}
+            />
           )}
 
           {/* Timeline */}
@@ -1652,7 +1389,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                 <Clock size={20} className="opacity-50" />
               </div>
               <p className="text-[14px] font-semibold text-slate-700 dark:text-slate-200">Sem histórico ainda</p>
-              <p className="text-[12.5px] max-w-[280px] mt-0.5">Registre uma nota, mensagem ou ligação na aba CRM para começar a história desta pessoa.</p>
+              <p className="text-[12.5px] max-w-[280px] mt-0.5">Registre uma nota, mensagem ou ligação no campo acima para começar a história desta pessoa.</p>
             </div>
           ) : filteredInteractions.length === 0 ? (
             <div className="px-8 py-16 grid place-items-center text-center text-slate-400">
@@ -1665,91 +1402,60 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
           ) : (
             <div className="px-8 pt-1 pb-7">
               {/* Um bloco por mês ("Setembro de 2026"). O dia e a hora vão em
-                  cada linha, então o bloco não precisa de régua de dia. */}
+                  cada linha, então o bloco não precisa de régua de dia. No
+                  escuro o bg-card é translúcido: o cabeçalho fixo usa a mesma
+                  cor já misturada, opaca, para não virar uma faixa clara. Ele
+                  gruda logo abaixo da barra fina (56 px) e o top desconta o
+                  recuo da área que rola (p-4 md:p-8): 56 - 16 e 56 - 32. O card
+                  do registro é overflow-clip, e não overflow-hidden, senão o
+                  card vira o contêiner do sticky e o mês nunca gruda. */}
               {groupedEvents.map(([label, events]) => (
                 <section key={label} className="mb-5">
-                  <header className="sticky top-0 z-10 flex items-center gap-2 py-2 bg-card/95 backdrop-blur">
-                    <span className="text-[11px] font-semibold uppercase tracking-[.07em] text-slate-500 dark:text-slate-400 whitespace-nowrap">{label}</span>
-                    <div className="flex-1 h-px bg-slate-200/80 dark:bg-white/[0.06]" />
-                    <span className="text-[11px] num text-slate-400 dark:text-slate-500 whitespace-nowrap">
-                      {events.length} {events.length === 1 ? 'evento' : 'eventos'}
+                  <header className="sticky top-10 z-10 flex md:top-6 items-baseline gap-2.5 bg-card/95 py-2.5 backdrop-blur dark:bg-[color-mix(in_srgb,var(--page),white_2%)]">
+                    <span className="font-display text-[15px] font-semibold tracking-tight">{label}</span>
+                    <span className="num text-[12.5px] text-muted-foreground">
+                      {events.length} {events.length === 1 ? 'registro' : 'registros'}
                     </span>
                   </header>
-                  {events.map(renderTimelineEvent)}
+                  {events.map((i) => (
+                    <TimelineEvent
+                      key={i.id}
+                      i={i}
+                      statuses={statuses}
+                      stageTransitions={stageTransitions}
+                      outcomeOrigin={outcomeOrigin}
+                      flash={flashId === i.id}
+                    />
+                  ))}
                 </section>
               ))}
 
               {/* Marco de origem: fecha o registro com a data de cadastro. */}
               {timelineFilter === 'all' && !timelineQuery && !hasOriginMarker && (
-                <p className="pl-[68px] pt-1 text-[11px] text-slate-400 dark:text-slate-500 whitespace-nowrap">
+                <p className="pl-[126px] pt-1 text-[12px] text-muted-foreground whitespace-nowrap">
                   Início da jornada · {lead.createdAt?.toLocaleDateString('pt-BR') || '—'}
                 </p>
               )}
             </div>
           )}
          </section>
+         </div>
         </TabsContent>
 
-        {/* ----- Aba: CRM ----- */}
-        <TabsContent value="crm" className="pt-2">
-          {/* Coluna única (port de crm.jsx) — sem card de cadastro (vive no modal Editar). */}
-          <div className="space-y-5">
-            {renderComposer()}
-
-              {/* Próximos agendamentos — port de crm.jsx (AppointmentsList) */}
-              <section className="rounded-2xl border border-border bg-card shadow-card">
-                <div className="px-5 py-4 flex items-center justify-between border-b border-slate-100 dark:border-white/[0.05]">
-                  <div className="flex items-center gap-2">
-                    <span className="w-7 h-7 rounded-lg grid place-items-center bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-300"><Calendar size={14} /></span>
-                    <h3 className="text-[14px] font-semibold tracking-tight">Próximos agendamentos</h3>
-                    {upcomingAppointments.length > 0 && (
-                      <span className="num text-[11px] font-bold px-1.5 h-[18px] grid place-items-center rounded-md bg-slate-100 text-slate-500 dark:bg-white/[0.06] dark:text-slate-400">{upcomingAppointments.length}</span>
-                    )}
-                  </div>
-                  <Btn kind="soft" size="sm" icon={<Plus size={13} />} onClick={() => { onTab('crm'); setComposerTab('schedule'); }}>Agendar</Btn>
-                </div>
-                <div className="p-4">
-                  {upcomingAppointments.length === 0 ? (
-                    <div className="py-8 grid place-items-center text-center">
-                      <div className="w-11 h-11 rounded-full bg-slate-100 dark:bg-white/[0.05] grid place-items-center mb-2.5 text-slate-400"><Calendar size={18} /></div>
-                      <p className="text-[13px] font-semibold text-slate-700 dark:text-slate-200">Nenhum agendamento</p>
-                      <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5 max-w-[260px]">Use o painel acima para agendar uma visita, aula, mensagem ou ligação.</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2.5">
-                      {upcomingAppointments.map(({ i, appt }) => {
-                        const apptToneName = appt.kind === 'class' ? 'teal' : appt.kind === 'visit' ? 'violet' : appt.kind === 'call' ? 'amber' : 'emerald';
-                        const aTone = getTone(apptToneName);
-                        const ApptIcon = appt.kind === 'class' ? BookOpen : appt.kind === 'visit' ? Building2 : appt.kind === 'call' ? Phone : MessageCircle;
-                        const apptTime = appt.when.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-                        const isToday = appt.when.toDateString() === new Date().toDateString();
-                        const dayLabel = isToday
-                          ? `Hoje · ${apptTime}`
-                          : `${appt.when.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' }).replace('.', '')} · ${apptTime}`;
-                        return (
-                          <div key={i.id} className="rounded-xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] p-3.5 flex items-center gap-3.5 hover:border-slate-300 dark:hover:border-white/12 transition">
-                            <div className="text-center shrink-0 w-12">
-                              <div className={cn('text-[10px] font-bold uppercase tracking-wider', aTone.text, aTone.darkText)}>{appt.when.toLocaleString('pt-BR', { month: 'short' }).replace('.', '')}</div>
-                              <div className="num text-[22px] font-bold tracking-tight leading-none text-slate-900 dark:text-white">{String(appt.when.getDate()).padStart(2, '0')}</div>
-                            </div>
-                            <div className="w-px h-10 bg-slate-200 dark:bg-white/[0.08]"></div>
-                            <span className={cn('w-9 h-9 rounded-lg grid place-items-center shrink-0', aTone.soft, aTone.text, aTone.darkSoft, aTone.darkText)}><ApptIcon size={16} /></span>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2">
-                                <span className="text-[13.5px] font-semibold text-slate-900 dark:text-white truncate">{appt.label}</span>
-                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300 whitespace-nowrap">Agendado</span>
-                              </div>
-                              <div className="text-[12px] text-slate-500 dark:text-slate-400 num mt-0.5">{dayLabel}</div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </section>
-          </div>
-        </TabsContent>
+        {/* ----- Aba: Cadastro (só quem edita cadastro) -----
+            Fica montada quando escondida (forceMount com hidden), para a seção
+            aberta e o texto digitado voltarem com a aba. O hidden a tira da
+            tela, da leitura e do Tab. */}
+        {canEditCadastro && (
+          <TabsContent value="cadastro" forceMount hidden={activeProfileTab !== 'cadastro'} className="pt-2">
+            <CadastroTab
+              lead={lead}
+              db={db}
+              request={cadastroRequest}
+              onSave={handleCadastroSave}
+            />
+          </TabsContent>
+        )}
 
         {/* ----- Aba: Contratos ----- */}
         <TabsContent value="contratos" className="pt-2">
@@ -1791,15 +1497,6 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
         onClose={() => setPhotoMenuOpen(false)}
         onPicked={handlePhotoPicked}
         onRemove={lead.photoUrl ? handlePhotoRemove : null}
-      />
-      <ClientRegistrationModal
-        open={isEditing}
-        onClose={() => setIsEditing(false)}
-        lead={lead}
-        appUser={appUser}
-        db={db}
-        usersList={usersList}
-        tags={tags}
       />
       {reactivateOpen && (
         <ReactivateLeadModal
@@ -1889,7 +1586,8 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
           currentContract={currentContract}
           renewedFromId={matriculaMode === 'renovacao' ? lead.currentContractId : null}
           onClose={() => setMatriculaOpen(false)}
-          onDone={() => setMatriculaOpen(false)}
+          // `stale`: o modal já foi fechado pelo X (gravação pendente sem internet) e pode ter sido reaberto; não fecha o de agora.
+          onDone={({ stale } = {}) => { if (!stale) setMatriculaOpen(false); }}
         />
       )}
     </div>

@@ -7,6 +7,8 @@ import { renderToString } from 'react-dom/server';
 import { ContractTimeline, HATCH_VIOLET } from '../../components/profile/contracts/ContractTimeline.jsx';
 import { contractFactsOf, contractTimelineOf } from '../contractsTab.js';
 import { ContractHistoryTable } from '../../components/profile/contracts/ContractHistoryTable.jsx';
+import { ContractHeroCard } from '../../components/profile/contracts/ContractHeroCard.jsx';
+import { NextContractStrip } from '../../components/profile/contracts/NextContractStrip.jsx';
 
 const D = (y, m, d) => new Date(y, m - 1, d);
 const HOJE = new Date(2026, 8, 30, 10, 0);
@@ -63,7 +65,7 @@ describe('ContractHistoryTable', () => {
     const html = renderToString(createElement(ContractHistoryTable, { rows, firstName: 'Ana', hasContract: true }));
     expect(html).toContain('>Histórico<');
     expect(html).toContain('>2 anteriores<');
-    ['>Contrato<', '>Início<', '>Fim previsto<', '>Fim de fato<', '>Trancado<', '>Valor<', '>Média/mês<', '>Situação<'].forEach((th) => expect(html).toContain(th));
+    ['>Contrato<', '>Início<', '>Fim previsto<', '>Fim de fato<', '>Trancado<', '>Valor<', '>Média por mês<', '>Situação<'].forEach((th) => expect(html).toContain(th));
     expect(html).toContain('retorno, 89 dias depois');
     expect(html).toContain('>20/09/2024<');
     expect(html).toContain('>20/09/2025<');
@@ -137,5 +139,58 @@ describe('ContractHistoryTable', () => {
     expect(comContrato).toContain('Este é o primeiro contrato de Ana.');
     const semContrato = renderToString(createElement(ContractHistoryTable, { rows: [], firstName: 'Ana', hasContract: false }));
     expect(semContrato).toContain('O histórico de planos aparecerá aqui.');
+  });
+});
+
+// Nome de plano sem espaço ("Musculação+Funcional") não tem onde quebrar e
+// passava por cima do "Fechado por". O nome quebra em qualquer ponto
+// (overflow-wrap: anywhere), no título do card e na origem.
+describe('ContractHeroCard', () => {
+  const LONGO = 'Pilates+Funcional+Musculação';
+  const ORIGEM = 'Musculação+Funcional';
+  const anterior = { ...start24, planName: ORIGEM };
+  const atual = { ...emUso, planName: LONGO };
+  const todos = [anterior, atual];
+  const html = renderToString(createElement(ContractHeroCard, {
+    lead: { consultantName: 'Ana' }, hero: atual, status: 'ativo', hasNext: false,
+    countdown: { label: 'Restam', days: 11, note: 'vence 11/10/2026' },
+    facts: contractFactsOf(atual, todos, HOJE, 30), missed: null,
+    actions: { primary: 'renovar', actions: ['corrigir', 'trancar', 'cancelar'] },
+    isReadOnly: false, loading: false, onRenew: () => {}, onEditContract: () => {}, onContractAction: () => {}, onActivate: () => {}
+  }));
+  const classeDe = (texto) => {
+    const m = html.match(new RegExp(`class="([^"]*)"[^>]*>${texto.replace(/[+]/g, '\\+')}<`));
+    return m ? m[1] : null;
+  };
+
+  it('o nome do plano no título quebra em qualquer ponto', () => {
+    expect(classeDe(LONGO)).toContain('[overflow-wrap:anywhere]');
+  });
+
+  it('o nome do plano de origem quebra em qualquer ponto', () => {
+    expect(classeDe(ORIGEM)).toContain('[overflow-wrap:anywhere]');
+  });
+});
+
+// A faixa do próximo quebra pela largura dela (@container), como o card: no
+// card estreito a frase ficava espremida ao lado dos três botões, e as ações
+// descem para uma linha embaixo da frase.
+describe('NextContractStrip', () => {
+  const LONGO = 'Pilates+Funcional+Musculação';
+  const html = renderToString(createElement(NextContractStrip, {
+    next: proximo, facts: { ...contractFactsOf(proximo, [emUso, proximo], HOJE, 30), planName: LONGO },
+    joinText: 'sem intervalo', now: HOJE, canUndo: true, isReadOnly: false, loading: false,
+    onActivate: () => {}, onEditContract: () => {}, onContractAction: () => {}
+  }));
+
+  it('a faixa é o contêiner, e frase e ações ficam em coluna até a faixa ter 672 px', () => {
+    expect(html).toMatch(/<section class="[^"]*@container[^"]*border-l-violet-500/);
+    const corpo = html.match(/<section[^>]*><div class="([^"]*)"/);
+    expect(corpo).not.toBeNull();
+    expect(corpo[1].split(' ')).toEqual(expect.arrayContaining(['flex', 'flex-col', '@2xl:flex-row', '@2xl:items-center']));
+  });
+
+  it('o nome do plano quebra em qualquer ponto', () => {
+    expect(html).toMatch(new RegExp(`class="[^"]*\\[overflow-wrap:anywhere\\][^"]*">${LONGO.replace(/[+]/g, '\\+')}<`));
   });
 });

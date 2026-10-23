@@ -1,6 +1,8 @@
 // Regra pura do cadastro completo do cliente. Mapeia form <-> documento do lead
-// e calcula o medidor de completude. Mantém o ClientRegistrationModal fino e
-// testável (padrão do repo: regra em lib + teste).
+// e calcula o medidor de completude. Mantém a aba Cadastro da ficha fina e
+// testável (padrão do repo: regra em lib + teste). A aba grava por seção, pelo
+// cadastroSections.js, que passa por este montador e descarta o que não é da
+// seção: nunca grave o patch inteiro a partir da ficha.
 import { fromDateInputValue, toDateInputValue } from './dates.js';
 import { buildLeadSearchFields, buildGuardianPatch, sameContactPhone } from './leadDerived.js';
 import { formatCPF, formatPhone } from './masks.js';
@@ -17,7 +19,7 @@ const nullify = (v) => (str(v) ? str(v) : null);
 // Monta o mapa se pelo menos um subcampo tiver valor; senão null.
 const mapOrNull = (obj) => (Object.values(obj).some((v) => str(v)) ? obj : null);
 
-// lead (documento) -> form do modal.
+// lead (documento) -> form do cadastro.
 export function readClientRegistration(lead = {}, now = new Date()) {
   const a = lead.address || {};
   const e = lead.emergencyContact || {};
@@ -57,7 +59,7 @@ export function readClientRegistration(lead = {}, now = new Date()) {
   };
 }
 
-// form do modal -> patch para updateDoc no documento do lead.
+// form do cadastro -> patch para updateDoc no documento do lead.
 export function buildClientRegistrationPatch(form, { usersList, professores } = {}) {
   const patch = {
     name: str(form.name),
@@ -155,18 +157,30 @@ export function ownerChangeFor(lead = {}, patch = {}) {
 export const ownerChangeNote = (change) =>
   `Responsável alterado de [${change.fromName}] para [${change.toName}].`;
 
-// Medidor de completude do cadastro do cliente (0..100). Address e emergência
-// contam como 1 cada se tiverem o essencial preenchido.
-const COMPLETENESS_CHECKS = [
-  (f) => str(f.name), (f) => str(f.whatsapp), (f) => str(f.cpf), (f) => str(f.rg),
-  (f) => str(f.birthDate), (f) => str(f.sexo), (f) => str(f.email),
-  (f) => str(f.street) && str(f.number) && str(f.city),
-  (f) => str(f.emgName) && str(f.emgPhone),
-  (f) => str(f.maritalStatus), (f) => str(f.profession),
-];
+// As onze conferências do medidor de completude do cadastro (0..100). Endereço
+// e emergência contam como uma cada, quando têm o essencial. Nome e WhatsApp
+// entram na conta mas não têm rótulo: são obrigatórios no cadastro do lead, e a
+// aba Cadastro não os oferece como "o que falta". Os outros nove têm rótulo
+// (como a frase "Falta CPF"), a seção da aba onde se preenchem e o campo do
+// formulário onde o cursor cai. Endereço e emergência são um grupo (`fields`):
+// o atalho leva ao primeiro campo vazio dele, e o primeiro do grupo é o `field`.
+const has = (v) => !!str(v);
+export const COMPLETENESS_ITEMS = Object.freeze([
+  { id: 'name', ok: (f) => has(f.name) },
+  { id: 'whatsapp', ok: (f) => has(f.whatsapp) },
+  { id: 'cpf', label: 'CPF', section: 'identidade', field: 'cpf', ok: (f) => has(f.cpf) },
+  { id: 'rg', label: 'RG', section: 'identidade', field: 'rg', ok: (f) => has(f.rg) },
+  { id: 'birthDate', label: 'data de nascimento', section: 'identidade', field: 'birthDate', ok: (f) => has(f.birthDate) },
+  { id: 'sexo', label: 'sexo', section: 'identidade', field: 'sexo', ok: (f) => has(f.sexo) },
+  { id: 'email', label: 'e-mail', section: 'identidade', field: 'email', ok: (f) => has(f.email) },
+  { id: 'address', label: 'endereço', section: 'endereco', field: 'street', fields: ['street', 'number', 'city'], ok: (f) => has(f.street) && has(f.number) && has(f.city) },
+  { id: 'emergency', label: 'contato de emergência', section: 'emergencia', field: 'emgName', fields: ['emgName', 'emgPhone'], ok: (f) => has(f.emgName) && has(f.emgPhone) },
+  { id: 'maritalStatus', label: 'estado civil', section: 'pessoais', field: 'maritalStatus', ok: (f) => has(f.maritalStatus) },
+  { id: 'profession', label: 'profissão', section: 'pessoais', field: 'profession', ok: (f) => has(f.profession) },
+]);
 
 export function computeCompleteness(form = {}) {
-  const total = COMPLETENESS_CHECKS.length;
-  const filled = COMPLETENESS_CHECKS.filter((fn) => !!fn(form)).length;
+  const total = COMPLETENESS_ITEMS.length;
+  const filled = COMPLETENESS_ITEMS.filter((item) => item.ok(form)).length;
   return Math.round((filled / total) * 100);
 }

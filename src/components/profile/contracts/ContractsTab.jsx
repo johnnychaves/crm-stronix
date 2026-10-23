@@ -5,8 +5,8 @@
 // card é o contrato em uso, e não o último.
 // Mockup: docs/superpowers/specs/mockups/2026-09-30-aba-contratos-em-uso.html
 import { Ban, FileText, UserPlus } from 'lucide-react';
-import { CONTRACT_STATUS, CONTRACT_STATUS_LABEL, deriveContractStatus, isRenewalNotStarted } from '../../../lib/contracts.js';
-import { contractFactsOf, contractTimelineOf, contractsTabModel, heroActionsOf, heroCountdownOf, joinTextOf } from '../../../lib/contractsTab.js';
+import { CONTRACT_STATUS, CONTRACT_STATUS_LABEL, isRenewalNotStarted } from '../../../lib/contracts.js';
+import { contractFactsOf, contractHeroOf, contractTimelineOf, heroActionsOf, heroCountdownOf, joinTextOf } from '../../../lib/contractsTab.js';
 import { contractVigencia, missedCheckpointsLabel, vigenciaRefDate } from '../../../lib/renewal.js';
 import { getSafeDateOrNull } from '../../../lib/dates.js';
 import { fmtBRL } from '../../../lib/format.js';
@@ -52,11 +52,11 @@ function ClosedCard({ hero, facts, status, vigencia, isReadOnly, loading, onEnro
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="font-display text-[17px] font-bold tracking-tight">{facts.planName || 'Plano'}</h3>
-            <span className={cn('inline-flex items-center h-5 px-[7px] rounded-md text-[9.5px] font-bold uppercase tracking-[.05em]', tone.block, tone.fg)}>
+            <span className={cn('inline-flex h-6 items-center rounded-full px-2.5 text-[12px] font-semibold whitespace-nowrap', tone.block, tone.fg)}>
               {CONTRACT_STATUS_LABEL[status]}
             </span>
           </div>
-          <div className="num text-[11.5px] text-muted-foreground mt-1">
+          <div className="num text-[12.5px] text-muted-foreground mt-1">
             {cancelled
               ? `Cancelado${facts.cancelledAt ? ` em ${fmtDia(facts.cancelledAt)}` : ''}${facts.cancelReason ? ` · ${facts.cancelReason}` : ''}`
               : `Venceu há ${Math.abs(vigencia?.daysLeft ?? 0)} dias · ${fmtDia(getSafeDateOrNull(hero.endsAt))}`}
@@ -71,7 +71,7 @@ function ClosedCard({ hero, facts, status, vigencia, isReadOnly, loading, onEnro
       </div>
       <div className="flex items-center gap-2 flex-wrap px-5 py-3 bg-slate-50 dark:bg-white/[0.03]">
         {!isReadOnly && <Btn kind="enroll" icon={<UserPlus size={14} />} onClick={onEnroll} disabled={loading}>Nova matrícula</Btn>}
-        <span className="text-[11.5px] text-muted-foreground">
+        <span className="text-[12.5px] text-muted-foreground">
           {cancelled ? `Interrompido a ${pct}% da vigência.` : 'O cliente conta como inativo até renovar.'}
         </span>
       </div>
@@ -84,23 +84,17 @@ export function ContractsTab({
   onEnroll, onRenew, onEditContract, onContractAction, onActivate
 }) {
   const now = new Date();
-  const { hero, next, history, join } = contractsTabModel({ lead, contracts: leadContracts, now });
   // A aba lê o CONTRATO, não as marcas de cliente: quando as marcas estavam
   // erradas, a aba dizia "Ainda não é cliente" com o contrato gravado.
-  const hasContract = Boolean(hero && getSafeDateOrNull(hero.endsAt));
-  const status = hasContract ? (deriveContractStatus(hero, now, contractThresholdDays) || CONTRACT_STATUS.ATIVO) : null;
-  // Com próximo contrato, o destaque é o contrato em uso, escolhido por dia do
-  // calendário (isInUseAt). No último dia dele, com o fim gravado à meia-noite,
-  // o status por instante já diz vencido, mas o card continua o em uso, com
-  // Trancar e Cancelar; o card fechado, com Nova matrícula, gravaria um
-  // segundo contrato (revisão final de 01/10/2026).
-  // O destaque que não é o último contrato (o em uso, com o último cancelado)
-  // age como se tivesse próximo: só Trancar ou Reativar e Cancelar. Renovar e
-  // Corrigir são do último contrato, e aqui reescreveriam o resumo do lead com
-  // os dados de outro (revisão final de 01/10/2026).
-  const likeNext = Boolean(next) || Boolean(hero && lead?.currentContractId && hero.id !== lead.currentContractId);
-  const closed = !likeNext && (status === CONTRACT_STATUS.VENCIDO || status === CONTRACT_STATUS.CANCELADO);
-  const heroStatus = likeNext && status === CONTRACT_STATUS.VENCIDO ? CONTRACT_STATUS.ATIVO : status;
+  // Com próximo contrato, o destaque é o contrato em uso, e no último dia dele
+  // o card continua o em uso, com Trancar e Cancelar; o card fechado, com Nova
+  // matrícula, gravaria um segundo contrato. O destaque que não é o último
+  // contrato age como se tivesse próximo: só Trancar ou Reativar e Cancelar.
+  // Renovar e Corrigir são do último contrato, e aqui reescreveriam o resumo do
+  // lead com os dados de outro (revisão final de 01/10/2026). A conta mora em
+  // contractHeroOf, que o cabeçalho da ficha também usa.
+  const { hero, next, history, join, hasContract, status, likeNext, closed, heroStatus } =
+    contractHeroOf({ lead, contracts: leadContracts, now, thresholdDays: contractThresholdDays });
   const heroFacts = hasContract ? contractFactsOf(hero, leadContracts, now, contractThresholdDays) : null;
   // A régua do destaque, congelada no trancamento e no cancelamento
   // (vigenciaRefDate): dá os dias e os marcos que passaram sem contato.
