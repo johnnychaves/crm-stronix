@@ -135,7 +135,7 @@ describe('aba Contratos: os botões em cada situação', () => {
     expect(strip).toContain('daqui a 12 dias');
     expect(strip).toContain('até 12/10/2027');
     expect(strip).toContain('R$ 1.788,00');
-    expect(strip).toContain('R$ 149,00/mês');
+    expect(strip).toContain('R$ 149,00 por mês');
     expect(strip).toContain('sem intervalo');
     // O contrato em uso não vai para o Histórico.
     expect(historico).toContain('Nenhum contrato anterior');
