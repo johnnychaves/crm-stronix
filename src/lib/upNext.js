@@ -35,6 +35,7 @@ import { isAppointmentEcho } from './outcomeCorrection.js';
 const join = (parts) => parts.filter(Boolean).join(' · ');
 const taskOf = (name, when, today) => (name && when >= today ? `Tarefa de ${name}` : '');
 const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+const endOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
 
 function appointmentItem(lead, type, when, now, today) {
   const isAula = type === 'aula_experimental';
@@ -56,7 +57,11 @@ function appointmentItem(lead, type, when, now, today) {
     detail: join([...(isAula ? aula : visita), taskOf(lead.appointmentOwnerName, when, today), note]),
     when,
     overdue: when.getTime() < now.getTime(),
-    canOutcome: true
+    // O desfecho só se marca no compromisso de hoje, do começo ao fim do dia
+    // local: a Meta só cria Visitas e Aulas exp. de hoje, e a Agenda de hoje
+    // exige o mesmo dia (isSameLocalDay). O de dias atrás e o de dias à frente
+    // ficam só com o Remarcar.
+    canOutcome: when.getTime() >= today.getTime() && when.getTime() <= endOfDay(now).getTime()
   };
 }
 

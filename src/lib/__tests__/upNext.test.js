@@ -20,7 +20,7 @@ describe('upNextOf', () => {
       nextFollowUp: D(10, 21, 19), nextFollowUpType: 'Visita', nextFollowUpNote: 'Trazer documento'
     };
     const [item] = upNextOf(lead, AGORA);
-    expect(item).toMatchObject({ id: 'appointment', type: 'visita', kind: 'visit', title: 'Visita', overdue: false, canOutcome: true });
+    expect(item).toMatchObject({ id: 'appointment', type: 'visita', kind: 'visit', title: 'Visita', overdue: false, canOutcome: false });
     expect(item.detail).toBe('Unidade Centro · Trazer documento');
     expect(item.when).toEqual(D(10, 21, 19));
   });
@@ -147,6 +147,30 @@ describe('upNextOf', () => {
   it('contato que já passou leva atrasado', () => {
     const [item] = upNextOf({ nextFollowUp: D(10, 15, 18), nextFollowUpType: 'Ligação' }, AGORA);
     expect(item).toMatchObject({ id: 'contact', overdue: true });
+  });
+
+  // Paridade com a Agenda de hoje (isSameLocalDay): a Meta só cria Visitas e
+  // Aulas exp. de hoje, então o desfecho só é marcado no compromisso de hoje,
+  // do começo ao fim do dia local. O que passou (que só aparece enquanto é o
+  // eco do próximo contato) e o que ainda vai chegar ficam só com o Remarcar.
+  it('o desfecho só pode ser marcado para compromisso de hoje', () => {
+    const base = { appointmentType: 'visita', appointmentUnit: 'Centro' };
+    const eco = (d) => ({ ...base, appointmentScheduledFor: d, nextFollowUp: d, nextFollowUpType: 'Visita' });
+    const cedo = upNextOf({ ...base, appointmentScheduledFor: D(10, 16, 7) }, AGORA)[0];
+    const hoje = upNextOf({ ...base, appointmentScheduledFor: D(10, 16, 19) }, AGORA)[0];
+    const ontem = upNextOf(eco(D(10, 15, 19)), AGORA)[0];
+    const anteontem = upNextOf(eco(D(10, 14, 23, 59)), AGORA)[0];
+    const amanha = upNextOf({ ...base, appointmentScheduledFor: D(10, 17, 0, 0) }, AGORA)[0];
+    expect(cedo.canOutcome).toBe(true);
+    expect(hoje.canOutcome).toBe(true);
+    expect(ontem.canOutcome).toBe(false);
+    expect(anteontem).toMatchObject({ overdue: true, canOutcome: false });
+    expect(amanha.canOutcome).toBe(false);
+  });
+
+  it('o próximo contato nunca tem desfecho', () => {
+    const [item] = upNextOf({ nextFollowUp: D(10, 16, 18), nextFollowUpType: 'Ligação' }, AGORA);
+    expect(item.canOutcome).toBe(false);
   });
 });
 

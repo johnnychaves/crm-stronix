@@ -99,7 +99,7 @@ describe('marco de início do cadastro pelo Stronizap na ficha', () => {
 
   it('conta em Marcos junto com a troca de fase', () => {
     linha.registros = [NOTA, FASE, MARCO];
-    expect(ficha()).toMatch(/Marcos<span class="num opacity-65">2<\/span>/);
+    expect(ficha()).toContain('aria-label="Marcos, 2"');
   });
 
   it('observação do cadastro no mesmo horário do marco fica acima dele, venha na ordem que vier', () => {

@@ -20,7 +20,8 @@ import { Btn } from '../ui/Btn.jsx';
 // antes de descartar.
 //
 // onSubmitText(mode, text) devolve uma promessa de true quando gravou. Só então
-// a caixa do modo esvazia.
+// a caixa do modo esvazia. onGoto(id), quando existe, liga o "Ver no histórico"
+// da faixa do último registro, que leva a ficha até o evento.
 
 const MODES = [
   { id: 'note', label: 'Anotação', Icon: Pencil, color: 'ink' },
@@ -53,7 +54,7 @@ const dm = (d) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digi
 export function ProfileComposer({
   open, mode, onOpen, onClose,
   drafts = EMPTY_DRAFTS, onDrafts,
-  appUser, firstName, whatsappName = null, lastText = null,
+  appUser, firstName, whatsappName = null, lastText = null, onGoto = null,
   canMudarFase = true, loading = false,
   onSubmitText, renderStatus, renderSchedule,
 }) {
@@ -180,6 +181,15 @@ export function ProfileComposer({
                 <p className="line-clamp-2 min-w-0 flex-1 leading-[1.45]">
                   <span className="text-muted-foreground">{lastText.label}, {dm(lastText.date)}:</span> {lastText.text}
                 </p>
+                {onGoto && (
+                  <button
+                    type="button"
+                    onClick={() => onGoto(lastText.id)}
+                    className="-my-1 inline-flex h-6 flex-none items-center rounded px-1 text-[12.5px] font-semibold text-brand-700 hover:underline focus-visible:outline-none focus-visible:anel-foco dark:text-brand-300"
+                  >
+                    Ver no histórico
+                  </button>
+                )}
               </div>
             )}
             <label htmlFor="composer-text" className="sr-only">{textMode.label}</label>
