@@ -13,6 +13,10 @@
 //   renewalDeclined — "não vai renovar/voltar" (reseta em buildMatriculaWrites)
 //   nextFollowUp — contato marcado; enquanto for hoje ou futuro, o cliente é
 //     cobrado na categoria Contatos, não aqui (evita tarefa dobrada).
+//   appointmentScheduledFor — visita ou aula marcada; enquanto for hoje ou
+//     futuro, segura a cobrança como o contato. O Compareceu apaga o eco do
+//     agendamento no próximo contato, e sem isso o cliente voltava ao Vencidos
+//     no mesmo dia (bug de 22/10/2026). No dia seguinte a cobrança volta.
 
 import { getSafeDateOrNull, daysBetween } from './dates.js';
 import { deriveLeadContractStatus, CONTRACT_STATUS } from './contracts.js';
@@ -67,6 +71,9 @@ export function shouldPromptExpired(lead, now, windowDays = DEFAULT_EXPIRED_WIND
   todayStart.setHours(0, 0, 0, 0);
   const nextFollowUp = getSafeDateOrNull(lead.nextFollowUp);
   if (nextFollowUp && nextFollowUp >= todayStart) return false;
+  // Visita ou aula de hoje ou para frente: a cobrança de hoje é dela.
+  const appointmentAt = getSafeDateOrNull(lead.appointmentScheduledFor);
+  if (appointmentAt && appointmentAt >= todayStart) return false;
 
   return true;
 }
