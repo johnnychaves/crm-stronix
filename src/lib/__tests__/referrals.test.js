@@ -192,6 +192,16 @@ describe('summarizeReferrals — resumo da aba Indicações', () => {
     expect(summarizeReferrals(leads)).toEqual({ total: 4, alunos: 2, andamento: 1, perdidos: 1 });
   });
 
+  it('freepass importado (contrato de planilha com valor 0) não vira aluno; importado com valor e venda do sistema viram', () => {
+    const freepass = { importBatchId: 'b1', importSource: 'manual', currentContractValue: 0 };
+    const leads = [
+      { id: 'f', lifecycleStage: 'cliente', status: 'Venda', isConverted: true, ...freepass },
+      { id: 'i', lifecycleStage: 'cliente', status: 'Venda', importBatchId: 'b1', currentContractValue: 1308 },
+      { id: 's', lifecycleStage: 'cliente', status: 'Venda', currentContractValue: 0 }
+    ];
+    expect(summarizeReferrals(leads)).toEqual({ total: 3, alunos: 2, andamento: 1, perdidos: 0 });
+  });
+
   it('vazio/nulo', () => {
     expect(summarizeReferrals([])).toEqual({ total: 0, alunos: 0, andamento: 0, perdidos: 0 });
     expect(summarizeReferrals(null)).toEqual({ total: 0, alunos: 0, andamento: 0, perdidos: 0 });

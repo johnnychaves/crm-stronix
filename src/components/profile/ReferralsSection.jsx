@@ -1,9 +1,8 @@
 import { useMemo } from 'react';
 import { Handshake, UserPlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { summarizeReferrals } from '../../lib/referrals.js';
+import { summarizeReferrals, isReferralStudent } from '../../lib/referrals.js';
 import { deriveLeadState, getTone } from '../../lib/leadState.js';
-import { isClientLead } from '../../lib/leads.js';
 import { getSafeDateOrNull } from '../../lib/dates.js';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 import { isValidLeadId } from '../../lib/routes.js';
@@ -90,7 +89,7 @@ export function ReferralsSection({ items, loading, onAdd = null, canRefer = true
           {items.map((l) => {
             const state = deriveLeadState(l, now, contractThresholdDays);
             const tone = getTone(state.tone);
-            const aluno = isClientLead(l);
+            const aluno = isReferralStudent(l);
             const quando = fmtDia(l.referredAt) || fmtDia(l.createdAt);
             const convertido = aluno ? fmtDia(l.convertedAt) : null;
             // Mesma pergunta que o LeadLink faz por dentro: sem isto a linha
