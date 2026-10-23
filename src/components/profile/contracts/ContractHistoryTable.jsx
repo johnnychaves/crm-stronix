@@ -14,8 +14,8 @@ import { OriginIcon, StatusChip } from './shared.jsx';
 
 const fmtDia = (d) => (d ? d.toLocaleDateString('pt-BR') : '—');
 const dias = (n) => `${n} ${n === 1 ? 'dia' : 'dias'}`;
-const TH = 'font-bold px-3 py-2.5';
-const MUTED = 'text-[11.5px] text-muted-foreground';
+const TH = 'px-3 py-2.5 text-[12.5px] font-medium whitespace-nowrap';
+const MUTED = 'text-[12.5px] text-muted-foreground';
 
 // Um período de trancamento: "05/01/2025 a 25/01/2025", "desde 20/09/2026",
 // com a marca da pausa que veio da importação ou refeita pelo total de dias.
@@ -26,8 +26,8 @@ const pauseText = (p) => `${p.to ? `${fmtDia(p.from)} a ${fmtDia(p.to)}` : `desd
 function Detail({ label, children }) {
   return (
     <div className="min-w-0">
-      <dt className="text-[9.5px] font-bold uppercase tracking-[.08em] text-slate-400 dark:text-slate-500 whitespace-nowrap">{label}</dt>
-      <dd className="mt-1 text-[12.5px] text-slate-700 dark:text-slate-200">{children}</dd>
+      <dt className="text-[12.5px] font-medium text-muted-foreground whitespace-nowrap">{label}</dt>
+      <dd className="mt-1 text-[13px] text-slate-700 dark:text-slate-200">{children}</dd>
     </div>
   );
 }
@@ -39,7 +39,7 @@ function HistoryRow({ facts: f, open, onToggle }) {
       <tr
         onClick={onToggle}
         className={cn(
-          'border-t border-slate-100 dark:border-white/[0.06] hover:bg-slate-50 dark:hover:bg-white/[0.03] cursor-pointer transition',
+          'border-t border-border hover:bg-slate-50 dark:hover:bg-white/[0.03] cursor-pointer transition',
           open && 'bg-slate-50 dark:bg-white/[0.03]'
         )}
       >
@@ -78,8 +78,8 @@ function HistoryRow({ facts: f, open, onToggle }) {
             </>
           ) : <span className="text-slate-400 dark:text-slate-500">Nunca</span>}
         </td>
-        <td className="num px-3 py-3 text-right font-semibold">{f.value != null ? fmtBRL(f.value) : '—'}</td>
-        <td className="num px-3 py-3 text-right">{f.monthly != null ? fmtBRL(f.monthly) : '—'}</td>
+        <td className="num px-3 py-3 text-right font-semibold whitespace-nowrap">{f.value != null ? fmtBRL(f.value) : '—'}</td>
+        <td className="num px-3 py-3 text-right whitespace-nowrap">{f.monthly != null ? fmtBRL(f.monthly) : '—'}</td>
         <td className="pl-3 pr-[22px] py-3 text-right"><StatusChip status={f.status} /></td>
       </tr>
       {open && (
@@ -124,13 +124,13 @@ export function ContractHistoryTable({ rows, firstName, hasContract, defaultOpen
   const count = rows.length;
   return (
     <section className="rounded-2xl border border-border bg-card shadow-card overflow-hidden">
-      <div className="flex items-center gap-2.5 px-[22px] py-4 border-b border-slate-100 dark:border-white/[0.06]">
-        <h3 className="text-[14.5px] font-semibold tracking-tight">Histórico</h3>
-        <span className="num text-[10.5px] font-bold px-[7px] py-0.5 rounded-md bg-slate-100 text-slate-500 dark:bg-white/[0.06] dark:text-slate-400">
+      <div className="flex items-center gap-2.5 px-[22px] py-4 border-b border-border">
+        <h3 className="font-display text-[16px] font-semibold tracking-tight">Histórico</h3>
+        <span className="num rounded-full bg-slate-100 px-2.5 py-0.5 text-[12px] font-semibold text-slate-600 dark:bg-white/[0.06] dark:text-slate-400">
           {count === 1 ? '1 anterior' : `${count} anteriores`}
         </span>
         <div className="flex-1"></div>
-        <span className={cn(MUTED, 'hidden sm:inline')}>A linha abre o desconto, quem fechou e o motivo</span>
+        {count > 0 && <span className={cn(MUTED, 'hidden sm:inline')}>Clique na linha para ver desconto, quem fechou e o motivo</span>}
       </div>
       {count === 0 ? (
         <div className="py-7 text-center">
@@ -143,15 +143,15 @@ export function ContractHistoryTable({ rows, firstName, hasContract, defaultOpen
         <div className="overflow-x-auto overscroll-x-contain">
           <table className="w-full min-w-[860px] text-left">
             <thead>
-              <tr className="text-[9.5px] font-bold uppercase tracking-[.08em] text-slate-400 dark:text-slate-500">
-                <th className="font-bold pl-[22px] pr-3 py-2.5">Contrato</th>
+              <tr className="text-muted-foreground">
+                <th className="pl-[22px] pr-3 py-2.5 text-[12.5px] font-medium whitespace-nowrap">Contrato</th>
                 <th className={TH}>Início</th>
                 <th className={TH}>Fim previsto</th>
                 <th className={TH}>Fim de fato</th>
                 <th className={TH}>Trancado</th>
                 <th className={cn(TH, 'text-right')}>Valor</th>
-                <th className={cn(TH, 'text-right')}>Média/mês</th>
-                <th className="font-bold pl-3 pr-[22px] py-2.5 text-right">Situação</th>
+                <th className={cn(TH, 'text-right')}>Média por mês</th>
+                <th className="pl-3 pr-[22px] py-2.5 text-right text-[12.5px] font-medium whitespace-nowrap">Situação</th>
               </tr>
             </thead>
             <tbody className="text-[13px]">

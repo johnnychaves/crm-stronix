@@ -5,6 +5,7 @@
 // tracinhos no contrato em uso, e há marcas de ano e o marcador de hoje. A
 // geometria vem pronta de contractTimelineOf (lib/contractsTab.js); aqui só
 // há tela. Mockup: docs/superpowers/specs/mockups/2026-09-30-aba-contratos-em-uso.html
+import { legendKeysOf } from '../../../lib/contractsTab.js';
 import { cn } from '../../../lib/utils.js';
 
 // A hachura roxa do próximo contrato, como no mockup. Vai como estilo porque
@@ -18,13 +19,19 @@ const SEGMENT_CLASS = {
   cancelado: 'bg-rose-400'
 };
 
-const LEGEND = [
-  { label: 'em uso', className: 'bg-emerald-500' },
-  { label: 'próximo', className: null },
-  { label: 'encerrado', className: 'bg-slate-300 dark:bg-slate-600' },
-  { label: 'cancelado', className: 'bg-rose-400' },
-  { label: 'trancado', className: 'bg-yellow-400' }
-];
+// Cada chave de legendKeysOf (lib/contractsTab.js) tem rótulo e amostra. A
+// amostra do próximo é a hachura, e a dos marcos é o tracinho vertical. Os
+// rótulos ficam em minúsculas, como estão hoje: o "Em uso" com inicial maiúscula
+// é o selo do card, e o profileContractsTab.test.js confere que ele não aparece
+// quando o card não é o em uso (a legenda está dentro da mesma fatia de HTML).
+const LEGEND = {
+  em_uso: { label: 'em uso', className: 'bg-emerald-500' },
+  proximo: { label: 'próximo', className: null },
+  encerrado: { label: 'encerrado', className: 'bg-slate-300 dark:bg-slate-600' },
+  cancelado: { label: 'cancelado', className: 'bg-rose-400' },
+  trancado: { label: 'trancado', className: 'bg-yellow-400' },
+  marcos: { label: 'marcos de renovação', className: 'bg-slate-400 dark:bg-white/40', mark: true }
+};
 
 // Altura de cada trilha, em px. Contratos que se cruzam ganham uma segunda.
 const LANE_HEIGHT = 16;
@@ -35,18 +42,21 @@ export function ContractTimeline({ timeline }) {
   const tracksHeight = 9 + lanes.length * LANE_HEIGHT;
   return (
     <section className="rounded-2xl border border-border bg-card shadow-card px-[22px] pt-4 pb-5">
-      <div className="flex items-center gap-4 flex-wrap">
-        <h3 className="text-[14.5px] font-semibold tracking-tight">Vigência</h3>
-        <div className="flex items-center gap-3.5 text-[11px] text-muted-foreground flex-wrap">
-          {LEGEND.map((item) => (
-            <span key={item.label} className="inline-flex items-center gap-1.5">
-              <span
-                className={cn('w-3.5 h-1.5 rounded-full', item.className)}
-                style={item.className ? undefined : { backgroundImage: HATCH_VIOLET }}
-              ></span>
-              {item.label}
-            </span>
-          ))}
+      <div className="flex flex-wrap items-baseline gap-x-[18px] gap-y-1">
+        <h3 className="font-display text-[16px] font-semibold tracking-tight">Vigência</h3>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12.5px] text-muted-foreground">
+          {legendKeysOf(timeline).map((key) => {
+            const item = LEGEND[key];
+            return (
+              <span key={key} className="inline-flex items-center gap-[7px]">
+                <span
+                  className={cn(item.mark ? 'h-3.5 w-0.5 rounded-[1px]' : 'h-1.5 w-4 rounded-full', item.className)}
+                  style={item.className ? undefined : { backgroundImage: HATCH_VIOLET }}
+                ></span>
+                {item.label}
+              </span>
+            );
+          })}
         </div>
       </div>
       {/* 21px a mais embaixo, para os anos. */}

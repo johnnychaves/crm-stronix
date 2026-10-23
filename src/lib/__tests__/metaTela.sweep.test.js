@@ -23,7 +23,7 @@ describe('a tela da Meta na DailyGoalView', () => {
   });
 
   it('o contrato salvo pelo Renovou e pelo Reativou grava a marca do dia', () => {
-    expect(corpo).toContain('onDone={handleRenewalContractSaved}');
+    expect(corpo).toContain('handleRenewalContractSaved(matriculaTarget); }}');
     expect(corpo).toMatch(/handleRenewalContractSaved = async[\s\S]*renewedGoalDoneInteraction\(target\.categorySlug\)[\s\S]*logInteraction\(db, target\.lead, appUser, mark\)/);
   });
 
