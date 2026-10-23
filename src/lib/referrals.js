@@ -4,6 +4,7 @@
 // referralsWrites.js (padrão contracts.js / contractsWrites.js).
 
 import { isClientLead } from './leads.js';
+import { isImportedContract } from './contracts.js';
 import { normalize } from './globalSearch.js';
 import { getSafeDateOrNull } from './dates.js';
 
@@ -133,12 +134,22 @@ export const planReferralSetupOps = ({ funnels, statuses, sources } = {}) => {
 
 // Resumo da aba Indicações. Precedência espelha deriveLeadBucket: convertido
 // que depois virou Perda continua contando como aluno.
+// "Virou aluno" para a aba Indicações. Cliente cujo único contrato veio de
+// planilha com valor 0 é freepass importado (a importação promove o lead a
+// cliente), não matrícula: segue como indicado em andamento. Importado com
+// valor real, e qualquer venda feita no sistema, continuam sendo aluno.
+export const isReferralStudent = (lead) => {
+  if (!isClientLead(lead)) return false;
+  const freepass = isImportedContract(lead) && lead?.currentContractValue === 0;
+  return !freepass;
+};
+
 export const summarizeReferrals = (leads) => {
   const list = Array.isArray(leads) ? leads : [];
   let alunos = 0;
   let perdidos = 0;
   list.forEach((l) => {
-    if (isClientLead(l)) alunos += 1;
+    if (isReferralStudent(l)) alunos += 1;
     else if (l?.status === 'Perda') perdidos += 1;
   });
   return { total: list.length, alunos, andamento: list.length - alunos - perdidos, perdidos };
