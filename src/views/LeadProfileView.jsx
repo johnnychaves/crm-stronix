@@ -56,7 +56,7 @@ import { ProfileHeaderBand } from '../components/profile/ProfileHeaderBand.jsx';
 import { ReferralsMenu } from '../components/profile/ReferralsMenu.jsx';
 import { StickyMini } from '../components/profile/StickyMini.jsx';
 import { useHeaderGone } from '../hooks/useHeaderGone.js';
-import { ageText, arrivedText, clientSinceCell, contractCell, nextStepCell, stageCell, stateChipText, teamCell } from '../lib/profileBand.js';
+import { ageChip, arrivedText, clientSinceCell, contractCell, nextStepCell, stageCell, stateChipText, teamCell } from '../lib/profileBand.js';
 import { TimelineBar } from '../components/profile/TimelineBar.jsx';
 import { TimelineEvent } from '../components/profile/TimelineEvent.jsx';
 import { upNextOf } from '../lib/upNext.js';
@@ -74,7 +74,7 @@ import {
   originLastOnTies,
   isAppointmentReschedule
 } from '../lib/timeline.js';
-import { ArrowLeft, Clock, FileText, Handshake, IdCard, MessageCircle, Pencil, Phone, RotateCcw, Search, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Award, Cake, Clock, FileText, Handshake, IdCard, MessageCircle, Pencil, Phone, RotateCcw, Search, TrendingUp } from 'lucide-react';
 
 // Chip de contagem ao lado do label da aba (Linha do tempo / Contratos).
 function TabCount({ n, active }) {
@@ -92,6 +92,9 @@ function TabCount({ n, active }) {
 // abriu direto numa aba nova). onDeleteStart e onDeleteFailed avisam a rota
 // para trocar a ficha por "Excluindo a ficha…" e devolver se a exclusão falhar.
 // listenersActive é o portão de ociosidade do App, repassado à linha do tempo.
+// Pílula neutra do chip da idade no cabeçalho.
+const CHIP_IDADE = 'inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full bg-muted px-2.5 text-[13px] font-medium text-slate-700 dark:bg-white/10 dark:text-slate-200';
+
 function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFailed, listenersActive = true, appUser, statuses, tags, lossReasons, usersList, db, funnels, sources = [] }) {
   // Timeline por query própria (G2): histórico COMPLETO do lead (índice #10),
   // ao vivo. Antes vinha do prop global filtrado por leadId — que pós-G2 é só o
@@ -983,7 +986,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
       ? contractCell({ lead, contracts: leadContracts, now: bandNow, thresholdDays: contractThresholdDays })
       : stageCell({ lead, statuses, funnels: safeFunnels, interactions, now: bandNow }),
     team: teamCell(lead),
-    age: ageText(lead, bandNow),
+    age: ageChip(lead, bandNow),
     since: isClient ? clientSinceCell({ lead, contracts: leadContracts, now: bandNow }) : null,
   };
 
@@ -1079,26 +1082,31 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                 <span className="min-w-0 truncate text-[12.5px] text-muted-foreground">
                   {isClient ? profileState.hint : (arrivedText(lead, bandNow) || profileState.hint)}
                 </span>
-                {/* Idade e tempo de casa, à vista (pedido do Johnny, 22/10/2026).
-                    Sem nascimento, quem edita o cadastro tem o atalho até o campo. */}
-                {band.age ? (
-                  <span className="shrink-0 text-[12.5px] font-medium text-slate-700 dark:text-slate-200">{band.age}</span>
-                ) : canEditCadastro && (
-                  <button
-                    type="button"
-                    onClick={() => openCadastro('identidade', 'birthDate')}
-                    className="shrink-0 rounded text-[12.5px] text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground focus-visible:anel-foco"
-                  >
-                    Idade não informada
-                  </button>
-                )}
-                {band.since && (
-                  <span title={band.since.title} className="shrink-0 text-[12.5px] font-medium text-slate-700 dark:text-slate-200">{band.since.text}</span>
-                )}
               </div>
               {/* nome. Editar o cadastro é pela aba Cadastro. */}
               <div className="flex items-center flex-wrap gap-2 gap-y-1">
                 <h1 className="font-display text-[26px] sm:text-[28px] font-bold tracking-tight leading-none truncate">{lead.name}</h1>
+                {/* Idade e tempo de casa em chips ao lado do nome (opção A, escolhida
+                    pelo Johnny em 22/10/2026). Sem nascimento, quem edita o
+                    cadastro tem o atalho até o campo. */}
+                {band.age ? (
+                  <span title={band.age.title} className={CHIP_IDADE}>
+                    <Cake className="size-3.5" aria-hidden="true" />{band.age.text}
+                  </span>
+                ) : canEditCadastro && (
+                  <button
+                    type="button"
+                    onClick={() => openCadastro('identidade', 'birthDate')}
+                    className={cn(CHIP_IDADE, 'hover:bg-slate-200 dark:hover:bg-white/15 focus-visible:anel-foco')}
+                  >
+                    <Cake className="size-3.5" aria-hidden="true" />Idade não informada
+                  </button>
+                )}
+                {band.since && (
+                  <span title={band.since.title} className="inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full bg-brand-50 px-2.5 text-[13px] font-medium text-brand-700 dark:bg-brand-500/10 dark:text-brand-300">
+                    <Award className="size-3.5" aria-hidden="true" />{band.since.text}
+                  </span>
+                )}
                 {isMinorNow(lead) && (
                   <span className="inline-flex h-6 shrink-0 items-center rounded-full bg-brand-50 px-2.5 text-[12.5px] font-semibold text-brand-700 dark:bg-brand-500/10 dark:text-brand-300">
                     Menor de idade

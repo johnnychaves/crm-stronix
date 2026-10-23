@@ -177,8 +177,11 @@ describe('caminhos do cabeçalho até o Cadastro', () => {
   it('com nascimento, mostra a idade; o lead não tem tempo de casa', async () => {
     await montar({ lead: FEZ_18 });
     expect(botoes('Idade não informada')).toEqual([]);
-    expect([...document.body.querySelectorAll('span')].some((s) => s.textContent === '18 anos')).toBe(true);
-    expect(document.body.textContent).not.toContain('Cliente desde');
+    const chip = [...document.body.querySelectorAll('span')].find((s) => s.textContent === '18 anos');
+    expect(chip).toBeTruthy();
+    expect(chip.getAttribute('title')).toMatch(/^(Nascida|Nascido|Nascimento) em \d{2}\/\d{2}\/\d{4}$/);
+    expect(chip.parentElement.querySelector('h1')).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/Aluna há|Aluno há|Na casa há/);
   });
 });
 

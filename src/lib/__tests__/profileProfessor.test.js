@@ -112,7 +112,7 @@ describe('ficha do professor: cabeçalho', () => {
   it('no cliente, o tempo de casa conta da primeira matrícula, com a data no title, para todos', () => {
     [GESTOR, PROFESSOR].forEach((appUser) => {
       const html = ficha({ lead: cliente(start), tab: 'timeline', appUser, contratos: [start] });
-      expect(html).toMatch(/title="Primeira matrícula em 11\/10\/2025"[^>]*>Cliente desde out\/2025 \(/);
+      expect(html).toMatch(/title="Primeira matrícula em 11\/10\/2025"[^>]*><svg[^>]*aria-hidden="true"[^>]*>(?:(?!<\/svg>).)*<\/svg>(?:Aluna|Aluno|Na casa) há /);
     });
   });
 

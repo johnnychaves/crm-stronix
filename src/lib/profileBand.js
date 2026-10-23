@@ -48,19 +48,26 @@ export function arrivedText(lead, now = new Date()) {
   return lead.source ? `Chegou por ${lead.source} em ${when}.` : `Cadastrado em ${when}.`;
 }
 
-// "34 anos", pela conta da leitura da Identidade (ageOf). Sem data, null.
-export function ageText(lead, now = new Date()) {
-  const age = ageOf(toDateInputValue(lead?.birthDate), now);
-  return age == null ? null : `${age} ${age === 1 ? 'ano' : 'anos'}`;
+// Palavra do cadastro pelo campo Sexo: Feminino, Masculino ou nenhum (null).
+const sexoOf = (lead) => (lead?.sexo === 'Feminino' ? 'f' : lead?.sexo === 'Masculino' ? 'm' : null);
+
+// Chip da idade: "36 anos", pela conta da leitura da Identidade (ageOf), com a
+// data no title. Sem data (ou com data no futuro), null.
+export function ageChip(lead, now = new Date()) {
+  const iso = toDateInputValue(lead?.birthDate);
+  const age = ageOf(iso, now);
+  if (age == null) return null;
+  const [y, m, d] = iso.split('-');
+  const verb = { f: 'Nascida em', m: 'Nascido em' }[sexoOf(lead)] || 'Nascimento em';
+  return { text: `${age} ${age === 1 ? 'ano' : 'anos'}`, title: `${verb} ${d}/${m}/${y}` };
 }
 
-const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
 
-// Tempo de casa do cliente: da primeira matrícula (clienteSince, que a volta de
-// ex-cliente não regrava) até hoje, por dia do calendário. Sem clienteSince,
-// o início do contrato mais antigo que chegou a valer e já começou. Sem nenhum,
-// null. "Cliente desde mar/2024 (2 anos e 7 meses)", com a data inteira no title.
+// Chip do tempo de casa do cliente: da primeira matrícula (clienteSince, que a
+// volta de ex-cliente não regrava) até hoje, por dia do calendário. Sem
+// clienteSince, o início do contrato mais antigo que chegou a valer e já
+// começou. Sem nenhum, null. "Aluna há 2 anos e 7 meses", com a data no title.
 export function clientSinceCell({ lead, contracts = [], now = new Date() } = {}) {
   let since = getSafeDateOrNull(lead?.clienteSince);
   if (!since) {
@@ -72,9 +79,10 @@ export function clientSinceCell({ lead, contracts = [], now = new Date() } = {})
     since = starts[0] || null;
   }
   if (!since) return null;
+  const who = { f: 'Aluna', m: 'Aluno' }[sexoOf(lead)] || 'Na casa';
   const title = `Primeira matrícula em ${fmtDia(since)}`;
   const days = calendarDaysBetween(since, now);
-  if (days <= 0) return { text: 'Cliente desde hoje', title };
+  if (days <= 0) return { text: `${who} desde hoje`, title };
   const months = (now.getFullYear() - since.getFullYear()) * 12 + now.getMonth() - since.getMonth()
     - (now.getDate() < since.getDate() ? 1 : 0);
   const years = Math.floor(months / 12);
@@ -82,7 +90,7 @@ export function clientSinceCell({ lead, contracts = [], now = new Date() } = {})
   const span = months < 1
     ? plural(days, 'dia', 'dias')
     : [years && plural(years, 'ano', 'anos'), rest && plural(rest, 'mês', 'meses')].filter(Boolean).join(' e ');
-  return { text: `Cliente desde ${MESES[since.getMonth()]}/${since.getFullYear()} (${span})`, title };
+  return { text: `${who} há ${span}`, title };
 }
 
 // Próximo passo: o primeiro item do "A seguir" (upNextOf já vem em ordem).
