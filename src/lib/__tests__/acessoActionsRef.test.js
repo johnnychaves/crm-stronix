@@ -13,13 +13,13 @@
 // ACTIONS`, o nome errado escaparia da varredura.
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ACTIONS } from '../acesso.js';
 
 const RAIZ = fileURLToPath(new URL('../../..', import.meta.url));
 const PASTAS = ['src', 'api'];
-const ACESSO = join('src', 'lib', 'acesso.js');
+const ACESSO = 'src/lib/acesso.js';
 
 function sourceFiles(dir) {
   const out = [];
@@ -53,8 +53,13 @@ const stripComments = (text) => text
 const nomesCitados = (text) => [...stripComments(text).matchAll(REF_RE)].map((m) => m[1] ?? m[2]);
 const desconhecidos = (text) => nomesCitados(text).filter((nome) => !Object.hasOwn(ACTIONS, nome));
 
+// O caminho vai sempre com barra normal, senão no Windows nada começa com
+// 'src/' e a varredura acusa as pastas de vazias.
 const arquivos = PASTAS.flatMap((pasta) => sourceFiles(join(RAIZ, pasta)))
-  .map((file) => ({ caminho: relative(RAIZ, file), texto: stripComments(readFileSync(file, 'utf8')) }));
+  .map((file) => ({
+    caminho: relative(RAIZ, file).split(sep).join('/'),
+    texto: stripComments(readFileSync(file, 'utf8')),
+  }));
 
 describe('ACTIONS.NOME aponta para uma ação que existe', () => {
   it('em src/ e api/, todo ACTIONS.NOME está na lista de acesso.js', () => {

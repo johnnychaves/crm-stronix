@@ -10,7 +10,7 @@
 // src/lib/dailyGoal.js). Esta varredura reprova quem voltar a regravar.
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const RAIZ = fileURLToPath(new URL('../../..', import.meta.url));
@@ -52,7 +52,8 @@ describe('o dono do lead na interação é o do dia do fato', () => {
     const gravam = ['src', 'api', 'scripts']
       .flatMap((pasta) => arquivosDeCodigo(join(RAIZ, pasta)))
       .filter((file) => GRAVA_DONO.test(readFileSync(file, 'utf8')))
-      .map((file) => relative(RAIZ, file))
+      // Barra normal, para a lista bater também no Windows.
+      .map((file) => relative(RAIZ, file).split(sep).join('/'))
       .sort();
     expect(gravam).toEqual([...CRIAM_A_INTERACAO].sort());
   });
