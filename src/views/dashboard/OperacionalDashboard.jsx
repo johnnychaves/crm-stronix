@@ -42,10 +42,10 @@ export function OperacionalDashboard({ cur, cmp, series, team, compareOn, shownN
     },
     {
       key: 'renew', label: 'Taxa de renovação', goodUp: true,
-      help: 'Renovados ÷ vencendo. No mês em andamento, renovados ÷ contratos que já tiveram desfecho.',
+      help: 'Renovados ÷ contratos que já tiveram desfecho: renovou, não vai renovar ou venceu sem renovar. Quem venceu e ainda está na tolerância fica de fora até decidir.',
       value: cur.renewal.rate != null ? `${cur.renewal.rate}%` : '—',
       delta: d(cur.renewal.rate, cmp?.renewal.rate, 'pp'),
-      sub: `${fmtNum(cur.renewal.counts.renew)} de ${fmtNum(cur.renewal.decided)} ${running ? 'com desfecho' : 'vencendo'}`
+      sub: `${fmtNum(cur.renewal.counts.renew)} de ${fmtNum(cur.renewal.decided)} com desfecho`
     },
     {
       key: 'tasks', label: 'Tarefas concluídas', goodUp: true,
