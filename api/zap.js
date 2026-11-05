@@ -446,7 +446,7 @@ async function handleCreateLead(req, res) {
 
     const read = readCreateLeadBody(req.body);
     if (read.refusal) return responder(res, read.refusal);
-    const { phone, matchKey, email, actorName, channelName } = read.value;
+    const { phone, matchKey, email, actorName, channelName, byAi = false } = read.value;
 
     const limit = await checkRateLimit(`zap-create-lead:${tenantId}`, LEAD_CREATE_LIMIT);
     if (!limit.ok) return responder(res, refusal(429, 'limite', ZAP_LEAD_MESSAGES.rateLimited));
@@ -471,7 +471,7 @@ async function handleCreateLead(req, res) {
     const markRef = academyCollection(tenantId, INTERACTIONS_PATH).doc();
     const newLead = buildZapLead({ lead, phone, actor, owner: ownership.owner, serverTime });
     const mark = buildZapSignupInteraction({
-      leadId: leadRef.id, leadName: newLead.name, actor, owner: ownership.owner, channelName, serverTime
+      leadId: leadRef.id, leadName: newLead.name, actor, owner: ownership.owner, channelName, serverTime, byAi
     });
     // A observação do cadastro, como no Novo lead, na mesma gravação: ou entra
     // tudo, ou nada, e o "Tentar de novo" não deixa lead sem a nota.
@@ -589,7 +589,7 @@ async function handleSchedule(req, res) {
 
     const read = readScheduleBody(req.body);
     if (read.refusal) return responder(res, read.refusal);
-    const { matchKey, email, actorName, channelName, at } = read.value;
+    const { matchKey, email, actorName, channelName, at, byAi = false } = read.value;
 
     const limit = await checkRateLimit(`zap-schedule:${tenantId}`, SCHEDULE_LIMIT);
     if (!limit.ok) return responder(res, refusal(429, 'limite', ZAP_SCHEDULE_MESSAGES.rateLimited));
@@ -643,7 +643,7 @@ async function handleSchedule(req, res) {
       const newRecordRef = openRecordId ? null : aulas.doc();
       const writes = buildScheduleWrites({
         lead, actor, schedule, at, professors: catalogs.professors, channelName, close,
-        openRecordId, newRecordId: newRecordRef ? newRecordRef.id : null, serverTime, increment
+        openRecordId, newRecordId: newRecordRef ? newRecordRef.id : null, serverTime, increment, byAi
       });
       if (writes.closed) tx.update(aulas.doc(writes.closed.id), writes.closed.update);
       if (openRecordId) tx.update(aulas.doc(openRecordId), writes.record.update);
