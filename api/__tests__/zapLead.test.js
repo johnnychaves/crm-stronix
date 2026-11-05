@@ -594,6 +594,21 @@ describe('buildZapSignupInteraction: o marco de início', () => {
     });
     expect('volumeKind' in marco).toBe(false);
   });
+
+  it('cadastro da IA: a marca e o texto dizem que foi a IA, no plantão de quem ficou com o lead', () => {
+    const marco = buildZapSignupInteraction({
+      leadId: 'L1', leadName: 'Mariana Souza', actor: ANA, owner: ANA, channelName: 'Recepção', serverTime: HORA, byAi: true
+    });
+    expect(marco).toMatchObject({
+      consultantName: 'Ana Souza', actorId: 'u-ana', leadConsultantId: 'u-ana', byAi: true,
+      text: 'Cadastrado pela IA do Stronizap no plantão de Ana Souza. Canal Recepção.'
+    });
+  });
+
+  it('sem a marca, o marco sai sem a chave byAi', () => {
+    const marco = buildZapSignupInteraction({ leadId: 'L1', leadName: 'M', actor: ANA, owner: ANA, channelName: null, serverTime: HORA });
+    expect('byAi' in marco).toBe(false);
+  });
 });
 
 describe('buildRegistrationNote: a observação do cadastro, como o Novo lead grava', () => {
