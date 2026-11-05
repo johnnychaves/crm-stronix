@@ -112,7 +112,7 @@ export function ExpiryExitsCard({ horizon, exits }) {
         <BarLine
           key={h.days || h.label}
           label={h.label}
-          tip={`${h.label}: ${plural(people(h), 'contrato', 'contratos')} valendo ${fmtMoney(h.v)} por mês`}
+          tip={`${h.label}: ${plural(people(h), 'contrato', 'contratos')} · ${fmtMoney(h.v)} por mês`}
           width={`${Math.max(Math.round(((Number(h.v) || 0) / hzMax) * 100), 4)}%`}
           fill="bg-amber-500"
           count={plural(people(h), 'contrato', 'contratos')}

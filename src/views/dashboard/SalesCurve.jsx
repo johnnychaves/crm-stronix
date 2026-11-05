@@ -73,11 +73,11 @@ export function SalesCurve({ days, cur, prev, prevAtCut = null, cutDay, curName,
         <path d={area} fill="url(#curva-area)" />
         <path d={line(curVals)} fill="none" stroke="#7FA0FF" strokeWidth="3.2" strokeLinejoin="round" />
         {!closed && <line x1={x(cutDay)} x2={x(cutDay)} y1={14} y2={BOTTOM} stroke="rgba(255,255,255,0.25)" />}
-        {prev && lastPrev != null && <circle cx={x(cutDay)} cy={y(lastPrev)} r="5" fill="#0E1A40" stroke="rgba(255,255,255,0.8)" strokeWidth="2" />}
+        {prev && lastPrev != null && <circle cx={x(prevAt + 1)} cy={y(lastPrev)} r="5" fill="#0E1A40" stroke="rgba(255,255,255,0.8)" strokeWidth="2" />}
         <circle cx={x(cutDay)} cy={y(lastCur)} r="6" fill="#fff" stroke="#5A7FFF" strokeWidth="3" />
         <text x={x(cutDay) + (cutDay > days * 0.8 ? -12 : 12)} y={y(lastCur) - 8} textAnchor={cutDay > days * 0.8 ? 'end' : 'start'} fill="#fff" fontSize="13" fontWeight="700">{fmtMoneyShort(lastCur)}</text>
         {prev && lastPrev != null && (
-          <text x={x(cutDay) + (cutDay > days * 0.8 ? -12 : 12)} y={y(lastPrev) + 18} textAnchor={cutDay > days * 0.8 ? 'end' : 'start'} fill="rgba(255,255,255,0.7)" fontSize="12">
+          <text x={x(prevAt + 1) + (cutDay > days * 0.8 ? -12 : 12)} y={y(lastPrev) + 18} textAnchor={cutDay > days * 0.8 ? 'end' : 'start'} fill="rgba(255,255,255,0.7)" fontSize="12">
             {`${fmtMoneyShort(lastPrev)} em ${prevName}`}
           </text>
         )}

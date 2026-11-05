@@ -291,7 +291,7 @@ describe('ExpiryExitsCard', () => {
     expect(html).toContain('168 contratos');
     ['Em 30 dias', 'Em 60 dias', 'Em 90 dias'].forEach((l) => expect(html).toContain(l));
     expect(html).toContain('R$ 13.100');
-    expect(html).toContain('Em 30 dias: 63 contratos valendo R$ 13.100 por mês');
+    expect(html).toContain('Em 30 dias: 63 contratos · R$ 13.100 por mês');
   });
 
   it('as saídas somam o valor e cada linha mostra a contagem', () => {
@@ -521,5 +521,8 @@ describe('regras de exibição do Gerencial', () => {
     const prev = Array.from({ length: 28 }, (_, i) => (i + 1) * 10);
     const html = render(createElement(SalesCurve, { days: 31, cur, prev, cutDay: 31, curName: 'março', prevName: 'fevereiro' }));
     expect(html).toContain('fevereiro: R$ 280');
+    // O marcador do mês comparado fica no dia 28, o último dele, e não no 31.
+    const cx = [...html.matchAll(/<circle cx="([\d.]+)"/g)].map((m) => Number(m[1]));
+    expect(cx[0]).toBeLessThan(cx[1]);
   });
 });
