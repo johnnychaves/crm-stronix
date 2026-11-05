@@ -23,6 +23,7 @@ import {
   TIMELINE_FILTERS
 } from '../timeline.js';
 import { taskOwnerText } from '../schedulePatch.js';
+import { isAiInteraction } from '../leads.js';
 import { ownerChangeNote } from '../clientRegistration.js';
 import {
   buildContractActivate,
@@ -545,6 +546,10 @@ describe('marco de início do cadastro pelo Stronizap (type zap_signup)', () => 
     expect(zapSignupPillText({ ...MARCO, createdAt: null })).toBe('cadastrado pelo Stronizap por Johnny');
   });
 
+  it('pílula do cadastro da IA: no plantão de quem ficou com o lead', () => {
+    expect(zapSignupPillText({ ...MARCO, byAi: true })).toBe('cadastrado pela IA do Stronizap no plantão de Johnny em 28/09 às 14:32');
+  });
+
   it('linha de baixo: o consultor responsável só quando é outra pessoa, e o canal', () => {
     expect(zapSignupDetailText(MARCO)).toBe('Consultor responsável Ana Souza · canal Recepção');
     expect(zapSignupDetailText({ ...MARCO, ownerName: undefined })).toBe('Canal Recepção');
@@ -606,6 +611,17 @@ describe('agendamento feito pelo Stronizap', () => {
     expect(appointmentOriginText({ at, by: 'Ana Souza' })).toBe('Agendada em 29/09 por Ana Souza');
     expect(appointmentOriginText({ at, via: 'stronizap' })).toBe('Agendada em 29/09, pelo Stronizap');
     expect(appointmentOriginText({ at: new Date('x') })).toBe('');
+  });
+
+  it('zapScheduleTitle: agendamento da IA diz que foi a IA', () => {
+    expect(zapScheduleTitle({ via: 'stronizap', byAi: true, zapChannelName: 'Recepção' })).toBe('Agendado pela IA do Stronizap, canal Recepção');
+    expect(zapScheduleTitle({ via: 'stronizap', byAi: true })).toBe('Agendado pela IA do Stronizap');
+  });
+
+  it('appointmentOriginText: o rodapé do desfecho diz quando foi a IA', () => {
+    const at = new Date(2026, 8, 29, 15, 42);
+    expect(appointmentOriginText({ at, by: 'Ana Souza', via: 'stronizap', byAi: true }))
+      .toBe('Agendada em 29/09 por Ana Souza, pela IA do Stronizap');
   });
 });
 
@@ -733,5 +749,14 @@ describe('troca de responsável na linha do tempo', () => {
 
   it('segue nos Marcos, como hoje', () => {
     expect(classifyInteraction({ type: 'status_change', text: troca })).toBe('status');
+  });
+});
+
+describe('isAiInteraction', () => {
+  it('só byAi true conta', () => {
+    expect(isAiInteraction({ byAi: true })).toBe(true);
+    expect(isAiInteraction({ byAi: 'true' })).toBe(false);
+    expect(isAiInteraction({})).toBe(false);
+    expect(isAiInteraction(null)).toBe(false);
   });
 });
