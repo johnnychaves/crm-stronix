@@ -1038,7 +1038,10 @@ const handleKanbanMouseMove = (e) => {
   // se a etapa mudou, recarrega as duas colunas em vez de agir.
   const activeLeadIds = useMemo(() => new Set((leads || []).map((l) => l.id)), [leads]);
   const currentLeadOrWarn = useCallback(async (cardLead) => {
-    if (!cardLead || activeLeadIds.has(cardLead.id) || cardLead._renewalCard || cardLead._expiredCard || cardLead._upgradeCard) return cardLead;
+    if (!cardLead || activeLeadIds.has(cardLead.id)) return cardLead;
+    // Card dos funis de clientes: o status dele é projetado pela tela (nome da etapa ou
+    // Perda), então o que se compara é o contrato atual, a recusa e o upgrade.
+    const projetado = cardLead._renewalCard || cardLead._expiredCard || cardLead._upgradeCard;
     let snap;
     try {
       snap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, cardLead.id));
@@ -1048,6 +1051,20 @@ const handleKanbanMouseMove = (e) => {
       return null;
     }
     const atual = snap.exists() ? normalizeLeadDoc(snap) : null;
+    if (projetado) {
+      const igual = atual
+        && (atual.currentContractId || null) === (cardLead.currentContractId || null)
+        && !!atual.renewalDeclined === !!cardLead.renewalDeclined
+        && (atual.upgradeStageId || null) === (cardLead.upgradeStageId || null);
+      // Segue com o card projetado: as flags dele dizem aos handlers onde gravar.
+      if (igual) return cardLead;
+      toast.warning('Esse cliente mudou em outra tela. O quadro foi atualizado.');
+      if (cardLead._renewalCard) reloadsRef.current.renewalReload();
+      else if (cardLead._expiredCard) reloadsRef.current.expiredReload();
+      else reloadsRef.current.upgradeReload();
+      reloadsRef.current.wonReload();
+      return null;
+    }
     if (atual && atual.status === cardLead.status && atual.lifecycleBucket === cardLead.lifecycleBucket) return atual;
     toast.warning('Esse lead mudou em outra tela. O quadro foi atualizado.');
     reloadsRef.current.refreshLost();
@@ -1150,11 +1167,14 @@ const handleKanbanMouseMove = (e) => {
       });
   }, [appUser, db, toast, statuses, expiredFunnel, expiredPatchLead]);
 
-  const declineExpired = useCallback((lead) => {
+  const declineExpired = useCallback(async (cardLead) => {
     if (!canEditLead(appUser)) {
       toast.warning('Você não tem permissão para alterar este lead.');
       return;
     }
+    // A lista do Vencidos é lida uma vez: o cliente pode ter voltado em outra tela.
+    const lead = await currentLeadOrWarn(cardLead);
+    if (!lead) return;
     // Quando e por quê, como na Meta Diária. Nem o arrasto nem o menu Mover
     // perguntam o motivo, então vai 'Outro'.
     const patch = { ...renewalDeclineStamp(), reactivationStageId: null };
@@ -1164,7 +1184,7 @@ const handleKanbanMouseMove = (e) => {
         console.error('Erro ao marcar recusa no funil de vencidos', err);
         toast.error('Não foi possível mover o card.');
       });
-  }, [appUser, db, toast, expiredPatchLead]);
+  }, [appUser, db, toast, expiredPatchLead, currentLeadOrWarn]);
 
   // ── Desfechos do card projetado do funil UPGRADE ────────────────────────
   // Arrasto e menu "Mover" passam por aqui. A etapa mora em upgradeStageId; o
@@ -1215,11 +1235,14 @@ const handleKanbanMouseMove = (e) => {
   // "Não vai renovar": a MESMA flag que a Meta Diária usa. A pessoa NÃO vira
   // lead perdido — segue cliente, com ficha e contratos, e continua na aba
   // Clientes. Perda de venda != perda de funil.
-  const declineRenewal = useCallback((lead) => {
+  const declineRenewal = useCallback(async (cardLead) => {
     if (!canEditLead(appUser)) {
       toast.warning('Você não tem permissão para alterar este lead.');
       return;
     }
+    // A lista de Renovações é lida uma vez: o cliente pode ter renovado em outra tela.
+    const lead = await currentLeadOrWarn(cardLead);
+    if (!lead) return;
     // Marca o marco atual como tratado junto: sem isso o cliente continuaria
     // sendo cobrado hoje na Meta, no mesmo marco que ele acabou de recusar.
     // O MESMO objeto vai para o banco e para a cópia local — só assim o card já
@@ -1233,7 +1256,7 @@ const handleKanbanMouseMove = (e) => {
       console.error('Erro ao marcar recusa de renovação', err);
       toast.error('Não foi possível marcar a recusa.');
     });
-  }, [appUser, db, toast, renewalPatchLead]);
+  }, [appUser, db, toast, renewalPatchLead, currentLeadOrWarn]);
 
   // Desfazer a recusa (sair da Perda de volta para um marco). NÃO tira o marco
   // de renewalHandledCheckpoints de propósito: o consultor conversou com o
