@@ -23,8 +23,9 @@ function LossReasonModal({ lossReasons, onClose, onConfirm }) {
   // gravação o Esc não fecha, como o Cancelar não deveria largar a perda pela metade.
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
+  // Lido no render, antes de o autoFocus da lista de motivos pegar o foco.
+  const [opener] = useState(() => document.activeElement);
   useEffect(() => {
-    const opener = document.activeElement;
     const onKey = (e) => {
       if (e.key === 'Escape' && !busyRef.current) { e.preventDefault(); closeRef.current?.(); }
     };
@@ -34,7 +35,7 @@ function LossReasonModal({ lossReasons, onClose, onConfirm }) {
       const solto = !document.activeElement || document.activeElement === document.body;
       if (solto && opener && opener !== document.body && opener.isConnected) opener.focus();
     };
-  }, []);
+  }, [opener]);
 
   return (
     <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[200] p-4 animate-fade-in font-sans">

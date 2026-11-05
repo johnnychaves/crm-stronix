@@ -29,6 +29,17 @@ describe('LossReasonModal', () => {
     expect(confirmar().disabled).toBe(false);
   });
 
+  it('ao fechar, o foco volta para quem abriu a janela', () => {
+    const botao = document.createElement('button');
+    document.body.appendChild(botao);
+    botao.focus();
+    render({ onClose: () => {}, onConfirm: () => {} });
+    expect(document.activeElement.tagName).toBe('SELECT');
+    act(() => root.render(null));
+    expect(document.activeElement).toBe(botao);
+    botao.remove();
+  });
+
   it('Esc fecha, mas não durante a gravação', async () => {
     let solta;
     const onClose = vi.fn();
