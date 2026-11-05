@@ -1360,21 +1360,21 @@ const handleKanbanMouseMove = (e) => {
     // coluna Venda do mês não estão no prop de leads ativos.
     const lead = draggableById.get(lossModalLeadId);
     if (!lead) {
-      setLossModalLeadId(null);
+      setLossModalLeadId(null); setLossReturn(null);
       toast.warning('Esse lead mudou de lugar enquanto a janela estava aberta. Confira o quadro.');
       return;
     }
     const loss = planLoss(lead);
-    if (!loss.ok) { setLossModalLeadId(null); toast.warning(stageMoveBlockMessage(lead, loss.reason)); return; }
+    if (!loss.ok) { setLossModalLeadId(null); setLossReturn(null); toast.warning(stageMoveBlockMessage(lead, loss.reason)); return; }
     // Cliente no funil Upgrade: a Perda é "não quis o upgrade". Só pelo card
     // projetado da aba Upgrade — o doc cru da coluna Venda é barrado antes.
     if (lead._upgradeCard) {
-      setLossModalLeadId(null);
+      setLossModalLeadId(null); setLossReturn(null);
       await declineUpgrade(lead, reason);
       return;
     }
     if (loss.kind === 'upgrade') {
-      setLossModalLeadId(null);
+      setLossModalLeadId(null); setLossReturn(null);
       toast.warning(stageMoveBlockMessage(lead, STAGE_MOVE_BLOCK.CLIENTE_NAO_VIRA_PERDA));
       return;
     }
@@ -1407,8 +1407,7 @@ const handleKanbanMouseMove = (e) => {
       // Perda pelo teclado: quando o card sai da etapa, o foco vai ao título da coluna
       // Perda (a coluna é paginada, então o card nem sempre está na tela).
       if (lossReturn?.id === lead.id) followFocusRef.current = { id: lead.id, ate: Date.now() + 5000, coluna: 'Perda' };
-      setLossModalLeadId(null);
-      setLossReturn(null);
+      setLossModalLeadId(null); setLossReturn(null);
       // A coluna Perda não é ao vivo: refaz fetch+contagem, pelo ref (a consulta de agora, se o
       // quadro mudou de mês ou de funil enquanto a gravação esperava a internet).
       reloadsRef.current.refreshLost();
