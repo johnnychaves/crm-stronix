@@ -298,7 +298,7 @@ const OUTCOMES = [
   { key: 'renew', label: 'renovaram', one: 'renovou', cls: 'bg-emerald-500' },
   { key: 'wont', label: 'não vão renovar', one: 'não vai renovar', cls: 'bg-amber-500' },
   { key: 'lapsed', label: 'venceram sem renovar', one: 'venceu sem renovar', cls: 'bg-rose-500' },
-  { key: 'pending', label: 'ainda vão vencer', one: 'ainda vai vencer', cls: 'bg-slate-200 dark:bg-white/10' }
+  { key: 'pending', label: 'ainda podem renovar', one: 'ainda pode renovar', cls: 'bg-slate-200 dark:bg-white/10' }
 ];
 const WHEN = [
   { key: 'antes', label: 'Antes de vencer', cls: 'bg-brand-700 dark:bg-brand-500' },
@@ -308,7 +308,9 @@ const WHEN = [
 
 export function RenewalBand({ renewal, running, monthName, delta, personFirst }) {
   const counts = renewal?.counts || {};
-  const kinds = OUTCOMES.filter((o) => running || o.key !== 'pending').map((o) => ({ ...o, n: counts[o.key] || 0 }));
+  // O mês fechado também tem "a decidir": quem venceu no fim dele e ainda está
+  // na tolerância. Sem ele, os quadrados não somavam os contratos do mês.
+  const kinds = OUTCOMES.map((o) => ({ ...o, n: counts[o.key] || 0 }));
   const total = kinds.reduce((a, o) => a + o.n, 0);
   const when = renewal?.when || {};
   const renewed = counts.renew || 0;

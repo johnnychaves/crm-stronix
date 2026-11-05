@@ -92,7 +92,9 @@ export function renewalCohort(contracts, { start, end, asOf, graceDays, leadsByI
     } else {
       const decline = declineOf(c, index, leadsById, asOf);
       if (decline) { outcome = 'wont'; reason = decline.reason; }
-      else outcome = due <= asOf ? 'lapsed' : 'pending';
+      // Dentro da tolerância ainda pode renovar (successorOf aceita até lá):
+      // fica a decidir, como no churn, que só tira a pessoa depois dela.
+      else outcome = due.getTime() + graceMs <= asOf.getTime() ? 'lapsed' : 'pending';
     }
     rows.push({ contract: c, owner: ownerOf(c, leadsById), outcome, when, reason });
   });

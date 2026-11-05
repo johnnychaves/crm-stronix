@@ -47,10 +47,10 @@ export function CrmHero({ cohort, monthName, delta, cmpName }) {
       : { text: `${delta.up ? '▲' : '▼'} ${String(delta.text).replace(/^[+−-]\s?/, '')} sobre ${cmpName}`, tone: delta.up ? 'good' : 'bad' });
   const outTotal = Math.max(1, (cohort?.enrolled || 0) + (cohort?.open || 0) + (cohort?.lost || 0));
   const outcome = [
-    { name: 'matricularam', count: cohort?.enrolled || 0, fill: 'bg-[#34D399]' },
-    { name: 'em jogo', count: cohort?.open || 0, fill: 'bg-[#7FA0FF]' },
-    { name: 'perdidos', count: cohort?.lost || 0, fill: 'bg-[#FB7185]' }
-  ];
+    { name: 'matricularam', one: 'matriculou', count: cohort?.enrolled || 0, fill: 'bg-[#34D399]' },
+    { name: 'em jogo', one: 'em jogo', count: cohort?.open || 0, fill: 'bg-[#7FA0FF]' },
+    { name: 'perdidos', one: 'perdido', count: cohort?.lost || 0, fill: 'bg-[#FB7185]' }
+  ].map((o) => ({ ...o, word: o.count === 1 ? o.one : o.name }));
   const steps = has ? [
     { name: 'Cadastraram', count: leads, width: 100, hint: `${pct(cohort.sched, leads)}% dos cadastros agendaram` },
     { name: 'Agendaram', count: cohort.sched, width: pct(cohort.sched, leads), hint: `${pct(cohort.came, cohort.sched) ?? 0}% dos agendados compareceram` },
@@ -96,7 +96,7 @@ export function CrmHero({ cohort, monthName, delta, cmpName }) {
             {outcome.filter((o) => o.count > 0).map((o) => (
               <ChartMark
                 key={o.name}
-                tip={`${fmtNum(o.count)} ${o.name} de ${fmtNum(outTotal)} leads da safra`}
+                tip={`${fmtNum(o.count)} ${o.word} de ${fmtNum(outTotal)} leads da safra`}
                 className={cn('block h-full', o.fill)}
                 style={{ width: `${Math.round((o.count / outTotal) * 100)}%` }}
               />
@@ -106,7 +106,7 @@ export function CrmHero({ cohort, monthName, delta, cmpName }) {
             {outcome.map((o) => (
               <span key={o.name} className="inline-flex items-center gap-1.5">
                 <i className={cn('block size-2 rounded-full', o.fill)} />
-                {`${fmtNum(o.count)} ${o.name}`}
+                {`${fmtNum(o.count)} ${o.word}`}
               </span>
             ))}
           </div>

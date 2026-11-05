@@ -138,5 +138,5 @@ export function summaryItems({ cur, cmp, series, compareOn, shownName }) {
 export function safraNote({ enroll, fromCohort, conv, monthName }) {
   if (enroll == null || fromCohort == null || conv == null || !(enroll > fromCohort)) return null;
   const older = enroll - fromCohort;
-  return `${fmtNum(enroll)} matrículas no mês e ${conv}% de conversão não se contradizem. A conversão olha só a safra de ${monthName}, e ${fmtNum(older)} das ${fmtNum(enroll)} matrículas vieram de leads de meses anteriores.`;
+  return `${fmtNum(enroll)} matrículas no mês e ${conv}% de conversão não se contradizem. A conversão olha só a safra de ${monthName}, e ${fmtNum(older)} das ${fmtNum(enroll)} matrículas ${older === 1 ? 'veio' : 'vieram'} de leads de meses anteriores.`;
 }

@@ -324,7 +324,8 @@ describe('responsável fora da equipe (OTHERS_ID)', () => {
     expect(others.prosp).toBeNull();
     expect(others.entered).toBe(2);
     expect(others.upgrades).toBe(1);
-    expect(others.renewal).toMatchObject({ cohort: 1, counts: { lapsed: 1 } });
+    // Venceu em 08/09 e ainda está na tolerância de 15 dias no dia 11: a decidir.
+    expect(others.renewal).toMatchObject({ cohort: 1, counts: { pending: 1 } });
     expect(others.tasks).toMatchObject({ vencidos: 1, total: 1 });
     expect(others.late.byUser.get(OTHERS_ID)).toBe(2);
   });

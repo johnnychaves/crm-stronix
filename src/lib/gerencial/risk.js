@@ -62,8 +62,11 @@ export function exitsInWindow(contracts, { start, end }) {
     // O que nunca valeu não esteve na carteira, então não sai dela: nem o
     // cancelamento nem o trancamento dele contam.
     if (neverTookEffect(c)) return;
-    if (c.cancelledAt && !c.cancelFromImport && !c.cancelUndated && inWindow(c.cancelledAt, start, end)) cancels.push(c);
-    if ((c.pauses || []).some((p) => !p.fromImport && inWindow(p.from, start, end))) locks.push(c);
+    const cancelled = c.cancelledAt && !c.cancelFromImport && !c.cancelUndated && inWindow(c.cancelledAt, start, end);
+    if (cancelled) cancels.push(c);
+    // Trancado e cancelado no mesmo mês saiu pelo cancelamento: contar nos
+    // dois somava o contrato duas vezes no total do cartão.
+    else if ((c.pauses || []).some((p) => !p.fromImport && inWindow(p.from, start, end))) locks.push(c);
   });
   const money = (list) => list.filter(hasValue).reduce((s, c) => s + monthlyTicket(c), 0);
   const items = [

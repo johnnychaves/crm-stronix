@@ -332,8 +332,10 @@ describe('renovação que nunca valeu', () => {
 
   it('coorte: o anterior fica pendente e depois vencido, nunca "renovou antes"', () => {
     expect(cohortOf(restaurado, D(2026, 10, 5))).toEqual([['k1', 'pending', null]]);
-    expect(cohortOf(restaurado, D(2026, 10, 20))).toEqual([['k1', 'lapsed', null]]);
-    expect(cohortOf(emendadaDesfeita, D(2026, 10, 20))).toEqual([['k1', 'lapsed', null]]);
+    // 20/10 ainda está na tolerância de 15 dias do vencimento em 11/10.
+    expect(cohortOf(restaurado, D(2026, 10, 20))).toEqual([['k1', 'pending', null]]);
+    expect(cohortOf(restaurado, D(2026, 10, 30))).toEqual([['k1', 'lapsed', null]]);
+    expect(cohortOf(emendadaDesfeita, D(2026, 10, 30))).toEqual([['k1', 'lapsed', null]]);
   });
 
   it('marcos: a renovação desfeita não conta como feita', () => {

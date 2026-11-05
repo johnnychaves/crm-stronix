@@ -427,6 +427,14 @@ describe('herói e faixa de números', () => {
     expect(html).not.toContain('250%');
   });
 
+  it('herói: o desfecho de um lead só fica no singular', () => {
+    const cohort = { ...COHORT, enrolled: 1, lost: 1, open: 54, cameEnrolled: 1 };
+    const html = render(createElement(CrmHero, { cohort, monthName: 'setembro', delta: null, cmpName: 'agosto' }));
+    expect(html).toContain('1 matriculou');
+    expect(html).toContain('1 perdido');
+    expect(html).not.toContain('1 perdidos');
+  });
+
   it('herói sem comparativo, sem base ou sem lead', () => {
     expect(render(createElement(CrmHero, { cohort: COHORT, monthName: 'setembro', delta: null, cmpName: 'agosto' }))).not.toContain('sobre agosto');
     expect(render(createElement(CrmHero, { cohort: COHORT, monthName: 'setembro', delta: { none: true, text: 'sem base' }, cmpName: 'agosto' }))).toContain('sem base');

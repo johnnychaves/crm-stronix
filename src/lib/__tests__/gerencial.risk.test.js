@@ -69,6 +69,13 @@ describe('exitsInWindow', () => {
   const start = D(2026, 9, 1);
   const end = D(2026, 10, 1);
 
+  it('trancado e cancelado no mesmo mês conta só como cancelamento', () => {
+    const both = c({ cancelledAt: D(2026, 9, 20), pauses: [{ from: D(2026, 9, 5), to: null }] });
+    const r = exitsInWindow([both], { start, end });
+    expect(r.items.map((i) => i.count)).toEqual([1, 0]);
+    expect(r.total).toBe(100);
+  });
+
   it('cancelamento do mês, com o valor mensal', () => {
     const r = exitsInWindow([c({ cancelledAt: D(2026, 9, 5) })], { start, end });
     expect(r.items[0]).toMatchObject({ kind: 'cancelamento', count: 1, v: 100 });
