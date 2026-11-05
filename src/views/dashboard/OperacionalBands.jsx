@@ -36,7 +36,7 @@ function DeltaChip({ delta, goodUp = true }) {
 }
 
 // ---------- Tarefas concluídas: colunas lado a lado, mês contra o comparado ----------
-export function TasksBand({ tasks, compareTasks, cmpName, running = true }) {
+export function TasksBand({ tasks, compareTasks, cmpName, running = true, shownName = null }) {
   const showCmp = Boolean(cmpName && compareTasks);
   const rows = TASK_ROWS.map((r) => ({ ...r, v: tasks ? tasks[r.id] : null, c: showCmp ? compareTasks[r.id] : null }));
   const total = tasks ? tasks.total : null;
@@ -87,7 +87,7 @@ export function TasksBand({ tasks, compareTasks, cmpName, running = true }) {
       </div>
       {showCmp && (
         <div className={KEY}>
-          <span className="inline-flex items-center gap-1.5"><i className={cn(SWATCH, 'bg-brand-600')} />este mês</span>
+          <span className="inline-flex items-center gap-1.5"><i className={cn(SWATCH, 'bg-brand-600')} />{running || !shownName ? 'este mês' : shownName}</span>
           <span className="inline-flex items-center gap-1.5"><i className={cn(SWATCH, 'bg-slate-300 dark:bg-slate-600')} />{running ? `${cmpName}, mesmos dias` : cmpName}</span>
         </div>
       )}

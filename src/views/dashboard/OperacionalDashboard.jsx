@@ -89,7 +89,7 @@ export function OperacionalDashboard({ cur, cmp, series, team, compareOn, shownN
       <CrmTape items={tape} />
 
       <div className={TWO}>
-        <TasksBand tasks={cur.tasks} compareTasks={cmp?.tasks} cmpName={compareOn ? cmpName : null} running={running} />
+        <TasksBand tasks={cur.tasks} compareTasks={cmp?.tasks} cmpName={compareOn ? cmpName : null} running={running} shownName={shownName} />
         <MilestonesBand items={milestoneItems} />
       </div>
 

@@ -14,8 +14,10 @@ describe('TasksBand, rótulo do comparado', () => {
   });
 
   it('mês fechado compara o mês inteiro, sem dizer "mesmos dias"', () => {
-    const html = render({ tasks: TASKS, compareTasks: TASKS, cmpName: 'fevereiro', running: false });
+    const html = render({ tasks: TASKS, compareTasks: TASKS, cmpName: 'fevereiro', running: false, shownName: 'março' });
     expect(html).toContain('contra fevereiro');
     expect(html).not.toContain('mesmos dias');
+    expect(html).toContain('março');
+    expect(html).not.toContain('este mês');
   });
 });
