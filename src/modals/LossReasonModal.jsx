@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ThumbsDown } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext.jsx';
 
@@ -18,6 +18,23 @@ function LossReasonModal({ lossReasons, onClose, onConfirm }) {
     setBusy(true);
     try { await onConfirm(reason); } finally { busyRef.current = false; setBusy(false); }
   };
+
+  // A janela não é um Dialog: o Esc e a volta do foco são feitos aqui. Durante a
+  // gravação o Esc não fecha, como o Cancelar não deveria largar a perda pela metade.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    const opener = document.activeElement;
+    const onKey = (e) => {
+      if (e.key === 'Escape' && !busyRef.current) { e.preventDefault(); closeRef.current?.(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      const solto = !document.activeElement || document.activeElement === document.body;
+      if (solto && opener && opener !== document.body && opener.isConnected) opener.focus();
+    };
+  }, []);
 
   return (
     <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[200] p-4 animate-fade-in font-sans">

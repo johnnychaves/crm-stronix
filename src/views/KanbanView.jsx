@@ -665,6 +665,8 @@ const [isPanning, setIsPanning] = useState(false);
   } = usePagedLeads({
     db, path: LEADS_PATH, spec: expiredSpec, specKey: `vencidos:${isExpiredView ? '1' : '0'}:${monthKey || ''}`,
     enabled: !!db && isExpiredView,
+    // Datas viram Date, como no Upgrade: senão o próximo contato marcado não aparece no card.
+    mapDoc: normalizeLeadDoc,
   });
   // O status EXIBIDO vira o nome da etapa derivada (o real continua 'Venda').
   // O respFilter continua valendo; onlyOverdue não faz sentido aqui (cliente
@@ -825,9 +827,9 @@ const [isPanning, setIsPanning] = useState(false);
   // nos painéis: a data de cadastro dele é a da planilha.
   const wonLeads = useMemo(() => {
     if (overdueOn) return [];
-    const base = (wonDocs || []).filter(l => (!lostFunnelId || l.funnelId === lostFunnelId) && !(boardSafra && isImportCreatedLead(l)));
+    const base = (wonDocs || []).filter(l => (!lostFunnelId || isItemInFunnel(l, lostFunnelId, defaultFunnelId)) && !(boardSafra && isImportCreatedLead(l)));
     return respFilter.length === 0 ? base : base.filter(l => respFilter.includes(l.consultantId));
-  }, [wonDocs, respFilter, overdueOn, lostFunnelId, boardSafra]);
+  }, [wonDocs, respFilter, overdueOn, lostFunnelId, defaultFunnelId, boardSafra]);
 
   // Lookup dos leads ARRASTÁVEIS por id: ativos (prop) + as páginas das colunas
   // terminais (Perda e Venda). Pós-flip o prop é só 'ativo', então sem incluir
@@ -1739,9 +1741,11 @@ const handleKanbanMouseMove = (e) => {
               }
 
               totalCount={perdaHeaderCount}
-              hasMore={!!lostFunnelId && !isClientFunnelView && !overdueOn && lostHasMore}
-              onLoadMore={isClientFunnelView ? null : lostLoadMore}
-              loadingMore={lostLoading}
+              // No Vencidos a Perda são os recusados das páginas já carregadas: carregar mais
+              // páginas do funil também pode trazer recusados.
+              hasMore={isExpiredView ? expiredHasMore : (!!lostFunnelId && !isClientFunnelView && !overdueOn && lostHasMore)}
+              onLoadMore={isExpiredView ? expiredLoadMore : isClientFunnelView ? null : lostLoadMore}
+              loadingMore={isExpiredView ? expiredLoading : lostLoading}
               isHovered={draggedOverColumn === 'Perda'}
               draggingLeadId={draggingLeadId}
               interactionIndex={interactionIndex}
