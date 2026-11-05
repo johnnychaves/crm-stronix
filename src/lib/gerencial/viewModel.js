@@ -19,7 +19,9 @@ export function soldDelta(cur, cmp, { comparing }) {
   const baseline = `${fmtMoney(cmp.sold.sold)} em ${cmp.sold.count} contratos ${cur.running ? `nos mesmos dias de ${cmpName}` : `em ${cmpName}`}`;
   if (!(cmp.sold.sold > 0)) return { none: true, text: 'sem base', baseline, name: cmpName };
   const pct = Math.round(((cur.sold.sold - cmp.sold.sold) / cmp.sold.sold) * 100);
-  return { up: pct >= 0, text: `${Math.abs(pct)}%`, baseline, name: cmpName };
+  // Igual vira pílula neutra, como o "igual" das outras linhas: "▲ 0%" verde dizia alta.
+  if (pct === 0) return { none: true, text: `igual a ${cmpName}`, baseline, name: cmpName };
+  return { up: pct > 0, text: `${Math.abs(pct)}%`, baseline, name: cmpName };
 }
 
 // Variação de uma linha contra a mesma linha do mês comparado. `lowerBetter`
@@ -65,8 +67,8 @@ export function dashboardProps({ cur, cmp, cmpFull = null, comparing, roleOf = (
 
   const prevMix = on ? byKey(cmp.sold.mix, 'type', (r) => r.value) : null;
   const prevSellers = on ? byKey(cmp.sellers, 'id', (r) => r.value) : null;
-  const prevPlans = on ? byKey(cmp.plans, 'name', (r) => r.value) : null;
-  const prevSources = on ? byKey(cmp.sources, 'name', (r) => r.value) : null;
+  const prevPlans = on ? byKey(cmp.plans, 'id', (r) => r.value) : null;
+  const prevSources = on ? byKey(cmp.sources, 'id', (r) => r.value) : null;
   const prevExits = on ? byKey(cmp.exits.items, 'kind', (r) => r.count) : null;
 
   return {
@@ -125,8 +127,8 @@ export function dashboardProps({ cur, cmp, cmpFull = null, comparing, roleOf = (
     sellers: {
       rows: cur.sellers.map((r) => ({ ...r, role: roleOf(r.id), delta: moneyDelta(r.value, prevSellers?.get(r.id)) }))
     },
-    plans: breakdown(cur.plans, cur.sold.sold, on ? (r) => moneyDelta(r.value, prevPlans.get(r.name)) : null),
-    sources: breakdown(cur.sources, cur.sold.sold, on ? (r) => moneyDelta(r.value, prevSources.get(r.name)) : null),
+    plans: breakdown(cur.plans, cur.sold.sold, on ? (r) => moneyDelta(r.value, prevPlans.get(r.id)) : null),
+    sources: breakdown(cur.sources, cur.sold.sold, on ? (r) => moneyDelta(r.value, prevSources.get(r.id)) : null),
     flags: cur.flags,
     texts: { emptyMonth: textOf(emptyMonth()) }
   };

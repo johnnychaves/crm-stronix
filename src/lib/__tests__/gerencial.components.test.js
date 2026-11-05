@@ -296,7 +296,7 @@ describe('ExpiryExitsCard', () => {
 
   it('as saídas somam o valor e cada linha mostra a contagem', () => {
     const html = card();
-    expect(html).toContain('Saiu neste mês');
+    expect(html).toContain('Cancelado ou trancado no mês');
     expect(html).toContain('R$ 2.300/mês'); // 1.480 + 820
     expect(html).toContain('Cancelamentos');
     expect(html).toContain('Trancamentos');
