@@ -415,3 +415,19 @@ describe('histórico sem assinatura nenhuma (historyUnavailable)', () => {
     expect(metricsOf(ctx, { monthKey: '2026-09', userId: 'ana' }).metaHidden).toBe(true);
   });
 });
+
+describe('corte pró-rata que cai no fim do mês comparado', () => {
+  it('a renovação feita depois do corte não conta, mesmo com o corte no fim do mês', () => {
+    // Agosto comparado no dia 31 de outubro: o corte é o fim de agosto.
+    const now = new Date(2026, 9, 31, 12);
+    const contracts = [
+      C('velho', { leadId: 'P', endsAt: D(8, 30) }),
+      C('renovou', { leadId: 'P', renewedFromId: 'velho', createdAt: D(9, 20), startsAt: D(9, 20), endsAt: D(12, 31) })
+    ];
+    const ctx = { now, users: USERS, contracts, config: { metaWeekdays: [1, 2, 3, 4, 5], renewalCheckpoints: [30], renewalGraceDays: 15 }, leadsById: new Map(), liveLeads: [], months: {} };
+    const cut = metricsOf(ctx, { monthKey: '2026-08', cutEnd: new Date(2026, 8, 1) });
+    const whole = metricsOf(ctx, { monthKey: '2026-08' });
+    expect(cut.renewal.counts.renew).toBe(0);
+    expect(whole.renewal.counts.renew).toBe(1);
+  });
+});

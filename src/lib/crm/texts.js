@@ -108,7 +108,7 @@ export function summaryItems({ cur, cmp, series, compareOn, shownName }) {
     {
       key: 'appts', label: 'Agendamentos', goodUp: true, tone: 'accent', showNone: true, flag, help: HELP.appts,
       value: num(a?.total),
-      sub: a ? `${fmtNum(a.came)} vieram · ${fmtNum(a.missed)} faltaram · ${fmtNum(a.pending)} sem desfecho` : waiting,
+      sub: a ? `${fmtNum(a.came)} ${a.came === 1 ? 'veio' : 'vieram'} · ${fmtNum(a.missed)} ${a.missed === 1 ? 'faltou' : 'faltaram'} · ${fmtNum(a.pending)} sem desfecho` : waiting,
       delta: da(a?.total, cmp?.appts?.total, 'pct'), emptySeries: apptsEmpty, ...sparkOf(series.appts, fmtNum)
     },
     {
@@ -138,5 +138,8 @@ export function summaryItems({ cur, cmp, series, compareOn, shownName }) {
 export function safraNote({ enroll, fromCohort, conv, monthName }) {
   if (enroll == null || fromCohort == null || conv == null || !(enroll > fromCohort)) return null;
   const older = enroll - fromCohort;
-  return `${fmtNum(enroll)} matrículas no mês e ${conv}% de conversão não se contradizem. A conversão olha só a safra de ${monthName}, e ${fmtNum(older)} das ${fmtNum(enroll)} matrículas ${older === 1 ? 'veio' : 'vieram'} de leads de meses anteriores.`;
+  const from = enroll === 1
+    ? 'a única matrícula veio de um lead de meses anteriores'
+    : `${fmtNum(older)} das ${fmtNum(enroll)} matrículas ${older === 1 ? 'veio' : 'vieram'} de leads de meses anteriores`;
+  return `${fmtNum(enroll)} ${enroll === 1 ? 'matrícula' : 'matrículas'} no mês e ${conv}% de conversão não se contradizem. A conversão olha só a safra de ${monthName}, e ${from}.`;
 }

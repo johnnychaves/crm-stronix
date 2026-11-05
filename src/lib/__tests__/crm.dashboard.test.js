@@ -175,6 +175,8 @@ describe('frase da safra', () => {
 
   it('só aparece quando há diferença a explicar', () => {
     expect(safraNote({ enroll: 10, fromCohort: 10, conv: 18, monthName: 'setembro' })).toBeNull();
+    expect(safraNote({ enroll: 1, fromCohort: 0, conv: 0, monthName: 'setembro' }))
+      .toBe('1 matrícula no mês e 0% de conversão não se contradizem. A conversão olha só a safra de setembro, e a única matrícula veio de um lead de meses anteriores.');
     expect(safraNote({ enroll: 0, fromCohort: 0, conv: 0, monthName: 'setembro' })).toBeNull();
     expect(safraNote({ enroll: null, fromCohort: null, conv: null, monthName: 'setembro' })).toBeNull();
     expect(safraNote({ enroll: 5, fromCohort: 2, conv: null, monthName: 'setembro' })).toBeNull();

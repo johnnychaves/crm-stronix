@@ -39,12 +39,14 @@ export function milestoneMonthsAfter(monthKey, { checkpoints, asOf }) {
 
 // Janela do mês: início, fim do mês, fim efetivo (agora no mês em andamento,
 // ou o corte pró-rata) e o instante do desfecho de renovação. No corte
-// pró-rata vale o que existia no corte; nos demais casos, o que existe hoje
-// (renovação atrasada ainda conta).
+// pró-rata vale o que existia no corte, mesmo quando ele cai no fim do mês
+// comparado (dia 31 contra mês de 30 dias), como no CRM; nos demais casos, o
+// que existe hoje (renovação atrasada ainda conta). A tela só passa o corte
+// com o mês exibido em andamento.
 function windowOf(ctx, monthKey, cutEnd) {
   const { start, end: monthEnd } = monthRange(monthKey);
   const end = cutEnd || effectiveEnd(monthKey, ctx.now);
-  return { start, monthEnd, end, asOf: end < monthEnd ? end : ctx.now };
+  return { start, monthEnd, end, asOf: cutEnd || (end < monthEnd ? end : ctx.now) };
 }
 
 const sameItems = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
@@ -70,7 +72,9 @@ function cacheOf(ctx) {
 // Ponte, trancados, cancelamentos, vendas por vendedor e linhas da
 // coorte: iguais para a equipe e para qualquer pessoa filtrada.
 function academyOf(ctx, cache, { monthKey, start, monthEnd, end, asOf }) {
-  const key = `${monthKey}|${end.getTime()}`;
+  // O asOf entra na chave: com o corte no fim do mês, o mês inteiro e o
+  // cortado têm o mesmo fim e instantes de desfecho diferentes.
+  const key = `${monthKey}|${end.getTime()}|${asOf.getTime()}`;
   const hit = cache.academy.get(key);
   if (hit) return hit;
   const contracts = ctx.contracts || [];
