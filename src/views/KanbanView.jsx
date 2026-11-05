@@ -1847,10 +1847,10 @@ const handleKanbanMouseMove = (e) => {
             const peloTeclado = document.activeElement?.matches?.(':focus-visible');
             followFocusRef.current = statusName === 'Venda' || statusName === 'Perda' || !peloTeclado
               ? null : { id: moveLead.id, ate: Date.now() + 5000 };
-            if (statusName === 'Perda' && peloTeclado) {
-              const card = document.querySelector(`article a[href$="/ficha/${CSS.escape(moveLead.id)}"]:not([tabindex="-1"])`)?.closest('article');
-              setLossReturn({ id: moveLead.id, el: card?.querySelector('button[aria-label^="Mover"]') || null });
-            }
+            const card = statusName === 'Perda' && peloTeclado
+              ? document.querySelector(`article a[href$="/ficha/${CSS.escape(moveLead.id)}"]:not([tabindex="-1"])`)?.closest('article')
+              : null;
+            setLossReturn(card ? { id: moveLead.id, el: card.querySelector('button[aria-label^="Mover"]') } : null);
             // A versão de agora do lead, como no arrasto: a janela pode ter ficado aberta
             // enquanto o lead mudou (virou cliente, trocou de etapa) em outra aba.
             moveLeadToStatus(draggableById.get(moveLead.id) || moveLead, statusName);
