@@ -1,6 +1,6 @@
 import { ArrowRight, Ban, Calendar, CheckCircle, Circle, FileText, GraduationCap, Handshake, MessageCircle, Pencil, Phone, Route, Users } from 'lucide-react';
 import { fmtBRL } from '../../lib/format.js';
-import { ZAP_VIA } from '../../lib/leads.js';
+import { ZAP_VIA, isAiInteraction } from '../../lib/leads.js';
 import { getTone, phaseToneName } from '../../lib/leadState.js';
 import {
   timelineStamp,
@@ -14,6 +14,7 @@ import {
   appointmentOriginText,
 } from '../../lib/timeline.js';
 import { cn } from '../../lib/utils.js';
+import { AiBadge } from '../brand/AiBadge.jsx';
 import { StronizapBadge } from '../brand/StronizapMark.jsx';
 import { TimelineAuthor } from './TimelineAuthor.jsx';
 import { ZapSignupMarker } from './ZapSignupMarker.jsx';
@@ -93,6 +94,7 @@ export function TimelineEvent({ i, statuses, stageTransitions, outcomeOrigin, fl
   // detalhe. Só a linha de agendamento leva isso: o campo via pode aparecer em
   // outras linhas.
   const zapTitle = i._kind === 'appointment' ? zapScheduleTitle(i) : null;
+  const zapAi = Boolean(zapTitle) && isAiInteraction(i);
   const appt = i._kind === 'appointment' ? parseAppointment(i) : null;
   const stageName = i._kind === 'status' ? extractStageNameFromInteractionText(i.text) : '';
   // Troca de responsável: linha simples com o texto sem colchetes, nunca
@@ -231,6 +233,7 @@ export function TimelineEvent({ i, statuses, stageTransitions, outcomeOrigin, fl
         {origin && (
           <div className="mt-1.5 flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
             {origin.via === ZAP_VIA && <StronizapBadge />}
+            {origin.byAi === true && <AiBadge />}
             <span>{appointmentOriginText(origin)}</span>
           </div>
         )}
@@ -275,7 +278,7 @@ export function TimelineEvent({ i, statuses, stageTransitions, outcomeOrigin, fl
         <div className="flex flex-wrap items-baseline gap-x-2">
           <span className="text-[13.5px] font-semibold">{typeLabel}</span>
           <div className="min-w-0 max-w-[220px]">
-            <TimelineAuthor author={author} zapTitle={zapTitle} />
+            <TimelineAuthor author={author} zapTitle={zapTitle} ai={zapAi} />
           </div>
         </div>
         {body}

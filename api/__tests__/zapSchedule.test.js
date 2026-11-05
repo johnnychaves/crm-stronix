@@ -17,6 +17,7 @@ import {
   isDocId, readScheduleBody, readStatusBody, scheduleWithStoredNames, checkScheduleCatalog, checkFuture, leadBelongsToNumber, hasSameAppointment,
   scheduleInteractionText, pickOpenVisitaId, isOpenAulaRecord, scheduleRecordChanges, buildScheduleWrites, alreadyScheduledBody
 } from '../_zapSchedule.js';
+import { invalidData, ZAP_LEAD_MESSAGES } from '../_zapLead.js';
 import { aulaRecordFields } from '../../src/lib/aulas.js';
 import { GUARDIAN_RELATIONSHIPS } from '../../src/lib/guardian.js';
 
@@ -384,6 +385,7 @@ describe('buildScheduleOptions: a resposta do schedule-options', () => {
         { id: 'p2', name: 'Rafael Moura', modalityIds: ['m2', 'm1'] }
       ],
       trialClassOptions: [1, 2, 3],
+      accepts: ['byAi'],
       days: [
         { date: '2026-09-29', label: 'Hoje', defaultTime: '18:00' },
         { date: '2026-09-30', label: 'Amanhã', defaultTime: '09:00' },
@@ -514,6 +516,15 @@ describe('readScheduleBody: só o formato do pedido', () => {
   it('isDocId: o padrão __x__ é reservado pelo Firestore, e só começar ou só terminar com __ não é', () => {
     expect([isDocId('__x__'), isDocId('__lead__'), isDocId('____')]).toEqual([false, false, false]);
     expect([isDocId('__x'), isDocId('x__'), isDocId('_x_')]).toEqual([true, true, true]);
+  });
+
+  it('pedido da IA: byAi true entra no valor; sem o campo, a chave nem aparece', () => {
+    expect(readScheduleBody(corpo({}, { byAi: true })).value.byAi).toBe(true);
+    expect('byAi' in readScheduleBody(corpo()).value).toBe(false);
+  });
+
+  it('byAi que não é true nem false é recusado', () => {
+    expect(recusa(corpo({}, { byAi: 'sim' }))).toEqual(invalidData('byAi', ZAP_LEAD_MESSAGES.byAi));
   });
 });
 
@@ -1164,6 +1175,15 @@ describe('buildScheduleWrites: o que o assistente grava, numa gravação só', (
     expect(interaction.zapChannelName).toBeNull();
     expect('status' in leadPatch).toBe(false);
     for (const gravado of [record.create, interaction, leadPatch]) expect(Object.values(gravado)).not.toContain(undefined);
+  });
+
+  it('agendamento da IA: a interação leva a marca, e o resto não muda', () => {
+    const comIa = gravar({ schedule: VISITA, at: atVisita, newRecordId: 'rec-novo', byAi: true });
+    const semIa = gravar({ schedule: VISITA, at: atVisita, newRecordId: 'rec-novo' });
+    expect(comIa.interaction).toEqual({ ...semIa.interaction, byAi: true });
+    expect(comIa.leadPatch).toEqual(semIa.leadPatch);
+    expect(comIa.record).toEqual(semIa.record);
+    expect('byAi' in semIa.interaction).toBe(false);
   });
 });
 

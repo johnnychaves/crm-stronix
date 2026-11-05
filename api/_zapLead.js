@@ -47,6 +47,8 @@ export const ZAP_LEAD_MESSAGES = Object.freeze({
   noteLong: `Observação longa demais. Use até ${NOTE_MAX} caracteres.`,
   wrongType: 'Esse campo veio num formato que o Stronilead não aceita.',
   minor: 'Os dados do menor vieram num formato que o Stronilead não aceita.',
+  byAi: 'A marca da IA veio num formato que o Stronilead não aceita.',
+  aiOwner: 'Pela IA, o dono do lead é sempre o consultor de plantão.',
   pick: Object.freeze({
     source: 'Escolha a origem.',
     dor: 'Escolha a dor ou necessidade.',
@@ -229,6 +231,12 @@ export function readCreateLeadBody(body) {
   if (channel != null && typeof channel !== 'string') {
     return { refusal: invalidData('channelName', ZAP_LEAD_MESSAGES.channelName) };
   }
+  // Pedido feito pela IA do Stronizap em nome do consultor de plantão. Só
+  // true ou false; sem o campo, é o pedido de sempre.
+  if (body.byAi !== undefined && typeof body.byAi !== 'boolean') {
+    return { refusal: invalidData('byAi', ZAP_LEAD_MESSAGES.byAi) };
+  }
+  const byAi = body.byAi === true;
   const lead = body.lead;
   if (!lead || typeof lead !== 'object' || Array.isArray(lead)) {
     return { refusal: invalidData('lead', ZAP_LEAD_MESSAGES.lead) };
@@ -240,6 +248,10 @@ export function readCreateLeadBody(body) {
     if (lead[field] != null && typeof lead[field] !== 'string') {
       return { refusal: invalidData(field, ZAP_LEAD_MESSAGES.wrongType) };
     }
+  }
+  // A IA nunca passa o lead para outra pessoa: o dono é quem está no actor.
+  if (byAi && textOrEmpty(lead.ownerId).trim()) {
+    return { refusal: invalidData('ownerId', ZAP_LEAD_MESSAGES.aiOwner) };
   }
   const observacao = textOrEmpty(lead.observacao).trim();
   if (observacao.length > NOTE_MAX) return { refusal: invalidData('observacao', ZAP_LEAD_MESSAGES.noteLong) };
@@ -266,6 +278,8 @@ export function readCreateLeadBody(body) {
       email,
       actorName: actorName || null,
       channelName: textOrEmpty(channel).trim().slice(0, CHANNEL_MAX) || null,
+      // A chave só aparece no pedido da IA, para o pedido de sempre ficar igual.
+      ...(byAi ? { byAi: true } : {}),
       lead: {
         name,
         source: textOrEmpty(lead.source),
@@ -372,10 +386,14 @@ export const studentKey = (minor) => (minor?.studentWhatsapp ? zapMatchKey(natio
 // O que é gravado e o que é respondido
 // ---------------------------------------------------------------------------
 
-// O `text` do marco, para qualquer tela que ainda não conheça o tipo.
-export function zapSignupText({ actorName, ownerName = null, channelName = null }) {
+// O `text` do marco, para qualquer tela que ainda não conheça o tipo. Pela IA,
+// quem aparece é o consultor de plantão, que é o dono do lead.
+export function zapSignupText({ actorName, ownerName = null, channelName = null, byAi = false }) {
+  const quem = byAi
+    ? (actorName ? `Cadastrado pela IA do Stronizap no plantão de ${actorName}.` : 'Cadastrado pela IA do Stronizap.')
+    : (actorName ? `Cadastrado pelo Stronizap por ${actorName}.` : 'Cadastrado pelo Stronizap.');
   return [
-    actorName ? `Cadastrado pelo Stronizap por ${actorName}.` : 'Cadastrado pelo Stronizap.',
+    quem,
     ownerName ? `Consultor responsável: ${ownerName}.` : null,
     channelName ? `Canal ${channelName}.` : null
   ].filter(Boolean).join(' ');
@@ -425,7 +443,7 @@ export function buildZapLead({ lead, phone, actor, owner, serverTime }) {
 // cadastrou (consultantName); o dono do lead vai nos campos de segurança de
 // sempre, e o ownerName só quando é outra pessoa. Sem volumeKind: o lead conta
 // na prospecção do dono pelo próprio lead, como no Novo lead.
-export function buildZapSignupInteraction({ leadId, leadName, actor, owner, channelName = null, serverTime }) {
+export function buildZapSignupInteraction({ leadId, leadName, actor, owner, channelName = null, serverTime, byAi = false }) {
   const otherOwner = owner.id !== actor.id;
   return {
     leadId,
@@ -435,9 +453,11 @@ export function buildZapSignupInteraction({ leadId, leadName, actor, owner, chan
     actorId: actor.id,
     actorAuthUid: actor.authUid ?? null,
     type: ZAP_SIGNUP_TYPE,
-    text: zapSignupText({ actorName: actor.name, ownerName: otherOwner ? owner.name : null, channelName }),
+    text: zapSignupText({ actorName: actor.name, ownerName: otherOwner ? owner.name : null, channelName, byAi }),
     ...(otherOwner ? { ownerName: owner.name ?? null } : {}),
     zapChannelName: channelName || null,
+    // A marca da IA (spec do agente de IA, entrega 3). A ficha a desenha ao lado do nome.
+    ...(byAi ? { byAi: true } : {}),
     createdAt: serverTime
   };
 }

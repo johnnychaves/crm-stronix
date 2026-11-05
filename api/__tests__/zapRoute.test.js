@@ -1836,6 +1836,31 @@ describe('POST /api/zap com action create-lead', () => {
     expect(banco.leads[OUTRA]).toEqual([]);
     expect(banco.gravacoes).toEqual([]);
   });
+
+  it('pedido da IA no plantão da Ana: o lead é dela e o marco leva a marca da IA', async () => {
+    const res = resposta();
+
+    await handler(pedidoCadastro({ byAi: true }), res);
+
+    expect(res.statusCode).toBe(201);
+    const [lead] = leadsDaAcademia();
+    expect(lead).toMatchObject({ consultantId: 'u-ana', consultantName: 'Ana Souza' });
+    expect(marcosDaAcademia()).toEqual([expect.objectContaining({
+      type: 'zap_signup', byAi: true, consultantName: 'Ana Souza',
+      text: 'Cadastrado pela IA do Stronizap no plantão de Ana Souza. Canal Recepção.'
+    })]);
+  });
+
+  it('pedido da IA com dono escolhido é recusado e não grava nada', async () => {
+    const res = resposta();
+
+    await handler(pedidoCadastro({ byAi: true, lead: { ownerId: 'u-bruno' } }), res);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toMatchObject({ error: 'dados_invalidos', field: 'ownerId' });
+    expect(leadsDaAcademia()).toEqual([]);
+    expect(marcosDaAcademia()).toEqual([]);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1892,6 +1917,7 @@ describe('POST /api/zap com action schedule-options', () => {
         { id: 'p2', name: 'Rafael Moura', modalityIds: ['m2', 'm1'] }
       ],
       trialClassOptions: [1, 2, 3],
+      accepts: ['byAi'],
       days: [
         { date: '2026-09-29', label: 'Hoje', defaultTime: '18:00' },
         { date: '2026-09-30', label: 'Amanhã', defaultTime: '09:00' },
@@ -2883,6 +2909,15 @@ describe('POST /api/zap com action schedule', () => {
 
     expect(res.statusCode).toBe(401);
     expect(banco.gravacoes).toEqual([]);
+  });
+
+  it('pedido da IA: a interação do agendamento leva a marca da IA e a do Stronizap', async () => {
+    const res = resposta();
+
+    await handler(pedidoAgenda({ byAi: true }), res);
+
+    expect(res.statusCode).toBe(201);
+    expect(interacoesDaAcademia()).toEqual([expect.objectContaining({ via: 'stronizap', byAi: true, consultantName: 'Ana Souza' })]);
   });
 });
 

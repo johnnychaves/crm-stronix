@@ -7,7 +7,9 @@
 //   a coluna estreita podem cortar;
 // - texto só para leitor de tela: o title não chega a leitor de tela nem ao
 //   toque, e a marca é decorativa.
+// Agendamento feito pela IA leva também a pílula IA.
 import { cn } from '@/lib/utils';
+import { AiBadge } from '../brand/AiBadge.jsx';
 import { StronizapBadge } from '../brand/StronizapMark.jsx';
 
 // A classe da coluna como ela era na ficha: a linha sem marca sai igual.
@@ -15,7 +17,8 @@ const COLUNA = 'text-[11px] text-slate-500 dark:text-slate-400 text-right trunca
 
 // `zapTitle` é o detalhe que zapScheduleTitle (lib/timeline.js) devolve, ou null
 // quando a linha não é um agendamento do Stronizap. Quem decide é a ficha.
-export function TimelineAuthor({ author, zapTitle = null }) {
+// `ai` diz se foi a IA.
+export function TimelineAuthor({ author, zapTitle = null, ai = false }) {
   return (
     <div
       className={cn(COLUNA, zapTitle && 'flex items-center justify-end gap-[5px]')}
@@ -24,6 +27,7 @@ export function TimelineAuthor({ author, zapTitle = null }) {
       {zapTitle ? (
         <>
           <StronizapBadge />
+          {ai && <AiBadge />}
           <span className="truncate" title={author}>{author}</span>
           <span className="sr-only">{zapTitle}</span>
         </>

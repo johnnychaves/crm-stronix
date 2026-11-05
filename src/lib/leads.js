@@ -221,6 +221,11 @@ export const ZAP_SIGNUP_TYPE = 'zap_signup';
 // quem agendou.
 export const ZAP_VIA = 'stronizap';
 
+// Interação gravada pela IA do Stronizap em nome do consultor de plantão
+// (api/zap.js, create-lead e schedule com byAi). A ficha desenha a pílula "IA"
+// ao lado da marca do Stronizap.
+export const isAiInteraction = (i) => i?.byAi === true;
+
 // A interação é o registro do próprio cadastro, não um contato com a pessoa:
 // a observação do Novo lead ou o marco do cadastro pelo Stronizap.
 export const isRegistrationInteraction = (i) =>

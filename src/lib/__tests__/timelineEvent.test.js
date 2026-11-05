@@ -93,4 +93,34 @@ describe('TimelineEvent', () => {
   it('evento sem texto para mostrar não desenha nada', () => {
     expect(html({ id: 'v', type: 'note', text: '', consultantName: 'Ana', createdAt: D(9, 1) })).toBe('');
   });
+
+  it('agendamento da IA: a pílula IA ao lado da marca do Stronizap, e o detalhe para o leitor de tela', () => {
+    const out = html({
+      id: 'a1', type: 'note', volumeKind: 'visita', via: 'stronizap', byAi: true, zapChannelName: 'Recepção',
+      text: '🔔 Visita agendada (Unidade Centro) p/ 01/10/2026, 18:00.', consultantName: 'Ana Souza', createdAt: D(9, 29, 15, 42)
+    });
+    expect(out).toContain('>IA<');
+    expect(out).toContain('Agendado pela IA do Stronizap, canal Recepção');
+  });
+
+  it('agendamento do Stronizap sem a IA não mostra a pílula', () => {
+    const out = html({
+      id: 'a2', type: 'note', volumeKind: 'visita', via: 'stronizap', zapChannelName: 'Recepção',
+      text: '🔔 Visita agendada (Unidade Centro) p/ 01/10/2026, 18:00.', consultantName: 'Ana Souza', createdAt: D(9, 29, 15, 42)
+    });
+    expect(out).not.toContain('>IA<');
+  });
+
+  it('marco do cadastro da IA: a pílula IA e o texto do plantão', () => {
+    const out = html({ id: 'z1', type: 'zap_signup', byAi: true, consultantName: 'Ana Souza', createdAt: D(9, 28, 14, 32) });
+    expect(out).toContain('>IA<');
+    expect(out).toContain('cadastrado pela IA do Stronizap no plantão de Ana Souza');
+  });
+
+  it('rodapé do desfecho de um agendamento da IA leva a pílula', () => {
+    const i = { id: 'd1', type: 'daily_goal_done', text: '✅ Compareceu', appointmentOutcome: 'attended', consultantName: 'Ana', createdAt: D(10, 1, 18, 30) };
+    const out = html(i, { outcomeOrigin: { d1: { at: D(9, 29, 15, 42), by: 'Ana Souza', via: 'stronizap', byAi: true } } });
+    expect(out).toContain('pela IA do Stronizap');
+    expect(out).toContain('>IA<');
+  });
 });

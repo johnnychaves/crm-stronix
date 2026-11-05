@@ -298,6 +298,23 @@ describe('readCreateLeadBody: só o formato do pedido', () => {
   ])('campo do lead errado (%s) é recusado com a mensagem certa', (field, lead, message) => {
     expect(readCreateLeadBody(corpo(lead)).refusal).toEqual(invalidData(field, message));
   });
+
+  it('pedido da IA: byAi true entra no valor; sem o campo, a chave nem aparece', () => {
+    expect(readCreateLeadBody(corpo({}, { byAi: true })).value.byAi).toBe(true);
+    expect('byAi' in readCreateLeadBody(corpo()).value).toBe(false);
+    expect('byAi' in readCreateLeadBody(corpo({}, { byAi: false })).value).toBe(false);
+  });
+
+  it('byAi que não é true nem false é recusado', () => {
+    for (const byAi of ['true', 1, null, {}]) {
+      expect(readCreateLeadBody(corpo({}, { byAi })).refusal).toEqual(invalidData('byAi', ZAP_LEAD_MESSAGES.byAi));
+    }
+  });
+
+  it('pela IA, o dono não é escolhido: ownerId preenchido é recusado', () => {
+    expect(readCreateLeadBody(corpo({ ownerId: 'u-bruno' }, { byAi: true })).refusal)
+      .toEqual(invalidData('ownerId', ZAP_LEAD_MESSAGES.aiOwner));
+  });
 });
 
 describe('checkMinor: as regras do guardian.js e do sameContactPhone', () => {
@@ -576,6 +593,21 @@ describe('buildZapSignupInteraction: o marco de início', () => {
       zapChannelName: null, text: 'Cadastrado pelo Stronizap por Johnny. Consultor responsável: Bruno Lima.'
     });
     expect('volumeKind' in marco).toBe(false);
+  });
+
+  it('cadastro da IA: a marca e o texto dizem que foi a IA, no plantão de quem ficou com o lead', () => {
+    const marco = buildZapSignupInteraction({
+      leadId: 'L1', leadName: 'Mariana Souza', actor: ANA, owner: ANA, channelName: 'Recepção', serverTime: HORA, byAi: true
+    });
+    expect(marco).toMatchObject({
+      consultantName: 'Ana Souza', actorId: 'u-ana', leadConsultantId: 'u-ana', byAi: true,
+      text: 'Cadastrado pela IA do Stronizap no plantão de Ana Souza. Canal Recepção.'
+    });
+  });
+
+  it('sem a marca, o marco sai sem a chave byAi', () => {
+    const marco = buildZapSignupInteraction({ leadId: 'L1', leadName: 'M', actor: ANA, owner: ANA, channelName: null, serverTime: HORA });
+    expect('byAi' in marco).toBe(false);
   });
 });
 

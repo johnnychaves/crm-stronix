@@ -268,6 +268,9 @@ export function buildScheduleOptions({ member, catalogs, owner = null, wards = [
     modalities: view.modalities,
     professors: view.professors,
     trialClassOptions: view.trialClassOptions,
+    // O que esta versão da ponte aceita além do pedido de sempre. O smoke do
+    // Stronizap confere o byAi antes de a IA começar a gravar.
+    accepts: ['byAi'],
     days: suggestedDays({ now, metaWeekdays: view.metaWeekdays })
   };
 }
@@ -297,6 +300,10 @@ export function readScheduleBody(body) {
   const channel = body.channelName;
   if (channel != null && typeof channel !== 'string') {
     return { refusal: invalidData('channelName', ZAP_LEAD_MESSAGES.channelName) };
+  }
+  // Pedido feito pela IA do Stronizap em nome do consultor de plantão.
+  if (body.byAi !== undefined && typeof body.byAi !== 'boolean') {
+    return { refusal: invalidData('byAi', ZAP_LEAD_MESSAGES.byAi) };
   }
   const s = body.schedule;
   if (!s || typeof s !== 'object' || Array.isArray(s)) {
@@ -334,6 +341,7 @@ export function readScheduleBody(body) {
       email,
       actorName: actorName || null,
       channelName: (typeof channel === 'string' ? channel.trim().slice(0, CHANNEL_MAX) : '') || null,
+      ...(body.byAi === true ? { byAi: true } : {}),
       at,
       schedule: {
         leadId: s.leadId,
@@ -561,7 +569,7 @@ export function scheduleRecordChanges({ lead, schedule, at, records = [] }) {
 // `serverTime` e `increment` são os FieldValue do firebase-admin.
 export function buildScheduleWrites({
   lead, actor, schedule, at, professors = [], channelName = null, close = null, openRecordId = null, newRecordId = null,
-  serverTime, increment
+  serverTime, increment, byAi = false
 }) {
   const isAula = schedule.type === 'aula_experimental';
   const professorName = isAula && schedule.professorId ? professorNameById(professors, schedule.professorId) : null;
@@ -606,7 +614,9 @@ export function buildScheduleWrites({
     type: 'note',
     volumeKind: schedule.type,
     via: ZAP_VIA,
-    zapChannelName: channelName || null
+    zapChannelName: channelName || null,
+    // A marca da IA. A ficha desenha a pílula "IA" ao lado da marca do Stronizap.
+    ...(byAi ? { byAi: true } : {})
   };
   const leadPatch = {
     lastInteractionAt: serverTime,

@@ -2,6 +2,8 @@
 // régua fina com a pílula no meio e, embaixo, o consultor responsável (só
 // quando não é quem cadastrou) e o canal da conversa. Fica no fim da linha do tempo, que é
 // onde a história do lead começa. Os textos saem de lib/timeline.js.
+import { isAiInteraction } from '../../lib/leads.js';
+import { AiBadge } from '../brand/AiBadge.jsx';
 import { StronizapMark } from '../brand/StronizapMark.jsx';
 import { zapSignupDetailText, zapSignupPillText } from '../../lib/timeline.js';
 
@@ -21,6 +23,7 @@ export function ZapSignupMarker({ interaction }) {
           <span className="grid size-[22px] shrink-0 place-items-center rounded-full bg-muted">
             <StronizapMark size={13} />
           </span>
+          {isAiInteraction(interaction) && <AiBadge />}
           <span className="min-w-0 truncate text-[11.5px] text-muted-foreground">
             <span className="font-semibold text-foreground">Início</span> · {pilula}
           </span>

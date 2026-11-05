@@ -4,7 +4,7 @@
 
 import { monthKeyOf, monthLabel } from './operacional/month.js';
 import { parseValorBRL } from './format.js';
-import { ZAP_SIGNUP_TYPE, ZAP_VIA } from './leads.js';
+import { ZAP_SIGNUP_TYPE, ZAP_VIA, isAiInteraction } from './leads.js';
 
 // Troca de responsável feita pelo cadastro completo da ficha: status_change
 // com dois colchetes, "Responsável alterado de [Ana] para [Bruno]."
@@ -59,9 +59,10 @@ export const timelineStamp = (date) => {
 export const zapSignupPillText = (i) => {
   const d = validDate(i?.createdAt);
   const autor = String(i?.consultantName || '').trim();
+  const ia = isAiInteraction(i);
   return [
-    'cadastrado pelo Stronizap',
-    autor ? `por ${autor}` : null,
+    ia ? 'cadastrado pela IA do Stronizap' : 'cadastrado pelo Stronizap',
+    autor ? (ia ? `no plantão de ${autor}` : `por ${autor}`) : null,
     d ? `em ${pad2(d.getDate())}/${pad2(d.getMonth() + 1)} às ${pad2(d.getHours())}:${pad2(d.getMinutes())}` : null
   ].filter(Boolean).join(' ');
 };
@@ -82,21 +83,20 @@ export const zapSignupDetailText = (i) => {
 export const zapScheduleTitle = (i) => {
   if (i?.via !== ZAP_VIA) return null;
   const canal = String(i?.zapChannelName || '').trim();
-  return canal ? `Agendado pelo Stronizap, canal ${canal}` : 'Agendado pelo Stronizap';
+  const quem = isAiInteraction(i) ? 'Agendado pela IA do Stronizap' : 'Agendado pelo Stronizap';
+  return canal ? `${quem}, canal ${canal}` : quem;
 };
 
 // O rodapé do desfecho, que aponta para o agendamento de origem: "Agendada em
 // 29/09 por Ana Souza", mais ", pelo Stronizap" quando ele veio de lá. `at` é
-// o horário do agendamento, `by` quem agendou e `via` a origem.
-export const appointmentOriginText = ({ at, by = null, via = null } = {}) => {
+// o horário do agendamento, `by` quem agendou, `via` a origem e `byAi` se foi
+// a IA do Stronizap.
+export const appointmentOriginText = ({ at, by = null, via = null, byAi = false } = {}) => {
   const d = validDate(at);
   if (!d) return '';
   const quem = String(by || '').trim();
-  return [
-    `Agendada em ${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}`,
-    quem ? ` por ${quem}` : '',
-    via === ZAP_VIA ? ', pelo Stronizap' : ''
-  ].join('');
+  const origem = byAi === true ? ', pela IA do Stronizap' : via === ZAP_VIA ? ', pelo Stronizap' : '';
+  return [`Agendada em ${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}`, quem ? ` por ${quem}` : '', origem].join('');
 };
 
 // O Remarcar da Meta Diária (handleReschedule, em DailyGoalView.jsx) marca a
