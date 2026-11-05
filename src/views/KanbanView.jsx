@@ -589,6 +589,9 @@ function KanbanView({ leads, interactions, appUser, statuses, usersList, lossRea
   // Mover → Perda pelo teclado: a janela de perda abre no mesmo render em que a Mover
   // some, e ao cancelar o foco precisa voltar ao botão Mover do card, não ao body.
   const [lossReturn, setLossReturn] = useState(null);
+  // A janela de perda aberta agora: a gravação que termina tarde (sem internet, janela já
+  // fechada pelo Cancelar) não pode puxar o foco para a Perda depois.
+  const lossOpenRef = useLatestRef(lossModalLeadId);
   // Pedido de levar o foco ao card movido (ou à coluna Perda), lido no efeito perto do quadro.
   const followFocusRef = useRef(null);
   // Lead aguardando matrícula no ContractModal (caminho de Venda do Kanban).
@@ -1408,7 +1411,7 @@ const handleKanbanMouseMove = (e) => {
 
       // Perda pelo teclado: quando o card sai da etapa, o foco vai ao título da coluna
       // Perda (a coluna é paginada, então o card nem sempre está na tela).
-      if (lossReturn?.id === lead.id) followFocusRef.current = { id: lead.id, ate: Date.now() + 5000, coluna: 'Perda' };
+      if (lossReturn?.id === lead.id && lossOpenRef.current === lead.id) followFocusRef.current = { id: lead.id, ate: Date.now() + 5000, coluna: 'Perda' };
       // A gravação pode terminar com a janela já fechada e aberta para outro lead.
       setLossModalLeadId((p) => (p === lead.id ? null : p)); setLossReturn((r) => (r?.id === lead.id ? null : r));
       // A coluna Perda não é ao vivo: refaz fetch+contagem, pelo ref (a consulta de agora, se o
