@@ -778,6 +778,8 @@ const [isPanning, setIsPanning] = useState(false);
   // Com um mês escolhido, a Perda é a da safra: perdidos cadastrados no mês.
   // Mesmo índice #2 (bucketByFunnelInMonthQuerySpec, em leadQueries.js).
   const safraKey = boardSafra ? monthKey : '';
+  // Chave das colunas: no Vencidos o mês também muda a consulta, e as colunas voltam aos 10 primeiros.
+  const columnsKey = isExpiredView ? (monthKey || '') : safraKey;
   const lostSpec = useMemo(
     () => (boardSafra
       ? bucketByFunnelInMonthQuerySpec(LIFECYCLE_BUCKETS.PERDA, lostFunnelId, boardSafra.startMs, boardSafra.endMs, KANBAN_PAGE_SIZE)
@@ -1407,7 +1409,8 @@ const handleKanbanMouseMove = (e) => {
       // Perda pelo teclado: quando o card sai da etapa, o foco vai ao título da coluna
       // Perda (a coluna é paginada, então o card nem sempre está na tela).
       if (lossReturn?.id === lead.id) followFocusRef.current = { id: lead.id, ate: Date.now() + 5000, coluna: 'Perda' };
-      setLossModalLeadId(null); setLossReturn(null);
+      // A gravação pode terminar com a janela já fechada e aberta para outro lead.
+      setLossModalLeadId((p) => (p === lead.id ? null : p)); setLossReturn((r) => (r?.id === lead.id ? null : r));
       // A coluna Perda não é ao vivo: refaz fetch+contagem, pelo ref (a consulta de agora, se o
       // quadro mudou de mês ou de funil enquanto a gravação esperava a internet).
       reloadsRef.current.refreshLost();
@@ -1490,7 +1493,7 @@ const handleKanbanMouseMove = (e) => {
     if (alvo) { followFocusRef.current = null; alvo.focus(); }
     // lossModalLeadId: a gravação local tira o card da etapa antes de a perda terminar,
     // então quem dispara o foco na Perda é a janela de perda fechando.
-  }, [leadsByStatus, lossModalLeadId]);
+  }, [leadsByStatus, lossModalLeadId, lostLeads]);
 
   // No funil Renovações as colunas NÃO vêm de stronix_statuses: são derivadas
   // dos marcos, em memória. Nos demais, seguem sendo as etapas do funil.
@@ -1690,7 +1693,7 @@ const handleKanbanMouseMove = (e) => {
           <div className="flex gap-4 min-w-max h-full">
             {pipelineColumns.map((column) => (
               <KanbanColumn
-                key={`${column.id}:${safraKey}`}
+                key={`${column.id}:${columnsKey}`}
                 name={column.name}
                 color={column.color}
                 special={null}
@@ -1716,7 +1719,7 @@ const handleKanbanMouseMove = (e) => {
             ))}
 
             <KanbanColumn
-              key={`__venda:${lostFunnelId || ''}:${safraKey}`}
+              key={`__venda:${lostFunnelId || ''}:${columnsKey}`}
               name="Venda"
               color="green"
               special="win"
@@ -1740,7 +1743,7 @@ const handleKanbanMouseMove = (e) => {
             />
 
             <KanbanColumn
-              key={`__perda:${lostFunnelId || ''}:${safraKey}`}
+              key={`__perda:${lostFunnelId || ''}:${columnsKey}`}
               name="Perda"
               color="gray"
               special="loss"
@@ -1787,6 +1790,7 @@ const handleKanbanMouseMove = (e) => {
 
       {lossModalLeadId && (
         <LossReasonModal
+          key={lossModalLeadId}
           lossReasons={lossReasons}
           returnFocusTo={lossReturn?.id === lossModalLeadId ? lossReturn.el : null}
           onClose={() => { setLossModalLeadId(null); setLossReturn(null); }}
@@ -1853,8 +1857,11 @@ const handleKanbanMouseMove = (e) => {
             // Só pelo teclado (o botão da etapa com foco visível): com mouse ou toque,
             // focar o card na coluna nova rolaria o quadro sozinho.
             const peloTeclado = document.activeElement?.matches?.(':focus-visible');
-            followFocusRef.current = statusName === 'Venda' || statusName === 'Perda' || !peloTeclado
-              ? null : { id: moveLead.id, ate: Date.now() + 5000 };
+            // Recusa de Renovações e Vencidos não abre a janela de perda: o card vai direto
+            // para a Perda, e o foco segue para o título dela.
+            const recusa = statusName === 'Perda' && (moveLead._renewalCard || moveLead._expiredCard);
+            followFocusRef.current = !peloTeclado || statusName === 'Venda' || (statusName === 'Perda' && !recusa)
+              ? null : { id: moveLead.id, ate: Date.now() + 5000, ...(recusa ? { coluna: 'Perda' } : {}) };
             const card = statusName === 'Perda' && peloTeclado
               ? document.querySelector(`article a[href$="/ficha/${CSS.escape(moveLead.id)}"]:not([tabindex="-1"])`)?.closest('article')
               : null;

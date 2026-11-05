@@ -20,7 +20,8 @@ function LossReasonModal({ lossReasons, onClose, onConfirm, returnFocusTo = null
   };
 
   // A janela não é um Dialog: o Esc e a volta do foco são feitos aqui. Durante a
-  // gravação o Esc não fecha, como o Cancelar não deveria largar a perda pela metade.
+  // gravação o Esc não fecha. O Cancelar fecha: sem internet a gravação fica pendente
+  // até a rede voltar, e ele é a saída (a gravação segue na fila).
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   // Lido no render, antes de o autoFocus da lista de motivos pegar o foco.
