@@ -45,7 +45,7 @@ export function TasksBand({ tasks, compareTasks, cmpName, running = true, shownN
   return (
     <Band
       title="Tarefas concluídas"
-      help="Tarefas da Meta Diária marcadas como feitas no mês, por tipo. Cada pessoa conta uma tarefa por lead e por dia."
+      help="Tarefas da Meta Diária marcadas como feitas no mês, por tipo. Cada pessoa conta uma tarefa de cada tipo por lead e por dia."
       question={total == null ? 'As tarefas da Meta feitas no mês, por tipo.'
         : `${plural(total, 'tarefa', 'tarefas')} da Meta ${total === 1 ? 'feita' : 'feitas'} no mês, por tipo${showCmp ? `, contra ${running ? 'os mesmos dias de ' : ''}${cmpName}` : ''}.`}
     >
@@ -261,7 +261,7 @@ function Balance({ balance, locks, monthName }) {
       </div>
       {(locks.trancaram > 0 || locks.destrancaram > 0) && (
         <p className="mt-3.5 text-[12.5px] text-muted-foreground">
-          {`Trancamentos no mês: ${plural(locks.trancaram, 'contrato trancado', 'contratos trancados')} e ${plural(locks.destrancaram, 'destrancado', 'destrancados')}.`}
+          {`Trancamentos no mês: ${plural(locks.trancaram, 'pessoa trancou', 'pessoas trancaram')} e ${plural(locks.destrancaram, 'destrancou', 'destrancaram')}.`}
         </p>
       )}
     </div>

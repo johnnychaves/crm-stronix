@@ -13,7 +13,7 @@ const shortOf = (key) => SHORT[Number(key.slice(5, 7)) - 1];
 
 const HELP = {
   leads: 'Leads cadastrados no mês, pela data de cadastro. O filtro de pessoa usa o dono do lead e o de funil, o funil em que ele está.',
-  appts: 'Visitas e aulas experimentais marcadas para o mês, sem as canceladas. No mês em andamento, entram só as de data já passada. Conta pela data do agendamento, não pela data do cadastro do lead.',
+  appts: 'Visitas e aulas experimentais marcadas para o mês, sem as canceladas. No mês em andamento, entram só as de data já passada. Conta pela data do agendamento, não pela data do cadastro do lead. O que foi marcado na primeira matrícula do lead ou depois dela é aula de cliente e não entra.',
   attend: 'Quem veio ÷ quem veio mais quem faltou, entre os agendamentos com data já passada. Agendamento sem desfecho registrado fica fora da conta e aparece na linha de baixo.',
   enroll: 'Leads que viraram cliente no mês, de qualquer safra. É o resultado do mês, não a conversão da turma que entrou no mês.',
   conv: 'Dos leads cadastrados no mês, quantos já matricularam. No mês em andamento ela ainda sobe: quem segue em jogo pode fechar depois. A comparação pró-rata mede a safra do outro mês com a mesma idade.'

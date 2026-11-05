@@ -223,7 +223,7 @@ describe('tela Operacional (render)', () => {
   it('o balanço da base conta quem trancou e destrancou no mês', () => {
     const base = { ...cur.base, known: true, movement: { ...cur.base.movement, startCount: 10, endCount: 10, steps: { entraram: 1, cancelaram: 1, trancamentos: 0 }, trancaram: 2, destrancaram: 2 } };
     const html = render(createElement(OperacionalDashboard, { ...props, cur: { ...cur, base } }));
-    expect(html).toContain('Trancamentos no mês: 2 contratos trancados e 2 destrancados.');
+    expect(html).toContain('Trancamentos no mês: 2 pessoas trancaram e 2 destrancaram.');
   });
 
   it('mês fechado: sem atrasados de agora', () => {

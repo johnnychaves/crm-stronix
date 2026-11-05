@@ -49,7 +49,7 @@ export function OperacionalDashboard({ cur, cmp, series, team, compareOn, shownN
     },
     {
       key: 'tasks', label: 'Tarefas concluídas', goodUp: true,
-      help: 'Tarefas da Meta Diária marcadas como feitas no mês. Cada pessoa conta uma tarefa por lead e por dia.',
+      help: 'Tarefas da Meta Diária marcadas como feitas no mês. Cada pessoa conta uma tarefa de cada tipo por lead e por dia.',
       value: tasksTotal != null ? fmtNum(tasksTotal) : '—',
       delta: d(tasksTotal, sumTasks(cmp?.tasks), 'count'),
       sub: 'tarefas da Meta no mês'

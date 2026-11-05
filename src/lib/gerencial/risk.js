@@ -20,7 +20,8 @@ function hasSuccessor(c, index) {
 // Só contrato vigente vence. Trancado não: o fim dele anda quando reativar.
 export function expiryHorizons(contracts, t) {
   const edges = HORIZON_DAYS.map((d) => new Date(t.getTime() + d * DAY));
-  const rows = HORIZON_DAYS.map((days) => ({ days, label: `Em ${days} dias`, count: 0, v: 0, blind: 0 }));
+  // Faixas separadas, não acumuladas: até 30, de 31 a 60 e de 61 a 90 dias.
+  const rows = HORIZON_DAYS.map((days, i) => ({ days, label: i === 0 ? `Até ${days} dias` : `${HORIZON_DAYS[i - 1] + 1} a ${days} dias`, count: 0, v: 0, blind: 0 }));
   const index = indexContracts(contracts || []);
   (contracts || []).forEach((c) => {
     if (contractStateAt(c, t) !== 'vigente' || !c.endsAt) return;

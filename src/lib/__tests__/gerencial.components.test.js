@@ -38,9 +38,9 @@ const CURVE = {
 };
 const WALLET = { count: 628, monthly: 134200, ticket: 214, lockedCount: 19 };
 const HORIZON = [
-  { days: 30, label: 'Em 30 dias', count: 63, v: 13100, blind: 0 },
-  { days: 60, label: 'Em 60 dias', count: 48, v: 9800, blind: 0 },
-  { days: 90, label: 'Em 90 dias', count: 57, v: 11400, blind: 0 }
+  { days: 30, label: 'Até 30 dias', count: 63, v: 13100, blind: 0 },
+  { days: 60, label: '31 a 60 dias', count: 48, v: 9800, blind: 0 },
+  { days: 90, label: '61 a 90 dias', count: 57, v: 11400, blind: 0 }
 ];
 const RISK = { horizon: HORIZON, walletMonthly: 134200, lapsedCount: 29 };
 const EXITS = [
@@ -290,9 +290,9 @@ describe('ExpiryExitsCard', () => {
     expect(html).toContain('O que vence e o que sai');
     expect(html).toContain('Vence nos próximos 90 dias');
     expect(html).toContain('168 contratos');
-    ['Em 30 dias', 'Em 60 dias', 'Em 90 dias'].forEach((l) => expect(html).toContain(l));
+    ['Até 30 dias', '31 a 60 dias', '61 a 90 dias'].forEach((l) => expect(html).toContain(l));
     expect(html).toContain('R$ 13.100');
-    expect(html).toContain('Em 30 dias: 63 contratos · R$ 13.100 por mês');
+    expect(html).toContain('Até 30 dias: 63 contratos · R$ 13.100 por mês');
   });
 
   it('as saídas somam o valor e cada linha mostra a contagem', () => {
