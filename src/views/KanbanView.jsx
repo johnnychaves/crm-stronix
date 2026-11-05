@@ -1060,8 +1060,8 @@ const handleKanbanMouseMove = (e) => {
       if (igual) return cardLead;
       toast.warning('Esse cliente mudou em outra tela. O quadro foi atualizado.');
       if (cardLead._renewalCard) reloadsRef.current.renewalReload();
-      else if (cardLead._expiredCard) reloadsRef.current.expiredReload();
-      else reloadsRef.current.upgradeReload();
+      else if (cardLead._expiredCard) { reloadsRef.current.expiredReload(); setExpiredCountEpoch((e) => e + 1); }
+      else { reloadsRef.current.upgradeReload(); setUpgradeCountEpoch((e) => e + 1); }
       reloadsRef.current.wonReload();
       return null;
     }
@@ -1144,11 +1144,14 @@ const handleKanbanMouseMove = (e) => {
   // que impede eles de divergirem: a permissão morava só no arrasto, e o menu
   // gravava sem checar nada. As rules deixam qualquer membro do tenant
   // atualizar qualquer lead, então canEditLead é a única política que existe.
-  const moveExpiredToStage = useCallback((lead, statusName) => {
+  const moveExpiredToStage = useCallback(async (cardLead, statusName) => {
     if (!canEditLead(appUser)) {
       toast.warning('Você não tem permissão para mover este lead.');
       return;
     }
+    // O funil é lido uma vez: confere o cliente no banco antes de gravar.
+    const lead = await currentLeadOrWarn(cardLead);
+    if (!lead) return;
     const etapa = (statuses || []).find(
       st => st.funnelId === expiredFunnel?.id && st.name === statusName
     );
@@ -1165,7 +1168,7 @@ const handleKanbanMouseMove = (e) => {
         console.error('Erro ao mover card do funil de vencidos', err);
         toast.error('Não foi possível mover o card.');
       });
-  }, [appUser, db, toast, statuses, expiredFunnel, expiredPatchLead]);
+  }, [appUser, db, toast, statuses, expiredFunnel, expiredPatchLead, currentLeadOrWarn]);
 
   const declineExpired = useCallback(async (cardLead) => {
     if (!canEditLead(appUser)) {
@@ -1190,11 +1193,14 @@ const handleKanbanMouseMove = (e) => {
   // Arrasto e menu "Mover" passam por aqui. A etapa mora em upgradeStageId; o
   // status real continua 'Venda' (regra em lib/stageMove.js). Cada movimento
   // deixa evento na linha do tempo, por isso logInteraction e não updateDoc.
-  const moveUpgradeToStage = useCallback((lead, statusName) => {
+  const moveUpgradeToStage = useCallback(async (cardLead, statusName) => {
     if (!canEditLead(appUser)) {
       toast.warning('Você não tem permissão para mover este lead.');
       return;
     }
+    // O funil é lido uma vez: confere o cliente no banco antes de gravar.
+    const lead = await currentLeadOrWarn(cardLead);
+    if (!lead) return;
     const etapa = (statuses || []).find(
       (st) => st.funnelId === upgradeFunnel?.id && st.name === statusName
     );
@@ -1207,15 +1213,18 @@ const handleKanbanMouseMove = (e) => {
         console.error('Erro ao mover card do funil Upgrade', err);
         toast.error('Não foi possível mover o card.');
       });
-  }, [appUser, db, toast, statuses, upgradeFunnel, upgradePatchLead]);
+  }, [appUser, db, toast, statuses, upgradeFunnel, upgradePatchLead, currentLeadOrWarn]);
 
   // "Não quis o upgrade": sai do funil e mais nada — a pessoa segue cliente.
   // Recarrega o board porque o card precisa sumir de verdade.
-  const declineUpgrade = useCallback(async (lead, reason) => {
+  const declineUpgrade = useCallback(async (cardLead, reason) => {
     if (!canEditLead(appUser)) {
       toast.warning('Você não tem permissão para alterar este lead.');
       return;
     }
+    // O funil é lido uma vez: confere o cliente no banco antes de gravar.
+    const lead = await currentLeadOrWarn(cardLead);
+    if (!lead) return;
     const plan = planUpgradeDecline(lead, reason);
     try {
       await logInteraction(
@@ -1230,7 +1239,7 @@ const handleKanbanMouseMove = (e) => {
       console.error('Erro ao registrar recusa de upgrade', err);
       toast.error('Não foi possível registrar a recusa.');
     }
-  }, [appUser, db, toast, reloadsRef]);
+  }, [appUser, db, toast, reloadsRef, currentLeadOrWarn]);
 
   // "Não vai renovar": a MESMA flag que a Meta Diária usa. A pessoa NÃO vira
   // lead perdido — segue cliente, com ficha e contratos, e continua na aba
@@ -1261,18 +1270,21 @@ const handleKanbanMouseMove = (e) => {
   // Desfazer a recusa (sair da Perda de volta para um marco). NÃO tira o marco
   // de renewalHandledCheckpoints de propósito: o consultor conversou com o
   // cliente naquele marco, e quem pega ele de novo é o marco seguinte.
-  const undoRenewalDecline = useCallback((lead) => {
+  const undoRenewalDecline = useCallback(async (cardLead) => {
     if (!canEditLead(appUser)) {
       toast.warning('Você não tem permissão para mover este lead.');
       return;
     }
+    // O funil é lido uma vez: confere o cliente no banco antes de gravar.
+    const lead = await currentLeadOrWarn(cardLead);
+    if (!lead) return;
     const patch = renewalUndoDecline();
     updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), patch)
       .then(() => renewalPatchLead(lead.id, patch)).catch(err => {
         console.error('Erro ao desfazer a recusa de renovação', err);
         toast.error('Não foi possível mover o card.');
       });
-  }, [appUser, db, toast, renewalPatchLead]);
+  }, [appUser, db, toast, renewalPatchLead, currentLeadOrWarn]);
 
   // Despacha um destino (etapa / Venda / Perda) com checagem de permissão.
   // Usada pelo menu "Mover" — funciona em toque, mouse e teclado, sem
