@@ -51,6 +51,12 @@ describe('expiredWithoutSuccessor', () => {
     expect(expiredWithoutSuccessor(list, now).count).toBe(0);
   });
 
+  it('dentro da tolerância ainda não é vencido, como no Operacional', () => {
+    const list = [c({ endsAt: D(2026, 9, 10) })]; // agora é 17/09
+    expect(expiredWithoutSuccessor(list, now, { graceDays: 15 }).count).toBe(0);
+    expect(expiredWithoutSuccessor(list, now, { graceDays: 5 }).count).toBe(1);
+  });
+
   it('só os que venceram nos últimos 90 dias', () => {
     const list = [c({ id: 'recente', endsAt: D(2026, 7, 1) }), c({ id: 'antigo', personKey: 'p2', endsAt: D(2026, 5, 1) })];
     expect(expiredWithoutSuccessor(list, now).count).toBe(1);
