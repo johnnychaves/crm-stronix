@@ -1834,7 +1834,10 @@ const handleKanbanMouseMove = (e) => {
           lead={moveLead}
           columns={pipelineColumns}
           onMove={(statusName) => {
-            followFocusRef.current = statusName === 'Venda' || statusName === 'Perda'
+            // Só pelo teclado (o botão da etapa com foco visível): com mouse ou toque,
+            // focar o card na coluna nova rolaria o quadro sozinho.
+            const peloTeclado = document.activeElement?.matches?.(':focus-visible');
+            followFocusRef.current = statusName === 'Venda' || statusName === 'Perda' || !peloTeclado
               ? null : { id: moveLead.id, ate: Date.now() + 5000 };
             moveLeadToStatus(moveLead, statusName);
             setMoveLead(null);
@@ -1871,7 +1874,8 @@ function MoveLeadModal({ lead, columns, onMove, onClose }) {
           const solto = !document.activeElement || document.activeElement === document.body;
           if (solto && opener?.isConnected) opener.focus();
         }}
-        className="z-[200] gap-0 p-0 w-full sm:max-w-sm overflow-hidden max-h-[80vh] flex flex-col bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-800 rounded-2xl"
+        // No celular continua uma folha presa embaixo, como antes do Dialog.
+        className="z-[200] gap-0 p-0 w-full sm:max-w-sm overflow-hidden max-h-[80vh] flex flex-col bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-800 rounded-2xl max-sm:top-auto max-sm:bottom-0 max-sm:translate-y-0 max-sm:max-w-full max-sm:rounded-b-none"
       >
         <div className="px-5 py-4 border-b border-gray-100 dark:border-neutral-800">
           <DialogTitle className="text-[15px] font-semibold text-gray-900 dark:text-white">Mover lead</DialogTitle>
