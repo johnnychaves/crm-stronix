@@ -41,7 +41,7 @@ export function FilterBar({ title, subline, className, children }) {
 // é o texto pequeno à direita ("em andamento").
 export function OptionList({ options, value, onPick, radio = false, label }) {
   return (
-    <div role={radio ? 'menu' : undefined} aria-label={label}>
+    <div role="group" aria-label={label}>
       {(options || []).map((o) => {
         const on = o.key === value;
         return (
@@ -49,8 +49,8 @@ export function OptionList({ options, value, onPick, radio = false, label }) {
             {o.ruleBefore && <div className="mx-1.5 my-1 h-px bg-slate-100 dark:bg-white/[0.06]" />}
             <button
               type="button"
-              role={radio ? 'menuitemradio' : undefined}
-              aria-checked={radio ? on : undefined}
+              // Botões comuns: o balão não tem a navegação por setas que um menu promete.
+              aria-pressed={on}
               onClick={() => onPick(o.key)}
               className={cn(
                 'flex h-[34px] w-full items-center gap-2.5 rounded-[9px] px-2.5 text-left text-[12.5px] font-semibold outline-none transition-colors hover:bg-muted focus-visible:anel-foco',
@@ -92,7 +92,7 @@ export function PeriodControl({ label, options, value, onPick, canPrev, onPrev, 
         <PopoverTrigger asChild>
           <button
             type="button"
-            aria-label={ariaLabel}
+            aria-label={`${ariaLabel}: ${label}`}
             className="flex h-[30px] items-center gap-2 whitespace-nowrap rounded-[9px] px-2.5 text-[13px] font-semibold outline-none hover:bg-muted focus-visible:anel-foco"
           >
             <Calendar size={14} strokeWidth={2} className="flex-none text-brand-600" />

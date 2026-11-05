@@ -81,7 +81,7 @@ describe('peças do CRM', () => {
     expect(html).toContain('1 a 16 de outubro comparado com os 16 primeiros dias de setembro.');
     // O mesmo cartão das faixas da página: borda, raio e sombra iguais.
     expect(html).toContain('rounded-[18px] border border-border bg-card');
-    expect(html).toContain('aria-label="Mês de competência"');
+    expect(html).toContain('aria-label="Mês de competência: ');
     expect(html).toContain('aria-label="Mês anterior"');
     expect(html).toContain('Comparar com');
     expect(html).toContain('Setembro 2026');
@@ -96,7 +96,7 @@ describe('peças do CRM', () => {
     const op = render(createElement(OperacionalToolbar, { ...barBase, title: 'Operacional' }));
     const ger = render(createElement(GerencialToolbar, { ...barBase, title: 'Gerencial' }));
     [crm, op, ger].forEach((html) => {
-      expect(html).toContain('aria-label="Mês de competência"');
+      expect(html).toContain('aria-label="Mês de competência: ');
       expect(html).toContain('Comparar com');
       expect(html).toContain('rounded-full border'); // o chip, e não a caixa antiga
       expect(html).not.toContain('aria-label="Comparar"'); // a caixa de seleção antiga

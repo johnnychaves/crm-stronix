@@ -61,27 +61,38 @@ export function usePagedLeads({ db, path, spec, specKey, mapDoc, enabled = true 
   // então no primeiro render (e na troca de consulta) ele não basta.
   const [doneKey, setDoneKey] = useState(null);
   const lastDocRef = useRef(null);
+  // Cada leitura do zero ganha um número. A resposta de uma leitura que não é mais a
+  // de agora (troca de consulta, recarga, "carregar mais" da consulta anterior) é
+  // descartada: chegando por último, ela poria a lista velha no lugar da nova.
+  const seqRef = useRef(0);
 
   const fetchPage = useCallback(async (reset) => {
-    if (!enabled || !spec) return;
+    // Desligado também invalida a leitura em voo, senão ela gravaria a lista depois.
+    if (!enabled || !spec) { if (reset) { seqRef.current += 1; setLoading(false); } return; }
     const key = specKey;
+    const seq = reset ? ++seqRef.current : seqRef.current;
+    const stale = () => seq !== seqRef.current;
     setLoading(true);
     setError(null);
     try {
       const colRef = collection(db, 'artifacts', appId, 'public', 'data', path);
       const cursor = reset ? null : lastDocRef.current;
       const snap = await getDocsWithAuthRetry(query(colRef, ...specToConstraints(spec, cursor)));
+      if (stale()) return;
       const page = snap.docs.map((d) => (mapDoc ? mapDoc(d) : { id: d.id, ...d.data() }));
       lastDocRef.current = snap.docs[snap.docs.length - 1] || lastDocRef.current;
       // Página cheia ⇒ pode haver mais; menos que o limite ⇒ acabou.
       setHasMore(spec.limit ? snap.size === spec.limit : false);
       setItems((prev) => (reset ? page : [...prev, ...page]));
     } catch (e) {
+      if (stale()) return;
       console.error('usePagedLeads', path, e);
       setError(e);
     } finally {
-      setLoading(false);
-      if (reset) setDoneKey(key);
+      if (!stale()) {
+        setLoading(false);
+        if (reset) setDoneKey(key);
+      }
     }
   }, [db, path, spec, specKey, mapDoc, enabled]);
 

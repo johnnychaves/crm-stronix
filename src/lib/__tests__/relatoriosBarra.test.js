@@ -26,7 +26,7 @@ describe('barra dos Relatórios', () => {
     for (const l of ['Período', 'Mês anterior', 'Próximo mês', 'Consultor', 'Origem', 'Funil']) expect(out).toContain(`aria-label="${l}"`);
     // O botão do período diz o mês, e a lista dos meses mora no balão dele.
     expect(out).toContain('Setembro de 2026 · em andamento</span>');
-    expect(out).not.toContain('aria-label="Mês de competência"');
+    expect(out).not.toContain('aria-label="Mês de competência');
     expect(out).toContain('Equipe toda');
     expect(out).toContain('>Todas</span>');
     expect(out).toContain('>Todos</span>');

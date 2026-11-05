@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { ThumbsDown } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext.jsx';
 
@@ -7,6 +7,17 @@ function LossReasonModal({ lossReasons, onClose, onConfirm }) {
   const toast = useToast();
   const options = lossReasons?.length > 0 ? lossReasons : [{id: 'default', name: 'Sem motivo configurado'}];
   const [reason, setReason] = useState(options[0].name);
+  // Trava o Confirmar enquanto a gravação corre: o clique duplo gravava a perda duas vezes.
+  // A ref trava já no segundo clique; o estado só desliga o botão no render seguinte.
+  const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
+  const confirm = async () => {
+    if (busyRef.current) return;
+    if (!reason) { toast.warning('Selecione um motivo!'); return; }
+    busyRef.current = true;
+    setBusy(true);
+    try { await onConfirm(reason); } finally { busyRef.current = false; setBusy(false); }
+  };
 
   return (
     <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[200] p-4 animate-fade-in font-sans">
@@ -22,7 +33,7 @@ function LossReasonModal({ lossReasons, onClose, onConfirm }) {
         </select>
         <div className="flex gap-3">
           <button onClick={onClose} className="flex-1 py-4 bg-gray-100 dark:bg-neutral-800 rounded-xl font-bold text-[10px] uppercase text-gray-500 dark:text-neutral-400 hover:bg-gray-200 dark:hover:bg-neutral-700 dark:bg-neutral-700 transition-all">Cancelar</button>
-          <button onClick={()=>{if(reason) onConfirm(reason); else toast.warning('Selecione um motivo!');}} className="flex-1 py-4 bg-red-600 rounded-xl font-bold text-[10px] uppercase text-gray-900 dark:text-white shadow-xl shadow-red-500/20 active:scale-95 transition-all">Confirmar Perda</button>
+          <button onClick={confirm} disabled={busy} aria-busy={busy} className="flex-1 py-4 disabled:opacity-60 bg-red-600 rounded-xl font-bold text-[10px] uppercase text-gray-900 dark:text-white shadow-xl shadow-red-500/20 active:scale-95 transition-all">{busy ? 'Salvando…' : 'Confirmar Perda'}</button>
         </div>
       </div>
     </div>

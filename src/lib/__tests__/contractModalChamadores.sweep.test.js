@@ -164,12 +164,12 @@ describe('os chamadores do ContractModal só fecham o modal quando o onDone não
     // Confirmar, e a consulta daquela hora (mês ou funil já trocados) é a velha.
     for (const recarga of ['if (wasPerda) reloadsRef.current.refreshLost();', 'if (wasRenewal) reloadsRef.current.renewalReload();',
       'if (wasUpgrade) reloadsRef.current.upgradeReload();', 'if (wasUpgrade) setUpgradeCountEpoch((e) => e + 1);',
-      'reloadsRef.current.wonReload();']) {
+      'if (wasExpired) reloadsRef.current.expiredReload();', 'reloadsRef.current.wonReload();']) {
       expect(resto).toContain(recarga);
     }
-    expect(resto).not.toMatch(/(^|[^.\w])(refreshLost|renewalReload|upgradeReload|wonReload)\(/);
-    // O ref guarda as quatro funções da última renderização.
-    expect(semComentarios(fonte)).toContain('const reloadsRef = useLatestRef({ refreshLost, renewalReload, upgradeReload, wonReload });');
+    expect(resto).not.toMatch(/(^|[^.\w])(refreshLost|renewalReload|upgradeReload|wonReload|expiredReload)\(/);
+    // O ref guarda as cinco funções da última renderização.
+    expect(semComentarios(fonte)).toContain('const reloadsRef = useLatestRef({ refreshLost, renewalReload, upgradeReload, wonReload, expiredReload });');
     // O que decide cada recarga vem do lead da abertura do modal (o closure), não do estado de agora.
     const { comStrings } = corpoDoOnDone(fonte);
     expect(comStrings).toContain("const wasPerda = matriculaLead?.status === 'Perda';");
@@ -186,10 +186,10 @@ describe('os chamadores do ContractModal só fecham o modal quando o onDone não
     // texto ler o ref ANTES do `await` (`const r = reloadsRef.current; await ...; r.refreshLost()`),
     // que também devolve o closure velho: leia `reloadsRef.current` depois da gravação.
     const limpo = semStrings(semComentarios(ler('../../views/KanbanView.jsx')));
-    const soltas = limpo.match(/(^|[^.\w])(refreshLost|renewalReload|upgradeReload|wonReload)\(/g) || [];
+    const soltas = limpo.match(/(^|[^.\w])(refreshLost|renewalReload|upgradeReload|wonReload|expiredReload)\(/g) || [];
     expect(soltas).toEqual([]);
-    const semORef = limpo.replace('const reloadsRef = useLatestRef({ refreshLost, renewalReload, upgradeReload, wonReload });', '');
-    const comoArgumento = semORef.match(/[(,]\s*(refreshLost|renewalReload|upgradeReload|wonReload|lostReload)\s*[,)]/g) || [];
+    const semORef = limpo.replace('const reloadsRef = useLatestRef({ refreshLost, renewalReload, upgradeReload, wonReload, expiredReload });', '');
+    const comoArgumento = semORef.match(/[(,]\s*(refreshLost|renewalReload|upgradeReload|wonReload|expiredReload|lostReload)\s*[,)]/g) || [];
     expect(comoArgumento).toEqual([]);
     const chamadasDoLost = limpo.match(/(^|[^.\w])lostReload\(/g) || [];
     expect(chamadasDoLost).toHaveLength(1);

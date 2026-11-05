@@ -18,10 +18,16 @@ import { bucketByFunnelCountSpec } from '../lib/leadQueries.js';
 //   reloadKey: valor que, ao mudar, força recontagem (mutação local).
 // Retorna { counts: { [bucket]: number }, loading }. Bucket sem resposta fica
 // ausente do objeto (o caller cai no fallback de contagem em memória).
+const EMPTY = {};
+
 export function useFunnelCounts({ db, path, funnelId, buckets, enabled = true, reloadKey = 0 }) {
-  const [counts, setCounts] = useState({});
+  const [result, setResult] = useState({ key: null, counts: {} });
   const [loading, setLoading] = useState(false);
   const bucketsKey = (buckets || []).join(',');
+  // Sem o reloadKey: a recontagem do mesmo funil mantém o número até o novo chegar,
+  // mas trocar de funil não mostra o número do funil anterior.
+  const countsKey = `${funnelId || ''}|${bucketsKey}`;
+  const setCounts = (counts) => setResult({ key: countsKey, counts });
 
   useEffect(() => {
     if (!enabled || !db || !funnelId || !(buckets || []).length) {
@@ -47,5 +53,5 @@ export function useFunnelCounts({ db, path, funnelId, buckets, enabled = true, r
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [db, path, funnelId, bucketsKey, enabled, reloadKey]);
 
-  return { counts, loading };
+  return { counts: result.key === countsKey ? result.counts : EMPTY, loading };
 }

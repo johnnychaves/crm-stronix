@@ -37,6 +37,7 @@ import { ContractModal } from '../modals/ContractModal.jsx';
 import { AlertCircle, ArrowRightLeft, ArrowUpRight, Ban, Check, CheckCircle, SlidersHorizontal, TrendingUp } from 'lucide-react';
 import { FunnelSwitcher, StageBar } from '../components/layout/FunnelSwitcher.jsx';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover.jsx';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../components/ui/dialog.jsx';
 import { FOCUS_RING } from '../components/focusRing.js';
 import { FilterBar, FilterChip, PeriodControl } from './dashboard/DashFilterBar.jsx';
 import { ConsultoresControl } from './relatorios/RelatoriosToolbar.jsx';
@@ -189,7 +190,7 @@ function ExitDock({ visible, labels, hovered, onColumnDragOver, onColumnDragLeav
 // React.memo: durante o drag só o card arrastado muda de prop (isDragging);
 // os demais não re-renderizam. Handlers vêm estáveis (useCallback) do pai.
 // Exportado para o teste em node conferir os links do card sem montar a tela.
-export const KanbanCard = memo(function KanbanCard({ lead, isDragging, lastDate, onDragStart, onDragEnd, onMoveRequest }) {
+export const KanbanCard = memo(function KanbanCard({ lead, isDragging, lastMs = null, onDragStart, onDragEnd, onMoveRequest }) {
   const isWon = lead.status === 'Venda';
   const isLost = lead.status === 'Perda';
   const hasFollowUp = lead.nextFollowUp instanceof Date && !isNaN(lead.nextFollowUp.getTime());
@@ -217,7 +218,7 @@ export const KanbanCard = memo(function KanbanCard({ lead, isDragging, lastDate,
   // o quadro virar uma colcha. O card do Renovações não leva borda: o relógio
   // dele é a etiqueta "Vence em".
   const edge = lead._renewalCard ? null : EDGE_TONE[tone];
-  const silence = kanbanSilence(lastDate, now);
+  const silence = kanbanSilence(lastMs == null ? null : new Date(lastMs), now);
 
   // Chips de contexto: contorno e não preenchimento — são contexto, não status.
   const chips = [lead.source, lead.modalidade || lead.appointmentModality || lead.dor].filter(Boolean);
@@ -362,8 +363,11 @@ export const KanbanCard = memo(function KanbanCard({ lead, isDragging, lastDate,
             mouse no link o foco FICA no link, e com focus-within o card
             continuava mostrando as ações e escondendo o valor até a pessoa
             clicar em outro lugar. O teclado continua abrindo as ações, porque
-            aí o foco é visível. */}
-        <span className="shrink-0 hidden group-hover:flex group-has-[:focus-visible]:flex pointer-coarse:flex items-center gap-0.5">
+            aí o foco é visível.
+            Escondidas por sr-only e não por hidden: com display:none, no Tab do
+            link para o Mover o link perde o foco antes, a área some no meio da
+            troca e o foco caía no body. O botão nunca era alcançado pelo teclado. */}
+        <span className="shrink-0 sr-only group-hover:not-sr-only group-hover:flex group-has-[:focus-visible]:not-sr-only group-has-[:focus-visible]:flex pointer-coarse:not-sr-only pointer-coarse:flex items-center gap-0.5">
           <button
             type="button"
             data-no-pan="true"
@@ -422,7 +426,7 @@ export const KanbanCard = memo(function KanbanCard({ lead, isDragging, lastDate,
 // React.memo: o hover do drag (draggedOverColumn) re-renderiza SÓ as 2
 // colunas afetadas via isHovered.
 const KanbanColumn = memo(function KanbanColumn({
-  name, color, special, columnLeads, note = null, isHovered, totalCount = null, showLate = true,
+  name, color, special, columnLeads, note = null, emptyLabel = null, isHovered, totalCount = null, showLate = true,
   draggingLeadId, interactionIndex, hasMore = false, onLoadMore = null, loadingMore = false,
   onColumnDragOver, onColumnDragLeave, onDropLead,
   onDragStart, onDragEnd, onMoveRequest,
@@ -450,7 +454,9 @@ const KanbanColumn = memo(function KanbanColumn({
     : 0;
   const emptyText = isHovered
     ? 'Soltar aqui'
-    : isWinCol
+    : emptyLabel
+      ? emptyLabel
+      : isWinCol
       ? 'Nenhuma venda aqui'
       : isLossCol
         ? 'Arraste para marcar perda'
@@ -481,6 +487,8 @@ const KanbanColumn = memo(function KanbanColumn({
         </h3>
         <span className="shrink-0 rounded-[7px] border border-paper-200 bg-white px-1.5 text-[11.5px] font-bold leading-[18px] text-slate-500 tabular-nums dark:border-white/[0.08] dark:bg-neutral-900 dark:text-neutral-400">
           {totalCount != null ? totalCount : columnLeads.length}
+          {/* Sem total do servidor e com mais páginas, o número é só do que já chegou. */}
+          {totalCount == null && onLoadMore && hasMore ? '+' : ''}
         </span>
         {note && (
           <span className="min-w-0 truncate text-[11.5px] text-slate-500 dark:text-neutral-400" title={note}>
@@ -516,7 +524,7 @@ const KanbanColumn = memo(function KanbanColumn({
                 key={lead.id}
                 lead={lead}
                 isDragging={draggingLeadId === lead.id}
-                lastDate={lastInteractionDateOf(lead, interactionIndex)}
+                lastMs={lastInteractionDateOf(lead, interactionIndex)?.getTime() ?? null}
                 onDragStart={onDragStart}
                 onDragEnd={onDragEnd}
                 onMoveRequest={onMoveRequest}
@@ -530,17 +538,21 @@ const KanbanColumn = memo(function KanbanColumn({
               >
                 Carregar mais <span className="tabular-nums font-normal text-slate-500 dark:text-neutral-400">({columnLeads.length - shownLeads.length})</span>
               </button>
-            ) : onLoadMore && hasMore ? (
-              <button
-                type="button"
-                onClick={onLoadMore}
-                disabled={loadingMore}
-                className="mt-0.5 py-2 text-center text-[12px] font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300 disabled:opacity-50 transition-colors"
-              >
-                {loadingMore ? 'Carregando…' : 'Carregar mais'}
-              </button>
             ) : null}
           </>
+        )}
+        {/* Fora do ramo dos cards: a página carregada pode não ter ninguém desta coluna
+            (filtro de carteira, ou os vencidos dela em outras etapas) e as próximas, sim. */}
+        {!localHasMore && onLoadMore && hasMore && (
+          <button
+            type="button"
+            // Abre espaço para a página que chega, senão ela ficava atrás de um segundo clique.
+            onClick={() => { setVisibleCount(v => v + KANBAN_PAGE_SIZE); onLoadMore(); }}
+            disabled={loadingMore}
+            className="mt-0.5 py-2 text-center text-[12px] font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300 disabled:opacity-50 transition-colors"
+          >
+            {loadingMore ? 'Carregando…' : 'Carregar mais'}
+          </button>
         )}
       </div>
     </section>
@@ -619,6 +631,9 @@ const [isPanning, setIsPanning] = useState(false);
     return { startMs: start.getTime(), endMs: end.getTime() };
   }, [monthKey]);
   const boardSafra = isClientFunnelView ? null : safra;
+  // "Em atraso" é follow-up de prospecção: nos funis de clientes não existe, e o
+  // `atraso` que veio no endereço só esvaziaria a Venda. A pílula também some.
+  const overdueOn = onlyOverdue && !isClientFunnelView;
 
   const funnelLeads = useMemo(
     () => (leads || []).filter(l => isItemInFunnel(l, selectedFunnelId, defaultFunnelId)
@@ -645,8 +660,8 @@ const [isPanning, setIsPanning] = useState(false);
     [isExpiredView, expiredWindow]
   );
   const {
-    items: expiredDocs, hasMore: expiredHasMore, loadMore: expiredLoadMore, patchItem: expiredPatchLead,
-    error: expiredError,
+    items: expiredDocs, hasMore: expiredHasMore, loadMore: expiredLoadMore, patchItem: expiredPatchLead, loading: expiredLoading,
+    error: expiredError, reload: expiredReload,
   } = usePagedLeads({
     db, path: LEADS_PATH, spec: expiredSpec, specKey: `vencidos:${isExpiredView ? '1' : '0'}:${monthKey || ''}`,
     enabled: !!db && isExpiredView,
@@ -674,6 +689,8 @@ const [isPanning, setIsPanning] = useState(false);
   const upgradeFunnel = useMemo(() => getUpgradeFunnel(funnels), [funnels]);
   const isUpgradeView = Boolean(upgradeFunnel && selectedFunnelId === upgradeFunnel.id);
   const [upgradeCountEpoch, setUpgradeCountEpoch] = useState(0);
+  // Recontagem do Vencidos depois de uma reativação feita pela própria tela.
+  const [expiredCountEpoch, setExpiredCountEpoch] = useState(0);
   const upgradeSpec = useMemo(() => (isUpgradeView ? upgradeClientsQuerySpec() : null), [isUpgradeView]);
   // normalizeLeadDoc: nextFollowUp/createdAt viram Date, senão todo card sai "sem agendamento".
   const {
@@ -719,20 +736,24 @@ const [isPanning, setIsPanning] = useState(false);
   // filtro não se aplica às colunas de marco nem à Perda daqui. Com ele ligado o
   // que muda na tela é só a coluna Venda, que tem fonte própria (wonLeads).
   const renewalSplit = useMemo(() => {
-    if (!isRenewalView) return { cardsByColumn: new Map(), declined: EMPTY_LEADS };
+    if (!isRenewalView) return { cardsByColumn: new Map(), declined: EMPTY_LEADS, total: 0 };
     const { cardsByColumn, declined } = splitRenewalForBoard(renewalPages, renewalColumns);
-    if (respFilter.length === 0) return { cardsByColumn, declined };
+    // Total da academia, sem o filtro de carteira: é o número do menu de funis,
+    // que nos outros funis também conta a equipe inteira.
+    let total = declined.length;
+    cardsByColumn.forEach((cards) => { total += cards.length; });
+    if (respFilter.length === 0) return { cardsByColumn, declined, total };
     const meu = (l) => respFilter.includes(l.consultantId);
     const filtrado = new Map();
     cardsByColumn.forEach((cards, nome) => filtrado.set(nome, cards.filter(meu)));
-    return { cardsByColumn: filtrado, declined: declined.filter(meu) };
+    return { cardsByColumn: filtrado, declined: declined.filter(meu), total };
   }, [isRenewalView, renewalPages, renewalColumns, respFilter]);
 
   const kanbanLeads = useMemo(
     // Nos funis Vencidos e Upgrade os cards vêm da query própria já projetada,
     // não da assinatura de leads ativos — cliente não está no board de prospecção.
-    () => (isExpiredView ? expiredLeads : isUpgradeView ? upgradeLeads : filterKanbanLeads(funnelLeads, { respFilter, onlyOverdue })),
-    [isExpiredView, expiredLeads, isUpgradeView, upgradeLeads, funnelLeads, respFilter, onlyOverdue]
+    () => (isExpiredView ? expiredLeads : isUpgradeView ? upgradeLeads : filterKanbanLeads(funnelLeads, { respFilter, onlyOverdue: overdueOn })),
+    [isExpiredView, expiredLeads, isUpgradeView, upgradeLeads, funnelLeads, respFilter, overdueOn]
   );
 
   // Índice leadId → { count, lastDate }. Percorre interactions UMA vez,
@@ -761,16 +782,17 @@ const [isPanning, setIsPanning] = useState(false);
     loadMore: lostLoadMore, reload: lostReload,
   } = usePagedLeads({
     db, path: LEADS_PATH, spec: lostSpec, specKey: `perda:${lostFunnelId || ''}:${safraKey}`,
-    enabled: !!db && !!lostFunnelId,
+    // Nos funis de clientes a Perda são os recusados da projeção; ninguém tem o funnelId deles.
+    enabled: !!db && !!lostFunnelId && !isClientFunnelView,
   });
   // Refino client-side sobre a página carregada, espelhando filterKanbanLeads
   // para perdas: respFilter por consultantId; onlyOverdue exclui perdas (elas
   // não têm follow-up ativo), então a coluna fica vazia com o filtro ligado.
   const lostLeads = useMemo(() => {
-    if (onlyOverdue) return [];
+    if (overdueOn) return [];
     const base = lostDocs || [];
     return respFilter.length === 0 ? base : base.filter(l => respFilter.includes(l.consultantId));
-  }, [lostDocs, respFilter, onlyOverdue]);
+  }, [lostDocs, respFilter, overdueOn]);
 
   // Coluna Venda: matrículas fechadas no MÊS CORRENTE, com fonte própria.
   // Pós-flip o prop `leads` é só o balde 'ativo', então o card sumia no instante
@@ -802,10 +824,10 @@ const [isPanning, setIsPanning] = useState(false);
   // exata. Na safra, quem a importação de clientes criou fica de fora, como
   // nos painéis: a data de cadastro dele é a da planilha.
   const wonLeads = useMemo(() => {
-    if (onlyOverdue) return [];
+    if (overdueOn) return [];
     const base = (wonDocs || []).filter(l => (!lostFunnelId || l.funnelId === lostFunnelId) && !(boardSafra && isImportCreatedLead(l)));
     return respFilter.length === 0 ? base : base.filter(l => respFilter.includes(l.consultantId));
-  }, [wonDocs, respFilter, onlyOverdue, lostFunnelId, boardSafra]);
+  }, [wonDocs, respFilter, overdueOn, lostFunnelId, boardSafra]);
 
   // Lookup dos leads ARRASTÁVEIS por id: ativos (prop) + as páginas das colunas
   // terminais (Perda e Venda). Pós-flip o prop é só 'ativo', então sem incluir
@@ -851,12 +873,12 @@ const [isPanning, setIsPanning] = useState(false);
   const [countEpoch, setCountEpoch] = useState(0);
   const { counts: funnelBucketCounts } = useFunnelCounts({
     db, path: LEADS_PATH, funnelId: lostFunnelId, buckets: PERDA_BUCKETS,
-    enabled: !!db && !!lostFunnelId, reloadKey: countEpoch,
+    enabled: !!db && !!lostFunnelId && !isClientFunnelView, reloadKey: countEpoch,
   });
   // Na safra, o total da Perda é a contagem do servidor sobre a consulta do mês.
   const safraLostCount = useLeadCount({
     db, path: LEADS_PATH, spec: boardSafra ? lostSpec : null,
-    specKey: `perda-safra:${lostFunnelId || ''}:${safraKey}:${countEpoch}`, enabled: !!db && !!boardSafra && !!lostFunnelId,
+    specKey: `perda-safra:${lostFunnelId || ''}:${safraKey}`, reloadKey: countEpoch, enabled: !!db && !!boardSafra && !!lostFunnelId,
   });
   // Recarrega a página E reconta a coluna Perda juntas.
   const refreshLost = useCallback(() => {
@@ -869,7 +891,7 @@ const [isPanning, setIsPanning] = useState(false);
   // mês ou o funil do quadro terem mudado: pelo closure, as recargas buscariam a consulta velha e
   // poriam os leads dela na coluna de agora. Por este ref são sempre as da última renderização,
   // e toda chamada de uma delas passa por aqui (a varredura dos chamadores do modal cobra).
-  const reloadsRef = useLatestRef({ refreshLost, renewalReload, upgradeReload, wonReload });
+  const reloadsRef = useLatestRef({ refreshLost, renewalReload, upgradeReload, wonReload, expiredReload });
   // Total no header da Perda: a contagem do servidor vale quando NÃO há refino
   // client-side (respFilter/onlyOverdue). Com refino, cai no tamanho da página
   // refinada (undefined → a coluna usa columnLeads.length), como era antes.
@@ -883,7 +905,7 @@ const [isPanning, setIsPanning] = useState(false);
   //     do orderBy. É AUTO-DETECTÁVEL: se este total do servidor (que conta tudo)
   //     passar do total de cards carregáveis, é esse caso — aí rodar backfill de
   //     createdAt. Empiricamente 0 nos funis testados.
-  const perdaHeaderCount = (respFilter.length === 0 && !onlyOverdue)
+  const perdaHeaderCount = (respFilter.length === 0 && !overdueOn && !isClientFunnelView)
     ? (boardSafra ? safraLostCount : funnelBucketCounts[LIFECYCLE_BUCKETS.PERDA])
     : undefined;
 
@@ -897,7 +919,7 @@ const [isPanning, setIsPanning] = useState(false);
   );
   const expiredCount = useLeadCount({
     db, path: LEADS_PATH, spec: expiredCountSpec,
-    specKey: `vencidos:${expiredCutoffMs}:${monthKey || ''}`, enabled: !!db && !!expiredFunnel,
+    specKey: `vencidos:${expiredCutoffMs}:${monthKey || ''}`, reloadKey: expiredCountEpoch, enabled: !!db && !!expiredFunnel,
   });
 
   // Total do funil UPGRADE para o badge da aba: agregação no servidor, 1
@@ -906,7 +928,7 @@ const [isPanning, setIsPanning] = useState(false);
   // O epoch refaz a contagem depois de recusa ou fechamento pela própria tela; sem ele o número da aba ficava velho a sessão inteira.
   const upgradeCount = useLeadCount({
     db, path: LEADS_PATH, spec: upgradeCountSpec,
-    specKey: `upgrade:${upgradeCountEpoch}`, enabled: !!db && !!upgradeFunnel,
+    specKey: 'upgrade', reloadKey: upgradeCountEpoch, enabled: !!db && !!upgradeFunnel,
   });
 
   // Total do funil RENOVAÇÕES: somado do que o board carregou, não do servidor.
@@ -915,12 +937,7 @@ const [isPanning, setIsPanning] = useState(false);
   // currentContractStatus, campo sem backfill que derrubaria em silêncio todo
   // cliente antigo que não o tem. Como cada coluna carrega a faixa INTEIRA
   // (useRenewalBoard não pagina), esta soma é o total de verdade.
-  const renewalTotal = useMemo(() => {
-    if (!isRenewalView) return null;
-    let n = renewalSplit.declined.length;
-    renewalSplit.cardsByColumn.forEach((cards) => { n += cards.length; });
-    return n;
-  }, [isRenewalView, renewalSplit]);
+  const renewalTotal = isRenewalView ? renewalSplit.total : null;
 
   const funnelCounts = useMemo(() => {
     const map = new Map();
@@ -1032,6 +1049,8 @@ const handleKanbanMouseMove = (e) => {
       // Saiu da Perda: refaz query+contagem. Pelo ref, porque a gravação acima pode terminar depois
       // de o quadro ter trocado de mês ou de funil (internet fora), e aí vale a consulta de agora.
       if (lead.status === 'Perda') reloadsRef.current.refreshLost();
+      // Virou cliente: sai das etapas, e a coluna Venda não é ao vivo.
+      if (plan.stampConvertedAt) reloadsRef.current.wonReload();
     } catch (err) {
       console.error("Erro Kanban:", err);
       toast.error('Não foi possível mover o lead. Tente novamente.');
@@ -1074,7 +1093,10 @@ const handleKanbanMouseMove = (e) => {
     const etapa = (statuses || []).find(
       st => st.funnelId === expiredFunnel?.id && st.name === statusName
     );
-    if (!etapa) return;
+    if (!etapa) {
+      toast.warning('Essa etapa não existe mais no funil Vencidos. Recarregue a página.');
+      return;
+    }
     // Sair da Perda de volta para uma etapa: a recusa deixa de valer, senão o
     // card sumiria das etapas na próxima renderização. Data e motivo saem junto.
     const patch = { reactivationStageId: etapa.id, ...renewalUndoDecline() };
@@ -1295,6 +1317,8 @@ const handleKanbanMouseMove = (e) => {
     // A permissão é checada DENTRO do helper: este ramo corre antes do
     // canEditLead lá de baixo, e sem isso o arrasto gravaria sem passar por
     // guarda nenhuma.
+    // Já recusado: soltar de novo na Perda apagaria a data e o motivo da recusa.
+    if ((alvo?._renewalCard || alvo?._expiredCard) && alvo.renewalDeclined) return;
     if (alvo?._renewalCard) {
       declineRenewal(alvo);
       return;
@@ -1328,7 +1352,11 @@ const handleKanbanMouseMove = (e) => {
     // draggableById e não `leads`: o card projetado do Upgrade e o doc cru da
     // coluna Venda do mês não estão no prop de leads ativos.
     const lead = draggableById.get(lossModalLeadId);
-    if (!lead) return;
+    if (!lead) {
+      setLossModalLeadId(null);
+      toast.warning('Esse lead mudou de lugar enquanto a janela estava aberta. Confira o quadro.');
+      return;
+    }
     const loss = planLoss(lead);
     if (!loss.ok) { setLossModalLeadId(null); toast.warning(stageMoveBlockMessage(lead, loss.reason)); return; }
     // Cliente no funil Upgrade: a Perda é "não quis o upgrade". Só pelo card
@@ -1354,6 +1382,8 @@ const handleKanbanMouseMove = (e) => {
               lossReason: reason,
               nextFollowUp: null,
               lostAt: serverTimestamp(),
+              // Lead antigo sem funil aparece no funil padrão; a consulta da Perda filtra por funnelId.
+              ...(lead.funnelId ? {} : { funnelId: lostFunnelId }),
               // Limpa resquício caso o lead viesse da coluna Venda.
               isConverted: false,
               convertedAt: null
@@ -1388,6 +1418,21 @@ const handleKanbanMouseMove = (e) => {
     setDraggingLeadId(null);
     setDraggedOverColumn(null);
   }, []);
+  // Se o card arrastado sai da tela no meio do arrasto (a assinatura o mudou de coluna),
+  // o dragend dele não chega a ninguém e a faixa de saída ficaria presa no pé do quadro.
+  // Quem limpa então é o drop em qualquer lugar da página ou o próximo toque.
+  useEffect(() => {
+    if (!draggingLeadId) return undefined;
+    const opts = { capture: true };
+    window.addEventListener('dragend', handleDragEnd, opts);
+    window.addEventListener('drop', handleDragEnd, opts);
+    window.addEventListener('pointerdown', handleDragEnd, opts);
+    return () => {
+      window.removeEventListener('dragend', handleDragEnd, opts);
+      window.removeEventListener('drop', handleDragEnd, opts);
+      window.removeEventListener('pointerdown', handleDragEnd, opts);
+    };
+  }, [draggingLeadId, handleDragEnd]);
 
   // Callbacks estáveis p/ colunas/cards memoizados. O set funcional com
   // bail-out (prev === name) reproduz o guard antigo "if (draggedOverColumn
@@ -1421,6 +1466,18 @@ const handleKanbanMouseMove = (e) => {
     [isRenewalView, renewalSplit, kanbanLeads]
   );
   const getLeadsByStatus = (statusName) => leadsByStatus.get(statusName) || EMPTY_LEADS;
+  // Lead movido pela janela Mover: quando o card remonta na coluna nova, o botão que
+  // tinha o foco some e o foco cai no body. Aí ele segue o card, pelo link do título.
+  const followFocusRef = useRef(null);
+  useEffect(() => {
+    const pedido = followFocusRef.current;
+    if (!pedido) return;
+    if (Date.now() > pedido.ate) { followFocusRef.current = null; return; }
+    const ativo = document.activeElement;
+    if (ativo && ativo !== document.body) return;
+    const alvo = document.querySelector(`article a[href$="/ficha/${CSS.escape(pedido.id)}"]:not([tabindex="-1"])`);
+    if (alvo) { followFocusRef.current = null; alvo.focus(); }
+  }, [leadsByStatus]);
 
   // No funil Renovações as colunas NÃO vêm de stronix_statuses: são derivadas
   // dos marcos, em memória. Nos demais, seguem sendo as etapas do funil.
@@ -1433,7 +1490,7 @@ const handleKanbanMouseMove = (e) => {
   // O período vale nos funis de leads (mês de cadastro) e em Vencidos (mês de
   // vencimento); Renovações e Upgrade não têm mês.
   const showPeriod = !isClientFunnelView || isExpiredView;
-  const hasActiveFilters = !respIsDefault || onlyOverdue || (showPeriod && Boolean(safra));
+  const hasActiveFilters = !respIsDefault || overdueOn || (showPeriod && Boolean(safra));
 
   // Lista do filtro: o próprio usuário primeiro (é a carteira que ele mais
   // procura), o resto em ordem alfabética.
@@ -1483,7 +1540,7 @@ const handleKanbanMouseMove = (e) => {
         active={!respIsDefault}
         compact={compact}
       />
-      <FilterChip
+      {!isClientFunnelView && <FilterChip
         icon={AlertCircle}
         label="Situação"
         valueText={onlyOverdue ? 'Em atraso' : 'Todos'}
@@ -1491,14 +1548,17 @@ const handleKanbanMouseMove = (e) => {
         options={SITUACAO_OPTIONS}
         value={onlyOverdue ? 'atraso' : 'todos'}
         onPick={(k) => setParams({ overdue: k === 'atraso' })}
-      />
+      />}
     </>
   );
 
   // Linha de apoio do título: o total e a etapa mais cheia do que está no
   // quadro agora (com a carteira, a situação e o mês escolhidos).
   const boardParts = stageParts(pipelineColumns, (name) => getLeadsByStatus(name).length);
-  const boardSummary = funnelSummary(boardParts, isClientFunnelView ? 'clientes' : 'leads');
+  // Vencidos chega de 10 em 10 pela coluna de entrada: com mais páginas, o total é "ao menos".
+  const boardSummary = funnelSummary(boardParts, isClientFunnelView ? 'clientes' : 'leads')
+    .replace(/^\d+/, (n) => (isExpiredView && expiredHasMore ? `${n}+` : n))
+    .replace(/^Nenhum cliente aqui$/, (t) => (isExpiredView && expiredHasMore && !expiredLoading ? 'Nenhum cliente nesta página, carregue mais' : t));
 
   // O que soltar em Venda e em Perda faz em cada funil (os handlers são os das
   // colunas; só o texto muda).
@@ -1617,7 +1677,7 @@ const handleKanbanMouseMove = (e) => {
           <div className="flex gap-4 min-w-max h-full">
             {pipelineColumns.map((column) => (
               <KanbanColumn
-                key={column.id}
+                key={`${column.id}:${safraKey}`}
                 name={column.name}
                 color={column.color}
                 special={null}
@@ -1627,6 +1687,7 @@ const handleKanbanMouseMove = (e) => {
                 // faixa inteira e o KanbanColumn revela de 10 em 10.
                 // Card do Renovações não tem "Atrasado": o relógio dele é o vencimento.
                 showLate={!isRenewalView}
+                loadingMore={isExpiredView && column.isEntry ? expiredLoading : false}
                 hasMore={isExpiredView && column.isEntry ? expiredHasMore : false}
                 onLoadMore={isExpiredView && column.isEntry ? expiredLoadMore : null}
                 isHovered={draggedOverColumn === column.name}
@@ -1642,11 +1703,14 @@ const handleKanbanMouseMove = (e) => {
             ))}
 
             <KanbanColumn
-              key="__venda"
+              key={`__venda:${lostFunnelId || ''}:${safraKey}`}
               name="Venda"
               color="green"
               special="win"
               columnLeads={wonLeads}
+              // Nos funis de clientes a Venda é contrato novo de quem já é cliente, que não
+              // muda o funil dele: a coluna não tem como listar, só recebe o card.
+              emptyLabel={isClientFunnelView ? 'Arraste para fechar o contrato' : null}
               loadingMore={wonLoading}
               // Na safra o quadro inteiro já é do mês escolhido. Sem ela, a
               // Venda é a do mês corrente e diz qual.
@@ -1663,7 +1727,7 @@ const handleKanbanMouseMove = (e) => {
             />
 
             <KanbanColumn
-              key="__perda"
+              key={`__perda:${lostFunnelId || ''}:${safraKey}`}
               name="Perda"
               color="gray"
               special="loss"
@@ -1675,8 +1739,8 @@ const handleKanbanMouseMove = (e) => {
               }
 
               totalCount={perdaHeaderCount}
-              hasMore={lostHasMore}
-              onLoadMore={lostLoadMore}
+              hasMore={!!lostFunnelId && !isClientFunnelView && !overdueOn && lostHasMore}
+              onLoadMore={isClientFunnelView ? null : lostLoadMore}
               loadingMore={lostLoading}
               isHovered={draggedOverColumn === 'Perda'}
               draggingLeadId={draggingLeadId}
@@ -1749,11 +1813,15 @@ const handleKanbanMouseMove = (e) => {
             // Fechou pelo Upgrade: o contrato novo tirou o cliente do funil
             // (buildMatriculaWrites), então o board precisa recarregar.
             const wasUpgrade = Boolean(matriculaLead?._upgradeCard);
+            // Reativou pelo Vencidos: o contrato novo tira o cliente da consulta, que não é ao vivo.
+            const wasExpired = Boolean(matriculaLead?._expiredCard);
             if (!stale) setMatriculaLead(null);
             if (wasPerda) reloadsRef.current.refreshLost();
             if (wasRenewal) reloadsRef.current.renewalReload();
             if (wasUpgrade) reloadsRef.current.upgradeReload();
             if (wasUpgrade) setUpgradeCountEpoch((e) => e + 1);
+            if (wasExpired) reloadsRef.current.expiredReload();
+            if (wasExpired) setExpiredCountEpoch((e) => e + 1);
             // A venda recém-fechada precisa aparecer na coluna do mês, que
             // também não é ao vivo.
             reloadsRef.current.wonReload();
@@ -1765,7 +1833,12 @@ const handleKanbanMouseMove = (e) => {
         <MoveLeadModal
           lead={moveLead}
           columns={pipelineColumns}
-          onMove={(statusName) => { moveLeadToStatus(moveLead, statusName); setMoveLead(null); }}
+          onMove={(statusName) => {
+            followFocusRef.current = statusName === 'Venda' || statusName === 'Perda'
+              ? null : { id: moveLead.id, ate: Date.now() + 5000 };
+            moveLeadToStatus(moveLead, statusName);
+            setMoveLead(null);
+          }}
           onClose={() => setMoveLead(null)}
         />
       )}
@@ -1781,21 +1854,30 @@ function MoveLeadModal({ lead, columns, onMove, onClose }) {
     { name: 'Venda', color: 'green', kind: 'win' },
     { name: 'Perda', color: 'gray', kind: 'loss' }
   ].filter(t => t.name !== lead.status);
+  // A janela não tem DialogTrigger, e sem ele o Radix manda o foco para o body ao fechar.
+  // Devolvemos ao botão Mover que a abriu, a não ser que a janela seguinte (perda ou
+  // contrato) já tenha pegado o foco: aí ele fica lá.
+  // Só quem abriu pelo teclado: depois de um clique de mouse o botão Mover fica escondido,
+  // e o foco nele seria invisível.
+  const [opener] = useState(() => (document.activeElement?.matches?.(':focus-visible') ? document.activeElement : null));
 
   return (
-    <div
-      className="fixed inset-0 bg-black/70 flex items-end sm:items-center justify-center z-[200] p-0 sm:p-4 animate-fade-in"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden max-h-[80vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent
+        showCloseButton={false}
+        overlayClassName="z-[200] bg-black/70"
+        onCloseAutoFocus={(e) => {
+          e.preventDefault();
+          const solto = !document.activeElement || document.activeElement === document.body;
+          if (solto && opener?.isConnected) opener.focus();
+        }}
+        className="z-[200] gap-0 p-0 w-full sm:max-w-sm overflow-hidden max-h-[80vh] flex flex-col bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-800 rounded-2xl"
       >
         <div className="px-5 py-4 border-b border-gray-100 dark:border-neutral-800">
-          <h3 className="text-[15px] font-semibold text-gray-900 dark:text-white">Mover lead</h3>
-          <p className="text-[12px] text-gray-500 dark:text-neutral-400 truncate mt-0.5">
+          <DialogTitle className="text-[15px] font-semibold text-gray-900 dark:text-white">Mover lead</DialogTitle>
+          <DialogDescription className="text-[12px] text-gray-500 dark:text-neutral-400 truncate mt-0.5">
             <span className="font-medium text-gray-700 dark:text-neutral-200">{lead.name}</span> · de <span className="font-medium">{lead.status}</span>
-          </p>
+          </DialogDescription>
         </div>
         <div className="p-2 overflow-y-auto custom-scrollbar">
           {targets.map((t) => {
@@ -1829,8 +1911,8 @@ function MoveLeadModal({ lead, columns, onMove, onClose }) {
             Cancelar
           </button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 export { KanbanView };

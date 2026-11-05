@@ -46,7 +46,7 @@ function render(lead = LEAD) {
           lead,
           columnColor: 'blue',
           isDragging: false,
-          lastDate: null,
+          lastMs: null,
           onDragStart: () => {},
           onDragEnd: () => {},
           onMoveRequest: () => {},
@@ -100,7 +100,7 @@ describe('card do Pipeline', () => {
 
   it('o card não abre mais a ficha pelo onClick do container', () => {
     const el = KanbanCard.type({
-      lead: LEAD, columnColor: 'blue', isDragging: false, lastDate: null,
+      lead: LEAD, columnColor: 'blue', isDragging: false, lastMs: null,
       onDragStart: () => {}, onDragEnd: () => {}, onMoveRequest: () => {},
     });
     expect(el.type).toBe('article');
