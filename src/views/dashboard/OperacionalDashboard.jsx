@@ -49,7 +49,7 @@ export function OperacionalDashboard({ cur, cmp, series, team, compareOn, shownN
     },
     {
       key: 'tasks', label: 'Tarefas concluídas', goodUp: true,
-      help: 'Tarefas da Meta Diária marcadas como feitas no mês. Cada tarefa conta uma vez por lead e por dia.',
+      help: 'Tarefas da Meta Diária marcadas como feitas no mês. Cada pessoa conta uma tarefa por lead e por dia.',
       value: tasksTotal != null ? fmtNum(tasksTotal) : '—',
       delta: d(tasksTotal, sumTasks(cmp?.tasks), 'count'),
       sub: 'tarefas da Meta no mês'
@@ -110,7 +110,7 @@ export function OperacionalDashboard({ cur, cmp, series, team, compareOn, shownN
           delta={d(cur.renewal.rate, cmp?.renewal.rate, 'pp')}
           personFirst={personFirst}
         />
-        <ExitReasonsBand cancels={cur.base.cancels} wont={cur.renewal.wontReasons} />
+        <ExitReasonsBand cancels={cur.base.cancels} wont={cur.renewal.wontReasons} person={Boolean(person)} />
       </div>
     </div>
   );

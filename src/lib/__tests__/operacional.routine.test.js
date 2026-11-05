@@ -213,3 +213,20 @@ describe('atrasados agora: o lead novo sem próximo passo', () => {
     expect(Object.fromEntries(r.byUser)).toEqual({ ana: 1, marcos: 0 });
   });
 });
+
+describe('pessoa sem login (authUid null)', () => {
+  const users = [...USERS, { id: 'semlogin', authUid: null, name: 'Sem Login', dailyVolumeTarget: 5 }];
+  const range = { start: new Date(2026, 8, 1), end: NOW };
+
+  it('não fica com a prospecção sem autor', () => {
+    const interactions = [{ volumeKind: 'visita', createdAt: D(2) }];
+    const s = prospectionSummary({ users, interactions, leadsCreated: [], metaDays: DAYS });
+    expect(pickProspection(s, 'semlogin').done).toBe(0);
+  });
+
+  it('não fica com as tarefas sem autor, que são de Outros', () => {
+    const interactions = [{ type: 'daily_goal_done', dailyGoalCategory: 'contato_hoje', leadId: 'l1', createdAt: D(2) }];
+    expect(tasksByType({ interactions, users, userId: 'semlogin', ...range }).total).toBe(0);
+    expect(tasksByType({ interactions, users, userId: OTHERS_ID, ...range }).total).toBe(1);
+  });
+});

@@ -45,7 +45,7 @@ export function TasksBand({ tasks, compareTasks, cmpName }) {
   return (
     <Band
       title="Tarefas concluídas"
-      help="Tarefas da Meta Diária marcadas como feitas no mês, por tipo. Cada tarefa conta uma vez por lead e por dia."
+      help="Tarefas da Meta Diária marcadas como feitas no mês, por tipo. Cada pessoa conta uma tarefa por lead e por dia."
       question={total == null ? 'As tarefas da Meta feitas no mês, por tipo.'
         : `${plural(total, 'tarefa', 'tarefas')} da Meta ${total === 1 ? 'feita' : 'feitas'} no mês, por tipo${showCmp ? `, contra os mesmos dias de ${cmpName}` : ''}.`}
     >
@@ -419,13 +419,16 @@ function Donut({ items: given, total, word, emptyText }) {
   );
 }
 
-export function ExitReasonsBand({ cancels, wont }) {
+// Os cancelamentos contam contratos da academia inteira (cancellationsByReason),
+// não pessoas que saíram da base: quem cancela um de dois contratos, ou cancela
+// trancado, entra aqui e não no "Cancelaram" da base.
+export function ExitReasonsBand({ cancels, wont, person = false }) {
   return (
-    <Band title="Por que saem" question="Os motivos de quem cancelou no mês e de quem avisou que não vai renovar.">
+    <Band title="Por que saem" question={`Os motivos dos contratos cancelados no mês e de quem avisou que não vai renovar.${person ? ' Os cancelamentos são da academia inteira, mesmo com uma pessoa escolhida.' : ''}`}>
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
         <div>
-          <div className="mb-3 font-semibold">Cancelaram</div>
-          <Donut items={cancels?.items || []} total={cancels?.total || 0} word={cancels?.total === 1 ? 'cancelou' : 'cancelaram'} emptyText="Nenhum cancelamento neste mês." />
+          <div className="mb-3 font-semibold">Contratos cancelados</div>
+          <Donut items={cancels?.items || []} total={cancels?.total || 0} word={cancels?.total === 1 ? 'cancelado' : 'cancelados'} emptyText="Nenhum cancelamento neste mês." />
         </div>
         <div>
           <div className="mb-3 font-semibold">Não vão renovar</div>

@@ -106,7 +106,8 @@ export function prospectionSummary({ users, interactions, leadsCreated, metaDays
   const days = metaDays.filter((d) => d.state !== 'future');
   const idxOf = new Map(days.map((d, i) => [d.key, i]));
   const byUser = new Map((users || []).map((u) => [u.id, { target: volumeTargetFor(u), perDay: days.map(() => 0) }]));
-  const userOfAuth = new Map((users || []).map((u) => [u.authUid, u.id]));
+  // Sem authUid não entra: a interação sem autor cairia na pessoa sem login.
+  const userOfAuth = new Map((users || []).filter((u) => u.authUid).map((u) => [u.authUid, u.id]));
   const afterCut = (d) => end != null && d >= end;
   const seenLead = new Set();
   (leadsCreated || []).forEach((l) => {
@@ -153,7 +154,7 @@ export function tasksByType({ interactions, users, userId = null, start, end }) 
   // Pessoa: as que ela fez. OTHERS_ID: as de autor fora da equipe, ou sem autor.
   const mine = !userId ? null
     : userId === OTHERS_ID ? (i) => !teamAuth.has(interactionOwnerAuthUid(i))
-      : (i) => interactionOwnerAuthUid(i) === auth;
+      : (i) => Boolean(auth) && interactionOwnerAuthUid(i) === auth;
   const out = Object.fromEntries(TASK_ROWS.map((r) => [r.id, 0]));
   const seen = new Set();
   (interactions || []).forEach((i) => {
