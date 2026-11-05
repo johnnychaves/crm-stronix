@@ -3,8 +3,9 @@ import { adminDb, admin, verifyRequest } from './_firebaseAdmin.js';
 import { loadPlans, effectivePrice, getSeatUsage, extraConsultantsCharge, planSeatLimits } from './_plans.js';
 import {
   isAsaasConfigured, findOrCreateCustomer, createSubscription, updateSubscription,
-  cancelSubscription, listSubscriptionPayments,
+  cancelSubscription, listSubscriptionPayments, listCustomerPayments,
 } from './_asaas.js';
+import { billingSnapshot } from './_asaasBilling.js';
 import { sanitizeProfile } from './_profile.js';
 import { readTenantPrivate, writeTenantPrivate } from './_tenantPrivate.js';
 import { withSentry } from './_sentry.js';
@@ -55,6 +56,25 @@ async function findTenantId(payment) {
   return null;
 }
 
+// Campos da academia a partir da fatura a pagar (billingSnapshot). A carência
+// conta da primeira vez que a academia ficou atrasada, então uma data já gravada
+// fica (inclusive quando o evento era um pagamento de outro mês).
+function billingPatch(snap, cur, eventPatch) {
+  const del = admin.firestore.FieldValue.delete();
+  const out = { paymentStatus: snap.paymentStatus };
+  if (snap.overdue) {
+    out.overdueInvoiceUrl = snap.overdue.invoiceUrl || del;
+    if (cur.paymentOverdueSince) delete eventPatch.paymentOverdueSince;
+    else out.paymentOverdueSince = admin.firestore.FieldValue.serverTimestamp();
+  } else {
+    out.overdueInvoiceUrl = del;
+    out.paymentOverdueSince = del;
+  }
+  out.lastInvoiceUrl = snap.due?.invoiceUrl || del;
+  out.nextBillingAt = snap.due?.dueDate ? toTs(snap.due.dueDate) : del;
+  return out;
+}
+
 async function handleWebhook(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Método não permitido.' });
   if (!tokenOk(req)) return res.status(401).json({ error: 'Token inválido.' });
@@ -82,6 +102,7 @@ async function handleWebhook(req, res) {
     const tenantId = await findTenantId(payment);
     if (!tenantId) return res.status(200).json({ ignored: 'tenant não encontrado', event });
 
+    const cur = (await tenantsCol().doc(tenantId).get()).data() || {};
     const patch = { updatedAt: admin.firestore.FieldValue.serverTimestamp() };
     if (PAID.has(event)) {
       patch.paymentStatus = 'paid';
@@ -92,8 +113,7 @@ async function handleWebhook(req, res) {
       // o tenant fica 'trial' com trialEndsAt vencido e o app mantém o bloqueio
       // 'trial_expired' apesar de pago. Só mexe quando ainda está em trial (não
       // reativa academia suspensa manualmente).
-      const curSnap = await tenantsCol().doc(tenantId).get();
-      if (curSnap.data()?.status === 'trial') patch.status = 'active';
+      if (cur.status === 'trial') patch.status = 'active';
     } else if (event === 'PAYMENT_OVERDUE') {
       patch.paymentStatus = 'overdue';
       patch.paymentOverdueSince = admin.firestore.FieldValue.serverTimestamp(); // marca início da carência
@@ -104,6 +124,15 @@ async function handleWebhook(req, res) {
     } else if (event === 'PAYMENT_CREATED') {
       if (payment.dueDate) patch.nextBillingAt = toTs(payment.dueDate);
       if (payment.invoiceUrl) patch.lastInvoiceUrl = payment.invoiceUrl;
+    }
+    // O evento fala de UMA cobrança; a lista do Asaas diz o estado da academia.
+    // Sem ela, o pagamento de dezembro liberava a academia com novembro atrasado,
+    // e a cobrança de dezembro recém-criada virava a "fatura atual". Se a lista
+    // falhar, vale a leitura do evento, como antes.
+    if (payment.customer) {
+      try {
+        Object.assign(patch, billingPatch(billingSnapshot((await listCustomerPayments(payment.customer))?.data), cur, patch));
+      } catch (e) { console.error('asaas-webhook lista de cobranças', e?.message || e); }
     }
     if (Object.keys(patch).length > 1) await tenantsCol().doc(tenantId).update(patch);
 
@@ -255,7 +284,7 @@ async function handleSubscription(req, res, auth) {
       let lastInvoiceUrl = null, nextBillingMs = null;
       try {
         const pays = await listSubscriptionPayments(subscriptionId);
-        const first = pays?.data?.[0];
+        const first = billingSnapshot(pays?.data).due;
         if (first) { lastInvoiceUrl = first.invoiceUrl || null; if (first.dueDate) nextBillingMs = new Date(first.dueDate + 'T12:00:00').getTime(); }
       } catch (e) { console.error('listPayments', e?.message || e); }
 
@@ -297,12 +326,23 @@ async function handleTenantSelf(req, res, auth) {
 
   if (req.method === 'GET') {
     const priv = await readTenantPrivate(auth.tenantId, tenant);
+    // As faturas vêm do cliente, e não só da assinatura atual: a cobrança de
+    // uma assinatura trocada continua sendo da academia. A falha vai à tela
+    // (invoicesError), em vez de parecer que não existe fatura.
     let invoices = [];
-    if (tenant.asaasSubscriptionId && isAsaasConfigured()) {
+    let openInvoice = null;
+    let invoicesError = false;
+    if ((tenant.asaasCustomerId || tenant.asaasSubscriptionId) && isAsaasConfigured()) {
       try {
-        const pays = await listSubscriptionPayments(tenant.asaasSubscriptionId);
-        invoices = (pays?.data || []).map((p) => ({ id: p.id, status: p.status, value: p.value, dueDate: p.dueDate, invoiceUrl: p.invoiceUrl, billingType: p.billingType }));
-      } catch (e) { console.error('self invoices', e?.message || e); }
+        const pays = tenant.asaasCustomerId
+          ? await listCustomerPayments(tenant.asaasCustomerId)
+          : await listSubscriptionPayments(tenant.asaasSubscriptionId);
+        const lean = (p) => ({ id: p.id, status: p.status, value: p.value, dueDate: p.dueDate, invoiceUrl: p.invoiceUrl, billingType: p.billingType });
+        const list = (pays?.data || []).filter((p) => !p.deleted);
+        invoices = list.map(lean).sort((a, b) => String(b.dueDate || '').localeCompare(String(a.dueDate || '')));
+        const due = billingSnapshot(list).due;
+        openInvoice = due ? lean(due) : null;
+      } catch (e) { invoicesError = true; console.error('self invoices', e?.message || e); }
     }
     const availablePlans = [...plansMap.values()]
       .filter((p) => p.isActive !== false)
@@ -343,7 +383,7 @@ async function handleTenantSelf(req, res, auth) {
         extraUserPrice: cur?.extraUserPrice ?? null,
         maxExtraUsers: cur?.maxExtraUsers ?? null,
       } : null,
-      invoices, availablePlans,
+      invoices, openInvoice, invoicesError, availablePlans,
     });
   }
 
@@ -440,7 +480,7 @@ async function handleTenantSelf(req, res, auth) {
       const nextDueDate = ymd(Date.now()); // trial encerrado → cobra a partir de hoje
       const sub = await createSubscription({ customerId: customer.id, value, cycle: cycleAsaas, nextDueDate, description: `STRONILEAD — plano ${chosen}`, tenantId: auth.tenantId });
       let invoiceUrl = null, nextBillingMs = null;
-      try { const pays = await listSubscriptionPayments(sub.id); const first = pays?.data?.[0]; if (first) { invoiceUrl = first.invoiceUrl || null; if (first.dueDate) nextBillingMs = new Date(first.dueDate + 'T12:00:00').getTime(); } } catch (e) { console.error('activate listPayments', e?.message || e); }
+      try { const pays = await listSubscriptionPayments(sub.id); const first = billingSnapshot(pays?.data).due; if (first) { invoiceUrl = first.invoiceUrl || null; if (first.dueDate) nextBillingMs = new Date(first.dueDate + 'T12:00:00').getTime(); } } catch (e) { console.error('activate listPayments', e?.message || e); }
       await ref.update({
         asaasCustomerId: customer.id, asaasSubscriptionId: sub.id, billingProvider: 'asaas', billingCycle: cycle,
         paymentStatus: 'pending',

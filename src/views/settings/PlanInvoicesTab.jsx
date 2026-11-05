@@ -17,6 +17,20 @@ function invStatus(s) {
   if (k === 'REFUNDED') return { t: 'Estornada', c: 'bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-300' };
   return { t: k || '—', c: 'bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-300' };
 }
+const fmtDue = (ymd) => (ymd ? new Date(ymd + 'T12:00:00').toLocaleDateString('pt-BR') : '—');
+// Dia de hoje no formato do dueDate do Asaas (AAAA-MM-DD), no fuso do aparelho.
+const todayYmd = () => new Date().toLocaleDateString('sv-SE');
+
+// A situação sai da fatura a pagar (a mais antiga em aberto, que o servidor
+// manda em openInvoice); sem ela, do paymentStatus gravado pelo webhook.
+function situationOf(data) {
+  const open = data.openInvoice;
+  if (open?.status === 'OVERDUE') return { t: 'Atrasada', c: 'text-rose-700 dark:text-rose-300', sub: `fatura de ${fmtDue(open.dueDate)} em aberto` };
+  if (open?.dueDate && open.dueDate <= todayYmd()) return { t: 'Vence hoje', c: 'text-amber-700 dark:text-amber-300', sub: 'fatura em aberto' };
+  const p = PAY[data.paymentStatus] || { t: '—', c: 'text-slate-500' };
+  return { ...p, sub: data.hasSubscription ? 'cobrança automática ativa' : 'sem cobrança automática' };
+}
+
 const PAY = {
   paid: { t: 'Em dia', c: 'text-emerald-700 dark:text-emerald-300' },
   pending: { t: 'Pendente', c: 'text-amber-700 dark:text-amber-300' },
@@ -63,7 +77,8 @@ function PlanInvoicesTab() {
   if (loading) return <div className="text-center text-[13px] text-slate-400 py-12">Carregando sua assinatura…</div>;
   if (!data) return <div className="text-center text-[13px] text-slate-400 py-12">Não foi possível carregar a assinatura.</div>;
 
-  const pay = PAY[data.paymentStatus] || { t: '—', c: 'text-slate-500' };
+  const pay = situationOf(data);
+  const open = data.openInvoice;
   const renew = data.nextBillingAt ? new Date(data.nextBillingAt).toLocaleDateString('pt-BR') : null;
 
   return (
@@ -79,12 +94,25 @@ function PlanInvoicesTab() {
           <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] p-4">
             <div className="text-[11px] uppercase tracking-wide text-slate-400">Situação</div>
             <div className={`text-[18px] font-bold mt-1 ${pay.c}`}>{pay.t}</div>
-            <div className="text-[12px] text-slate-500">{data.hasSubscription ? 'cobrança automática ativa' : 'sem cobrança automática'}</div>
+            <div className="text-[12px] text-slate-500">{pay.sub}</div>
           </div>
           <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] p-4">
-            <div className="text-[11px] uppercase tracking-wide text-slate-400">Próxima renovação</div>
-            <div className="text-[18px] font-bold text-slate-900 dark:text-white mt-1 num flex items-center gap-1.5"><Calendar size={15} className="text-slate-400" />{renew || '—'}</div>
-            {data.lastInvoiceUrl && <a href={data.lastInvoiceUrl} target="_blank" rel="noreferrer" className="text-[12px] text-brand-600 hover:underline inline-flex items-center gap-1 mt-0.5">fatura atual <ExternalLink size={11} /></a>}
+            {open ? (
+              <>
+                <div className="text-[11px] uppercase tracking-wide text-slate-400">Fatura a pagar</div>
+                <div className="text-[18px] font-bold text-slate-900 dark:text-white mt-1 num flex items-center gap-1.5"><Calendar size={15} className="text-slate-400" />{fmtDue(open.dueDate)}</div>
+                <div className="text-[12px] text-slate-500 num flex items-center gap-2 mt-0.5">
+                  {brl(open.value)}
+                  {open.invoiceUrl && <a href={open.invoiceUrl} target="_blank" rel="noreferrer" className="text-brand-600 font-semibold hover:underline inline-flex items-center gap-1">Pagar fatura <ExternalLink size={11} /></a>}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="text-[11px] uppercase tracking-wide text-slate-400">{data.invoicesError ? 'Próxima renovação' : 'Fatura a pagar'}</div>
+                <div className="text-[18px] font-bold text-slate-900 dark:text-white mt-1 num flex items-center gap-1.5"><Calendar size={15} className="text-slate-400" />{data.invoicesError ? (renew || '—') : 'Nada em aberto'}</div>
+                {data.invoicesError && data.lastInvoiceUrl && <a href={data.lastInvoiceUrl} target="_blank" rel="noreferrer" className="text-[12px] text-brand-600 hover:underline inline-flex items-center gap-1 mt-0.5">fatura atual <ExternalLink size={11} /></a>}
+              </>
+            )}
           </div>
         </div></div>
       </SettingsCard>
@@ -105,7 +133,7 @@ function PlanInvoicesTab() {
             })}
           </div>
         ) : (
-          <div className="text-center text-[12.5px] text-slate-400 italic py-6">{data.hasSubscription ? 'Nenhuma fatura emitida ainda.' : 'Cobrança automática ainda não configurada. Fale com o suporte para ativar.'}</div>
+          <div className="text-center text-[12.5px] text-slate-400 italic py-6">{data.invoicesError ? 'Não deu para buscar as faturas no Asaas agora. Tente de novo em alguns minutos.' : data.hasSubscription ? 'Nenhuma fatura emitida ainda.' : 'Cobrança automática ainda não configurada. Fale com o suporte para ativar.'}</div>
         )}
       </SettingsCard>
 
