@@ -20,7 +20,7 @@ export const CONTRACT_ORIGIN = {
 
 // O instante da venda, com a mesma troca do Gerencial (saleMoment): sem
 // createdAt, vale o início.
-const saleMomentOf = (c) => getSafeDateOrNull(c?.createdAt) || getSafeDateOrNull(c?.startsAt);
+export const saleMomentOf = (c) => getSafeDateOrNull(c?.createdAt) || getSafeDateOrNull(c?.startsAt);
 
 // Fim efetivo: a data do cancelamento quando ele veio antes do fim, ou quando o
 // contrato foi cancelado ainda trancado (o fim de um trancado não corre, e o

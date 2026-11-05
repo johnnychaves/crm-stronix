@@ -1,7 +1,8 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Ban, BookOpen, Building2, Calendar, Check, ChevronDown, Clock, Download, Phone, SlidersHorizontal, Timer, TrendingUp, Users } from 'lucide-react';
+import { ArrowUpRight, Ban, BookOpen, Building2, Calendar, Check, ChevronDown, Clock, Download, Phone, SlidersHorizontal, Timer, TrendingUp, Users } from 'lucide-react';
 import { DAILY_GOAL_CATEGORIES, getAppointmentOutcomeMeta, getLeadAppointmentDate, getLeadAppointmentType, isLeadConverted } from '../lib/leads.js';
 import { isSeller } from '../lib/acesso.js';
+import { isUpgradeAppointment, upgradeClosed } from '../lib/apptUpgrade.js';
 import { LIST_PAGE_SIZE } from '../lib/leadStatus.js';
 import { usePagedLeads } from '../hooks/usePagedLeads.js';
 import { useScreenParams } from '../hooks/useScreenParams.js';
@@ -63,8 +64,10 @@ function getApptAttendanceState(lead) {
   if (!outcomeIsCurrent && lead.appointmentOutcome) {
     return { key: 'rescheduled', label: 'Remarcado', icon: '🔁', badgeClass: 'bg-brand-500/10 text-brand-700 dark:text-brand-300' };
   }
-  // Sem desfecho explícito: se converteu, obviamente compareceu (legado).
-  if (isLeadConverted(lead)) {
+  // Sem desfecho explícito: se converteu, obviamente compareceu (legado). Não
+  // vale para quem já era cliente na hora do compromisso (upgrade): ele ainda
+  // pode nem ter vindo.
+  if (isLeadConverted(lead) && !isUpgradeAppointment(lead)) {
     const a = getAppointmentOutcomeMeta('attended');
     return { key: 'attended', label: a.label, icon: a.icon, badgeClass: a.badgeClass };
   }
@@ -75,7 +78,14 @@ function getApptAttendanceState(lead) {
   return { key: 'scheduled', label: 'Agendado', icon: '📅', badgeClass: 'bg-brand-500/10 text-brand-700 dark:text-brand-300' };
 }
 
-function getApptFinalState(lead) {
+function getApptFinalState(lead, contratos) {
+  // Quem já era cliente na hora do compromisso não "matriculou": é upgrade, e só
+  // vira "feito" quando há contrato vendido depois do compromisso.
+  if (isUpgradeAppointment(lead)) {
+    return upgradeClosed(lead, contratos)
+      ? { label: 'Upgrade feito', Icon: TrendingUp, tone: 'emerald' }
+      : { label: 'Upgrade', Icon: ArrowUpRight, tone: 'brand' };
+  }
   if (lead.status === 'Venda' || isLeadConverted(lead)) return { label: 'Matriculado', Icon: TrendingUp, tone: 'emerald' };
   if (lead.status === 'Perda') return { label: 'Perdido', Icon: Ban, tone: 'rose', reason: lead.lossReason };
   return { label: 'Em andamento', Icon: Clock, tone: 'slate' };
@@ -130,7 +140,7 @@ const fromDateInput = (s) => {
 };
 
 function AppointmentTrackingView({ usersList, db, appointmentType }) {
-  const { professores } = useGeneralConfig();
+  const { professores, contratos } = useGeneralConfig();
   // Responsável é quem vende: o professor não é dono de lead e fica fora do
   // filtro, do endereço e da exportação (isSeller, em src/lib/acesso.js).
   const sellers = useMemo(() => (usersList || []).filter(isSeller), [usersList]);
@@ -680,7 +690,7 @@ function AppointmentTrackingView({ usersList, db, appointmentType }) {
               visibleRows.map(l => {
                 const d = getLeadAppointmentDate(l);
                 const att = getApptAttendanceState(l);
-                const fin = getApptFinalState(l);
+                const fin = getApptFinalState(l, contratos);
                 const pass = isAula ? getTrialPassNote(l) : null;
                 const isToday = isApptSameDay(d);
                 const isPending = att.key === 'pending';
@@ -773,7 +783,12 @@ function AppointmentTrackingView({ usersList, db, appointmentType }) {
                       {fin.tone === 'emerald' ? (
                         <span className="inline-flex items-center gap-[5px] text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-600 text-white whitespace-nowrap shadow-[0_1px_2px_rgba(5,150,105,.35)]">
                           <TrendingUp className="size-[11px]" strokeWidth={2.4} />
-                          Matriculado
+                          {fin.label}
+                        </span>
+                      ) : fin.tone === 'brand' ? (
+                        <span className="inline-flex items-center gap-[5px] text-[11px] font-semibold px-2.5 py-1 rounded-full bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300 whitespace-nowrap">
+                          <ArrowUpRight className="size-[11px]" strokeWidth={2.4} />
+                          {fin.label}
                         </span>
                       ) : fin.tone === 'rose' ? (
                         <span
