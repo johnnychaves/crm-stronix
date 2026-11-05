@@ -339,6 +339,20 @@ describe('computeChurn', () => {
     expect(computeChurn(list, SEP)).toMatchObject({ exits: 0, base: 1, pct: 0 });
   });
 
+  it('contrato que começa no instante do início do mês está na base e sai', () => {
+    const list = [C('meia-noite', { createdAt: SEP.start, startsAt: SEP.start, endsAt: D(2027, 9, 1), status: 'cancelado', cancelledAt: D(2026, 9, 10) })];
+    expect(computeChurn(list, SEP)).toMatchObject({ exits: 1, base: 1 });
+  });
+
+  it('ex-cliente que volta e cancela no mesmo mês não é saída', () => {
+    const list = [
+      C('base'),
+      C('antigo', { leadId: 'X', startsAt: D(2025, 1, 1), createdAt: D(2025, 1, 1), endsAt: D(2025, 7, 1) }),
+      C('volta', { leadId: 'X', status: 'cancelado', createdAt: D(2026, 9, 5), startsAt: D(2026, 9, 5), endsAt: D(2027, 9, 5), cancelledAt: D(2026, 9, 20) })
+    ];
+    expect(computeChurn(list, SEP)).toMatchObject({ exits: 0, base: 1 });
+  });
+
   it('contrato feito depois do cancelamento não apaga a saída', () => {
     const list = [
       C('velho', { leadId: 'V', status: 'cancelado', cancelledAt: D(2026, 9, 15), endsAt: D(2026, 10, 20) }),
