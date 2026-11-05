@@ -40,6 +40,17 @@ describe('LossReasonModal', () => {
     botao.remove();
   });
 
+  it('com returnFocusTo, o foco volta para o elemento indicado', () => {
+    const mover = document.createElement('button');
+    const outro = document.createElement('button');
+    document.body.append(mover, outro);
+    outro.focus();
+    render({ onClose: () => {}, onConfirm: () => {}, returnFocusTo: mover });
+    act(() => root.render(null));
+    expect(document.activeElement).toBe(mover);
+    mover.remove(); outro.remove();
+  });
+
   it('Esc fecha, mas não durante a gravação', async () => {
     let solta;
     const onClose = vi.fn();

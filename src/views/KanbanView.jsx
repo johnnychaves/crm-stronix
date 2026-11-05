@@ -586,6 +586,9 @@ function KanbanView({ leads, interactions, appUser, statuses, usersList, lossRea
   const [{ funnel, monthKey, resp: respFilter, overdue: onlyOverdue }, setParams] = useScreenParams('kanban', paramsCtx);
   const selectedFunnelId = funnel;
   const [lossModalLeadId, setLossModalLeadId] = useState(null);
+  // Mover → Perda pelo teclado: a janela de perda abre no mesmo render em que a Mover
+  // some, e ao cancelar o foco precisa voltar ao botão Mover do card, não ao body.
+  const [lossReturn, setLossReturn] = useState(null);
   // Lead aguardando matrícula no ContractModal (caminho de Venda do Kanban).
   const [matriculaLead, setMatriculaLead] = useState(null);
   const [draggingLeadId, setDraggingLeadId] = useState(null);
@@ -1777,7 +1780,8 @@ const handleKanbanMouseMove = (e) => {
       {lossModalLeadId && (
         <LossReasonModal
           lossReasons={lossReasons}
-          onClose={() => setLossModalLeadId(null)}
+          returnFocusTo={lossReturn?.id === lossModalLeadId ? lossReturn.el : null}
+          onClose={() => { setLossModalLeadId(null); setLossReturn(null); }}
           onConfirm={confirmKanbanLoss}
         />
       )}
@@ -1843,7 +1847,13 @@ const handleKanbanMouseMove = (e) => {
             const peloTeclado = document.activeElement?.matches?.(':focus-visible');
             followFocusRef.current = statusName === 'Venda' || statusName === 'Perda' || !peloTeclado
               ? null : { id: moveLead.id, ate: Date.now() + 5000 };
-            moveLeadToStatus(moveLead, statusName);
+            if (statusName === 'Perda' && peloTeclado) {
+              const card = document.querySelector(`article a[href$="/ficha/${CSS.escape(moveLead.id)}"]:not([tabindex="-1"])`)?.closest('article');
+              setLossReturn({ id: moveLead.id, el: card?.querySelector('button[aria-label^="Mover"]') || null });
+            }
+            // A versão de agora do lead, como no arrasto: a janela pode ter ficado aberta
+            // enquanto o lead mudou (virou cliente, trocou de etapa) em outra aba.
+            moveLeadToStatus(draggableById.get(moveLead.id) || moveLead, statusName);
             setMoveLead(null);
           }}
           onClose={() => setMoveLead(null)}

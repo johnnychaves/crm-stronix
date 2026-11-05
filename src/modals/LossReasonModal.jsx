@@ -3,7 +3,7 @@ import { ThumbsDown } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext.jsx';
 
 // Modal Global de Motivo de Perda
-function LossReasonModal({ lossReasons, onClose, onConfirm }) {
+function LossReasonModal({ lossReasons, onClose, onConfirm, returnFocusTo = null }) {
   const toast = useToast();
   const options = lossReasons?.length > 0 ? lossReasons : [{id: 'default', name: 'Sem motivo configurado'}];
   const [reason, setReason] = useState(options[0].name);
@@ -24,7 +24,7 @@ function LossReasonModal({ lossReasons, onClose, onConfirm }) {
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   // Lido no render, antes de o autoFocus da lista de motivos pegar o foco.
-  const [opener] = useState(() => document.activeElement);
+  const [opener] = useState(() => returnFocusTo || document.activeElement);
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === 'Escape' && !busyRef.current) { e.preventDefault(); closeRef.current?.(); }
