@@ -199,3 +199,15 @@ describe('motivo da perda', () => {
       .toEqual([{ name: 'Preço', count: 1 }]);
   });
 });
+
+describe('lead promovido a cliente pela importação', () => {
+  it('sai da safra, como sai de Matrículas', () => {
+    const promovido = {
+      id: 'p', createdAt: D(10, 5), importBatchId: 'lote', importedAt: D(10, 20, 15),
+      clienteSince: D(10, 20, 15), convertedAt: D(10, 20, 15), lifecycleStage: 'cliente'
+    };
+    const win = { start: D(10, 1, 0), end: new Date(2026, 10, 1), inScope: () => true };
+    expect(newLeadsOf([promovido], win)).toHaveLength(0);
+    expect(enrollmentsOf([promovido], win)).toHaveLength(0);
+  });
+});
