@@ -557,6 +557,20 @@ Desenho de 16/10/2026 (mockup C, "Trilho do funil", escolhido pelo Johnny; mocku
 - **A próxima ação** (`nextActionOf`) diz quando ("Atrasado há 1 dia", "Hoje às 16:00", "Em 4 dias") e põe a data embaixo. Só atrasado e hoje têm cor.
 - A ordem da lista não mudou: cadastro mais novo primeiro.
 
+## Aulas e Visitas
+
+As duas telas de acompanhamento (`/<academia>/leads/aulas` e `/<academia>/leads/visitas`) são a mesma view, `src/views/AppointmentTrackingView.jsx`. A linha é o lead com o agendamento atual, e a tela é só de consulta: o desfecho se marca na Meta Diária.
+
+- **A coluna Finalizou julga o compromisso, não só o estado atual do lead** (PR #299, 05/11/2026). Cliente ativo já está em Venda, então o `isLeadConverted` o dava como "Matriculado" desde o agendamento. Agora, quando a data do compromisso é a partir da primeira matrícula (`isUpgradeAppointment`, em `src/lib/apptUpgrade.js`, com o `firstEnrolledAtOf` do CRM), a linha mostra "Upgrade". É a régua do `appointmentRowsOf`, que tira dos painéis o agendamento com data a partir da primeira matrícula. O lead que matricula depois da aula continua "Matriculado".
+- **"Upgrade feito"** (`upgradeClosed`): a pessoa tem contrato vendido a partir do horário do compromisso, pelo `saleMomentOf` (o `createdAt`, com o `startsAt` de reserva), o mesmo instante da venda do Gerencial. Cancelado depois de valer continua sendo venda feita. O que nunca valeu (`neverTookEffect`, a renovação desfeita) e o importado não contam. Os contratos vêm do `useGeneralConfig().contratos`, sem consulta nova, então o rótulo pode levar um instante para passar de "Upgrade" a "Upgrade feito" enquanto a lista carrega.
+- **O quadradinho de situação segue a mesma regra.** A inferência legada "converteu, então compareceu" não vale para quem já era cliente na hora do compromisso. Cliente com aula futura fica em "Agendado" ou "Aguardando desfecho", e nunca em "Compareceu" sem desfecho.
+- **Limites conhecidos:**
+  - "Upgrade feito" não exige o funil Upgrade. Qualquer contrato depois da aula conta, a renovação incluída, então o número pode divergir do upgrade do Gerencial, que só lê o `closedFromUpgrade` (decisão 9 do funil Upgrade).
+  - Ex-cliente com contrato vencido ou cancelado que agenda aula também aparece como "Upgrade".
+  - Cliente legado sem `clienteSince` e sem `convertedAt` não tem como ser julgado e segue "Matriculado".
+  - Quem recusa o upgrade fica em "Upgrade", sem rótulo próprio.
+- **Testes:** `src/lib/__tests__/apptUpgrade.test.js` cobra as duas regras e as bordas de data, e `aulasRotuloUpgrade.test.js` renderiza a tela inteira com o Firestore falso. A exportação em PDF/CSV e os Relatórios não usam esta coluna.
+
 ## Dashboard CRM (Visão geral → CRM)
 
 O CRM mede o funil de leads por mês de competência, do cadastro até a matrícula: de onde vêm os leads, onde se perdem, quem converte e com que velocidade. O Operacional mede o trabalho e a base de clientes. Spec em `docs/superpowers/specs/2026-09-14-dashboard-crm-design.md`, handoff visual em `docs/superpowers/specs/handoff-crm/` e plano em `docs/superpowers/plans/2026-09-15-dashboard-crm-tela.md`.
