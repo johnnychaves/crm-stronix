@@ -12,7 +12,7 @@ describe('metricsOf', () => {
   it('faixa do mês em andamento, sem importado e sem funil de cliente', () => {
     expect(team).toMatchObject({ running: true, hasSource: true, leads: 5, enroll: 2, fromCohort: 1 });
     expect(team.appts).toEqual({ total: 2, came: 1, missed: 1, pending: 0, decided: 2, rate: 50 });
-    expect(team.cohort).toEqual({ leads: 5, sched: 3, came: 1, enrolled: 1, lost: 1, open: 3, conv: 20 });
+    expect(team.cohort).toEqual({ leads: 5, sched: 3, came: 1, cameEnrolled: 1, enrolled: 1, lost: 1, open: 3, conv: 20 });
     expect(team.channels).toEqual([
       { name: 'Instagram', leads: 4, enrolled: 1 },
       { name: 'Indicação', leads: 1, enrolled: 0 }

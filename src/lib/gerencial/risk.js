@@ -2,7 +2,7 @@
 // sucessor e o que saiu neste mês.
 
 import { neverTookEffect } from '../contracts.js';
-import { contractStateAt, indexContracts } from '../operacional/base.js';
+import { contractStateAt, hasOpenPause, indexContracts } from '../operacional/base.js';
 import { hasValue, monthlyTicket, inWindow } from './scope.js';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -41,10 +41,12 @@ export function expiryHorizons(contracts, t) {
 }
 
 
+// Trancado não vence: o fim anda na reativação, e ele segue na carteira
+// (walletAt). Sem a trava, o trancado com o fim antigo vencido contava nos dois.
 export function expiredWithoutSuccessor(contracts, t) {
   const index = indexContracts(contracts || []);
   const rows = (contracts || []).filter((c) => (
-    c.endsAt && c.endsAt <= t && !c.cancelledAt && !hasSuccessor(c, index)
+    c.endsAt && c.endsAt <= t && !c.cancelledAt && !hasOpenPause(c) && !hasSuccessor(c, index)
   ));
   return { count: rows.length, v: rows.filter(hasValue).reduce((s, c) => s + monthlyTicket(c), 0) };
 }

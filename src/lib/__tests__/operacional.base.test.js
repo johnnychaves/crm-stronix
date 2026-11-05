@@ -299,7 +299,7 @@ describe('computeChurn', () => {
     ];
     const r = computeChurn(list, SEP);
     expect(r.exits).toBe(2);
-    expect(r.base).toBe(countActiveAt(list, SEP.start));
+    expect(r.base).toBe(countActiveAt(list, SEP.start) + countLockedAt(list, SEP.start));
     expect(r.pct).toBe(Math.round((2 / r.base) * 1000) / 10);
     // Quem já contou os vigentes do início (a ponte) passa o número e poupa uma passada.
     expect(computeChurn(list, { ...SEP, activeAtStart: r.base })).toEqual(r);
@@ -312,6 +312,31 @@ describe('computeChurn', () => {
       pausedAt: D(2026, 5, 10), cancelledAt: D(2026, 9, 15), cancelReason: 'Financeiro'
     });
     expect(computeChurn([c], SEP).exits).toBe(1);
+  });
+
+  it('trancado no início que cancela no mês está na base, além de nas saídas', () => {
+    const list = [
+      C('ativo'),
+      C('parado', { leadId: 'T', status: 'cancelado', pausedAt: D(2026, 8, 10), pauseReason: 'Viagem', cancelledAt: D(2026, 9, 15) })
+    ];
+    const r = computeChurn(list, SEP);
+    expect(r).toMatchObject({ exits: 1, base: 2, pct: 50 });
+  });
+
+  it('cancelar o contrato em uso com a renovação já marcada não é saída', () => {
+    const list = [
+      C('em-uso', { leadId: 'R', status: 'cancelado', cancelledAt: D(2026, 9, 15), endsAt: D(2026, 10, 20) }),
+      C('renovacao', { leadId: 'R', renewedFromId: 'em-uso', createdAt: D(2026, 9, 5), startsAt: D(2026, 10, 21), endsAt: D(2027, 10, 21) })
+    ];
+    expect(computeChurn(list, SEP).exits).toBe(0);
+  });
+
+  it('contrato feito depois do cancelamento não apaga a saída', () => {
+    const list = [
+      C('velho', { leadId: 'V', status: 'cancelado', cancelledAt: D(2026, 9, 15), endsAt: D(2026, 10, 20) }),
+      C('volta', { leadId: 'V', createdAt: D(2026, 11, 2), startsAt: D(2026, 11, 2), endsAt: D(2027, 11, 2) })
+    ];
+    expect(computeChurn(list, SEP).exits).toBe(1);
   });
 });
 

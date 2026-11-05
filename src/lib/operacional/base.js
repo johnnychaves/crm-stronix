@@ -288,10 +288,12 @@ export function computeBaseMovement(contracts, { start, end }) {
   };
 }
 
-// Saída definitiva no mês: cancelamento sem outro contrato valendo logo depois,
-// ou fim da tolerância de um contrato vencido sem retorno. Trancado continua
-// cliente: não vence, e quem tem outro contrato trancado não saiu.
-// ÷ vigentes no início (activeAtStart, quando a ponte já contou).
+// Saída definitiva no mês: cancelamento sem outro contrato valendo nem já
+// marcado para depois, ou fim da tolerância de um contrato vencido sem retorno.
+// Trancado continua cliente: não vence, e quem tem outro contrato trancado não
+// saiu. ÷ clientes no início, vigentes e trancados (activeAtStart, quando quem
+// chama já contou), porque o trancado que cancela entra nas saídas.
+const firstMomentOf = (c) => c.createdAt || c.startsAt;
 export function computeChurn(contracts, { start, end, graceDays, activeAtStart = null }) {
   const graceMs = (Number(graceDays) || 0) * DAY_MS;
   const startMs = start.getTime();
@@ -305,7 +307,12 @@ export function computeChurn(contracts, { start, end, graceDays, activeAtStart =
       // Cancelado antes do fim, ou cancelado ainda parado: trancado não vence,
       // então a saída é o cancelamento, mesmo depois do fim antigo.
       if (c.cancelledAt && !c.cancelFromImport && ((c.endsAt && c.cancelledAt < c.endsAt) || hasOpenPause(c))) {
-        return c.cancelledAt >= start && c.cancelledAt < end && !aliveAt(list, c.cancelledAt);
+        if (c.cancelledAt < start || c.cancelledAt >= end || aliveAt(list, c.cancelledAt)) return false;
+        // Renovação (ou outro contrato) já marcada quando cancelou e que começa
+        // depois: a pessoa continua cliente por ela.
+        const scheduled = list.some((o) => o !== c && !neverTookEffect(o) && o.startsAt && o.startsAt > c.cancelledAt
+          && firstMomentOf(o) && firstMomentOf(o) <= c.cancelledAt);
+        return !scheduled;
       }
       if (!c.endsAt || hasOpenPause(c)) return false;
       const xMs = c.endsAt.getTime() + graceMs;
@@ -318,7 +325,7 @@ export function computeChurn(contracts, { start, end, graceDays, activeAtStart =
     });
     if (hit) exits += 1;
   });
-  const base = activeAtStart ?? countActiveAt(contracts, start);
+  const base = activeAtStart ?? personStatesAt(contracts, start).size;
   return { exits, base, pct: base > 0 ? Math.round((exits / base) * 1000) / 10 : null };
 }
 

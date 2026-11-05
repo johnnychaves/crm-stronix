@@ -50,6 +50,14 @@ describe('expiredWithoutSuccessor', () => {
     const list = [c({ id: 'a', endsAt: D(2026, 7, 1) }), c({ id: 'b', startsAt: D(2026, 8, 1), endsAt: D(2027, 8, 1) })];
     expect(expiredWithoutSuccessor(list, now).count).toBe(0);
   });
+
+  it('trancado com o fim antigo já passado não conta: segue na carteira', () => {
+    const list = normalizeContracts([{
+      id: 't', leadId: 'p', value: 1200, durationMonths: 12, status: 'trancado', pauseReason: 'Viagem',
+      createdAt: D(2025, 10, 1), startsAt: D(2025, 10, 1), endsAt: D(2026, 9, 1), pausedAt: D(2026, 8, 1)
+    }]);
+    expect(expiredWithoutSuccessor(list, now).count).toBe(0);
+  });
 });
 
 describe('exitsInWindow', () => {

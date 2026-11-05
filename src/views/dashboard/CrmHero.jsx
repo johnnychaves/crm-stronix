@@ -7,7 +7,7 @@
 // continua viva depois do mês fechar, e é por isso que a conversão dela sobe.
 //
 // Props:
-//   cohort    { leads, sched, came, enrolled, open, lost, conv } ou null
+//   cohort    { leads, sched, came, cameEnrolled, enrolled, open, lost, conv } ou null
 //   monthName nome do mês, em minúsculas
 //   delta     o crmDelta da conversão contra o mês comparado, ou null
 //   cmpName   nome do mês comparado
@@ -54,7 +54,7 @@ export function CrmHero({ cohort, monthName, delta, cmpName }) {
   const steps = has ? [
     { name: 'Cadastraram', count: leads, width: 100, hint: `${pct(cohort.sched, leads)}% dos cadastros agendaram` },
     { name: 'Agendaram', count: cohort.sched, width: pct(cohort.sched, leads), hint: `${pct(cohort.came, cohort.sched) ?? 0}% dos agendados compareceram` },
-    { name: 'Compareceram', count: cohort.came, width: pct(cohort.came, leads), hint: `${pct(cohort.enrolled, cohort.came) ?? 0}% de quem veio matriculou` },
+    { name: 'Compareceram', count: cohort.came, width: pct(cohort.came, leads), hint: `${pct(cohort.cameEnrolled ?? 0, cohort.came) ?? 0}% de quem veio matriculou` },
     { name: 'Matricularam', count: cohort.enrolled, width: pct(cohort.enrolled, leads), hint: null }
   ] : [];
 

@@ -401,7 +401,7 @@ describe('velocidade e carteira agora', () => {
 });
 
 describe('herói e faixa de números', () => {
-  const COHORT = { leads: 56, sched: 16, came: 12, enrolled: 10, lost: 6, open: 40, conv: 18 };
+  const COHORT = { leads: 56, sched: 16, came: 12, cameEnrolled: 10, enrolled: 10, lost: 6, open: 40, conv: 18 };
 
   it('herói: conversão grande, o caminho da safra com a queda escrita e o desfecho', () => {
     const html = render(createElement(CrmHero, { cohort: COHORT, monthName: 'setembro', delta: { up: true, text: '+2 p.p.' }, cmpName: 'agosto' }));
@@ -417,6 +417,14 @@ describe('herói e faixa de números', () => {
     expect(html).toContain('40 em jogo');
     expect(html).toContain('6 perdidos');
     expect(html).toContain('40 seguem em jogo');
+  });
+
+  it('herói: "de quem veio matriculou" conta só quem veio e matriculou, nunca passa de 100%', () => {
+    // 10 matrículas, mas só 4 compareceram e 3 delas matricularam: 75%, e não 250%.
+    const cohort = { ...COHORT, came: 4, cameEnrolled: 3 };
+    const html = render(createElement(CrmHero, { cohort, monthName: 'setembro', delta: null, cmpName: 'agosto' }));
+    expect(html).toContain('75% de quem veio matriculou');
+    expect(html).not.toContain('250%');
   });
 
   it('herói sem comparativo, sem base ou sem lead', () => {

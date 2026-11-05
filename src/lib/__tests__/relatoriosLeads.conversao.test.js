@@ -48,7 +48,7 @@ const faixaOf = (r, id) => r.rows.find((x) => x.id === id).cuts.find((c) => c.st
 describe('Conversão', () => {
   it('a safra do mês, os números com a variação e a conversão', () => {
     const r = rel(ctxOf());
-    expect(r.totals).toEqual({ leads: 5, sched: 3, came: 1, enrolled: 1, lost: 1, open: 3, conv: 20 });
+    expect(r.totals).toEqual({ leads: 5, sched: 3, came: 1, cameEnrolled: 1, enrolled: 1, lost: 1, open: 3, conv: 20 });
     expect(r.conversion.value).toBe(20);
     expect(r.tiles.map((t) => [t.key, t.value])).toEqual([
       [null, 5], ['situacao:agendaram', 3], ['situacao:vieram', 1],
@@ -250,8 +250,8 @@ describe('Conversão: variação dos agendamentos sem base', () => {
 
   it('com a base dos dois lados, cada um dos cinco números tem a própria variação, e nenhuma é igual a outra', () => {
     const r = conversaoReport(trechoCtx(), { period: trecho, cmp: previousPeriod(trecho, NOW) });
-    expect(r.before).toEqual({ leads: 5, sched: 3, came: 2, enrolled: 1, lost: 1, open: 3, conv: 20 });
-    expect(r.totals).toEqual({ leads: 10, sched: 7, came: 3, enrolled: 3, lost: 4, open: 3, conv: 30 });
+    expect(r.before).toEqual({ leads: 5, sched: 3, came: 2, cameEnrolled: 1, enrolled: 1, lost: 1, open: 3, conv: 20 });
+    expect(r.totals).toEqual({ leads: 10, sched: 7, came: 3, cameEnrolled: 2, enrolled: 3, lost: 4, open: 3, conv: 30 });
     const delta = deltasOf(r);
     Object.entries(keyOf).forEach(([name, k]) => expect(delta[name], name).toEqual(crmDelta(r.totals[k], r.before[k])));
     expect(Object.fromEntries(Object.keys(keyOf).map((name) => [name, delta[name].text]))).toEqual({

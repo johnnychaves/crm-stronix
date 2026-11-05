@@ -16,7 +16,7 @@ import {
   OTHERS_ID, STAGE_TRACKING_MONTH, STAGE_TRACKING_SINCE, APPTS_COMPLETE_MONTH, makeScope, leadFunnelsOf, funnelStagesOf
 } from './scope.js';
 import { newLeadsOf, enrollmentsOf, lossesOf, outcomeAt, channelsOf, daysToEnrollOf } from './cohort.js';
-import { appointmentsOf, recordsByLeadOf, cohortMilestones, professorsOf, visitOutcomesByLead } from './appointments.js';
+import { appointmentsOf, recordsByLeadOf, cohortMilestones, cohortMilestoneOf, professorsOf, visitOutcomesByLead } from './appointments.js';
 import { contactTimesByLead, firstContactOf } from './contact.js';
 import { movesByLead, stagePassageOf, lossStagesOf, pipelineNowOf } from './stages.js';
 
@@ -167,9 +167,14 @@ function computeMetrics(ctx, cache, { monthKey, userId, funnelId, cutEnd }) {
   // O espelho do lead é o retrato de agora: vale só quando a safra vai até
   // agora. O corte sai do instante, e não do fim < fim do mês, que no mês em
   // andamento daria corte e tiraria o agendamento em aberto.
-  const miles = cohortMilestones(cohortLeads, {
+  const milesOpts = {
     asOf, cut: asOf.getTime() < ctx.now.getTime(), recordsByLead: cache.recordsByLead, visitOutcomes: cache.visitOutcomes
-  });
+  };
+  const miles = cohortMilestones(cohortLeads, milesOpts);
+  // Quem compareceu e matriculou: a base do "% de quem veio matriculou". O
+  // enrolled sozinho conta também quem matriculou sem visita nem aula, e a
+  // taxa passava de 100%.
+  const cameEnrolled = cohortLeads.filter((l, i) => outcomes[i] === 'enrolled' && cohortMilestoneOf(l, milesOpts).attended).length;
   // O primeiro contato olha o mês do cadastro e o seguinte, até o corte. Se a
   // safra passa do fim do mês e o seguinte não carregou ou falhou, fica sem
   // número em vez de menor.
@@ -194,6 +199,7 @@ function computeMetrics(ctx, cache, { monthKey, userId, funnelId, cutEnd }) {
       leads: cohortLeads.length,
       sched: miles.sched,
       came: miles.came,
+      cameEnrolled,
       enrolled,
       lost,
       open: cohortLeads.length - enrolled - lost,
