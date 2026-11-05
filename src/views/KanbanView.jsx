@@ -1408,6 +1408,7 @@ const handleKanbanMouseMove = (e) => {
       // Perda (a coluna é paginada, então o card nem sempre está na tela).
       if (lossReturn?.id === lead.id) followFocusRef.current = { id: lead.id, ate: Date.now() + 5000, coluna: 'Perda' };
       setLossModalLeadId(null);
+      setLossReturn(null);
       // A coluna Perda não é ao vivo: refaz fetch+contagem, pelo ref (a consulta de agora, se o
       // quadro mudou de mês ou de funil enquanto a gravação esperava a internet).
       reloadsRef.current.refreshLost();
@@ -1488,7 +1489,9 @@ const handleKanbanMouseMove = (e) => {
       ? document.querySelector(`h3[data-coluna="${CSS.escape(pedido.coluna)}"]`)
       : document.querySelector(`article a[href$="/ficha/${CSS.escape(pedido.id)}"]:not([tabindex="-1"])`);
     if (alvo) { followFocusRef.current = null; alvo.focus(); }
-  }, [leadsByStatus]);
+    // lossModalLeadId: a gravação local tira o card da etapa antes de a perda terminar,
+    // então quem dispara o foco na Perda é a janela de perda fechando.
+  }, [leadsByStatus, lossModalLeadId]);
 
   // No funil Renovações as colunas NÃO vêm de stronix_statuses: são derivadas
   // dos marcos, em memória. Nos demais, seguem sendo as etapas do funil.
