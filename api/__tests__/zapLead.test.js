@@ -298,6 +298,23 @@ describe('readCreateLeadBody: só o formato do pedido', () => {
   ])('campo do lead errado (%s) é recusado com a mensagem certa', (field, lead, message) => {
     expect(readCreateLeadBody(corpo(lead)).refusal).toEqual(invalidData(field, message));
   });
+
+  it('pedido da IA: byAi true entra no valor; sem o campo, a chave nem aparece', () => {
+    expect(readCreateLeadBody(corpo({}, { byAi: true })).value.byAi).toBe(true);
+    expect('byAi' in readCreateLeadBody(corpo()).value).toBe(false);
+    expect('byAi' in readCreateLeadBody(corpo({}, { byAi: false })).value).toBe(false);
+  });
+
+  it('byAi que não é true nem false é recusado', () => {
+    for (const byAi of ['true', 1, null, {}]) {
+      expect(readCreateLeadBody(corpo({}, { byAi })).refusal).toEqual(invalidData('byAi', ZAP_LEAD_MESSAGES.byAi));
+    }
+  });
+
+  it('pela IA, o dono não é escolhido: ownerId preenchido é recusado', () => {
+    expect(readCreateLeadBody(corpo({ ownerId: 'u-bruno' }, { byAi: true })).refusal)
+      .toEqual(invalidData('ownerId', ZAP_LEAD_MESSAGES.aiOwner));
+  });
 });
 
 describe('checkMinor: as regras do guardian.js e do sameContactPhone', () => {

@@ -47,6 +47,8 @@ export const ZAP_LEAD_MESSAGES = Object.freeze({
   noteLong: `Observação longa demais. Use até ${NOTE_MAX} caracteres.`,
   wrongType: 'Esse campo veio num formato que o Stronilead não aceita.',
   minor: 'Os dados do menor vieram num formato que o Stronilead não aceita.',
+  byAi: 'A marca da IA veio num formato que o Stronilead não aceita.',
+  aiOwner: 'Pela IA, o dono do lead é sempre o consultor de plantão.',
   pick: Object.freeze({
     source: 'Escolha a origem.',
     dor: 'Escolha a dor ou necessidade.',
@@ -229,6 +231,12 @@ export function readCreateLeadBody(body) {
   if (channel != null && typeof channel !== 'string') {
     return { refusal: invalidData('channelName', ZAP_LEAD_MESSAGES.channelName) };
   }
+  // Pedido feito pela IA do Stronizap em nome do consultor de plantão. Só
+  // true ou false; sem o campo, é o pedido de sempre.
+  if (body.byAi !== undefined && typeof body.byAi !== 'boolean') {
+    return { refusal: invalidData('byAi', ZAP_LEAD_MESSAGES.byAi) };
+  }
+  const byAi = body.byAi === true;
   const lead = body.lead;
   if (!lead || typeof lead !== 'object' || Array.isArray(lead)) {
     return { refusal: invalidData('lead', ZAP_LEAD_MESSAGES.lead) };
@@ -240,6 +248,10 @@ export function readCreateLeadBody(body) {
     if (lead[field] != null && typeof lead[field] !== 'string') {
       return { refusal: invalidData(field, ZAP_LEAD_MESSAGES.wrongType) };
     }
+  }
+  // A IA nunca passa o lead para outra pessoa: o dono é quem está no actor.
+  if (byAi && textOrEmpty(lead.ownerId).trim()) {
+    return { refusal: invalidData('ownerId', ZAP_LEAD_MESSAGES.aiOwner) };
   }
   const observacao = textOrEmpty(lead.observacao).trim();
   if (observacao.length > NOTE_MAX) return { refusal: invalidData('observacao', ZAP_LEAD_MESSAGES.noteLong) };
@@ -266,6 +278,8 @@ export function readCreateLeadBody(body) {
       email,
       actorName: actorName || null,
       channelName: textOrEmpty(channel).trim().slice(0, CHANNEL_MAX) || null,
+      // A chave só aparece no pedido da IA, para o pedido de sempre ficar igual.
+      ...(byAi ? { byAi: true } : {}),
       lead: {
         name,
         source: textOrEmpty(lead.source),
