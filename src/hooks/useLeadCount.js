@@ -21,16 +21,20 @@ import { useState, useEffect } from 'react';
 import { collection, query, where, getCountFromServer } from 'firebase/firestore';
 import { appId } from '../lib/firebase.js';
 
-// useLeadCount({ db, path, spec, specKey, enabled })
+// useLeadCount({ db, path, spec, specKey, enabled, reloadKey })
 //   spec    : descritor de leadQueries.js — só os `wheres` entram na contagem
 //             (orderBy e limit não fazem sentido em agregação).
 //   specKey : string estável que muda quando a spec muda; é ela que dispara a
 //             recontagem, porque o objeto da spec é recriado a cada render.
+//   reloadKey: muda para recontar a mesma consulta; o número de antes fica até o novo chegar.
 // Devolve o número, ou null enquanto não há resposta (e se a contagem falhar).
 // null NÃO é zero: quem consome precisa saber a diferença entre "não há
 // nenhum" e "ainda não sei".
-export function useLeadCount({ db, path, spec, specKey, enabled = true }) {
-  const [count, setCount] = useState(null);
+export function useLeadCount({ db, path, spec, specKey, enabled = true, reloadKey = 0 }) {
+  // A contagem guarda a chave da consulta que a produziu: trocar de mês ou de funil
+  // devolve null (ainda não sei) até a nova chegar, e não o número do recorte anterior.
+  const [result, setResult] = useState({ key: null, count: null });
+  const setCount = (c) => setResult({ key: specKey, count: c });
 
   useEffect(() => {
     if (!enabled || !db || !spec) {
@@ -54,7 +58,7 @@ export function useLeadCount({ db, path, spec, specKey, enabled = true }) {
     return () => { vivo = false; };
     // specKey representa a spec, que é recriada a cada render do consumidor.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, db, path, specKey]);
+  }, [enabled, db, path, specKey, reloadKey]);
 
-  return count;
+  return result.key === specKey ? result.count : null;
 }

@@ -110,6 +110,8 @@ export const projectUpgradeLeads = (leads, statuses, funnelId) => {
   return (leads || []).map((lead) => {
     const stageId = upgradeStageIdOf(lead, statuses, funnelId);
     const name = stageId ? nameById.get(stageId) : null;
-    return name ? { ...lead, status: name, _upgradeCard: true } : null;
+    // `_realStatus` guarda o status do documento: quem decide se a pessoa é cliente
+    // (isClientLead) lê o status, e o projetado é só o nome da etapa do Upgrade.
+    return name ? { ...lead, status: name, _realStatus: lead.status, _upgradeCard: true } : null;
   }).filter(Boolean);
 };

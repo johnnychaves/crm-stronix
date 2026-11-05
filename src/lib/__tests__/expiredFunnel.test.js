@@ -163,10 +163,12 @@ describe('projectExpiredLeads', () => {
     expect(projectExpiredLeads([{ id: 'l1' }], stages, 'f1')[0]._expiredCard).toBe(true);
   });
 
-  // Etapa apagada pelo console: o card sumiria numa coluna inexistente.
-  it('lead cuja etapa gravada não existe mais é descartado, não quebra', () => {
+  // Etapa apagada: o card volta para a entrada, em vez de sumir do quadro e
+  // continuar contado no menu de funis.
+  it('lead cuja etapa gravada não existe mais cai na etapa de entrada', () => {
     const out = projectExpiredLeads([{ id: 'l1', reactivationStageId: 'fantasma' }], stages, 'f1');
-    expect(out).toEqual([]);
+    const entrada = projectExpiredLeads([{ id: 'l2' }], stages, 'f1')[0].status;
+    expect(out.map((l) => l.status)).toEqual([entrada]);
   });
 
   it('sem funil devolve lista vazia', () => {

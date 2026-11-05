@@ -9,6 +9,7 @@ import {
   planUpgradeSetupOps, upgradeStageIdOf, projectUpgradeLeads,
 } from '../upgradeFunnel.js';
 import { partitionLeadsByStatus } from '../kanban.js';
+import { planUpgradeMove } from '../stageMove.js';
 
 describe('isUpgradeFunnel', () => {
   it('casa pela flag, NUNCA pelo nome', () => {
@@ -129,6 +130,16 @@ describe('projectUpgradeLeads', () => {
 
   it('sem funil devolve vazio', () => {
     expect(projectUpgradeLeads(leads, stages, null)).toEqual([]);
+  });
+
+  // Cliente só pelo nome da etapa ("Matriculado"), sem isConverted: com o status
+  // projetado, o planUpgradeMove o tomava por lead e o card ficava preso no quadro.
+  it('guarda o status real, e com ele o cliente da etapa de matrícula anda no Upgrade', () => {
+    const matriculado = { id: 'l3', name: 'Caio', status: 'Matriculado', lifecycleBucket: 'cliente', upgradeStageId: 'entrada' };
+    const [card] = projectUpgradeLeads([matriculado], stages, 'f1');
+    expect(card._realStatus).toBe('Matriculado');
+    expect(planUpgradeMove(card, stages[1]).ok).toBe(false);
+    expect(planUpgradeMove({ ...card, status: card._realStatus }, stages[1]).ok).toBe(true);
   });
 
   it('cai direto nas colunas do board (partitionLeadsByStatus agrupa pelo nome)', () => {

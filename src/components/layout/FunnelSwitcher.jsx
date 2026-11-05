@@ -53,7 +53,6 @@ export function FunnelSwitcher({ funnels, selectedId, counts, partsOf, onSelect 
       <PopoverTrigger asChild>
         <button
           type="button"
-          aria-haspopup="menu"
           title="Trocar de funil"
           className="-ml-2 inline-flex max-w-full items-center gap-1.5 rounded-[10px] px-2 py-0.5 text-left outline-none transition-colors hover:bg-muted focus-visible:anel-foco data-[state=open]:bg-muted"
         >
@@ -66,7 +65,7 @@ export function FunnelSwitcher({ funnels, selectedId, counts, partsOf, onSelect 
         sideOffset={8}
         className="w-[min(360px,calc(100vw-32px))] max-h-(--radix-popover-content-available-height) overflow-y-auto overscroll-y-contain rounded-[16px] border-border p-2 shadow-card-lg"
       >
-        <div role="menu" aria-label="Funis">
+        <div role="group" aria-label="Funis">
           {groups.map(([title, items], gi) => (
             <div key={title} className={cn(gi > 0 && 'mt-1.5 border-t border-border pt-1.5')}>
               <div className="px-2.5 pb-1 pt-1.5 text-[12px] font-semibold text-muted-foreground">{title}</div>
@@ -85,8 +84,7 @@ export function FunnelSwitcher({ funnels, selectedId, counts, partsOf, onSelect 
                   <button
                     key={f.id}
                     type="button"
-                    role="menuitemradio"
-                    aria-checked={on}
+                    aria-pressed={on}
                     onClick={() => { setOpen(false); onSelect(f.id); }}
                     className={cn(
                       'grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 rounded-[11px] px-2.5 py-2.5 text-left outline-none transition-colors focus-visible:anel-foco',

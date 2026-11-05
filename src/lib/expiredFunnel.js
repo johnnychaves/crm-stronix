@@ -120,7 +120,10 @@ export const planExpiredSetupOps = ({ funnels, statuses } = {}) => {
 // funcionar retroativo, sem backfill e sem card órfão. O primeiro arrasto grava
 // reactivationStageId e a partir daí ele manda.
 export const expiredStageIdOf = (lead, statuses, funnelId) => {
-  if (lead?.reactivationStageId) return lead.reactivationStageId;
+  // Etapa gravada que foi apagada cai na entrada: senão o cliente sumiria do
+  // quadro e continuaria contado no menu de funis.
+  const gravada = lead?.reactivationStageId;
+  if (gravada && (statuses || []).some((st) => st?.id === gravada && st?.funnelId === funnelId)) return gravada;
   return getExpiredEntryStage(statuses, funnelId)?.id || null;
 };
 
