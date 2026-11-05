@@ -482,7 +482,7 @@ const KanbanColumn = memo(function KanbanColumn({
     >
       <span aria-hidden="true" className="absolute inset-x-3 top-0 h-[3px] rounded-b-[3px]" style={{ background: accent.border }} />
       <header className="flex shrink-0 items-center gap-2 px-3.5 pt-3.5 pb-2.5">
-        <h3 className="min-w-0 truncate text-[13.5px] font-semibold text-gray-900 dark:text-white" title={name}>
+        <h3 tabIndex={-1} data-coluna={name} className="min-w-0 truncate rounded-[4px] text-[13.5px] font-semibold text-gray-900 dark:text-white outline-none focus-visible:anel-foco" title={name}>
           {name}
         </h3>
         <span className="shrink-0 rounded-[7px] border border-paper-200 bg-white px-1.5 text-[11.5px] font-bold leading-[18px] text-slate-500 tabular-nums dark:border-white/[0.08] dark:bg-neutral-900 dark:text-neutral-400">
@@ -589,6 +589,8 @@ function KanbanView({ leads, interactions, appUser, statuses, usersList, lossRea
   // Mover → Perda pelo teclado: a janela de perda abre no mesmo render em que a Mover
   // some, e ao cancelar o foco precisa voltar ao botão Mover do card, não ao body.
   const [lossReturn, setLossReturn] = useState(null);
+  // Pedido de levar o foco ao card movido (ou à coluna Perda), lido no efeito perto do quadro.
+  const followFocusRef = useRef(null);
   // Lead aguardando matrícula no ContractModal (caminho de Venda do Kanban).
   const [matriculaLead, setMatriculaLead] = useState(null);
   const [draggingLeadId, setDraggingLeadId] = useState(null);
@@ -1402,6 +1404,9 @@ const handleKanbanMouseMove = (e) => {
       // Só lead chega aqui: cliente é barrado antes (planLoss). Por isso não há
       // conversão histórica de aula a desfazer.
 
+      // Perda pelo teclado: quando o card sai da etapa, o foco vai ao título da coluna
+      // Perda (a coluna é paginada, então o card nem sempre está na tela).
+      if (lossReturn?.id === lead.id) followFocusRef.current = { id: lead.id, ate: Date.now() + 5000, coluna: 'Perda' };
       setLossModalLeadId(null);
       // A coluna Perda não é ao vivo: refaz fetch+contagem, pelo ref (a consulta de agora, se o
       // quadro mudou de mês ou de funil enquanto a gravação esperava a internet).
@@ -1473,14 +1478,15 @@ const handleKanbanMouseMove = (e) => {
   const getLeadsByStatus = (statusName) => leadsByStatus.get(statusName) || EMPTY_LEADS;
   // Lead movido pela janela Mover: quando o card remonta na coluna nova, o botão que
   // tinha o foco some e o foco cai no body. Aí ele segue o card, pelo link do título.
-  const followFocusRef = useRef(null);
   useEffect(() => {
     const pedido = followFocusRef.current;
     if (!pedido) return;
     if (Date.now() > pedido.ate) { followFocusRef.current = null; return; }
     const ativo = document.activeElement;
     if (ativo && ativo !== document.body) return;
-    const alvo = document.querySelector(`article a[href$="/ficha/${CSS.escape(pedido.id)}"]:not([tabindex="-1"])`);
+    const alvo = pedido.coluna
+      ? document.querySelector(`h3[data-coluna="${CSS.escape(pedido.coluna)}"]`)
+      : document.querySelector(`article a[href$="/ficha/${CSS.escape(pedido.id)}"]:not([tabindex="-1"])`);
     if (alvo) { followFocusRef.current = null; alvo.focus(); }
   }, [leadsByStatus]);
 
