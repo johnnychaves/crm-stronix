@@ -102,7 +102,14 @@ export async function cancelSubscription(id) {
 
 // Cobranças (payments) de uma assinatura, mais recentes primeiro.
 export async function listSubscriptionPayments(subscriptionId) {
-  return asaasFetch(`/payments?subscription=${encodeURIComponent(subscriptionId)}&limit=20&order=desc`);
+  return asaasFetch(`/payments?subscription=${encodeURIComponent(subscriptionId)}&limit=20`);
+}
+
+// Todas as cobranças do cliente (uma academia é um cliente), de qualquer
+// assinatura, inclusive uma antiga trocada no Mudar de plano.
+// shortcut: só a primeira página de 100, que cobre anos de mensalidade; paginar se passar disso.
+export async function listCustomerPayments(customerId) {
+  return asaasFetch(`/payments?customer=${encodeURIComponent(customerId)}&limit=100`);
 }
 
 // SANDBOX: simula o pagamento de uma cobrança (dispara o webhook real).
