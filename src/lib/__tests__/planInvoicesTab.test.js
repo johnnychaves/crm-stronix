@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // Plano & faturas mostra a fatura a pagar (a mais antiga em aberto), e não a
-// última cobrança criada pelo Asaas. Caso da Arte Esporte, 05/11/2026:
+// última cobrança criada pelo Asaas. Caso de uma academia em 05/11/2026:
 // novembro em aberto e a tela apontando dezembro, com "Em dia".
 import { act, createElement as h } from 'react';
 import { createRoot } from 'react-dom/client';
