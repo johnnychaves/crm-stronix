@@ -1204,7 +1204,7 @@ const handleKanbanMouseMove = (e) => {
     const etapa = (statuses || []).find(
       (st) => st.funnelId === upgradeFunnel?.id && st.name === statusName
     );
-    const plan = planUpgradeMove(lead, etapa);
+    const plan = planUpgradeMove({ ...lead, status: lead._realStatus ?? lead.status }, etapa);
     if (!plan.ok) { toast.warning(stageMoveBlockMessage(lead, plan.reason)); return; }
     const patch = plan.entering ? { ...plan.patch, upgradeEnteredAt: serverTimestamp() } : plan.patch;
     logInteraction(db, lead, appUser, { text: plan.interactionText, type: 'status_change' }, patch)
