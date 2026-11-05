@@ -50,7 +50,7 @@ export function ppDelta(cur, prev, { lowerBetter = false, baseline } = {}) {
 // e a contagem de vendas vira a dica da fatia. `prevOf` devolve o valor do
 // mesmo nome no mês comparado.
 const breakdown = (rows, total, deltaOf) => ({
-  items: (rows || []).map((r) => ({ name: r.name, count: r.value, times: r.count, delta: deltaOf ? deltaOf(r) : null })),
+  items: (rows || []).map((r) => ({ id: r.id, name: r.name, count: r.value, times: r.count, delta: deltaOf ? deltaOf(r) : null })),
   total
 });
 

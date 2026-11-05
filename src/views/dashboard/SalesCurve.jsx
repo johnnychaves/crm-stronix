@@ -31,10 +31,12 @@ function niceMax(max) {
 export function SalesCurve({ days, cur, prev, prevAtCut = null, cutDay, curName, prevName }) {
   const curVals = cur || [];
   // A linha do mês comparado passa pelo mesmo ponto do marcador.
-  // Mês comparado mais curto (fevereiro contra março): do dia 29 em diante o
-  // ponto dele é o último dia que ele tem.
-  const prevAt = Math.min(cutDay, (prev || []).length) - 1;
-  const prevVals = (prev || []).map((v, i) => (i === prevAt && prevAtCut != null ? prevAtCut : v));
+  // O eixo é o do mês exibido: o comparado mais longo (outubro contra
+  // novembro) para no último dia dele, e o mais curto (fevereiro contra março)
+  // para no último dia que tem. O ponto do marcador é o da pílula (prevAtCut).
+  const prevDays = (prev || []).slice(0, days);
+  const prevAt = Math.min(cutDay, prevDays.length) - 1;
+  const prevVals = prevDays.map((v, i) => (i === prevAt && prevAtCut != null ? prevAtCut : v));
   const top = niceMax(Math.max(1, ...curVals.filter((v) => v != null), ...prevVals.filter((v) => v != null)));
   const x = (d) => L + ((d - 1) / Math.max(1, days - 1)) * (R - L);
   const y = (v) => BOTTOM - (v / top) * (BOTTOM - TOP);

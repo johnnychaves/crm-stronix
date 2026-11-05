@@ -526,4 +526,14 @@ describe('regras de exibição do Gerencial', () => {
     const cx = [...html.matchAll(/<circle cx="([\d.]+)"/g)].map((m) => Number(m[1]));
     expect(cx[0]).toBeLessThan(cx[1]);
   });
+
+  it('com o mês comparado mais longo, a linha dele para no último dia do mês exibido', () => {
+    const cur = Array.from({ length: 30 }, (_, i) => (i + 1) * 100);
+    const prev = Array.from({ length: 31 }, (_, i) => (i + 1) * 10);
+    const html = render(createElement(SalesCurve, { days: 30, cur, prev, prevAtCut: 310, cutDay: 30, curName: 'novembro', prevName: 'outubro' }));
+    // Nenhum ponto passa da borda direita do gráfico (R = 566).
+    const xs = [...html.matchAll(/[ML]([\d.]+) /g)].map((m) => Number(m[1]));
+    expect(Math.max(...xs)).toBeLessThanOrEqual(566);
+    expect(html).toContain('outubro: R$ 310');
+  });
 });

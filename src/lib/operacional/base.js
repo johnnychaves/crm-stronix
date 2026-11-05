@@ -300,7 +300,12 @@ export function computeChurn(contracts, { start, end, graceDays, activeAtStart =
   const endMs = end.getTime();
   const aliveAt = (list, t) => list.some((c) => contractStateAt(c, t) != null);
   let exits = 0;
+  // Quem entrou no próprio mês (nenhum contrato começado antes do início) não
+  // é um dos clientes do começo do mês e não conta como saída. Quem venceu no
+  // mês anterior e passa da tolerância neste continua contando.
+  const startStates = personStatesAt(contracts, start);
   indexContracts(contracts).byPerson.forEach((list) => {
+    if (!list.some((c) => !neverTookEffect(c) && c.startsAt && c.startsAt < start)) return;
     const hit = list.some((c) => {
       // O que nunca valeu não é saída, nem pelo cancelamento nem pelo fim.
       if (neverTookEffect(c)) return false;
@@ -325,7 +330,7 @@ export function computeChurn(contracts, { start, end, graceDays, activeAtStart =
     });
     if (hit) exits += 1;
   });
-  const base = activeAtStart ?? personStatesAt(contracts, start).size;
+  const base = activeAtStart ?? startStates.size;
   return { exits, base, pct: base > 0 ? Math.round((exits / base) * 1000) / 10 : null };
 }
 

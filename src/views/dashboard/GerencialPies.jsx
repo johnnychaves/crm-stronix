@@ -109,7 +109,7 @@ export function RankCard({ title, question, help, items, total }) {
       <div className="flex flex-col">
         {list.map((it, i) => (
           <div
-            key={it.name}
+            key={it.id ?? it.name}
             className="grid grid-cols-[minmax(0,1fr)_84px] items-center gap-x-3 gap-y-1.5 border-t border-slate-100 py-[9px] first:border-t-0 dark:border-white/[0.06] sm:grid-cols-[minmax(150px,1fr)_minmax(60px,1.4fr)_84px_40px_52px]"
           >
             <span className="min-w-0 truncate font-medium">{it.name}</span>

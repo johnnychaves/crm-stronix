@@ -331,6 +331,14 @@ describe('computeChurn', () => {
     expect(computeChurn(list, SEP).exits).toBe(0);
   });
 
+  it('quem entrou e saiu no mesmo mês não é saída: não estava na base do início', () => {
+    const list = [
+      C('base'),
+      C('desistiu', { status: 'cancelado', createdAt: D(2026, 9, 3), startsAt: D(2026, 9, 3), endsAt: D(2027, 9, 3), cancelledAt: D(2026, 9, 8) })
+    ];
+    expect(computeChurn(list, SEP)).toMatchObject({ exits: 0, base: 1, pct: 0 });
+  });
+
   it('contrato feito depois do cancelamento não apaga a saída', () => {
     const list = [
       C('velho', { leadId: 'V', status: 'cancelado', cancelledAt: D(2026, 9, 15), endsAt: D(2026, 10, 20) }),
