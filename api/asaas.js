@@ -87,6 +87,7 @@ async function handleWebhook(req, res) {
       patch.paymentStatus = 'paid';
       patch.lastPaymentAt = toTs(payment.paymentDate || payment.confirmedDate);
       patch.paymentOverdueSince = admin.firestore.FieldValue.delete(); // pagou → libera acesso
+      patch.overdueInvoiceUrl = admin.firestore.FieldValue.delete();
       // Pagou durante/após o trial → ENCERRA o trial (status 'active'). Sem isto
       // o tenant fica 'trial' com trialEndsAt vencido e o app mantém o bloqueio
       // 'trial_expired' apesar de pago. Só mexe quando ainda está em trial (não
@@ -96,6 +97,8 @@ async function handleWebhook(req, res) {
     } else if (event === 'PAYMENT_OVERDUE') {
       patch.paymentStatus = 'overdue';
       patch.paymentOverdueSince = admin.firestore.FieldValue.serverTimestamp(); // marca início da carência
+      // A tela de bloqueio leva a esta fatura; a lastInvoiceUrl pode já ser a do mês seguinte.
+      if (payment.invoiceUrl) patch.overdueInvoiceUrl = payment.invoiceUrl;
     } else if (REVOKE.has(event)) {
       patch.paymentStatus = 'pending';
     } else if (event === 'PAYMENT_CREATED') {
@@ -186,6 +189,7 @@ async function handleSubscription(req, res, auth) {
         billingProvider: admin.firestore.FieldValue.delete(),
         billingCycle: admin.firestore.FieldValue.delete(),
         lastInvoiceUrl: admin.firestore.FieldValue.delete(),
+        overdueInvoiceUrl: admin.firestore.FieldValue.delete(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
       await audit('asaas.subscription.cancel', tenantId, auth.uid, {});

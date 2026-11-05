@@ -537,12 +537,15 @@ function AppInner() {
             // vencendo em <= 7 dias ou já vencida (dentro da carência). A janela
             // inferior de -1 dia evita banner permanente em tenant de cobrança
             // manual com nextBillingAt antigo e nunca marcado como 'overdue'.
-            if (!block) {
+            // Na academia bloqueada por atraso, o mesmo aviso leva o link da
+            // fatura à tela de bloqueio (o banner não aparece com o bloqueio).
+            if (!block || block === 'payment_overdue') {
               const DAY = 24 * 60 * 60 * 1000;
               const dueAtMs = typeof tData.nextBillingAt?.toMillis === 'function' ? tData.nextBillingAt.toMillis() : null;
               const invoiceUrl = tData.lastInvoiceUrl || null;
               if (tData.paymentStatus === 'overdue') {
-                billingWarn = { dueAtMs, overdue: true, invoiceUrl };
+                // A fatura que atrasou, e não a próxima que o Asaas já criou.
+                billingWarn = { dueAtMs, overdue: true, invoiceUrl: tData.overdueInvoiceUrl || invoiceUrl };
               } else if (dueAtMs != null && dueAtMs - Date.now() <= 7 * DAY && dueAtMs - Date.now() > -DAY) {
                 billingWarn = { dueAtMs, overdue: false, invoiceUrl };
               }
@@ -1607,7 +1610,7 @@ useEffect(() => {
     if (tenantBlock === 'trial_expired') {
       return <TrialActivationScreen isAdmin={isGestor(appUser)} onLogout={handleLogout} />;
     }
-    return <TenantBlockedScreen reason={tenantBlock} onLogout={handleLogout} />;
+    return <TenantBlockedScreen reason={tenantBlock} onLogout={handleLogout} isAdmin={isGestor(appUser)} invoiceUrl={billingDue?.invoiceUrl} />;
   }
 
   // Professor numa academia com o módulo "Professor e faltosos" desligado: o

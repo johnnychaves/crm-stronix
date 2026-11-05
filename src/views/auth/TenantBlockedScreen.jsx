@@ -1,17 +1,24 @@
-import { Ban, Clock } from 'lucide-react';
+import { Ban, Clock, ExternalLink } from 'lucide-react';
 import { SurgeMark, StronileadWordmark } from '../../components/brand/SurgeMark.jsx';
 
 // Tela de bloqueio quando a academia está suspensa ou com trial expirado.
-// O usuário autenticou, mas a organização não está liberada — só resta sair.
+// O usuário autenticou, mas a organização não está liberada. No atraso, o
+// gestor vai direto à fatura (invoiceUrl, do Asaas) e o acesso volta sozinho
+// quando o pagamento entra.
 
-function TenantBlockedScreen({ reason, onLogout }) {
+function TenantBlockedScreen({ reason, onLogout, isAdmin = false, invoiceUrl = null }) {
   const overdue = reason === 'payment_overdue';
   const suspended = reason === 'suspended';
   const danger = suspended || overdue;
   const Icon = danger ? Ban : Clock;
   const title = overdue ? 'Pagamento pendente' : suspended ? 'Academia suspensa' : 'Período de teste encerrado';
+  const payLink = overdue && isAdmin && invoiceUrl ? invoiceUrl : null;
   const message = overdue
-    ? 'O pagamento desta academia está em atraso. Assim que a fatura for paga, o acesso é liberado automaticamente. Em caso de dúvida, fale com o suporte do STRONILEAD.'
+    ? (payLink
+      ? 'A mensalidade desta academia está em atraso. Pague a fatura e, quando o pagamento entrar, recarregue esta página para voltar ao sistema.'
+      : isAdmin
+        ? 'A mensalidade desta academia está em atraso. Assim que a fatura for paga, o acesso é liberado sozinho. Para pegar a fatura, fale com o suporte do STRONILEAD.'
+        : 'A mensalidade desta academia está em atraso. Avise o gestor da academia: assim que a fatura for paga, o acesso volta sozinho.')
     : suspended
       ? 'Esta academia está temporariamente suspensa. Entre em contato com o suporte do STRONILEAD para regularizar o acesso.'
       : 'O período de teste desta academia terminou. Fale com o suporte do STRONILEAD para ativar um plano e continuar usando o sistema.';
@@ -27,9 +34,22 @@ function TenantBlockedScreen({ reason, onLogout }) {
         </span>
         <h1 className="font-display text-[22px] font-semibold tracking-tight text-gray-900 dark:text-white">{title}</h1>
         <p className="mt-2 text-[14px] text-gray-500 dark:text-neutral-400 leading-relaxed">{message}</p>
+        {payLink && (
+          <a
+            href={payLink}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-7 w-full h-11 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-[14px] font-semibold transition active:scale-[.99] inline-flex items-center justify-center gap-2 focus-visible:anel-foco focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
+            Pagar fatura <ExternalLink className="size-4" aria-hidden="true" />
+            <span className="sr-only">(abre em outra aba)</span>
+          </a>
+        )}
         <button
           onClick={onLogout}
-          className="mt-7 w-full h-11 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-[14px] font-semibold transition active:scale-[.99]"
+          className={payLink
+            ? 'mt-3 w-full h-11 rounded-xl border border-gray-200 dark:border-white/[0.1] text-gray-700 dark:text-neutral-200 hover:bg-gray-50 dark:hover:bg-white/[0.05] text-[14px] font-semibold transition'
+            : 'mt-7 w-full h-11 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-[14px] font-semibold transition active:scale-[.99]'}
         >
           Sair
         </button>
