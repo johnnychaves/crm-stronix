@@ -336,3 +336,15 @@ describe('treina sozinho', () => {
     expect(isSoloTrainingRecord({ professorId: 'p1' })).toBe(false);
   });
 });
+
+describe('agendamento aberto depois da matrícula', () => {
+  it('não conta em agendou: é aula de cliente', () => {
+    const cliente = { id: 'c', convertedAt: D(10, 10), appointmentScheduledFor: D(10, 25), appointmentOutcome: null };
+    expect(cohortMilestoneOf(cliente, { asOf: D(10, 20), cut: false, recordsByLead: new Map() })).toEqual({ booked: false, attended: false });
+  });
+
+  it('antes da matrícula, o agendamento aberto continua contando', () => {
+    const lead = { id: 'l', appointmentScheduledFor: D(10, 25), appointmentOutcome: null };
+    expect(cohortMilestoneOf(lead, { asOf: D(10, 20), cut: false, recordsByLead: new Map() }).booked).toBe(true);
+  });
+});

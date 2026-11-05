@@ -50,11 +50,37 @@ describe('expiredWithoutSuccessor', () => {
     const list = [c({ id: 'a', endsAt: D(2026, 7, 1) }), c({ id: 'b', startsAt: D(2026, 8, 1), endsAt: D(2027, 8, 1) })];
     expect(expiredWithoutSuccessor(list, now).count).toBe(0);
   });
+
+  it('dentro da tolerância ainda não é vencido, como no Operacional', () => {
+    const list = [c({ endsAt: D(2026, 9, 10) })]; // agora é 17/09
+    expect(expiredWithoutSuccessor(list, now, { graceDays: 15 }).count).toBe(0);
+    expect(expiredWithoutSuccessor(list, now, { graceDays: 5 }).count).toBe(1);
+  });
+
+  it('só os que venceram nos últimos 90 dias', () => {
+    const list = [c({ id: 'recente', endsAt: D(2026, 7, 1) }), c({ id: 'antigo', personKey: 'p2', endsAt: D(2026, 5, 1) })];
+    expect(expiredWithoutSuccessor(list, now).count).toBe(1);
+  });
+
+  it('trancado com o fim antigo já passado não conta: segue na carteira', () => {
+    const list = normalizeContracts([{
+      id: 't', leadId: 'p', value: 1200, durationMonths: 12, status: 'trancado', pauseReason: 'Viagem',
+      createdAt: D(2025, 10, 1), startsAt: D(2025, 10, 1), endsAt: D(2026, 9, 1), pausedAt: D(2026, 8, 1)
+    }]);
+    expect(expiredWithoutSuccessor(list, now).count).toBe(0);
+  });
 });
 
 describe('exitsInWindow', () => {
   const start = D(2026, 9, 1);
   const end = D(2026, 10, 1);
+
+  it('trancado e cancelado no mesmo mês conta só como cancelamento', () => {
+    const both = c({ cancelledAt: D(2026, 9, 20), pauses: [{ from: D(2026, 9, 5), to: null }] });
+    const r = exitsInWindow([both], { start, end });
+    expect(r.items.map((i) => i.count)).toEqual([1, 0]);
+    expect(r.total).toBe(100);
+  });
 
   it('cancelamento do mês, com o valor mensal', () => {
     const r = exitsInWindow([c({ cancelledAt: D(2026, 9, 5) })], { start, end });

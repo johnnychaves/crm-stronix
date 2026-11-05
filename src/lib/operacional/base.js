@@ -80,6 +80,9 @@ export function normalizeContract(c) {
     imported,
     // O cancelamento que a própria importação gravou não é cancelamento feito aqui.
     cancelFromImport: isImportCancel(c),
+    // Legado cancelado sem data: só encerra no fim (acima). As contagens de
+    // cancelamento o ignoram; o churn não, porque o trancado sem data só sai por aí.
+    cancelUndated: c.status === 'cancelado' && !d(c.cancelledAt),
     pauses: pausesOf(c, { startsAt, pausedAt }),
     personKey: c.leadId || `contrato:${c.id}`
   };
@@ -267,7 +270,7 @@ export function computeBaseMovement(contracts, { start, end }) {
     if (B.get(key) === 'trancado') { n.trancaram += 1; return; }
     const list = people.get(key) || [];
     // Desistir da renovação que nunca valeu não é cancelar: quem sai assim venceu.
-    const cancelledHere = list.some((c) => !c.cancelFromImport && !neverTookEffect(c) && c.cancelledAt && c.cancelledAt >= start && c.cancelledAt < end);
+    const cancelledHere = list.some((c) => !c.cancelFromImport && !c.cancelUndated && !neverTookEffect(c) && c.cancelledAt && c.cancelledAt >= start && c.cancelledAt < end);
     if (cancelledHere) n.cancelaram += 1; else n.venceram += 1;
   });
 
@@ -288,24 +291,43 @@ export function computeBaseMovement(contracts, { start, end }) {
   };
 }
 
-// Saída definitiva no mês: cancelamento sem outro contrato valendo logo depois,
-// ou fim da tolerância de um contrato vencido sem retorno. Trancado continua
-// cliente: não vence, e quem tem outro contrato trancado não saiu.
-// ÷ vigentes no início (activeAtStart, quando a ponte já contou).
+// Saída definitiva no mês: cancelamento sem outro contrato valendo nem já
+// marcado para depois, ou fim da tolerância de um contrato vencido sem retorno.
+// Trancado continua cliente: não vence, e quem tem outro contrato trancado não
+// saiu. ÷ clientes no início, vigentes e trancados (activeAtStart, quando quem
+// chama já contou), porque o trancado que cancela entra nas saídas.
+const firstMomentOf = (c) => c.createdAt || c.startsAt;
 export function computeChurn(contracts, { start, end, graceDays, activeAtStart = null }) {
   const graceMs = (Number(graceDays) || 0) * DAY_MS;
   const startMs = start.getTime();
   const endMs = end.getTime();
   const aliveAt = (list, t) => list.some((c) => contractStateAt(c, t) != null);
   let exits = 0;
-  indexContracts(contracts).byPerson.forEach((list) => {
+  let inGraceOnly = 0;
+  // Cliente no começo do mês é quem está coberto no início ou ainda na
+  // tolerância de um contrato que venceu antes dele. Só ele pode sair, e é ele
+  // que forma a base: numerador e denominador usam a mesma definição. Quem
+  // entrou no mês, ou voltou depois de muito tempo, e saiu nele, não conta.
+  const startStates = personStatesAt(contracts, start);
+  const inGraceAtStart = (c) => !neverTookEffect(c) && c.endsAt && c.endsAt <= start
+    && c.endsAt.getTime() + graceMs >= startMs && !(c.cancelledAt && c.cancelledAt < c.endsAt);
+  indexContracts(contracts).byPerson.forEach((list, key) => {
+    if (!startStates.has(key)) {
+      if (!list.some(inGraceAtStart)) return;
+      inGraceOnly += 1;
+    }
     const hit = list.some((c) => {
       // O que nunca valeu não é saída, nem pelo cancelamento nem pelo fim.
       if (neverTookEffect(c)) return false;
       // Cancelado antes do fim, ou cancelado ainda parado: trancado não vence,
       // então a saída é o cancelamento, mesmo depois do fim antigo.
       if (c.cancelledAt && !c.cancelFromImport && ((c.endsAt && c.cancelledAt < c.endsAt) || hasOpenPause(c))) {
-        return c.cancelledAt >= start && c.cancelledAt < end && !aliveAt(list, c.cancelledAt);
+        if (c.cancelledAt < start || c.cancelledAt >= end || aliveAt(list, c.cancelledAt)) return false;
+        // Renovação (ou outro contrato) já marcada quando cancelou e que começa
+        // depois: a pessoa continua cliente por ela.
+        const scheduled = list.some((o) => o !== c && !neverTookEffect(o) && o.startsAt && o.startsAt > c.cancelledAt
+          && firstMomentOf(o) && firstMomentOf(o) <= c.cancelledAt);
+        return !scheduled;
       }
       if (!c.endsAt || hasOpenPause(c)) return false;
       const xMs = c.endsAt.getTime() + graceMs;
@@ -318,7 +340,7 @@ export function computeChurn(contracts, { start, end, graceDays, activeAtStart =
     });
     if (hit) exits += 1;
   });
-  const base = activeAtStart ?? countActiveAt(contracts, start);
+  const base = activeAtStart ?? startStates.size + inGraceOnly;
   return { exits, base, pct: base > 0 ? Math.round((exits / base) * 1000) / 10 : null };
 }
 
@@ -330,7 +352,7 @@ const sortItems = (map) => [...map].map(([name, count]) => ({ name, count }))
 export function cancellationsByReason(contracts, { start, end }) {
   const map = new Map();
   (contracts || []).forEach((c) => {
-    if (c.cancelFromImport || neverTookEffect(c) || !c.cancelledAt || c.cancelledAt < start || c.cancelledAt >= end) return;
+    if (c.cancelFromImport || c.cancelUndated || neverTookEffect(c) || !c.cancelledAt || c.cancelledAt < start || c.cancelledAt >= end) return;
     const name = c.cancelReason || 'Outro';
     map.set(name, (map.get(name) || 0) + 1);
   });

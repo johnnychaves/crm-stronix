@@ -12,6 +12,7 @@ import { Band } from './Band.jsx';
 import { ChartMark } from './ChartMark.jsx';
 import { ItemDelta } from './ItemDelta.jsx';
 import { fmtMoney, fmtMoneyShort } from './dashTokens.js';
+import { sharesOf } from '../../lib/gerencial/viewModel.js';
 
 // Os quatro tipos de venda. Rótulo e cor são apresentação: o mix chega só com
 // o tipo, a contagem e o valor.
@@ -30,8 +31,9 @@ const pctOf = (v, total) => (total > 0 ? Math.round(((Number(v) || 0) / total) *
 //   discount  { pct, abs, prevPct }
 //   clawback  { count, value } — vendas do mês que já foram canceladas
 export function SalesTypeCard({ mix, discount, clawback }) {
-  const list = (mix || []).map((m) => ({ ...m, label: TYPES[m.type]?.label || m.type, fill: TYPES[m.type]?.fill || TYPES.retorno.fill }));
-  const sold = list.reduce((s, m) => s + (Number(m.value) || 0), 0);
+  const base = (mix || []).map((m) => ({ ...m, label: TYPES[m.type]?.label || m.type, fill: TYPES[m.type]?.fill || TYPES.retorno.fill }));
+  const shares = sharesOf(base.map((m) => m.value));
+  const list = base.map((m, i) => ({ ...m, share: shares[i] }));
   const pct = Number(discount?.pct) || 0;
   const heavy = pct >= 12;
 
@@ -56,11 +58,11 @@ export function SalesTypeCard({ mix, discount, clawback }) {
         {list.map((m) => (
           <ChartMark
             key={m.type}
-            tip={`${m.label}: ${plural(m.count, 'contrato', 'contratos')} · ${fmtMoney(m.value)} · ${pctOf(m.value, sold)}% do vendido`}
+            tip={`${m.label}: ${plural(m.count, 'contrato', 'contratos')} · ${fmtMoney(m.value)} · ${m.share}% do vendido`}
             className={cn('flex h-full min-w-[6px] items-center border-l-2 border-card px-2.5 first:border-l-0', m.fill)}
-            style={{ width: `${pctOf(m.value, sold)}%` }}
+            style={{ width: `${m.share}%` }}
           >
-            {pctOf(m.value, sold) >= 10 && <span className="num whitespace-nowrap font-display text-[12px] font-bold text-white">{`${pctOf(m.value, sold)}%`}</span>}
+            {m.share >= 10 && <span className="num whitespace-nowrap font-display text-[12px] font-bold text-white">{`${m.share}%`}</span>}
           </ChartMark>
         ))}
       </div>
@@ -74,7 +76,7 @@ export function SalesTypeCard({ mix, discount, clawback }) {
             </div>
             <div className="num mb-0.5 mt-1.5 font-display text-[24px] font-bold leading-tight tracking-[-0.02em] sm:text-[26px]">{fmtMoneyShort(m.value)}</div>
             <div className="num flex flex-wrap items-center gap-x-1.5 text-[12.5px] text-muted-foreground">
-              {`${plural(m.count, 'contrato', 'contratos')} · ${pctOf(m.value, sold)}%`}
+              {`${plural(m.count, 'contrato', 'contratos')} · ${m.share}%`}
               <ItemDelta delta={m.delta} />
             </div>
           </div>
@@ -107,7 +109,7 @@ export function RankCard({ title, question, help, items, total }) {
       <div className="flex flex-col">
         {list.map((it, i) => (
           <div
-            key={it.name}
+            key={it.id ?? it.name}
             className="grid grid-cols-[minmax(0,1fr)_84px] items-center gap-x-3 gap-y-1.5 border-t border-slate-100 py-[9px] first:border-t-0 dark:border-white/[0.06] sm:grid-cols-[minmax(150px,1fr)_minmax(60px,1.4fr)_84px_40px_52px]"
           >
             <span className="min-w-0 truncate font-medium">{it.name}</span>

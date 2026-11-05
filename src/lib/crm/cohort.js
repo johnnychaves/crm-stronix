@@ -62,11 +62,14 @@ function unique(list) {
   });
 }
 
-// Leads novos: cadastrados em [start, end), sem os criados pela importação e
+// Leads novos: cadastrados em [start, end), sem os criados pela importação,
 // sem os de data de cadastro ausente (createdAtMissing, o normalizeLeadDoc põe
-// "agora" neles).
+// "agora" neles) e sem os que a importação promoveu a cliente
+// (isImportedEnrollment): a matrícula deles não é do CRM e fica fora de
+// Matrículas, então na safra eles virariam uma conversão que a linha de
+// matrículas não tem.
 export const newLeadsOf = (leads, { start, end, inScope }) => unique(leads).filter((l) =>
-  !l.createdAtMissing && inWindow(l.createdAt, start, end) && !isImportCreatedLead(l) && inScope(l));
+  !l.createdAtMissing && inWindow(l.createdAt, start, end) && !isImportCreatedLead(l) && !isImportedEnrollment(l) && inScope(l));
 
 // Matrículas: a primeira matrícula (firstEnrolledAtOf) em [start, end), sem o
 // lead criado pela importação e sem a matrícula importada

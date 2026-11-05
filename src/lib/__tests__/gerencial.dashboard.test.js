@@ -145,8 +145,8 @@ describe('comparativo por linha', () => {
     exits: { items: [{ kind: 'cancelamento', label: 'Cancelamentos', count: 7, v: 1480 }] },
     rest: {
       sellers: [{ id: 'u1', name: 'Ana', count: 16, value: 31200, monthly: 232 }, { id: 'u9', name: 'Bia', count: 2, value: 3000, monthly: 100 }],
-      plans: [{ name: 'Anual', count: 11, value: 26400 }],
-      sources: [{ name: 'Instagram', count: 14, value: 29600 }]
+      plans: [{ id: 'anual', name: 'Anual', count: 11, value: 26400 }, { id: 'anual-velho', name: 'Anual', count: 1, value: 1000 }],
+      sources: [{ id: 'Instagram', name: 'Instagram', count: 14, value: 29600 }]
     }
   });
   const cmp = {
@@ -157,7 +157,7 @@ describe('comparativo por linha', () => {
       rest: {
         monthKey: '2026-08',
         sellers: [{ id: 'u1', name: 'Ana', count: 20, value: 36000, monthly: 230 }],
-        plans: [{ name: 'Anual', count: 9, value: 26400 }],
+        plans: [{ id: 'anual', name: 'Anual', count: 9, value: 26400 }, { id: 'anual-velho', name: 'Anual', count: 1, value: 2000 }],
         sources: []
       }
     })
@@ -188,6 +188,16 @@ describe('comparativo por linha', () => {
     expect(p.plans.items[0].delta).toMatchObject({ tone: 'quiet', text: 'igual' });
     expect(p.sources.items[0].delta).toMatchObject({ tone: 'quiet', text: 'novo' });
     expect(p.exits.items[0].delta).toMatchObject({ up: true, tone: 'bad', text: '75%', baseline: '4 contratos nos mesmos dias de agosto' });
+  });
+
+  it('dois planos com o mesmo nome comparam cada um com o seu, pelo id', () => {
+    const p = dashboardProps({ cur, cmp, comparing: true });
+    expect(p.plans.items[1].delta).toMatchObject({ up: false, tone: 'bad', text: '50%' }); // 1.000 contra 2.000
+  });
+
+  it('vendido igual ao do mês comparado é "igual", sem seta', () => {
+    const same = { ...cur, sold: { ...cur.sold, sold: 71900 } };
+    expect(dashboardProps({ cur: same, cmp, comparing: true }).sold.delta).toMatchObject({ none: true, text: 'igual a agosto' });
   });
 
   it('mês fechado diz "em agosto" na base', () => {

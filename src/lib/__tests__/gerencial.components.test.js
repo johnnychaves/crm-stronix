@@ -9,6 +9,7 @@ import { TooltipProvider } from '../../components/ui/tooltip.jsx';
 import { SoldHero, GerencialTape, CASH_WARNING } from '../../views/dashboard/GerencialKpis.jsx';
 import { SalesCurve } from '../../views/dashboard/SalesCurve.jsx';
 import { SalesTypeCard, RankCard } from '../../views/dashboard/GerencialPies.jsx';
+import { sharesOf } from '../gerencial/viewModel.js';
 import { SellersCard, ExpiryExitsCard } from '../../views/dashboard/GerencialRows.jsx';
 import { GerencialEmpty } from '../../views/dashboard/GerencialParts.jsx';
 import { BreakdownCard } from '../../views/dashboard/DashPrimitives.jsx';
@@ -37,9 +38,9 @@ const CURVE = {
 };
 const WALLET = { count: 628, monthly: 134200, ticket: 214, lockedCount: 19 };
 const HORIZON = [
-  { days: 30, label: 'Em 30 dias', count: 63, v: 13100, blind: 0 },
-  { days: 60, label: 'Em 60 dias', count: 48, v: 9800, blind: 0 },
-  { days: 90, label: 'Em 90 dias', count: 57, v: 11400, blind: 0 }
+  { days: 30, label: 'Até 30 dias', count: 63, v: 13100, blind: 0 },
+  { days: 60, label: '31 a 60 dias', count: 48, v: 9800, blind: 0 },
+  { days: 90, label: '61 a 90 dias', count: 57, v: 11400, blind: 0 }
 ];
 const RISK = { horizon: HORIZON, walletMonthly: 134200, lapsedCount: 29 };
 const EXITS = [
@@ -289,14 +290,14 @@ describe('ExpiryExitsCard', () => {
     expect(html).toContain('O que vence e o que sai');
     expect(html).toContain('Vence nos próximos 90 dias');
     expect(html).toContain('168 contratos');
-    ['Em 30 dias', 'Em 60 dias', 'Em 90 dias'].forEach((l) => expect(html).toContain(l));
+    ['Até 30 dias', '31 a 60 dias', '61 a 90 dias'].forEach((l) => expect(html).toContain(l));
     expect(html).toContain('R$ 13.100');
-    expect(html).toContain('Em 30 dias: 63 contratos valendo R$ 13.100 por mês');
+    expect(html).toContain('Até 30 dias: 63 contratos · R$ 13.100 por mês');
   });
 
   it('as saídas somam o valor e cada linha mostra a contagem', () => {
     const html = card();
-    expect(html).toContain('Saiu neste mês');
+    expect(html).toContain('Cancelado ou trancado no mês');
     expect(html).toContain('R$ 2.300/mês'); // 1.480 + 820
     expect(html).toContain('Cancelamentos');
     expect(html).toContain('Trancamentos');
@@ -311,12 +312,13 @@ describe('ExpiryExitsCard', () => {
     expect(html).toContain('bg-yellow-500');
   });
 
-  it('contrato importado sem valor não aparece, nem como trilha nem como legenda', () => {
+  it('contrato importado sem valor não aparece como trilha nem legenda, mas entra na contagem', () => {
     const withBlind = HORIZON.map((h, i) => ({ ...h, blind: [41, 35, 38][i] }));
     const html = card({ horizon: withBlind });
     expect(html).not.toContain('sem valor');
     expect(html).not.toContain('border-dashed');
-    expect(html).toContain('168 contratos');
+    expect(html).toContain('282 contratos'); // 168 com valor + 114 sem
+    expect(html).toContain('104 contratos'); // 30 dias: 63 + 41
   });
 
   it('sem saída nenhuma, o total é zero e nada quebra', () => {
@@ -505,5 +507,33 @@ describe('dicas "?" da tela', () => {
     const html = render(createElement(GerencialDashboard, BODY));
     ['Vendido no mês', 'Carteira mensal', 'Ticket médio mensal', 'Vencidos sem renovar', 'Churn', 'De onde veio a venda', 'Quem vendeu', 'O que vence e o que sai', 'Planos', 'Origem das vendas']
       .forEach((t) => expect(html, t).toContain(`aria-label="O que é &quot;${t}&quot;?"`));
+  });
+});
+
+describe('regras de exibição do Gerencial', () => {
+  it('as porcentagens do tipo de venda somam 100', () => {
+    expect(sharesOf([1, 1, 1])).toEqual([34, 33, 33]);
+    expect(sharesOf([505, 495])).toEqual([51, 49]);
+    expect(sharesOf([0, 0])).toEqual([0, 0]);
+  });
+
+  it('com o mês comparado mais curto, a curva usa o último dia dele', () => {
+    const cur = Array.from({ length: 31 }, (_, i) => (i + 1) * 100);
+    const prev = Array.from({ length: 28 }, (_, i) => (i + 1) * 10);
+    const html = render(createElement(SalesCurve, { days: 31, cur, prev, cutDay: 31, curName: 'março', prevName: 'fevereiro' }));
+    expect(html).toContain('fevereiro: R$ 280');
+    // O marcador do mês comparado fica no dia 28, o último dele, e não no 31.
+    const cx = [...html.matchAll(/<circle cx="([\d.]+)"/g)].map((m) => Number(m[1]));
+    expect(cx[0]).toBeLessThan(cx[1]);
+  });
+
+  it('com o mês comparado mais longo, a linha dele para no último dia do mês exibido', () => {
+    const cur = Array.from({ length: 30 }, (_, i) => (i + 1) * 100);
+    const prev = Array.from({ length: 31 }, (_, i) => (i + 1) * 10);
+    const html = render(createElement(SalesCurve, { days: 30, cur, prev, prevAtCut: 310, cutDay: 30, curName: 'novembro', prevName: 'outubro' }));
+    // Nenhum ponto passa da borda direita do gráfico (R = 566).
+    const xs = [...html.matchAll(/[ML]([\d.]+) /g)].map((m) => Number(m[1]));
+    expect(Math.max(...xs)).toBeLessThanOrEqual(566);
+    expect(html).toContain('outubro: R$ 310');
   });
 });

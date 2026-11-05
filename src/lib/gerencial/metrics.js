@@ -36,7 +36,7 @@ function snapshotOf(ctx, cache) {
     const contracts = ctx.contracts || [];
     const wallet = walletAt(contracts, ctx.now);
     const horizon = expiryHorizons(contracts, ctx.now);
-    const expired = expiredWithoutSuccessor(contracts, ctx.now);
+    const expired = expiredWithoutSuccessor(contracts, ctx.now, { graceDays: ctx.graceDays });
     const horizonSum = horizon.reduce((s, h) => s + h.v, 0);
     cache.snapshot = {
       wallet,

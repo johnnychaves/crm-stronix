@@ -10,7 +10,7 @@ import { getSafeDateOrNull } from '../dates.js';
 import { isItemInFunnel } from '../funnels.js';
 import { isImportCreatedLead } from '../operacional/routine.js';
 import { median, rankCounts } from './stats.js';
-import { firstEnrolledAtOf } from './cohort.js';
+import { firstEnrolledAtOf, isImportedEnrollment } from './cohort.js';
 
 const DAY_MS = 86400000;
 
@@ -102,7 +102,8 @@ export function stagePassageOf({
   (newLeads || []).forEach((l) => {
     if (!l?.id || seenNew.has(l.id)) return;
     seenNew.add(l.id);
-    if (!tracked(l) || !inMonth(l.createdAt) || isImportCreatedLead(l) || !ownerOk(l)) return;
+    // Mesma regra de leads novos (newLeadsOf): sem o lead que a importação promoveu.
+    if (!tracked(l) || !inMonth(l.createdAt) || isImportCreatedLead(l) || isImportedEnrollment(l) || !ownerOk(l)) return;
     const first = (real.get(l.id) || [])[0];
     const stage = first ? first.fromStatus : l.status;
     const row = sameFunnel(first ? fromFunnelOf(first) : l.funnelId) ? rows.get(stage) : null;

@@ -30,6 +30,11 @@ describe('salesOf', () => {
     expect(r.discPct).toBe(8);
   });
 
+  it('contrato vendido acima da tabela não apaga o desconto dos outros', () => {
+    const r = salesOf([c({ id: 'a', value: 800, listValue: 1000 }), c({ id: 'b', personKey: 'p2', value: 700, listValue: 500 })], { start, end });
+    expect(r.discAbs).toBe(200);
+  });
+
   it('cada contrato entra num tipo só e o mix fecha com o total', () => {
     const list = [
       c({ id: 'a' }),

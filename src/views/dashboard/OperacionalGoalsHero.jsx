@@ -24,7 +24,7 @@ import { fmtNum } from '../../lib/format.js';
 import { DashHelpTip } from './DashPrimitives.jsx';
 
 export const META_HELP = 'Dias com meta batida ÷ dias de meta do mês. O dia conta como batido quando a pessoa zera as tarefas da Meta Diária. No mês em andamento só entram os dias já fechados; hoje aparece com um anel.';
-export const PROSP_HELP = 'Ações de prospecção ÷ alvo do mês (o alvo diário de cada pessoa vezes os dias de meta até hoje). Contam os leads cadastrados e os agendamentos. A prospecção não trava o dia de meta.';
+export const PROSP_HELP = 'Ações de prospecção ÷ alvo do mês (o alvo diário de cada pessoa vezes os dias de meta até hoje). Contam os leads cadastrados e cada agendamento de visita, aula, mensagem ou ligação. A prospecção não trava o dia de meta.';
 
 const HIT = 'bg-[#8FB0FF]';
 const BAR_HIT = 'bg-[#FF8A5B]';

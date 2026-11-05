@@ -107,8 +107,10 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
 
   const curLoaded = useMemo(() => metricsOf(ctx, { monthKey, userId }), [ctx, monthKey, userId]);
   const cmpLoaded = useMemo(
-    () => (compareOn ? metricsOf(ctx, { monthKey: cmpKey, userId, cutEnd: comparisonCut(monthKey, cmpKey, now) }) : null),
-    [compareOn, ctx, cmpKey, userId, monthKey, now]
+    // Corte pró-rata só com o mês exibido em andamento, como no CRM e no
+    // Gerencial; mês fechado compara inteiro.
+    () => (compareOn ? metricsOf(ctx, { monthKey: cmpKey, userId, cutEnd: monthKey === currentKey ? comparisonCut(monthKey, cmpKey, now) : null }) : null),
+    [compareOn, ctx, cmpKey, userId, monthKey, currentKey, now]
   );
   const seriesLoaded = useMemo(() => ({
     active: seriesOf(ctx, { monthKey, pick: (m) => m.base.active })

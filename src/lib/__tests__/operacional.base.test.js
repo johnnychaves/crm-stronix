@@ -287,6 +287,19 @@ describe('computeBaseMovement (trancaram e destrancaram no mês)', () => {
   });
 });
 
+describe('legado cancelado sem data', () => {
+  it('encerra no fim e conta como vencido, não como cancelamento', () => {
+    const list = [C('legado', { status: 'cancelado', endsAt: D(2026, 9, 10) })];
+    expect(computeBaseMovement(list, SEP).steps).toMatchObject({ cancelaram: 0, venceram: 1 });
+    expect(cancellationsByReason(list, SEP).total).toBe(0);
+  });
+
+  it('o trancado cancelado sem data ainda sai no churn no fim do contrato', () => {
+    const list = [C('legado-parado', { status: 'cancelado', pausedAt: D(2026, 8, 1), pauseReason: 'Viagem', endsAt: D(2026, 9, 20) })];
+    expect(computeChurn(list, SEP)).toMatchObject({ exits: 1, base: 1 });
+  });
+});
+
 describe('computeChurn', () => {
   it('conta cancelamento no mês e vencido que passou da tolerância no mês', () => {
     const list = [
@@ -299,7 +312,8 @@ describe('computeChurn', () => {
     ];
     const r = computeChurn(list, SEP);
     expect(r.exits).toBe(2);
-    expect(r.base).toBe(countActiveAt(list, SEP.start));
+    // + 'vence-agosto', que ainda estava na tolerância no dia 1º.
+    expect(r.base).toBe(countActiveAt(list, SEP.start) + countLockedAt(list, SEP.start) + 1);
     expect(r.pct).toBe(Math.round((2 / r.base) * 1000) / 10);
     // Quem já contou os vigentes do início (a ponte) passa o número e poupa uma passada.
     expect(computeChurn(list, { ...SEP, activeAtStart: r.base })).toEqual(r);
@@ -312,6 +326,58 @@ describe('computeChurn', () => {
       pausedAt: D(2026, 5, 10), cancelledAt: D(2026, 9, 15), cancelReason: 'Financeiro'
     });
     expect(computeChurn([c], SEP).exits).toBe(1);
+  });
+
+  it('trancado no início que cancela no mês está na base, além de nas saídas', () => {
+    const list = [
+      C('ativo'),
+      C('parado', { leadId: 'T', status: 'cancelado', pausedAt: D(2026, 8, 10), pauseReason: 'Viagem', cancelledAt: D(2026, 9, 15) })
+    ];
+    const r = computeChurn(list, SEP);
+    expect(r).toMatchObject({ exits: 1, base: 2, pct: 50 });
+  });
+
+  it('cancelar o contrato em uso com a renovação já marcada não é saída', () => {
+    const list = [
+      C('em-uso', { leadId: 'R', status: 'cancelado', cancelledAt: D(2026, 9, 15), endsAt: D(2026, 10, 20) }),
+      C('renovacao', { leadId: 'R', renewedFromId: 'em-uso', createdAt: D(2026, 9, 5), startsAt: D(2026, 10, 21), endsAt: D(2027, 10, 21) })
+    ];
+    expect(computeChurn(list, SEP).exits).toBe(0);
+  });
+
+  it('quem entrou e saiu no mesmo mês não é saída: não estava na base do início', () => {
+    const list = [
+      C('base'),
+      C('desistiu', { status: 'cancelado', createdAt: D(2026, 9, 3), startsAt: D(2026, 9, 3), endsAt: D(2027, 9, 3), cancelledAt: D(2026, 9, 8) })
+    ];
+    expect(computeChurn(list, SEP)).toMatchObject({ exits: 0, base: 1, pct: 0 });
+  });
+
+  it('contrato que começa no instante do início do mês está na base e sai', () => {
+    const list = [C('meia-noite', { createdAt: SEP.start, startsAt: SEP.start, endsAt: D(2027, 9, 1), status: 'cancelado', cancelledAt: D(2026, 9, 10) })];
+    expect(computeChurn(list, SEP)).toMatchObject({ exits: 1, base: 1 });
+  });
+
+  it('ex-cliente que volta e cancela no mesmo mês não é saída', () => {
+    const list = [
+      C('base'),
+      C('antigo', { leadId: 'X', startsAt: D(2025, 1, 1), createdAt: D(2025, 1, 1), endsAt: D(2025, 7, 1) }),
+      C('volta', { leadId: 'X', status: 'cancelado', createdAt: D(2026, 9, 5), startsAt: D(2026, 9, 5), endsAt: D(2027, 9, 5), cancelledAt: D(2026, 9, 20) })
+    ];
+    expect(computeChurn(list, SEP)).toMatchObject({ exits: 0, base: 1 });
+  });
+
+  it('quem está na tolerância no início entra na base e na saída: N nunca passa de M', () => {
+    const list = [C('vence-agosto', { endsAt: D(2026, 8, 25) })];
+    expect(computeChurn(list, SEP)).toMatchObject({ exits: 1, base: 1, pct: 100 });
+  });
+
+  it('contrato feito depois do cancelamento não apaga a saída', () => {
+    const list = [
+      C('velho', { leadId: 'V', status: 'cancelado', cancelledAt: D(2026, 9, 15), endsAt: D(2026, 10, 20) }),
+      C('volta', { leadId: 'V', createdAt: D(2026, 11, 2), startsAt: D(2026, 11, 2), endsAt: D(2027, 11, 2) })
+    ];
+    expect(computeChurn(list, SEP).exits).toBe(1);
   });
 });
 

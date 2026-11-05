@@ -97,6 +97,7 @@ function totalsOf(list) {
     leads,
     sched: list.filter((x) => x.booked).length,
     came: list.filter((x) => x.attended).length,
+    cameEnrolled: list.filter((x) => x.attended && x.outcome === 'enrolled').length,
     enrolled,
     lost,
     open: leads - enrolled - lost,

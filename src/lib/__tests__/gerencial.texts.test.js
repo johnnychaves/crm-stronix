@@ -61,3 +61,9 @@ describe('dicas do "?"', () => {
     Object.values(HELP).forEach((t) => expect(t).not.toMatch(/sem valor|importado/));
   });
 });
+
+describe('linha do mês no primeiro dia', () => {
+  it('diz "1 de novembro", e não "1 a 1"', () => {
+    expect(monthSubline({ running: true, elapsed: 1, monthKey: '2026-11', compareOn: false })).toBe('1 de novembro · em andamento');
+  });
+});

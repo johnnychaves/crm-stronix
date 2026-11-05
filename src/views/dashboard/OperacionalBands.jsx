@@ -36,7 +36,7 @@ function DeltaChip({ delta, goodUp = true }) {
 }
 
 // ---------- Tarefas concluídas: colunas lado a lado, mês contra o comparado ----------
-export function TasksBand({ tasks, compareTasks, cmpName }) {
+export function TasksBand({ tasks, compareTasks, cmpName, running = true, shownName = null }) {
   const showCmp = Boolean(cmpName && compareTasks);
   const rows = TASK_ROWS.map((r) => ({ ...r, v: tasks ? tasks[r.id] : null, c: showCmp ? compareTasks[r.id] : null }));
   const total = tasks ? tasks.total : null;
@@ -45,9 +45,9 @@ export function TasksBand({ tasks, compareTasks, cmpName }) {
   return (
     <Band
       title="Tarefas concluídas"
-      help="Tarefas da Meta Diária marcadas como feitas no mês, por tipo. Cada tarefa conta uma vez por lead e por dia."
+      help="Tarefas da Meta Diária marcadas como feitas no mês, por tipo. Cada pessoa conta uma tarefa de cada tipo por lead e por dia."
       question={total == null ? 'As tarefas da Meta feitas no mês, por tipo.'
-        : `${plural(total, 'tarefa', 'tarefas')} da Meta ${total === 1 ? 'feita' : 'feitas'} no mês, por tipo${showCmp ? `, contra os mesmos dias de ${cmpName}` : ''}.`}
+        : `${plural(total, 'tarefa', 'tarefas')} da Meta ${total === 1 ? 'feita' : 'feitas'} no mês, por tipo${showCmp ? `, contra ${running ? 'os mesmos dias de ' : ''}${cmpName}` : ''}.`}
     >
       <div className="flex h-[176px] items-end gap-1 border-b border-border pt-6 sm:gap-2">
         {rows.map((r) => (
@@ -87,8 +87,8 @@ export function TasksBand({ tasks, compareTasks, cmpName }) {
       </div>
       {showCmp && (
         <div className={KEY}>
-          <span className="inline-flex items-center gap-1.5"><i className={cn(SWATCH, 'bg-brand-600')} />este mês</span>
-          <span className="inline-flex items-center gap-1.5"><i className={cn(SWATCH, 'bg-slate-300 dark:bg-slate-600')} />{`${cmpName}, mesmos dias`}</span>
+          <span className="inline-flex items-center gap-1.5"><i className={cn(SWATCH, 'bg-brand-600')} />{running || !shownName ? 'este mês' : shownName}</span>
+          <span className="inline-flex items-center gap-1.5"><i className={cn(SWATCH, 'bg-slate-300 dark:bg-slate-600')} />{running ? `${cmpName}, mesmos dias` : cmpName}</span>
         </div>
       )}
     </Band>
@@ -261,7 +261,7 @@ function Balance({ balance, locks, monthName }) {
       </div>
       {(locks.trancaram > 0 || locks.destrancaram > 0) && (
         <p className="mt-3.5 text-[12.5px] text-muted-foreground">
-          {`Trancamentos no mês: ${plural(locks.trancaram, 'contrato trancado', 'contratos trancados')} e ${plural(locks.destrancaram, 'destrancado', 'destrancados')}.`}
+          {`Trancamentos no mês: ${plural(locks.trancaram, 'pessoa trancou', 'pessoas trancaram')} e ${plural(locks.destrancaram, 'destrancou', 'destrancaram')}.`}
         </p>
       )}
     </div>
@@ -274,7 +274,7 @@ export function BaseBand({ movement, known, series, running, monthName, person }
   return (
     <Band
       title="A base no mês"
-      help="Clientes ativos são pessoas com contrato vigente; quem está trancado conta à parte. Trancaram e Destrancaram são o saldo de quem trancou e destrancou no mês."
+      help="Clientes ativos são pessoas com contrato vigente; quem está trancado conta à parte. Trancaram e Destrancaram são o saldo de quem trancou e destrancou no mês. Cancelaram conta quem perdeu o contrato no mês, mesmo com a renovação marcada para depois; por isso pode passar das saídas do churn, que só conta quem saiu de vez."
       question={`Quantos clientes ativos a academia tem e como chegou até aqui. Ao lado, quem entrou e quem saiu em ${monthName}.${person ? ' A base é da academia inteira, mesmo com uma pessoa escolhida.' : ''}`}
     >
       {!known ? (
@@ -298,7 +298,7 @@ const OUTCOMES = [
   { key: 'renew', label: 'renovaram', one: 'renovou', cls: 'bg-emerald-500' },
   { key: 'wont', label: 'não vão renovar', one: 'não vai renovar', cls: 'bg-amber-500' },
   { key: 'lapsed', label: 'venceram sem renovar', one: 'venceu sem renovar', cls: 'bg-rose-500' },
-  { key: 'pending', label: 'ainda vão vencer', one: 'ainda vai vencer', cls: 'bg-slate-200 dark:bg-white/10' }
+  { key: 'pending', label: 'ainda podem renovar', one: 'ainda pode renovar', cls: 'bg-slate-200 dark:bg-white/10' }
 ];
 const WHEN = [
   { key: 'antes', label: 'Antes de vencer', cls: 'bg-brand-700 dark:bg-brand-500' },
@@ -308,7 +308,9 @@ const WHEN = [
 
 export function RenewalBand({ renewal, running, monthName, delta, personFirst }) {
   const counts = renewal?.counts || {};
-  const kinds = OUTCOMES.filter((o) => running || o.key !== 'pending').map((o) => ({ ...o, n: counts[o.key] || 0 }));
+  // O mês fechado também tem "a decidir": quem venceu no fim dele e ainda está
+  // na tolerância. Sem ele, os quadrados não somavam os contratos do mês.
+  const kinds = OUTCOMES.map((o) => ({ ...o, n: counts[o.key] || 0 }));
   const total = kinds.reduce((a, o) => a + o.n, 0);
   const when = renewal?.when || {};
   const renewed = counts.renew || 0;
@@ -419,13 +421,16 @@ function Donut({ items: given, total, word, emptyText }) {
   );
 }
 
-export function ExitReasonsBand({ cancels, wont }) {
+// Os cancelamentos contam contratos da academia inteira (cancellationsByReason),
+// não pessoas que saíram da base: quem cancela um de dois contratos, ou cancela
+// trancado, entra aqui e não no "Cancelaram" da base.
+export function ExitReasonsBand({ cancels, wont, person = false }) {
   return (
-    <Band title="Por que saem" question="Os motivos de quem cancelou no mês e de quem avisou que não vai renovar.">
+    <Band title="Por que saem" question={`Os motivos dos contratos cancelados no mês e de quem avisou que não vai renovar.${person ? ' Os cancelamentos são da academia inteira, mesmo com uma pessoa escolhida.' : ''}`}>
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
         <div>
-          <div className="mb-3 font-semibold">Cancelaram</div>
-          <Donut items={cancels?.items || []} total={cancels?.total || 0} word={cancels?.total === 1 ? 'cancelou' : 'cancelaram'} emptyText="Nenhum cancelamento neste mês." />
+          <div className="mb-3 font-semibold">Contratos cancelados</div>
+          <Donut items={cancels?.items || []} total={cancels?.total || 0} word={cancels?.total === 1 ? 'cancelado' : 'cancelados'} emptyText="Nenhum cancelamento neste mês." />
         </div>
         <div>
           <div className="mb-3 font-semibold">Não vão renovar</div>

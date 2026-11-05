@@ -57,6 +57,13 @@ describe('tempo até o primeiro contato', () => {
     expect(firstContactOf([...cohort, lead('g'), lead('h')], { contactTimes, limit }).median).toBeNull();
   });
 
+  it('quem chegou há menos de um dia e ainda espera fica fora da mediana', () => {
+    // a: 60 min. Os três recentes, sem contato há 10 minutos, ainda estão no prazo.
+    const recentes = ['r1', 'r2', 'r3'].map((id) => ({ id, createdAt: T(10, 11, 50) }));
+    const r = firstContactOf([lead('a'), ...recentes], { contactTimes, limit: T(10, 12).getTime() });
+    expect(r).toMatchObject({ none: 3, noneLate: 0, median: 60 });
+  });
+
   it('dos sem contato, os que já tinham mais de 24 horas no limite', () => {
     const recent = { id: 'recente', createdAt: T(10, 11) };
     const old = { id: 'antigo', createdAt: T(7, 12) };

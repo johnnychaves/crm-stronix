@@ -12,8 +12,8 @@ import { ChartMark } from './ChartMark.jsx';
 import { DashHelpTip } from './DashPrimitives.jsx';
 import { CrmCard, DashedNote, DeltaPill, ReadText } from './CrmParts.jsx';
 
-const FC_HELP = 'Tempo corrido entre o cadastro do lead e a primeira interação registrada por alguém da equipe. A mediana entra com os leads sem contato no fim da fila, então ela não fica bonita por esconder quem nunca foi atendido.';
-const FC_READ = 'A mediana entra com os leads sem contato no fim da fila, em vez de calcular só entre quem foi atendido. Lead que espera mais de um dia costuma já ter marcado em outra academia.';
+const FC_HELP = 'Tempo corrido entre o cadastro do lead e a primeira interação registrada por alguém da equipe. A mediana entra com os leads sem contato há mais de um dia no fim da fila, então ela não fica bonita por esconder quem nunca foi atendido. Quem chegou há menos de um dia e ainda espera fica fora da mediana até o prazo passar.';
+const FC_READ = 'A mediana entra com os leads sem contato há mais de um dia no fim da fila, em vez de calcular só entre quem foi atendido. Lead que espera mais de um dia costuma já ter marcado em outra academia.';
 const SEGMENT = 'block h-full min-w-[6px] border-r-2 border-white last:border-r-0 dark:border-ink-800';
 const BAR_MAX_PX = 88;
 

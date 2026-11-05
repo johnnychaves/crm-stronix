@@ -107,7 +107,7 @@ export function GerencialTape({ wallet, risk, churn }) {
         </div>
         <div className="num flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted-foreground">
           {churnBase > 0
-            ? `${fmtNum(churnExits)} de ${fmtNum(churnBase)} ${churnExits === 1 ? 'cliente saiu' : 'clientes saíram'}`
+            ? `${fmtNum(churnExits)} de ${fmtNum(churnBase)} ${churnBase === 1 ? 'cliente' : 'clientes'} ${churnExits === 1 ? 'saiu' : 'saíram'}`
             : 'sem clientes ativos no início'}
           <ItemDelta delta={churn?.delta} />
         </div>

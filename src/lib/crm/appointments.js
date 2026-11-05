@@ -210,7 +210,10 @@ export function cohortMilestoneOf(l, { asOf, cut, recordsByLead, visitOutcomes =
     && r.scheduledFor <= asOf && !(enrolledAt && r.scheduledFor >= enrolledAt));
   const booked = attended
     || recs.some(({ r, status }) => status !== AULA_STATUS.CANCELLED && bookedAt(r) && bookedAt(r) <= asOf)
-    || (!cut && hasOpenAppointment(l));
+    // O espelho do lead não diz quando foi marcado: com o lead já matriculado,
+    // ele é a aula de cliente, que os registros (bookedAt >= enrolledAt) e o
+    // appointmentsOf já deixam de fora.
+    || (!cut && !enrolledAt && hasOpenAppointment(l));
   return { booked, attended };
 }
 

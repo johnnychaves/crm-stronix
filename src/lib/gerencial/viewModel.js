@@ -16,10 +16,12 @@ const textOf = ({ title, body }) => ({ title, text: body });
 export function soldDelta(cur, cmp, { comparing }) {
   if (!comparing || !cmp) return null;
   const cmpName = monthLabel(cmp.monthKey, { capitalized: false, withYear: false });
-  const baseline = `${fmtMoney(cmp.sold.sold)} em ${cmp.sold.count} contratos ${cur.running ? `nos mesmos dias de ${cmpName}` : `em ${cmpName}`}`;
+  const baseline = `${fmtMoney(cmp.sold.sold)} em ${cmp.sold.count} ${cmp.sold.count === 1 ? 'contrato' : 'contratos'} ${cur.running ? `nos mesmos dias de ${cmpName}` : `em ${cmpName}`}`;
   if (!(cmp.sold.sold > 0)) return { none: true, text: 'sem base', baseline, name: cmpName };
   const pct = Math.round(((cur.sold.sold - cmp.sold.sold) / cmp.sold.sold) * 100);
-  return { up: pct >= 0, text: `${Math.abs(pct)}%`, baseline, name: cmpName };
+  // Igual vira pílula neutra, como o "igual" das outras linhas: "▲ 0%" verde dizia alta.
+  if (pct === 0) return { none: true, text: `igual a ${cmpName}`, baseline, name: cmpName };
+  return { up: pct > 0, text: `${Math.abs(pct)}%`, baseline, name: cmpName };
 }
 
 // Variação de uma linha contra a mesma linha do mês comparado. `lowerBetter`
@@ -48,7 +50,7 @@ export function ppDelta(cur, prev, { lowerBetter = false, baseline } = {}) {
 // e a contagem de vendas vira a dica da fatia. `prevOf` devolve o valor do
 // mesmo nome no mês comparado.
 const breakdown = (rows, total, deltaOf) => ({
-  items: (rows || []).map((r) => ({ name: r.name, count: r.value, times: r.count, delta: deltaOf ? deltaOf(r) : null })),
+  items: (rows || []).map((r) => ({ id: r.id, name: r.name, count: r.value, times: r.count, delta: deltaOf ? deltaOf(r) : null })),
   total
 });
 
@@ -65,8 +67,8 @@ export function dashboardProps({ cur, cmp, cmpFull = null, comparing, roleOf = (
 
   const prevMix = on ? byKey(cmp.sold.mix, 'type', (r) => r.value) : null;
   const prevSellers = on ? byKey(cmp.sellers, 'id', (r) => r.value) : null;
-  const prevPlans = on ? byKey(cmp.plans, 'name', (r) => r.value) : null;
-  const prevSources = on ? byKey(cmp.sources, 'name', (r) => r.value) : null;
+  const prevPlans = on ? byKey(cmp.plans, 'id', (r) => r.value) : null;
+  const prevSources = on ? byKey(cmp.sources, 'id', (r) => r.value) : null;
   const prevExits = on ? byKey(cmp.exits.items, 'kind', (r) => r.count) : null;
 
   return {
@@ -125,9 +127,23 @@ export function dashboardProps({ cur, cmp, cmpFull = null, comparing, roleOf = (
     sellers: {
       rows: cur.sellers.map((r) => ({ ...r, role: roleOf(r.id), delta: moneyDelta(r.value, prevSellers?.get(r.id)) }))
     },
-    plans: breakdown(cur.plans, cur.sold.sold, on ? (r) => moneyDelta(r.value, prevPlans.get(r.name)) : null),
-    sources: breakdown(cur.sources, cur.sold.sold, on ? (r) => moneyDelta(r.value, prevSources.get(r.name)) : null),
+    plans: breakdown(cur.plans, cur.sold.sold, on ? (r) => moneyDelta(r.value, prevPlans.get(r.id)) : null),
+    sources: breakdown(cur.sources, cur.sold.sold, on ? (r) => moneyDelta(r.value, prevSources.get(r.id)) : null),
     flags: cur.flags,
     texts: { emptyMonth: textOf(emptyMonth()) }
   };
+}
+
+// Porcentagens inteiras que somam 100: arredonda para baixo e dá o ponto que
+// falta às maiores sobras. Arredondar cada uma sozinha dava 99% ou 101%.
+export function sharesOf(values) {
+  const total = values.reduce((s, v) => s + (Number(v) || 0), 0);
+  if (!(total > 0)) return values.map(() => 0);
+  const raw = values.map((v) => ((Number(v) || 0) / total) * 100);
+  const out = raw.map(Math.floor);
+  let left = 100 - out.reduce((s, v) => s + v, 0);
+  raw.map((r, i) => [r - out[i], i]).sort((a, b) => b[0] - a[0]).forEach(([, i]) => {
+    if (left > 0) { out[i] += 1; left -= 1; }
+  });
+  return out;
 }

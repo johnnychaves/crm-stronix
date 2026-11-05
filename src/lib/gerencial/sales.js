@@ -1,6 +1,7 @@
 // A venda do mês: o que foi fechado entre start e end. Nada aqui olha vigência,
 // só o instante do fechamento.
 
+import { contractDiscountOf } from '../contracts.js';
 import { indexContracts } from '../operacional/base.js';
 import { SALE_TYPES, saleMoment, monthlyTicket, saleTypeOf, inWindow } from './scope.js';
 
@@ -16,7 +17,9 @@ export function salesOf(contracts, { start, end }) {
   const sold = rows.reduce((s, c) => s + (Number(c.value) || 0), 0);
   const count = rows.length;
   const list = rows.reduce((s, c) => s + (Number(c.listValue) || Number(c.value) || 0), 0);
-  const discAbs = Math.max(0, list - sold);
+  // Desconto de cada contrato, como na ficha: o vendido acima da tabela não
+  // apaga o desconto dos outros.
+  const discAbs = rows.reduce((s, c) => s + contractDiscountOf(c), 0);
   const byType = new Map();
   rows.forEach((c) => {
     const type = saleTypeOf(c, byPerson);
