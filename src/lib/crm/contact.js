@@ -60,7 +60,10 @@ export function firstContactOf(cohort, { contactTimes, limit }) {
     over: values.filter((v) => v != null && v > FIRST_CONTACT_LIMITS.h24).length,
     none: values.filter((v) => v == null).length,
     noneLate: list.filter((l, idx) => values[idx] == null && waitedLong(l)).length,
-    median: medianWithMissing(values)
+    // O sem contato que chegou há menos de 24 horas ainda está no prazo: fica
+    // fora da mediana, em vez de entrar como "nunca atendido" e apagar o número
+    // do mês em andamento. Quem espera há mais de um dia segue no fim da fila.
+    median: medianWithMissing(values.filter((v, idx) => v != null || waitedLong(list[idx])))
   };
 }
 

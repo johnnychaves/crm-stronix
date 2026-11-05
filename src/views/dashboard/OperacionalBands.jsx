@@ -274,7 +274,7 @@ export function BaseBand({ movement, known, series, running, monthName, person }
   return (
     <Band
       title="A base no mês"
-      help="Clientes ativos são pessoas com contrato vigente; quem está trancado conta à parte. Trancaram e Destrancaram são o saldo de quem trancou e destrancou no mês."
+      help="Clientes ativos são pessoas com contrato vigente; quem está trancado conta à parte. Trancaram e Destrancaram são o saldo de quem trancou e destrancou no mês. Cancelaram conta quem perdeu o contrato no mês, mesmo com a renovação marcada para depois; por isso pode passar das saídas do churn, que só conta quem saiu de vez."
       question={`Quantos clientes ativos a academia tem e como chegou até aqui. Ao lado, quem entrou e quem saiu em ${monthName}.${person ? ' A base é da academia inteira, mesmo com uma pessoa escolhida.' : ''}`}
     >
       {!known ? (

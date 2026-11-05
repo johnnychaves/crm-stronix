@@ -51,6 +51,11 @@ describe('expiredWithoutSuccessor', () => {
     expect(expiredWithoutSuccessor(list, now).count).toBe(0);
   });
 
+  it('só os que venceram nos últimos 90 dias', () => {
+    const list = [c({ id: 'recente', endsAt: D(2026, 7, 1) }), c({ id: 'antigo', personKey: 'p2', endsAt: D(2026, 5, 1) })];
+    expect(expiredWithoutSuccessor(list, now).count).toBe(1);
+  });
+
   it('trancado com o fim antigo já passado não conta: segue na carteira', () => {
     const list = normalizeContracts([{
       id: 't', leadId: 'p', value: 1200, durationMonths: 12, status: 'trancado', pauseReason: 'Viagem',

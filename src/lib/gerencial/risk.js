@@ -43,10 +43,14 @@ export function expiryHorizons(contracts, t) {
 
 // Trancado não vence: o fim anda na reativação, e ele segue na carteira
 // (walletAt). Sem a trava, o trancado com o fim antigo vencido contava nos dois.
+// Só os que venceram nos últimos LAPSED_DAYS dias: o mesmo horizonte do "vence
+// em 90 dias". Sem a janela, o número juntava todo ex-cliente desde o começo.
+export const LAPSED_DAYS = HORIZON_DAYS[HORIZON_DAYS.length - 1];
 export function expiredWithoutSuccessor(contracts, t) {
   const index = indexContracts(contracts || []);
+  const from = new Date(t.getTime() - LAPSED_DAYS * DAY);
   const rows = (contracts || []).filter((c) => (
-    c.endsAt && c.endsAt <= t && !c.cancelledAt && !hasOpenPause(c) && !hasSuccessor(c, index)
+    c.endsAt && c.endsAt <= t && c.endsAt > from && !c.cancelledAt && !hasOpenPause(c) && !hasSuccessor(c, index)
   ));
   return { count: rows.length, v: rows.filter(hasValue).reduce((s, c) => s + monthlyTicket(c), 0) };
 }
