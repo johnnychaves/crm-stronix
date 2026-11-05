@@ -36,7 +36,7 @@ function DeltaChip({ delta, goodUp = true }) {
 }
 
 // ---------- Tarefas concluídas: colunas lado a lado, mês contra o comparado ----------
-export function TasksBand({ tasks, compareTasks, cmpName }) {
+export function TasksBand({ tasks, compareTasks, cmpName, running = true }) {
   const showCmp = Boolean(cmpName && compareTasks);
   const rows = TASK_ROWS.map((r) => ({ ...r, v: tasks ? tasks[r.id] : null, c: showCmp ? compareTasks[r.id] : null }));
   const total = tasks ? tasks.total : null;
@@ -47,7 +47,7 @@ export function TasksBand({ tasks, compareTasks, cmpName }) {
       title="Tarefas concluídas"
       help="Tarefas da Meta Diária marcadas como feitas no mês, por tipo. Cada pessoa conta uma tarefa por lead e por dia."
       question={total == null ? 'As tarefas da Meta feitas no mês, por tipo.'
-        : `${plural(total, 'tarefa', 'tarefas')} da Meta ${total === 1 ? 'feita' : 'feitas'} no mês, por tipo${showCmp ? `, contra os mesmos dias de ${cmpName}` : ''}.`}
+        : `${plural(total, 'tarefa', 'tarefas')} da Meta ${total === 1 ? 'feita' : 'feitas'} no mês, por tipo${showCmp ? `, contra ${running ? 'os mesmos dias de ' : ''}${cmpName}` : ''}.`}
     >
       <div className="flex h-[176px] items-end gap-1 border-b border-border pt-6 sm:gap-2">
         {rows.map((r) => (
@@ -88,7 +88,7 @@ export function TasksBand({ tasks, compareTasks, cmpName }) {
       {showCmp && (
         <div className={KEY}>
           <span className="inline-flex items-center gap-1.5"><i className={cn(SWATCH, 'bg-brand-600')} />este mês</span>
-          <span className="inline-flex items-center gap-1.5"><i className={cn(SWATCH, 'bg-slate-300 dark:bg-slate-600')} />{`${cmpName}, mesmos dias`}</span>
+          <span className="inline-flex items-center gap-1.5"><i className={cn(SWATCH, 'bg-slate-300 dark:bg-slate-600')} />{running ? `${cmpName}, mesmos dias` : cmpName}</span>
         </div>
       )}
     </Band>
