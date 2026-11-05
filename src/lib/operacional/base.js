@@ -300,14 +300,19 @@ export function computeChurn(contracts, { start, end, graceDays, activeAtStart =
   const endMs = end.getTime();
   const aliveAt = (list, t) => list.some((c) => contractStateAt(c, t) != null);
   let exits = 0;
-  // Só pode sair quem era cliente no começo do mês: coberto no início (o
-  // denominador) ou ainda na tolerância de um contrato que venceu antes dele.
-  // Quem entrou no mês, ou voltou depois de muito tempo, e saiu nele, não conta.
+  let inGraceOnly = 0;
+  // Cliente no começo do mês é quem está coberto no início ou ainda na
+  // tolerância de um contrato que venceu antes dele. Só ele pode sair, e é ele
+  // que forma a base: numerador e denominador usam a mesma definição. Quem
+  // entrou no mês, ou voltou depois de muito tempo, e saiu nele, não conta.
   const startStates = personStatesAt(contracts, start);
   const inGraceAtStart = (c) => !neverTookEffect(c) && c.endsAt && c.endsAt <= start
     && c.endsAt.getTime() + graceMs >= startMs && !(c.cancelledAt && c.cancelledAt < c.endsAt);
   indexContracts(contracts).byPerson.forEach((list, key) => {
-    if (!startStates.has(key) && !list.some(inGraceAtStart)) return;
+    if (!startStates.has(key)) {
+      if (!list.some(inGraceAtStart)) return;
+      inGraceOnly += 1;
+    }
     const hit = list.some((c) => {
       // O que nunca valeu não é saída, nem pelo cancelamento nem pelo fim.
       if (neverTookEffect(c)) return false;
@@ -332,7 +337,7 @@ export function computeChurn(contracts, { start, end, graceDays, activeAtStart =
     });
     if (hit) exits += 1;
   });
-  const base = activeAtStart ?? startStates.size;
+  const base = activeAtStart ?? startStates.size + inGraceOnly;
   return { exits, base, pct: base > 0 ? Math.round((exits / base) * 1000) / 10 : null };
 }
 

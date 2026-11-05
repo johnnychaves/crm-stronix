@@ -299,7 +299,8 @@ describe('computeChurn', () => {
     ];
     const r = computeChurn(list, SEP);
     expect(r.exits).toBe(2);
-    expect(r.base).toBe(countActiveAt(list, SEP.start) + countLockedAt(list, SEP.start));
+    // + 'vence-agosto', que ainda estava na tolerância no dia 1º.
+    expect(r.base).toBe(countActiveAt(list, SEP.start) + countLockedAt(list, SEP.start) + 1);
     expect(r.pct).toBe(Math.round((2 / r.base) * 1000) / 10);
     // Quem já contou os vigentes do início (a ponte) passa o número e poupa uma passada.
     expect(computeChurn(list, { ...SEP, activeAtStart: r.base })).toEqual(r);
@@ -351,6 +352,11 @@ describe('computeChurn', () => {
       C('volta', { leadId: 'X', status: 'cancelado', createdAt: D(2026, 9, 5), startsAt: D(2026, 9, 5), endsAt: D(2027, 9, 5), cancelledAt: D(2026, 9, 20) })
     ];
     expect(computeChurn(list, SEP)).toMatchObject({ exits: 0, base: 1 });
+  });
+
+  it('quem está na tolerância no início entra na base e na saída: N nunca passa de M', () => {
+    const list = [C('vence-agosto', { endsAt: D(2026, 8, 25) })];
+    expect(computeChurn(list, SEP)).toMatchObject({ exits: 1, base: 1, pct: 100 });
   });
 
   it('contrato feito depois do cancelamento não apaga a saída', () => {
