@@ -133,3 +133,17 @@ export function dashboardProps({ cur, cmp, cmpFull = null, comparing, roleOf = (
     texts: { emptyMonth: textOf(emptyMonth()) }
   };
 }
+
+// Porcentagens inteiras que somam 100: arredonda para baixo e dá o ponto que
+// falta às maiores sobras. Arredondar cada uma sozinha dava 99% ou 101%.
+export function sharesOf(values) {
+  const total = values.reduce((s, v) => s + (Number(v) || 0), 0);
+  if (!(total > 0)) return values.map(() => 0);
+  const raw = values.map((v) => ((Number(v) || 0) / total) * 100);
+  const out = raw.map(Math.floor);
+  let left = 100 - out.reduce((s, v) => s + v, 0);
+  raw.map((r, i) => [r - out[i], i]).sort((a, b) => b[0] - a[0]).forEach(([, i]) => {
+    if (left > 0) { out[i] += 1; left -= 1; }
+  });
+  return out;
+}
