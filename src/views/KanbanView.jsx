@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect, useCallback, memo } from 'react';
-import { serverTimestamp, doc, updateDoc } from 'firebase/firestore';
+import { serverTimestamp, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { canEditLead, normalizeLeadDoc } from '../lib/leads.js';
 import { isSeller } from '../lib/acesso.js';
 import { logInteraction } from '../lib/interactions.js';
@@ -1031,7 +1031,34 @@ const handleKanbanMouseMove = (e) => {
   // src/lib/stageMove.js (a MESMA da ficha): cliente não volta a ser lead —
   // o card da coluna Venda do mês é arrastável, e antes isso "desfazia" a
   // conversão de um cliente com contrato.
-  const applyMoveToStage = useCallback(async (lead, newStatus) => {
+  // As colunas Perda e Venda são lidas uma vez (getDocs) e não se atualizam sozinhas. Se o
+  // lead perdido foi reativado ou matriculado em outra aba, a cópia do card diz que ele ainda é
+  // lead perdido, e mover ou matricular a partir dela faria um cliente voltar a ser lead ou
+  // abriria um segundo contrato. Para o card que não vem da assinatura ao vivo, relê o lead e,
+  // se a etapa mudou, recarrega as duas colunas em vez de agir.
+  const activeLeadIds = useMemo(() => new Set((leads || []).map((l) => l.id)), [leads]);
+  const currentLeadOrWarn = useCallback(async (cardLead) => {
+    if (!cardLead || activeLeadIds.has(cardLead.id) || cardLead._renewalCard || cardLead._expiredCard || cardLead._upgradeCard) return cardLead;
+    let snap;
+    try {
+      snap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, cardLead.id));
+    } catch (err) {
+      console.error('Erro ao conferir o lead antes de mover', err);
+      toast.error('Não foi possível conferir o lead. Tente novamente.');
+      return null;
+    }
+    const atual = snap.exists() ? normalizeLeadDoc(snap) : null;
+    if (atual && atual.status === cardLead.status && atual.lifecycleBucket === cardLead.lifecycleBucket) return atual;
+    toast.warning('Esse lead mudou em outra tela. O quadro foi atualizado.');
+    reloadsRef.current.refreshLost();
+    reloadsRef.current.wonReload();
+    return null;
+  }, [activeLeadIds, db, toast, reloadsRef]);
+
+  const applyMoveToStage = useCallback(async (cardLead, newStatus) => {
+    // O card da Perda ou da Venda pode estar velho: confere o lead no banco antes de gravar.
+    const lead = await currentLeadOrWarn(cardLead);
+    if (!lead) return;
     const plan = planStageMove(lead, newStatus, { funnelId: lead.funnelId ? null : selectedFunnelId });
     if (!plan.ok) {
       toast.warning(stageMoveBlockMessage(lead, plan.reason));
@@ -1067,12 +1094,15 @@ const handleKanbanMouseMove = (e) => {
       console.error("Erro Kanban:", err);
       toast.error('Não foi possível mover o lead. Tente novamente.');
     }
-  }, [db, appUser, selectedFunnelId, toast, reloadsRef]);
+  }, [db, appUser, selectedFunnelId, toast, reloadsRef, currentLeadOrWarn]);
 
   // A Venda no Kanban agora abre o ContractModal (plano/valor/vigência) em vez
   // de gravar direto — mesmo fluxo da ficha. A escrita do contrato + resumo do
   // lead + timeline acontece dentro do modal (lib/contracts.js).
-  const openMatricula = useCallback((lead) => setMatriculaLead(lead), []);
+  const openMatricula = useCallback(async (cardLead) => {
+    const lead = await currentLeadOrWarn(cardLead);
+    if (lead) setMatriculaLead(lead);
+  }, [currentLeadOrWarn]);
 
   // ── Desfechos do card projetado de Renovações, num lugar só ──────────
   // O arrasto e o menu "Mover" chamam os MESMOS dois helpers. Estavam escritos
