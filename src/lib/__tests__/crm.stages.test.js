@@ -134,6 +134,12 @@ describe('passagem: entrada pelo cadastro e trocas que não contam', () => {
     expect(row(T(3, 9))).toMatchObject({ name: 'Novo lead', entered: 1 });
   });
 
+  it('o lead que a importação promoveu a cliente não entra pelo cadastro, como em leads novos', () => {
+    const promovido = [P('a', { createdAt: T(3, 9), importBatchId: 'lote', clienteSince: T(2, 9), convertedAt: T(2, 9) })];
+    const r = passage({ moves: new Map(), leadOf: byId, newLeads: promovido, trackingSince: T(1, 0) });
+    expect(r.rows[0]).toMatchObject({ name: 'Novo lead', entered: 0 });
+  });
+
   it('troca para etapa menor segue na etapa, mesmo com matrícula depois', () => {
     const x = { id: 'x', consultantId: 'ana', createdAt: T(1, 9), convertedAt: T(10) };
     const r = passage({
