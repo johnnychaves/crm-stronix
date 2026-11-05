@@ -855,6 +855,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // O desfecho aponta de volta para o agendamento que o originou: o
   // agendamento mais recente ANTES dele. Dado real — não há campo ligando os
   // dois, mas a ordem cronológica resolve. `via` diz se ele veio do Stronizap.
+  // `byAi` diz se foi a IA.
   // O Remarcar da Meta Diária também conta como agendamento
   // (isAppointmentReschedule): a nota dele não é linha de agendamento, e sem
   // ele o desfecho apontaria para o agendamento de antes do Remarcar. O
@@ -870,7 +871,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     let lastScheduled = null;
     chrono.forEach(i => {
       if (i.appointmentOutcome && lastScheduled) {
-        map[i.id] = { at: lastScheduled.createdAt, by: lastScheduled.consultantName, via: lastScheduled.via ?? null };
+        map[i.id] = { at: lastScheduled.createdAt, by: lastScheduled.consultantName, via: lastScheduled.via ?? null, byAi: lastScheduled.byAi === true };
       }
       if (isAppointmentReschedule(i) || (!i.appointmentOutcome && i._kind === 'appointment')) lastScheduled = i;
     });
