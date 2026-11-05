@@ -16,7 +16,7 @@ const textOf = ({ title, body }) => ({ title, text: body });
 export function soldDelta(cur, cmp, { comparing }) {
   if (!comparing || !cmp) return null;
   const cmpName = monthLabel(cmp.monthKey, { capitalized: false, withYear: false });
-  const baseline = `${fmtMoney(cmp.sold.sold)} em ${cmp.sold.count} contratos ${cur.running ? `nos mesmos dias de ${cmpName}` : `em ${cmpName}`}`;
+  const baseline = `${fmtMoney(cmp.sold.sold)} em ${cmp.sold.count} ${cmp.sold.count === 1 ? 'contrato' : 'contratos'} ${cur.running ? `nos mesmos dias de ${cmpName}` : `em ${cmpName}`}`;
   if (!(cmp.sold.sold > 0)) return { none: true, text: 'sem base', baseline, name: cmpName };
   const pct = Math.round(((cur.sold.sold - cmp.sold.sold) / cmp.sold.sold) * 100);
   // Igual vira pílula neutra, como o "igual" das outras linhas: "▲ 0%" verde dizia alta.

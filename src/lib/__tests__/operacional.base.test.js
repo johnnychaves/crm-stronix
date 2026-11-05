@@ -287,6 +287,14 @@ describe('computeBaseMovement (trancaram e destrancaram no mês)', () => {
   });
 });
 
+describe('legado cancelado sem data', () => {
+  it('encerra no fim e conta como vencido, não como cancelamento', () => {
+    const list = [C('legado', { status: 'cancelado', endsAt: D(2026, 9, 10) })];
+    expect(computeBaseMovement(list, SEP).steps).toMatchObject({ cancelaram: 0, venceram: 1 });
+    expect(cancellationsByReason(list, SEP).total).toBe(0);
+  });
+});
+
 describe('computeChurn', () => {
   it('conta cancelamento no mês e vencido que passou da tolerância no mês', () => {
     const list = [

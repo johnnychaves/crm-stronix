@@ -78,8 +78,10 @@ export function normalizeContract(c) {
     pausedAt,
     resumedAt,
     imported,
-    // O cancelamento que a própria importação gravou não é cancelamento feito aqui.
-    cancelFromImport: isImportCancel(c),
+    // O cancelamento que a própria importação gravou não é cancelamento feito
+    // aqui, e o legado cancelado sem data também não: ele só encerra no fim
+    // (acima), e sem a marca entrava em "Cancelaram" no mês do vencimento.
+    cancelFromImport: isImportCancel(c) || (c.status === 'cancelado' && !d(c.cancelledAt)),
     pauses: pausesOf(c, { startsAt, pausedAt }),
     personKey: c.leadId || `contrato:${c.id}`
   };
