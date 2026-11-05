@@ -78,10 +78,11 @@ export function normalizeContract(c) {
     pausedAt,
     resumedAt,
     imported,
-    // O cancelamento que a própria importação gravou não é cancelamento feito
-    // aqui, e o legado cancelado sem data também não: ele só encerra no fim
-    // (acima), e sem a marca entrava em "Cancelaram" no mês do vencimento.
-    cancelFromImport: isImportCancel(c) || (c.status === 'cancelado' && !d(c.cancelledAt)),
+    // O cancelamento que a própria importação gravou não é cancelamento feito aqui.
+    cancelFromImport: isImportCancel(c),
+    // Legado cancelado sem data: só encerra no fim (acima). As contagens de
+    // cancelamento o ignoram; o churn não, porque o trancado sem data só sai por aí.
+    cancelUndated: c.status === 'cancelado' && !d(c.cancelledAt),
     pauses: pausesOf(c, { startsAt, pausedAt }),
     personKey: c.leadId || `contrato:${c.id}`
   };
@@ -269,7 +270,7 @@ export function computeBaseMovement(contracts, { start, end }) {
     if (B.get(key) === 'trancado') { n.trancaram += 1; return; }
     const list = people.get(key) || [];
     // Desistir da renovação que nunca valeu não é cancelar: quem sai assim venceu.
-    const cancelledHere = list.some((c) => !c.cancelFromImport && !neverTookEffect(c) && c.cancelledAt && c.cancelledAt >= start && c.cancelledAt < end);
+    const cancelledHere = list.some((c) => !c.cancelFromImport && !c.cancelUndated && !neverTookEffect(c) && c.cancelledAt && c.cancelledAt >= start && c.cancelledAt < end);
     if (cancelledHere) n.cancelaram += 1; else n.venceram += 1;
   });
 
@@ -351,7 +352,7 @@ const sortItems = (map) => [...map].map(([name, count]) => ({ name, count }))
 export function cancellationsByReason(contracts, { start, end }) {
   const map = new Map();
   (contracts || []).forEach((c) => {
-    if (c.cancelFromImport || neverTookEffect(c) || !c.cancelledAt || c.cancelledAt < start || c.cancelledAt >= end) return;
+    if (c.cancelFromImport || c.cancelUndated || neverTookEffect(c) || !c.cancelledAt || c.cancelledAt < start || c.cancelledAt >= end) return;
     const name = c.cancelReason || 'Outro';
     map.set(name, (map.get(name) || 0) + 1);
   });

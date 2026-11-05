@@ -293,6 +293,11 @@ describe('legado cancelado sem data', () => {
     expect(computeBaseMovement(list, SEP).steps).toMatchObject({ cancelaram: 0, venceram: 1 });
     expect(cancellationsByReason(list, SEP).total).toBe(0);
   });
+
+  it('o trancado cancelado sem data ainda sai no churn no fim do contrato', () => {
+    const list = [C('legado-parado', { status: 'cancelado', pausedAt: D(2026, 8, 1), pauseReason: 'Viagem', endsAt: D(2026, 9, 20) })];
+    expect(computeChurn(list, SEP)).toMatchObject({ exits: 1, base: 1 });
+  });
 });
 
 describe('computeChurn', () => {

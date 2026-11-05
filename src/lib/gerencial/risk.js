@@ -62,7 +62,7 @@ export function exitsInWindow(contracts, { start, end }) {
     // O que nunca valeu não esteve na carteira, então não sai dela: nem o
     // cancelamento nem o trancamento dele contam.
     if (neverTookEffect(c)) return;
-    if (c.cancelledAt && !c.cancelFromImport && inWindow(c.cancelledAt, start, end)) cancels.push(c);
+    if (c.cancelledAt && !c.cancelFromImport && !c.cancelUndated && inWindow(c.cancelledAt, start, end)) cancels.push(c);
     if ((c.pauses || []).some((p) => !p.fromImport && inWindow(p.from, start, end))) locks.push(c);
   });
   const money = (list) => list.filter(hasValue).reduce((s, c) => s + monthlyTicket(c), 0);
