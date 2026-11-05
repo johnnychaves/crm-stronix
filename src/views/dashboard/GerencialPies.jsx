@@ -29,9 +29,24 @@ const pctOf = (v, total) => (total > 0 ? Math.round(((Number(v) || 0) / total) *
 //   mix       [{ type, count, value, delta }] — nova, renovacao, upgrade e retorno
 //   discount  { pct, abs, prevPct }
 //   clawback  { count, value } — vendas do mês que já foram canceladas
+// Porcentagens inteiras que somam 100: arredonda para baixo e dá o ponto que
+// falta às maiores sobras. Arredondar cada uma sozinha dava 99% ou 101%.
+export function sharesOf(values) {
+  const total = values.reduce((s, v) => s + (Number(v) || 0), 0);
+  if (!(total > 0)) return values.map(() => 0);
+  const raw = values.map((v) => ((Number(v) || 0) / total) * 100);
+  const out = raw.map(Math.floor);
+  let left = 100 - out.reduce((s, v) => s + v, 0);
+  raw.map((r, i) => [r - out[i], i]).sort((a, b) => b[0] - a[0]).forEach(([, i]) => {
+    if (left > 0) { out[i] += 1; left -= 1; }
+  });
+  return out;
+}
+
 export function SalesTypeCard({ mix, discount, clawback }) {
-  const list = (mix || []).map((m) => ({ ...m, label: TYPES[m.type]?.label || m.type, fill: TYPES[m.type]?.fill || TYPES.retorno.fill }));
-  const sold = list.reduce((s, m) => s + (Number(m.value) || 0), 0);
+  const base = (mix || []).map((m) => ({ ...m, label: TYPES[m.type]?.label || m.type, fill: TYPES[m.type]?.fill || TYPES.retorno.fill }));
+  const shares = sharesOf(base.map((m) => m.value));
+  const list = base.map((m, i) => ({ ...m, share: shares[i] }));
   const pct = Number(discount?.pct) || 0;
   const heavy = pct >= 12;
 
@@ -56,11 +71,11 @@ export function SalesTypeCard({ mix, discount, clawback }) {
         {list.map((m) => (
           <ChartMark
             key={m.type}
-            tip={`${m.label}: ${plural(m.count, 'contrato', 'contratos')} · ${fmtMoney(m.value)} · ${pctOf(m.value, sold)}% do vendido`}
+            tip={`${m.label}: ${plural(m.count, 'contrato', 'contratos')} · ${fmtMoney(m.value)} · ${m.share}% do vendido`}
             className={cn('flex h-full min-w-[6px] items-center border-l-2 border-card px-2.5 first:border-l-0', m.fill)}
-            style={{ width: `${pctOf(m.value, sold)}%` }}
+            style={{ width: `${m.share}%` }}
           >
-            {pctOf(m.value, sold) >= 10 && <span className="num whitespace-nowrap font-display text-[12px] font-bold text-white">{`${pctOf(m.value, sold)}%`}</span>}
+            {m.share >= 10 && <span className="num whitespace-nowrap font-display text-[12px] font-bold text-white">{`${m.share}%`}</span>}
           </ChartMark>
         ))}
       </div>
@@ -74,7 +89,7 @@ export function SalesTypeCard({ mix, discount, clawback }) {
             </div>
             <div className="num mb-0.5 mt-1.5 font-display text-[24px] font-bold leading-tight tracking-[-0.02em] sm:text-[26px]">{fmtMoneyShort(m.value)}</div>
             <div className="num flex flex-wrap items-center gap-x-1.5 text-[12.5px] text-muted-foreground">
-              {`${plural(m.count, 'contrato', 'contratos')} · ${pctOf(m.value, sold)}%`}
+              {`${plural(m.count, 'contrato', 'contratos')} · ${m.share}%`}
               <ItemDelta delta={m.delta} />
             </div>
           </div>

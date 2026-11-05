@@ -96,7 +96,10 @@ export function ExpiryExitsCard({ horizon, exits }) {
   const ex = exits || [];
   const hzMax = Math.max(1, ...hz.map((h) => Number(h.v) || 0));
   const exMax = Math.max(1, ...ex.map((e) => Number(e.v) || 0));
-  const hzCount = hz.reduce((s, h) => s + (Number(h.count) || 0), 0);
+  // Contrato sem valor entra na contagem, como na carteira e nos vencidos; só
+  // fica fora do valor.
+  const people = (h) => (Number(h.count) || 0) + (Number(h.blind) || 0);
+  const hzCount = hz.reduce((s, h) => s + people(h), 0);
   const exTotal = ex.reduce((s, e) => s + (Number(e.v) || 0), 0);
 
   return (
@@ -109,10 +112,10 @@ export function ExpiryExitsCard({ horizon, exits }) {
         <BarLine
           key={h.days || h.label}
           label={h.label}
-          tip={`${h.label}: ${plural(h.count, 'contrato', 'contratos')} valendo ${fmtMoney(h.v)} por mês`}
+          tip={`${h.label}: ${plural(people(h), 'contrato', 'contratos')} valendo ${fmtMoney(h.v)} por mês`}
           width={`${Math.max(Math.round(((Number(h.v) || 0) / hzMax) * 100), 4)}%`}
           fill="bg-amber-500"
-          count={plural(h.count, 'contrato', 'contratos')}
+          count={plural(people(h), 'contrato', 'contratos')}
           value={fmtMoney(h.v)}
           valueClass={AMBER_TEXT}
         />

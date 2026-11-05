@@ -31,7 +31,10 @@ function niceMax(max) {
 export function SalesCurve({ days, cur, prev, prevAtCut = null, cutDay, curName, prevName }) {
   const curVals = cur || [];
   // A linha do mês comparado passa pelo mesmo ponto do marcador.
-  const prevVals = (prev || []).map((v, i) => (i === cutDay - 1 && prevAtCut != null ? prevAtCut : v));
+  // Mês comparado mais curto (fevereiro contra março): do dia 29 em diante o
+  // ponto dele é o último dia que ele tem.
+  const prevAt = Math.min(cutDay, (prev || []).length) - 1;
+  const prevVals = (prev || []).map((v, i) => (i === prevAt && prevAtCut != null ? prevAtCut : v));
   const top = niceMax(Math.max(1, ...curVals.filter((v) => v != null), ...prevVals.filter((v) => v != null)));
   const x = (d) => L + ((d - 1) / Math.max(1, days - 1)) * (R - L);
   const y = (v) => BOTTOM - (v / top) * (BOTTOM - TOP);
@@ -40,7 +43,7 @@ export function SalesCurve({ days, cur, prev, prevAtCut = null, cutDay, curName,
     .filter(Boolean)
     .join(' ');
   const lastCur = curVals[cutDay - 1] ?? 0;
-  const lastPrev = prev ? prevVals[cutDay - 1] : null;
+  const lastPrev = prev ? prevVals[prevAt] : null;
   const area = `${line(curVals)} L${x(cutDay).toFixed(1)} ${y(0)} L${x(1).toFixed(1)} ${y(0)} Z`;
   const ticks = [0, top / 2, top];
   const dayTicks = [1, 5, 10, 15, 20, 25, 30].filter((d) => d <= days);
