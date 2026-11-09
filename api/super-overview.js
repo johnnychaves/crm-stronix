@@ -49,8 +49,12 @@ async function tenantMetrics(doc, plansMap) {
     countOr(dataCol(id, 'stronix_users').where('role', '==', ROLES.PROFESSOR)),
     countOr(dataCol(id, 'stronix_leads')),
     // Total menos as linhas de sinal; se a contagem delas falhar, fica o total.
-    Promise.all([countOr(dataCol(id, 'stronix_interactions')), zapSignalCount(dataCol(id, 'stronix_interactions'))])
-      .then(([total, signals]) => humanInteractionCount(total, signals)),
+    // Só conta os sinais de quem tem integração com o Stronizap (o revoke mantém
+    // integrations.zap, então quem desconectou segue descontando os antigos).
+    Promise.all([
+      countOr(dataCol(id, 'stronix_interactions')),
+      data.integrations?.zap ? zapSignalCount(dataCol(id, 'stronix_interactions')) : 0,
+    ]).then(([total, signals]) => humanInteractionCount(total, signals)),
     lastInteractionMillis(id),
     // Perfil e WhatsApp do responsável vivem no subdocumento privado.
     readTenantPrivate(id, data),

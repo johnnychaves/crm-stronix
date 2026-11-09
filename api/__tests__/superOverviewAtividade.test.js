@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import handler from '../super-overview.js';
 
-const banco = vi.hoisted(() => ({ tenants: {}, interacoes: {} }));
+const banco = vi.hoisted(() => ({ tenants: {}, interacoes: {}, filtros: [], leituras: [] }));
 
 vi.mock('../_firebaseAdmin.js', () => {
   const ts = (ms) => ({ toMillis: () => ms });
@@ -13,7 +13,10 @@ vi.mock('../_firebaseAdmin.js', () => {
   const consulta = (caminho, estado = {}) => ({
     collection: (nome) => consulta([...caminho, nome]),
     doc: (id) => consulta([...caminho, id]),
-    where: (campo, _op, valor) => consulta(caminho, { ...estado, filtro: { campo, valor } }),
+    where: (campo, _op, valor) => {
+      banco.filtros.push(campo);
+      return consulta(caminho, { ...estado, filtro: { campo, valor } });
+    },
     orderBy: () => consulta(caminho, { ...estado, ordenado: true }),
     limit: (n) => consulta(caminho, { ...estado, n }),
     startAfter: (doc) => consulta(caminho, { ...estado, depois: doc }),
@@ -27,6 +30,7 @@ vi.mock('../_firebaseAdmin.js', () => {
       if (caminho.length === 1 && caminho[0] === 'tenants') {
         return { docs: Object.entries(banco.tenants).map(([id, dados]) => ({ id, data: () => ({ ...dados, createdAt: ts(dados.createdAt) }) })) };
       }
+      if (caminho[4] === 'stronix_interactions') banco.leituras.push({ n: estado.n, depois: Boolean(estado.depois) });
       let docs = linhas(caminho)
         .slice()
         .sort((a, b) => b.createdAt - a.createdAt)
@@ -58,9 +62,13 @@ const academia = async () => {
 };
 const sinais = (n, aPartirDe) => Array.from({ length: n }, (_, i) => ({ type: 'zap_signal', createdAt: aPartirDe + i }));
 
+const COM_ZAP = { zap: { keyHash: 'h' } };
+
 beforeEach(() => {
-  banco.tenants = { gym: { displayName: 'Gym', status: 'active', createdAt: 1000 } };
+  banco.tenants = { gym: { displayName: 'Gym', status: 'active', createdAt: 1000, integrations: COM_ZAP } };
   banco.interacoes = {};
+  banco.filtros = [];
+  banco.leituras = [];
 });
 
 describe('GET /api/super-overview: interações e última atividade', () => {
@@ -93,9 +101,36 @@ describe('GET /api/super-overview: interações e última atividade', () => {
     expect((await academia()).lastActivityAt).toBe(1000);
   });
 
-  it('com 1.000 sinais lidos sem achar uma de quem atende, usa a mais antiga lida', async () => {
-    // 1.200 sinais, de 10000 a 11199: lidas as 1.000 mais novas, a mais antiga é 10200.
+  it('com mais de 1.000 sinais seguidos e nenhuma de quem atende, a academia fica com a data de criação, nunca a de um sinal', async () => {
     banco.interacoes.gym = sinais(1200, 10000);
-    expect((await academia()).lastActivityAt).toBe(10200);
+    expect((await academia()).lastActivityAt).toBe(1000);
+  });
+
+  it('a academia que desconectou o Stronizap continua descontando os sinais antigos', async () => {
+    banco.tenants.gym.integrations = { zap: { revokedAt: 7000 } };
+    banco.interacoes.gym = [{ type: 'note', createdAt: 5000 }, ...sinais(3, 9000)];
+    expect((await academia()).interactionCount).toBe(1);
+  });
+});
+
+describe('GET /api/super-overview: academia sem Stronizap não paga a mais', () => {
+  const humanas = [{ type: 'note', createdAt: 5000 }, { type: 'status_change', createdAt: 4000 }, { createdAt: 3000 }];
+
+  it('sem integrations.zap não consulta o type e lê uma interação só para a última atividade', async () => {
+    banco.tenants.gym = { displayName: 'Gym', status: 'active', createdAt: 1000 };
+    banco.interacoes.gym = humanas;
+    const gym = await academia();
+    expect(gym).toMatchObject({ interactionCount: 3, lastActivityAt: 5000 });
+    expect(banco.filtros).not.toContain('type');
+    expect(banco.leituras).toEqual([{ n: 1, depois: false }]);
+  });
+
+  it('com sinais no topo dá o mesmo resultado que a mesma academia sem os sinais', async () => {
+    banco.interacoes.gym = humanas;
+    const semSinais = await academia();
+    banco.interacoes.gym = [...humanas, ...sinais(130, 9000)];
+    const comSinais = await academia();
+    expect(comSinais.interactionCount).toBe(semSinais.interactionCount);
+    expect(comSinais.lastActivityAt).toBe(semSinais.lastActivityAt);
   });
 });

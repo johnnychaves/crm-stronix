@@ -17,34 +17,34 @@ const millisOf = (doc) => {
 
 // `docs`: interações já ordenadas da mais nova para a mais antiga (a ordem do
 // Firestore por createdAt desc). Devolve o createdAt, em milissegundos, da
-// primeira que NÃO é sinal; documento sem type conta como de quem atende. Sem
-// nenhuma, null. Com `capped` (a leitura parou no teto de páginas, ainda com
-// documentos por ler), devolve o createdAt da mais antiga lida: é um limite
-// superior da última atividade real, porque se houvesse algo mais novo e de
-// quem atende, teria sido achado.
-export function pickLastHumanInteractionMillis(docs, { capped = false } = {}) {
-  const list = docs || [];
-  const human = list.find((d) => !isZapSignalInteraction(d?.data?.()));
-  if (human) return millisOf(human);
-  return capped && list.length ? millisOf(list[list.length - 1]) : null;
+// primeira que NÃO é sinal; documento sem type conta como de quem atende.
+// `null` quer dizer só "nenhuma interação de quem atende encontrada nesta
+// lista": nunca devolve a data de um sinal.
+export function pickLastHumanInteractionMillis(docs) {
+  const human = (docs || []).find((d) => !isZapSignalInteraction(d?.data?.()));
+  return human ? millisOf(human) : null;
 }
 
 // Última atividade de quem atende na coleção de interações da academia.
-// shortcut: lê no máximo 10 páginas de 100 (1.000 documentos) por academia e, se
-// só achar sinais, devolve o limite superior (o createdAt do mais antigo lido);
-// melhorar quando uma academia passar de mil sinais seguidos, gravando a data
-// da última interação de quem atende no próprio cadastro da academia.
+// Primeiro uma leitura só, como antes do sinal: a academia sem sinal no topo
+// paga o mesmo de sempre. Só se o topo for sinal lê páginas de 100, da mais nova
+// para a mais antiga, até achar uma que não seja.
+// shortcut: com 1.000 sinais seguidos sem nenhuma interação de quem atende a
+// função devolve null e o console mostra a data de criação, nunca uma data
+// levantada pelo sinal; quando melhorar: gravar a última atividade de quem
+// atende no cadastro da academia.
 // Não usa where('type', '!=', ...): o Firestore exigiria ordenar por `type`
 // primeiro e descartaria os documentos sem `type`.
 export async function lastHumanInteractionMillis(interactionsCol) {
-  let cursor = null;
+  const newest = interactionsCol.orderBy('createdAt', 'desc');
+  const first = await newest.limit(1).get();
+  if (first.empty) return null;
+  if (!isZapSignalInteraction(first.docs[0].data())) return millisOf(first.docs[0]);
+  let cursor = first.docs[0];
   for (let page = 1; page <= ACTIVITY_MAX_PAGES; page += 1) {
-    let query = interactionsCol.orderBy('createdAt', 'desc').limit(ACTIVITY_PAGE_SIZE);
-    if (cursor) query = query.startAfter(cursor);
-    const { docs } = await query.get();
-    const full = docs.length === ACTIVITY_PAGE_SIZE;
-    const ms = pickLastHumanInteractionMillis(docs, { capped: full && page === ACTIVITY_MAX_PAGES });
-    if (ms != null || !full) return ms;
+    const { docs } = await newest.startAfter(cursor).limit(ACTIVITY_PAGE_SIZE).get();
+    const ms = pickLastHumanInteractionMillis(docs);
+    if (ms != null || docs.length < ACTIVITY_PAGE_SIZE) return ms;
     cursor = docs[docs.length - 1];
   }
   return null;
@@ -57,5 +57,8 @@ export const humanInteractionCount = (total, signals) => Math.max(0, (total || 0
 // Best-effort como o countOr: se falhar, devolve 0 e o total fica como está.
 export async function zapSignalCount(interactionsCol) {
   try { return (await interactionsCol.where('type', '==', ZAP_SIGNAL_TYPE).count().get()).data().count || 0; }
-  catch { return 0; }
+  catch (err) {
+    console.error('zapSignalCount', err?.message || err);
+    return 0;
+  }
 }
