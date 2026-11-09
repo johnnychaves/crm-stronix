@@ -130,7 +130,9 @@ async function loadZapIntegration(tenantId) {
 // do próprio número, sem aviso, e o agendamento gravado responderia 201 com um
 // cartão sem os menores, quando o contrato promete o cartão já com o
 // agendamento novo. Com o erro, o "Tentar de novo" recebe ja_agendado com o
-// cartão inteiro.
+// cartão inteiro. O conversation-signal também passa `strictWards: true`: sem
+// os menores, o número de um responsável pareceria desconhecido e o sinal seria
+// dado como sem cadastro, quando o 5xx faria o Stronizap tentar de novo.
 async function numberPeople(tenantId, matchKey, agora, { strictWards = false } = {}) {
   const menoresQuery = leadsCollection(tenantId).where('guardianZapMatchKey', '==', matchKey).limit(WARDS_MAX).get();
   const [achados, menoresSnap] = await Promise.all([
@@ -723,27 +725,32 @@ async function handleConversationSignal(req, res) {
     const limit = await checkRateLimit(`zap-signal:${tenantId}`, SIGNAL_LIMIT);
     if (!limit.ok) return responder(res, refusal(429, 'limite', ZAP_SIGNAL_MESSAGES.rateLimited));
 
-    const { dono, menores } = await numberPeople(tenantId, signal.matchKey, agora);
+    // Sinal é gravação sem volta: com a busca dos menores falhando, o 5xx faz o
+    // Stronizap tentar de novo, em vez de dar o número como desconhecido.
+    const { dono, menores } = await numberPeople(tenantId, signal.matchKey, agora, { strictWards: true });
     const alvos = [dono, ...menores].filter(Boolean);
     if (alvos.length === 0) return res.status(200).json({ ok: true, found: false, recorded: false });
-
-    // Quem enviou: só pessoa da equipe com login. Mensagem enviada pelo celular
-    // da academia, ou e-mail que a equipe não conhece, grava sem autor.
-    const member = signal.email ? findTeamMember(await readTeam(tenantId), signal.email) : null;
-    const actor = member ? { ...member, name: member.name || signal.actorName } : null;
 
     // Os marcos da academia só são lidos quando há cliente entre os alvos.
     const temCliente = alvos.some((l) => l.lifecycleStage === 'cliente');
     const configSnap = temCliente ? await academyCollection(tenantId, CONFIG_PATH).doc(CONFIG_GENERAL_ID).get() : null;
     const marcos = configSnap?.exists ? configSnap.data()?.renewalCheckpoints : undefined;
 
+    // A faixa do cliente é avaliada pelo dia de hoje (`agora`), e não pelo dia da
+    // mensagem: um sinal que volta da fila no dia seguinte entra na linha do dia
+    // dele, mas com a faixa de hoje. É raro e aceitável.
+    const entram = alvos.filter((alvo) =>
+      signalEligibility(alvo, alvo.lifecycleStage === 'cliente' ? buildZapStrip(alvo, agora, marcos) : null));
+    if (entram.length === 0) return res.status(200).json({ ok: true, found: true, recorded: false, reason: 'cliente_sem_tarefa' });
+
+    // Quem enviou: só pessoa da equipe com login. Mensagem enviada pelo celular
+    // da academia, ou e-mail que a equipe não conhece, grava sem autor. A equipe
+    // só é lida quando alguém entra.
+    const member = signal.email ? findTeamMember(await readTeam(tenantId), signal.email) : null;
+    const actor = member ? { ...member, name: member.name || signal.actorName } : null;
+
     const resultados = [];
-    for (const alvo of alvos) {
-      const faixa = alvo.lifecycleStage === 'cliente' ? buildZapStrip(alvo, agora, marcos) : null;
-      if (!signalEligibility(alvo, faixa)) {
-        resultados.push({ skipped: 'cliente_sem_tarefa' });
-        continue;
-      }
+    for (const alvo of entram) {
       resultados.push(await adminDb.runTransaction(async (tx) => {
         const leadRef = leadsCollection(tenantId).doc(alvo.id);
         const lineRef = academyCollection(tenantId, INTERACTIONS_PATH).doc(signalLineId(alvo.id, signal.at, signal.kind));
@@ -751,7 +758,7 @@ async function handleConversationSignal(req, res) {
         const leadSnap = await tx.get(leadRef);
         const lineSnap = await tx.get(lineRef);
         // O lead pode ter sido apagado entre a busca do número e agora.
-        if (!leadSnap.exists) return {};
+        if (!leadSnap.exists) return { gone: true };
         const lead = leadDoDoc(leadSnap);
         const patch = signalLeadPatch(lead, signal);
         if (!lineSnap.exists) tx.create(lineRef, buildSignalInteraction({ lead, actor, signal }));
@@ -760,11 +767,11 @@ async function handleConversationSignal(req, res) {
       }));
     }
 
+    if (resultados.every((r) => r.gone)) return res.status(200).json({ ok: true, found: false, recorded: false });
+
     const recorded = resultados.some((r) => r.lineCreated || r.flagChanged);
     const body = { ok: true, found: true, recorded };
-    if (!recorded) {
-      body.reason = resultados.every((r) => r.skipped === 'cliente_sem_tarefa') ? 'cliente_sem_tarefa' : 'ja_registrado_hoje';
-    }
+    if (!recorded) body.reason = 'ja_registrado_hoje';
     return res.status(200).json(body);
   } catch (e) {
     throw scrubbedError('conversation-signal', e);

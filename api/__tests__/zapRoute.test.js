@@ -3383,6 +3383,102 @@ describe('POST /api/zap com action conversation-signal', () => {
     expect(leadDaAcademia('k2').awaitingReplySince).toEqual(DAS_1832);
   });
 
+  it('responsável com cadastro próprio de cliente sem tarefa e um menor lead: grava só a linha do menor', async () => {
+    banco.leads[TENANT] = [
+      { ...clienteAVencer, id: 'C1', zapMatchKey: zapMatchKey(MAE), currentContractStartsAt: ts(new Date(2026, 5, 1)), currentContractEndsAt: ts(new Date(2027, 5, 1)) },
+      menorDe('k1', 'Pedro Souza')
+    ];
+    const res = resposta();
+
+    await handler(pedidoSinal({ phone: MAE }), res);
+
+    expect(res.body).toEqual({ ok: true, found: true, recorded: true });
+    expect(linhasDeSinal().map((l) => l.id)).toEqual(['zap-k1-2026-09-29-lead']);
+    expect(escritasNoLead('C1')).toEqual([]);
+  });
+
+  it('um gestor da equipe respondeu: a linha grava o autor', async () => {
+    const res = resposta();
+
+    await handler(pedidoSinal({
+      kind: 'pessoa_enviou', answering: true, actor: { email: JOHNNY.email, name: 'Johnny' }, preview: undefined
+    }), res);
+
+    expect(res.body.recorded).toBe(true);
+    expect(linhasDeSinal()).toMatchObject([{
+      text: 'Resposta de Johnny.', consultantName: 'Johnny', actorId: 'u-johnny', actorAuthUid: 'auth-johnny'
+    }]);
+  });
+
+  it('a busca dos menores falhou: o erro sobe sem o telefone, e a nova tentativa grava no menor', async () => {
+    banco.leads[TENANT] = [menorDe('k1', 'Pedro Souza')];
+    banco.falhaEm = 'guardianZapMatchKey';
+    const res = resposta();
+
+    const erro = await handler(pedidoSinal({ phone: MAE }), res).catch((e) => e);
+
+    expect(erro.message).toBe('zap conversation-signal falhou (9)');
+    expect(String(erro.stack)).not.toContain(zapMatchKey(MAE));
+    expect(res.body).toBeUndefined();
+    expect(banco.gravacoes).toEqual([]);
+
+    banco.falhaEm = null;
+    const retry = resposta();
+    await handler(pedidoSinal({ phone: MAE }), retry);
+    expect(retry.body).toEqual({ ok: true, found: true, recorded: true });
+    expect(linhasDeSinal().map((l) => l.id)).toEqual(['zap-k1-2026-09-29-lead']);
+  });
+
+  it('o lead some entre a busca do número e a transação: found false e nada gravado', async () => {
+    const original = adminDb.runTransaction;
+    const espia = vi.spyOn(adminDb, 'runTransaction').mockImplementationOnce((fn) => {
+      banco.leads[TENANT] = [];
+      return original(fn);
+    });
+    const res = resposta();
+
+    await handler(pedidoSinal(), res);
+    espia.mockRestore();
+
+    expect(res.body).toEqual({ ok: true, found: false, recorded: false });
+    expect(banco.gravacoes).toEqual([]);
+  });
+
+  describe('leitura da equipe', () => {
+    // O banco falso não conta leituras: a equipe vira um getter que conta.
+    let leiturasDaEquipe;
+    beforeEach(() => {
+      leiturasDaEquipe = 0;
+      Object.defineProperty(banco.users, TENANT, {
+        configurable: true, enumerable: true, get: () => { leiturasDaEquipe += 1; return [ANA, BRUNO, JOHNNY, BIA]; }
+      });
+    });
+    const daAna = (extra = {}) => pedidoSinal({
+      kind: 'pessoa_enviou', answering: true, actor: { email: ANA.email, name: 'Ana' }, preview: undefined, ...extra
+    });
+
+    it('lê a equipe quando alguém entra', async () => {
+      await handler(daAna(), resposta());
+
+      expect(leiturasDaEquipe).toBe(1);
+      expect(linhasDeSinal()).toMatchObject([{ actorId: 'u-ana' }]);
+    });
+
+    it('cliente sem tarefa: não lê a equipe e não grava nada', async () => {
+      banco.leads[TENANT] = [{
+        ...clienteAVencer, id: 'C1', zapMatchKey: zapMatchKey(MARIANA),
+        currentContractStartsAt: ts(new Date(2026, 5, 1)), currentContractEndsAt: ts(new Date(2027, 5, 1))
+      }];
+      const res = resposta();
+
+      await handler(daAna(), res);
+
+      expect(res.body).toEqual({ ok: true, found: true, recorded: false, reason: 'cliente_sem_tarefa' });
+      expect(leiturasDaEquipe).toBe(0);
+      expect(banco.gravacoes).toEqual([]);
+    });
+  });
+
   describe('recusas', () => {
     it('sem chave: 401', async () => {
       const res = resposta();
