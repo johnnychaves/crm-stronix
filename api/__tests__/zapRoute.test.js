@@ -3164,3 +3164,289 @@ describe('POST /api/zap: o professor', () => {
     expect(res.statusCode).toBe(201);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Sinais da conversa (Parte B da ponte)
+// ---------------------------------------------------------------------------
+
+// A ação conversation-signal: o Stronizap avisa que o lead escreveu ou que a
+// equipe enviou. AGORA é 29/09 às 18:40 em UTC, 15:40 em Brasília.
+const pedidoSinal = (extra = {}) => ({
+  method: 'POST',
+  headers: { 'x-stronizap-key': chave },
+  body: {
+    action: 'conversation-signal', tenant: TENANT, kind: 'lead_escreveu', phone: MARIANA,
+    conversationId: 'conv-1', messageId: 'MSG-1', occurredAt: '2026-09-29T18:32:00.000Z',
+    preview: 'Oi, queria saber o valor da musculação', ...extra
+  }
+});
+const linhasDeSinal = () => interacoesDaAcademia().filter((i) => i.type === 'zap_signal');
+const escritasNoLead = (id) => banco.gravacoes.filter((g) => g.caminho.endsWith(`/stronix_leads/${id}`));
+const DAS_1832 = new Date('2026-09-29T18:32:00.000Z');
+const DAS_1840 = new Date('2026-09-29T18:40:00.000Z');
+
+describe('POST /api/zap com action conversation-signal', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(AGORA);
+    zerarBanco();
+    chave = academia(TENANT);
+    banco.users[TENANT] = [ANA, BRUNO, JOHNNY, BIA];
+    banco.leads[TENANT] = [marianaLead()];
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('o lead escreveu: grava a linha do dia, liga a marca de espera e gasta o limite', async () => {
+    const res = resposta();
+
+    await handler(pedidoSinal(), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({ ok: true, found: true, recorded: true });
+    expect(linhasDeSinal()).toEqual([{
+      id: 'zap-L1-2026-09-29-lead',
+      leadId: 'L1', leadName: 'Mariana Souza', consultantName: null,
+      leadConsultantId: 'u-ana', leadConsultantAuthUid: 'auth-ana',
+      actorId: null, actorAuthUid: null,
+      type: 'zap_signal', signal: 'lead_escreveu', answering: false,
+      text: 'Lead escreveu: “Oi, queria saber o valor da musculação”',
+      via: 'stronizap', zapConversationId: 'conv-1', zapMessageId: 'MSG-1', createdAt: DAS_1832
+    }]);
+    const lead = leadDaAcademia('L1');
+    expect(lead.awaitingReplySince).toEqual(DAS_1832);
+    expect(lead.zapSignalAt).toEqual(DAS_1832);
+    // A linha não é prospecção nem registro do consultor: o resto do lead não muda.
+    expect(lead.interactionsCount).toBe(3);
+    expect(lead.lastInteractionAt).toBeUndefined();
+    expect(limitador.chamadas).toEqual([{ chave: 'zap-signal:academia-teste', opcoes: { limit: 600, windowMs: 3600000 } }]);
+  });
+
+  it('o lead escreveu de novo no mesmo dia: não grava outra linha nem mexe na marca', async () => {
+    await handler(pedidoSinal(), resposta());
+    const res = resposta();
+
+    await handler(pedidoSinal({ messageId: 'MSG-2', occurredAt: '2026-09-29T18:35:00.000Z' }), res);
+
+    expect(res.body).toEqual({ ok: true, found: true, recorded: false, reason: 'ja_registrado_hoje' });
+    expect(linhasDeSinal()).toHaveLength(1);
+    expect(leadDaAcademia('L1').awaitingReplySince).toEqual(DAS_1832);
+  });
+
+  it('o mesmo sinal reenviado (fila do Stronizap) não duplica a linha', async () => {
+    await handler(pedidoSinal(), resposta());
+    const res = resposta();
+
+    await handler(pedidoSinal(), res);
+
+    expect(res.body.recorded).toBe(false);
+    expect(linhasDeSinal()).toHaveLength(1);
+  });
+
+  it('uma pessoa da equipe respondeu: grava a linha com o autor e limpa a marca', async () => {
+    banco.leads[TENANT] = [marianaLead({ awaitingReplySince: ts(DAS_1832), zapSignalAt: ts(DAS_1832) })];
+    const res = resposta();
+
+    await handler(pedidoSinal({
+      kind: 'pessoa_enviou', answering: true, messageId: 'MSG-2', occurredAt: '2026-09-29T18:40:00.000Z',
+      actor: { email: ANA.email, name: 'Ana' }, preview: undefined
+    }), res);
+
+    expect(res.body).toEqual({ ok: true, found: true, recorded: true });
+    expect(linhasDeSinal()).toMatchObject([{
+      id: 'zap-L1-2026-09-29-equipe', signal: 'pessoa_enviou', answering: true, text: 'Resposta de Ana Souza.',
+      consultantName: 'Ana Souza', actorId: 'u-ana', actorAuthUid: 'auth-ana', via: 'stronizap', createdAt: DAS_1840
+    }]);
+    expect(leadDaAcademia('L1').awaitingReplySince).toBeNull();
+    expect(leadDaAcademia('L1').zapSignalAt).toEqual(DAS_1840);
+  });
+
+  it('a equipe puxou a conversa (ninguém esperava): grava a linha e não escreve no lead', async () => {
+    const res = resposta();
+
+    await handler(pedidoSinal({
+      kind: 'pessoa_enviou', answering: false, actor: { email: ANA.email, name: 'Ana' }, preview: undefined
+    }), res);
+
+    expect(res.body).toEqual({ ok: true, found: true, recorded: true });
+    expect(linhasDeSinal()).toMatchObject([{ id: 'zap-L1-2026-09-29-equipe', text: 'Mensagem de Ana Souza.', answering: false }]);
+    expect(escritasNoLead('L1')).toEqual([]);
+  });
+
+  it('uma resposta quando ninguém esperava só avança a régua, sem tocar na marca', async () => {
+    const res = resposta();
+
+    await handler(pedidoSinal({ kind: 'pessoa_enviou', answering: true, preview: undefined }), res);
+
+    expect(res.body.recorded).toBe(true);
+    expect(leadDaAcademia('L1').zapSignalAt).toEqual(DAS_1832);
+    expect(leadDaAcademia('L1').awaitingReplySince).toBeUndefined();
+  });
+
+  it.each([
+    ['mensagem enviada pelo celular da academia (sem actor)', undefined],
+    ['e-mail que a equipe do Stronilead não conhece', { email: 'fulano@outra.com', name: 'Fulano' }],
+    ['convidada sem login (sem authUid)', { email: BIA.email, name: 'Bia' }]
+  ])('%s: grava sem autor', async (_nome, actor) => {
+    const res = resposta();
+
+    await handler(pedidoSinal({ kind: 'pessoa_enviou', answering: true, actor, preview: undefined }), res);
+
+    expect(res.body.recorded).toBe(true);
+    expect(linhasDeSinal()).toMatchObject([{
+      text: 'Resposta da equipe.', consultantName: null, actorId: null, actorAuthUid: null, leadConsultantId: 'u-ana'
+    }]);
+  });
+
+  it('a IA respondeu: linha própria com a marca byAi, que limpa a marca e não toma o lugar da linha da pessoa', async () => {
+    banco.leads[TENANT] = [marianaLead({ awaitingReplySince: ts(DAS_1832), zapSignalAt: ts(DAS_1832) })];
+
+    await handler(pedidoSinal({ kind: 'ia_enviou', answering: true, occurredAt: '2026-09-29T18:34:00.000Z', preview: undefined }), resposta());
+    await handler(pedidoSinal({
+      kind: 'pessoa_enviou', answering: false, messageId: 'MSG-3', occurredAt: '2026-09-29T18:40:00.000Z',
+      actor: { email: ANA.email, name: 'Ana' }, preview: undefined
+    }), resposta());
+
+    expect(linhasDeSinal().map((l) => l.id).sort()).toEqual(['zap-L1-2026-09-29-equipe', 'zap-L1-2026-09-29-ia']);
+    expect(linhasDeSinal().find((l) => l.signal === 'ia_enviou')).toMatchObject({ byAi: true, text: 'Resposta da IA.', actorId: null });
+    expect(leadDaAcademia('L1').awaitingReplySince).toBeNull();
+  });
+
+  it('evento fora de ordem: a linha entra, mas a marca não volta atrás', async () => {
+    banco.leads[TENANT] = [marianaLead({ awaitingReplySince: null, zapSignalAt: ts(DAS_1840) })];
+    const res = resposta();
+
+    await handler(pedidoSinal({ occurredAt: '2026-09-29T18:30:00.000Z' }), res);
+
+    expect(res.body.recorded).toBe(true);
+    expect(linhasDeSinal()).toHaveLength(1);
+    expect(leadDaAcademia('L1').awaitingReplySince).toBeNull();
+    expect(escritasNoLead('L1')).toEqual([]);
+  });
+
+  it('a linha cai no dia de Brasília: 23:50 e 00:10 são dias diferentes', async () => {
+    await handler(pedidoSinal({ occurredAt: '2026-09-29T02:50:00.000Z' }), resposta());
+    banco.leads[TENANT] = [marianaLead()];
+    await handler(pedidoSinal({ messageId: 'MSG-2', occurredAt: '2026-09-29T03:10:00.000Z' }), resposta());
+
+    expect(linhasDeSinal().map((l) => l.id).sort()).toEqual(['zap-L1-2026-09-28-lead', 'zap-L1-2026-09-29-lead']);
+  });
+
+  it('número sem cadastro: found false e nada gravado', async () => {
+    const res = resposta();
+
+    await handler(pedidoSinal({ phone: '5551900000000' }), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({ ok: true, found: false, recorded: false });
+    expect(banco.gravacoes).toEqual([]);
+  });
+
+  describe('cliente', () => {
+    const clienteDaMariana = (extra = {}) => ({ ...clienteAVencer, id: 'C1', zapMatchKey: zapMatchKey(MARIANA), ...extra });
+
+    it('com tarefa aberta (marco de renovação na faixa do cartão): entra', async () => {
+      banco.leads[TENANT] = [clienteDaMariana({ currentContractEndsAt: ts(new Date('2026-10-19T12:00:00.000Z')) })];
+      const res = resposta();
+
+      await handler(pedidoSinal(), res);
+
+      expect(res.body).toEqual({ ok: true, found: true, recorded: true });
+      expect(linhasDeSinal().map((l) => l.id)).toEqual(['zap-C1-2026-09-29-lead']);
+      expect(leadDaAcademia('C1').awaitingReplySince).toEqual(DAS_1832);
+    });
+
+    it('sem tarefa aberta (contrato longe do fim): não grava nada', async () => {
+      banco.leads[TENANT] = [clienteDaMariana({
+        currentContractStartsAt: ts(new Date(2026, 5, 1)), currentContractEndsAt: ts(new Date(2027, 5, 1))
+      })];
+      const res = resposta();
+
+      await handler(pedidoSinal(), res);
+
+      expect(res.body).toEqual({ ok: true, found: true, recorded: false, reason: 'cliente_sem_tarefa' });
+      expect(banco.gravacoes).toEqual([]);
+    });
+  });
+
+  it('número de responsável: grava em cada menor que o tem como contato', async () => {
+    banco.leads[TENANT] = [menorDe('k1', 'Pedro Souza'), menorDe('k2', 'Ana Souza')];
+    const res = resposta();
+
+    await handler(pedidoSinal({ phone: MAE }), res);
+
+    expect(res.body).toEqual({ ok: true, found: true, recorded: true });
+    expect(linhasDeSinal().map((l) => l.id).sort()).toEqual(['zap-k1-2026-09-29-lead', 'zap-k2-2026-09-29-lead']);
+    expect(leadDaAcademia('k1').awaitingReplySince).toEqual(DAS_1832);
+    expect(leadDaAcademia('k2').awaitingReplySince).toEqual(DAS_1832);
+  });
+
+  describe('recusas', () => {
+    it('sem chave: 401', async () => {
+      const res = resposta();
+      const p = pedidoSinal();
+      delete p.headers['x-stronizap-key'];
+
+      await handler(p, res);
+
+      expect(res.statusCode).toBe(401);
+      expect(banco.gravacoes).toEqual([]);
+    });
+
+    it('chave de outra academia: 401, e nada é gravado', async () => {
+      const deOutra = academia(OUTRA);
+      const res = resposta();
+
+      await handler({ ...pedidoSinal(), headers: { 'x-stronizap-key': deOutra } }, res);
+
+      expect(res.statusCode).toBe(401);
+      expect(banco.gravacoes).toEqual([]);
+    });
+
+    it('academia bloqueada: 403 sem gastar o limite', async () => {
+      Object.assign(banco.tenants[TENANT], { status: 'trial', trialEndsAt: ts(new Date(2026, 8, 1)) });
+      const res = resposta();
+
+      await handler(pedidoSinal(), res);
+
+      expect(res.statusCode).toBe(403);
+      expect(res.body.error).toBe('academia_bloqueada');
+      expect(limitador.chamadas).toEqual([]);
+      expect(banco.gravacoes).toEqual([]);
+    });
+
+    it('formato errado: 400 no campo certo, sem gastar o limite', async () => {
+      const res = resposta();
+
+      await handler(pedidoSinal({ kind: 'outro' }), res);
+
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toMatchObject({ error: 'dados_invalidos', field: 'kind' });
+      expect(limitador.chamadas).toEqual([]);
+      expect(banco.gravacoes).toEqual([]);
+    });
+
+    it('passou de 600 por hora: 429 sem gravar', async () => {
+      limitador.ok = false;
+      const res = resposta();
+
+      await handler(pedidoSinal(), res);
+
+      expect(res.statusCode).toBe(429);
+      expect(res.body).toEqual({ error: 'limite', message: 'Muitos sinais em pouco tempo. Tente de novo em alguns minutos.' });
+      expect(banco.gravacoes).toEqual([]);
+    });
+
+    it('Firestore fora do ar: o erro sobe sem o telefone', async () => {
+      banco.falhaEm = 'zapMatchKey';
+
+      const erro = await handler(pedidoSinal(), resposta()).catch((e) => e);
+
+      expect(erro).toBeInstanceOf(Error);
+      expect(erro.message).toBe('zap conversation-signal falhou (9)');
+      expect(String(erro.stack)).not.toContain(zapMatchKey(MARIANA));
+    });
+  });
+});
