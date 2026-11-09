@@ -15,6 +15,8 @@ import {
   isRegistrationNote,
   isRegistrationInteraction,
   ZAP_SIGNUP_TYPE,
+  ZAP_SIGNAL_TYPE,
+  isZapSignalInteraction,
   hasActiveInteractionToday,
   isLeadAttended,
   getLeadAttendanceDate,
@@ -253,6 +255,17 @@ describe('hasActiveInteractionToday', () => {
       { leadId: 'l1', type: 'referral', text: '🎉 João que você indicou fechou matrícula', createdAt: TODAY_10H }
     ];
     expect(hasActiveInteractionToday(lead, interactions, TODAY_START)).toBe(false);
+  });
+
+  it('a linha de sinal da conversa pelo Stronizap não conta como atividade de hoje', () => {
+    const sinal = { leadId: 'l1', type: ZAP_SIGNAL_TYPE, signal: 'lead_escreveu', text: 'Lead escreveu: “oi”', createdAt: TODAY_10H };
+    const nota = { leadId: 'l1', type: 'note', text: 'Ligou', createdAt: TODAY_10H };
+    // Só a linha: igual a não ter interação nenhuma.
+    expect(hasActiveInteractionToday(lead, [sinal], TODAY_START)).toBe(hasActiveInteractionToday(lead, [], TODAY_START));
+    expect(hasActiveInteractionToday(lead, [sinal], TODAY_START)).toBe(false);
+    // Ao lado de uma nota real, o resultado é o de sem a linha.
+    expect(hasActiveInteractionToday(lead, [sinal, nota], TODAY_START)).toBe(hasActiveInteractionToday(lead, [nota], TODAY_START));
+    expect(hasActiveInteractionToday(lead, [sinal, nota], TODAY_START)).toBe(true);
   });
 
   it('false para interaction de ontem ou de outro lead', () => {
@@ -629,5 +642,15 @@ describe('marco do cadastro pelo Stronizap (type zap_signup)', () => {
 
   it('não acende o "Já interagido hoje"', () => {
     expect(hasActiveInteractionToday({ id: 'l1' }, [MARCO], TODAY_START)).toBe(false);
+  });
+});
+
+describe('isZapSignalInteraction', () => {
+  it('só o type zap_signal conta', () => {
+    expect(isZapSignalInteraction({ type: ZAP_SIGNAL_TYPE })).toBe(true);
+    expect(isZapSignalInteraction({ type: ZAP_SIGNUP_TYPE })).toBe(false);
+    expect(isZapSignalInteraction({ type: 'note', text: 'zap_signal' })).toBe(false);
+    expect(isZapSignalInteraction(null)).toBe(false);
+    expect(isZapSignalInteraction(undefined)).toBe(false);
   });
 });

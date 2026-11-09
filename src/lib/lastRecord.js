@@ -2,6 +2,8 @@
 // compositor mostrar o que foi dito antes de a pessoa escrever. Recebe as
 // interações já classificadas (cada uma com `_kind`, de classifyInteraction em
 // lib/timeline.js). Puro.
+import { isZapSignalInteraction } from './leads.js';
+
 const PREFIXES = [
   /^📲\s*Mensagem WhatsApp enviada:\s*/i,
   /^📞\s*Ligação:\s*/i,
@@ -11,7 +13,7 @@ const PREFIXES = [
 
 export function lastRecordOf(interactions) {
   const textos = (interactions || [])
-    .filter((i) => (i._kind === 'note' || i._kind === 'conversation') && i.createdAt instanceof Date && !isNaN(i.createdAt.getTime()))
+    .filter((i) => (i._kind === 'note' || i._kind === 'conversation') && !isZapSignalInteraction(i) && i.createdAt instanceof Date && !isNaN(i.createdAt.getTime()))
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   const i = textos[0];
   if (!i) return null;

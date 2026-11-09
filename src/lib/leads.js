@@ -226,6 +226,10 @@ export const ZAP_VIA = 'stronizap';
 // uma por tipo de sinal, por lead e por dia de Brasília.
 export const ZAP_SIGNAL_TYPE = 'zap_signal';
 
+// A linha da conversa pelo Stronizap é um sinal, não um registro de quem
+// atende: não conta como atividade do dia, contato nem último registro.
+export const isZapSignalInteraction = (i) => i?.type === ZAP_SIGNAL_TYPE;
+
 // Interação gravada pela IA do Stronizap em nome do consultor de plantão
 // (api/zap.js, create-lead e schedule com byAi). A ficha desenha a pílula "IA"
 // ao lado da marca do Stronizap.
@@ -238,7 +242,8 @@ export const isRegistrationInteraction = (i) =>
 
 // True se houve qualquer interaction "ativa" hoje (mudança de fase,
 // nota, follow-up agendado, etc.) que NÃO seja 'daily_goal_done' nem
-// registro do cadastro (a observação automática ou o marco do Stronizap).
+// registro do cadastro (a observação automática ou o marco do Stronizap) nem
+// linha de sinal da conversa pelo Stronizap.
 // Usado para o badge "Já interagido hoje", que avisa o consultor que ele já
 // tocou no lead mas ainda precisa fechar a tarefa via Meta Diária.
 export const hasActiveInteractionToday = (lead, interactions, todayStart) => {
@@ -252,6 +257,7 @@ export const hasActiveInteractionToday = (lead, interactions, todayStart) => {
     // INDICADOR quando o indicado fecha matrícula.
     if (i.type === 'referral') return false;
     if (isRegistrationInteraction(i)) return false;
+    if (isZapSignalInteraction(i)) return false;
     return true;
   });
 };

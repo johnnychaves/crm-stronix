@@ -64,6 +64,22 @@ describe('buildInteractionIndex', () => {
     expect(idx.get('l3')).toBeUndefined();
   });
 
+  it('a linha de sinal da conversa pelo Stronizap não entra no count nem no lastDate', () => {
+    const real = [
+      { leadId: 'l1', type: 'note', createdAt: new Date(2026, 6, 10, 9, 0) },
+      { leadId: 'l1', type: 'call', createdAt: new Date(2026, 6, 12, 14, 0) }
+    ];
+    const sinal = { leadId: 'l1', type: 'zap_signal', signal: 'lead_escreveu', createdAt: new Date(2026, 6, 14, 18, 0) };
+    const semLinha = buildInteractionIndex(real);
+    const comLinha = buildInteractionIndex([...real, sinal]);
+    expect(comLinha.get('l1')).toEqual(semLinha.get('l1'));
+    expect(comLinha.get('l1').count).toBe(2);
+    expect(comLinha.get('l1').lastDate.getTime()).toBe(new Date(2026, 6, 12, 14, 0).getTime());
+    // Lead que só tem a linha: sem entrada, como sem interação nenhuma.
+    expect(buildInteractionIndex([sinal]).size).toBe(buildInteractionIndex([]).size);
+    expect(buildInteractionIndex([sinal]).get('l1')).toBeUndefined();
+  });
+
   it('lista nula/indefinida/vazia vira Map vazio', () => {
     expect(buildInteractionIndex(null).size).toBe(0);
     expect(buildInteractionIndex(undefined).size).toBe(0);

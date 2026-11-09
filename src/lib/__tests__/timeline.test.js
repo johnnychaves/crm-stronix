@@ -20,11 +20,11 @@ import {
   extractStageNameFromInteractionText,
   isOwnerChangeText,
   ownerChangeText,
-  TIMELINE_FILTERS
+  TIMELINE_FILTERS,
+  TIMELINE_SYSTEM_KIND
 } from '../timeline.js';
 import { taskOwnerText } from '../schedulePatch.js';
-import { ZAP_SIGNAL_TYPE } from '../leads.js';
-import { isAiInteraction } from '../leads.js';
+import { ZAP_SIGNAL_TYPE, isAiInteraction } from '../leads.js';
 import { ownerChangeNote } from '../clientRegistration.js';
 import {
   buildContractActivate,
@@ -779,5 +779,14 @@ describe('linha de sinal da conversa pelo Stronizap (type zap_signal)', () => {
     const linha = { type: ZAP_SIGNAL_TYPE, _kind: 'conversation', text: 'Lead escreveu: “queria uma ligação”' };
 
     expect(timelineTypeLabel(linha)).toBe('WhatsApp');
+    expect(timelineTypeLabel({ type: ZAP_SIGNAL_TYPE, text: 'Lead escreveu: “queria uma ligação”' })).toBe('WhatsApp');
+  });
+
+  it('passa pelo filtro Conversas e não é escondida como sistema', () => {
+    const linha = { type: ZAP_SIGNAL_TYPE, signal: 'lead_escreveu', text: 'Lead escreveu: “oi”' };
+    const kind = classifyInteraction(linha);
+
+    expect(matchesTimelineFilter(kind, 'conversation')).toBe(true);
+    expect(kind).not.toBe(TIMELINE_SYSTEM_KIND);
   });
 });

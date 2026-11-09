@@ -29,6 +29,16 @@ describe('lastRecordOf', () => {
     expect(lastRecordOf([...lista].reverse()).id).toBe('nova');
   });
 
+  it('a linha de sinal da conversa pelo Stronizap não vira o último registro', () => {
+    const anotacao = nota('ok', 'Obs: valida.', D(10, 2));
+    const sinal = { id: 'sinal', _kind: 'conversation', type: 'zap_signal', signal: 'lead_escreveu', text: 'Lead escreveu: “oi”', createdAt: D(10, 20) };
+    // Mais recente que a anotação, mas o último registro continua sendo a anotação.
+    expect(lastRecordOf([sinal, anotacao])).toEqual(lastRecordOf([anotacao]));
+    expect(lastRecordOf([sinal, anotacao]).id).toBe('ok');
+    // Só a linha: sem registro, como sem interação nenhuma.
+    expect(lastRecordOf([sinal])).toBeNull();
+  });
+
   it('ignora evento sem data e evento que não é texto', () => {
     const lista = [
       { id: 'semdata', _kind: 'note', text: 'Obs: sem data.' },
