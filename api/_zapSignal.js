@@ -8,6 +8,8 @@
 // 2026-11-09-parte-b-sinais-da-conversa-design.md, no repositório do Stronizap.
 import { zapMatchKey } from './_zapPhone.js';
 import { NAME_MAX, emailFromActor, invalidData } from './_zapLead.js';
+import { diaDeBrasilia, isoDoDia } from './_horarioDeBrasilia.js';
+import { getInteractionSecurityFields, ZAP_SIGNAL_TYPE, ZAP_VIA } from '../src/lib/leads.js';
 
 const MINUTE_MS = 60000;
 const ID_MAX = 200;
@@ -79,5 +81,46 @@ export function readSignalBody(body, now = new Date()) {
       actorName: name || null,
       preview: kind === 'lead_escreveu' && typeof body.preview === 'string' ? cleanPreview(body.preview) : null
     }
+  };
+}
+
+// Cada tipo de sinal tem a sua linha no dia: o lead, a equipe (pessoa) e a IA.
+const LINE_OF = Object.freeze({ lead_escreveu: 'lead', pessoa_enviou: 'equipe', ia_enviou: 'ia' });
+
+// Id fixo da linha: por lead, dia de Brasília e tipo. É ele que faz o mesmo
+// sinal, reenviado ou repetido, cair no mesmo documento em vez de abrir outro.
+export const signalLineId = (leadId, at, kind) => `zap-${leadId}-${isoDoDia(diaDeBrasilia(at))}-${LINE_OF[kind]}`;
+
+// O texto que a ficha mostra. Só o nome de quem o Stronilead conhece entra:
+// sem autor, a linha diz "da equipe".
+export function signalText({ kind, answering, actorName = null, preview = null }) {
+  if (kind === 'lead_escreveu') return preview ? `Lead escreveu: “${preview}”` : 'Lead escreveu.';
+  if (kind === 'ia_enviou') return answering ? 'Resposta da IA.' : 'Mensagem da IA.';
+  const quem = actorName ? `de ${actorName}` : 'da equipe';
+  return `${answering ? 'Resposta' : 'Mensagem'} ${quem}.`;
+}
+
+// A interação que vai para stronix_interactions. Sem volumeKind: o volume da
+// prospecção conta agendamento criado e lead novo, e o contato puro fica de
+// fora (src/lib/dailyGoal.js, decisão de 16/06/2026). A hora é a da mensagem,
+// não a do servidor, para a linha cair onde a conversa aconteceu.
+export function buildSignalInteraction({ lead, actor, signal }) {
+  return {
+    leadId: lead.id,
+    leadName: lead.name || null,
+    consultantName: actor?.name ?? null,
+    ...getInteractionSecurityFields(lead, actor),
+    actorId: actor?.id ?? null,
+    actorAuthUid: actor?.authUid ?? null,
+    type: ZAP_SIGNAL_TYPE,
+    signal: signal.kind,
+    answering: signal.answering,
+    text: signalText({
+      kind: signal.kind, answering: signal.answering, actorName: actor?.name ?? null, preview: signal.preview ?? null
+    }),
+    via: ZAP_VIA,
+    zapConversationId: signal.conversationId,
+    ...(signal.kind === 'ia_enviou' ? { byAi: true } : {}),
+    createdAt: signal.at
   };
 }
