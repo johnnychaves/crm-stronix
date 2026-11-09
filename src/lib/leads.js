@@ -221,6 +221,11 @@ export const ZAP_SIGNUP_TYPE = 'zap_signup';
 // quem agendou.
 export const ZAP_VIA = 'stronizap';
 
+// Tipo da interação que a ponte grava quando o lead escreve ou a equipe envia
+// mensagem pelo Stronizap (api/zap.js, ação conversation-signal): no máximo
+// uma por tipo de sinal, por lead e por dia de Brasília.
+export const ZAP_SIGNAL_TYPE = 'zap_signal';
+
 // Interação gravada pela IA do Stronizap em nome do consultor de plantão
 // (api/zap.js, create-lead e schedule com byAi). A ficha desenha a pílula "IA"
 // ao lado da marca do Stronizap.

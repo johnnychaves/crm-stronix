@@ -23,6 +23,7 @@ import {
   TIMELINE_FILTERS
 } from '../timeline.js';
 import { taskOwnerText } from '../schedulePatch.js';
+import { ZAP_SIGNAL_TYPE } from '../leads.js';
 import { isAiInteraction } from '../leads.js';
 import { ownerChangeNote } from '../clientRegistration.js';
 import {
@@ -758,5 +759,19 @@ describe('isAiInteraction', () => {
     expect(isAiInteraction({ byAi: 'true' })).toBe(false);
     expect(isAiInteraction({})).toBe(false);
     expect(isAiInteraction(null)).toBe(false);
+  });
+});
+
+describe('linha de sinal da conversa pelo Stronizap (type zap_signal)', () => {
+  it.each([
+    ['lead_escreveu', 'Lead escreveu: “Oi, queria saber o valor”'],
+    ['pessoa_enviou', 'Resposta de Ana Souza.'],
+    ['ia_enviou', 'Resposta da IA.']
+  ])('%s cai no bucket Conversas, decidido pelo type', (signal, text) => {
+    expect(classifyInteraction({ type: ZAP_SIGNAL_TYPE, signal, text })).toBe('conversation');
+  });
+
+  it('não depende do texto: um trecho que cita a meta diária continua em Conversas', () => {
+    expect(classifyInteraction({ type: ZAP_SIGNAL_TYPE, text: 'Lead escreveu: “e a meta diária?”' })).toBe('conversation');
   });
 });
