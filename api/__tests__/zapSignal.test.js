@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  readSignalBody, signalLineId, signalText, buildSignalInteraction, PREVIEW_MAX, ZAP_SIGNAL_MESSAGES
+  readSignalBody, signalLineId, signalText, buildSignalInteraction, signalLeadPatch, signalEligibility,
+  PREVIEW_MAX, ZAP_SIGNAL_MESSAGES
 } from '../_zapSignal.js';
 import { zapMatchKey } from '../_zapPhone.js';
 
@@ -182,5 +183,64 @@ describe('buildSignalInteraction', () => {
 
     expect(linha).not.toHaveProperty('volumeKind');
     expect(Object.values(linha).every((v) => v !== undefined)).toBe(true);
+  });
+});
+
+describe('signalLeadPatch', () => {
+  const AT = new Date('2026-11-09T17:32:00.000Z');
+  const sinal = (extra = {}) => ({ kind: 'lead_escreveu', at: AT, answering: false, ...extra });
+  const esperando = { awaitingReplySince: new Date('2026-11-09T17:00:00.000Z') };
+
+  it('o lead escreveu e ninguém esperava: liga a marca', () => {
+    expect(signalLeadPatch({}, sinal())).toEqual({ awaitingReplySince: AT, zapSignalAt: AT });
+  });
+
+  it('o lead escreveu de novo enquanto esperava: nada muda', () => {
+    expect(signalLeadPatch(esperando, sinal())).toBeNull();
+  });
+
+  it.each(['pessoa_enviou', 'ia_enviou'])('%s respondeu quem esperava: limpa a marca', (kind) => {
+    expect(signalLeadPatch(esperando, sinal({ kind, answering: true }))).toEqual({ awaitingReplySince: null, zapSignalAt: AT });
+  });
+
+  it('mensagem da equipe por iniciativa (ninguém esperava): nada muda', () => {
+    expect(signalLeadPatch({}, sinal({ kind: 'pessoa_enviou', answering: false }))).toBeNull();
+  });
+
+  it('mensagem da equipe que não responde a ninguém, com o lead esperando: a marca continua', () => {
+    expect(signalLeadPatch(esperando, sinal({ kind: 'pessoa_enviou', answering: false }))).toBeNull();
+  });
+
+  it('resposta quando ninguém esperava: nada muda', () => {
+    expect(signalLeadPatch({}, sinal({ kind: 'pessoa_enviou', answering: true }))).toBeNull();
+  });
+
+  it('evento mais antigo que o último aplicado é ignorado, para a marca não voltar atrás', () => {
+    const lead = { zapSignalAt: new Date('2026-11-09T17:40:00.000Z') };
+
+    expect(signalLeadPatch(lead, sinal())).toBeNull();
+  });
+
+  it('entende o Timestamp do Firestore nos dois campos', () => {
+    const lead = {
+      awaitingReplySince: { toMillis: () => new Date('2026-11-09T17:00:00.000Z').getTime() },
+      zapSignalAt: { toDate: () => new Date('2026-11-09T17:00:00.000Z') }
+    };
+
+    expect(signalLeadPatch(lead, sinal({ kind: 'pessoa_enviou', answering: true }))).toEqual({
+      awaitingReplySince: null, zapSignalAt: AT
+    });
+  });
+});
+
+describe('signalEligibility', () => {
+  it('lead entra sempre, e cadastro antigo sem lifecycleStage conta como lead', () => {
+    expect(signalEligibility({ lifecycleStage: 'lead' }, null)).toBe(true);
+    expect(signalEligibility({}, null)).toBe(true);
+  });
+
+  it('cliente só entra quando o cartão mostra faixa de prazo', () => {
+    expect(signalEligibility({ lifecycleStage: 'cliente' }, null)).toBe(false);
+    expect(signalEligibility({ lifecycleStage: 'cliente' }, { kind: 'renovacao' })).toBe(true);
   });
 });

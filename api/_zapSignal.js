@@ -124,3 +124,38 @@ export function buildSignalInteraction({ lead, actor, signal }) {
     createdAt: signal.at
   };
 }
+
+// O instante de um Date ou de um Timestamp do Firestore (toMillis ou toDate).
+// Qualquer outra coisa não é instante e volta null.
+const millis = (v) => {
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v.getTime();
+  if (typeof v?.toMillis === 'function') return v.toMillis();
+  if (typeof v?.toDate === 'function') return v.toDate().getTime();
+  return null;
+};
+
+// O que o sinal muda no lead, ou null quando nada muda. Só a marca de espera
+// importa: liga com o primeiro "lead escreveu" depois de uma resposta e limpa
+// com a primeira resposta (de pessoa ou da IA) a quem esperava. A segunda
+// mensagem seguida, de qualquer lado, não grava nada no lead, e por isso o
+// Pipeline de quem está com a tela aberta não atualiza a cada mensagem.
+// `zapSignalAt` guarda o último sinal aplicado: um evento mais antigo, que
+// chegou fora de ordem, não desfaz a marca.
+export function signalLeadPatch(lead, signal) {
+  const last = millis(lead?.zapSignalAt);
+  if (last != null && signal.at.getTime() < last) return null;
+
+  const waiting = millis(lead?.awaitingReplySince) != null;
+  if (signal.kind === 'lead_escreveu') {
+    return waiting ? null : { awaitingReplySince: signal.at, zapSignalAt: signal.at };
+  }
+  return signal.answering && waiting ? { awaitingReplySince: null, zapSignalAt: signal.at } : null;
+}
+
+// Lead entra sempre. Cliente só quando o cartão já mostra uma faixa de prazo
+// (visita ou aula hoje, contrato vencido, freepass, marco de renovação): é o
+// que quer dizer "tem tarefa aberta na Meta". Sem isso, os alunos que
+// conversam com a recepção e os professores encheriam a ficha à toa.
+export function signalEligibility(lead, strip) {
+  return lead?.lifecycleStage !== 'cliente' || strip != null;
+}
