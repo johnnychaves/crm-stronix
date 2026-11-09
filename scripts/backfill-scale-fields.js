@@ -168,7 +168,10 @@ async function aggregateInteractions() {
   for await (const doc of interactionsCol.stream()) {
     scanned++;
     const i = doc.data();
-    if (!i?.leadId) continue;
+    // 'zap_signal' = ZAP_SIGNAL_TYPE (src/lib/leads.js), por texto porque este
+    // script não importa de src/. A linha de sinal da conversa pelo Stronizap
+    // não é interação de quem atende: fica fora do count e do lastInteractionAt.
+    if (!i?.leadId || i.type === 'zap_signal') continue;
     const prev = byLead.get(i.leadId) || { count: 0, lastMs: 0 };
     prev.count += 1;
     const at = getSafeDateOrNull(i.createdAt);

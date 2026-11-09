@@ -12,6 +12,7 @@ import {
   TASK_OWNER_GOAL_CATEGORIES,
   isTaskOwnerGoalCategory,
   isClientLead,
+  isZapSignalInteraction,
   APPOINTMENT_GOAL_CATEGORIES
 } from './leads.js';
 import { getSafeDateOrNull, normalizeAppointmentType } from './dates.js';
@@ -259,7 +260,8 @@ export function buildInteractionsByLead(interactions) {
 export function clientTouchCount(interactions, clientIds, liveIds, userId) {
   let n = 0;
   (interactions || []).forEach((i) => {
-    if (!i?.leadId) return;
+    // A linha de sinal da conversa pelo Stronizap não relê as listas da Meta.
+    if (!i?.leadId || isZapSignalInteraction(i)) return;
     if (clientIds.has(i.leadId)) n += 1;
     else if (userId && i.actorId === userId && !liveIds.has(i.leadId)) n += 1;
   });

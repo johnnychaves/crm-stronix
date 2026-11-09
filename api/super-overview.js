@@ -5,6 +5,7 @@ import { readTenantPrivate } from './_tenantPrivate.js';
 import { withSentry } from './_sentry.js';
 import { ROLES } from '../src/lib/acesso.js';
 import { normalizeModules } from '../src/lib/modules.js';
+import { humanInteractionCount, lastHumanInteractionMillis, zapSignalCount } from './_interactionStats.js';
 
 // Visão agregada da plataforma para o painel super-admin — SUPER-ADMIN only.
 // Usa o Admin SDK (o super-admin não lê /artifacts de outro tenant pelas rules).
@@ -26,13 +27,13 @@ async function countOr(col) {
   catch { return 0; }
 }
 
-// Última atividade = interação mais recente. orderBy num único campo usa índice
-// single-field automático (sem índice composto). Best-effort.
+// Última atividade = interação mais recente de quem atende (a linha de sinal da
+// conversa pelo Stronizap fica de fora, ver api/_interactionStats.js). orderBy
+// num único campo usa índice single-field automático (sem índice composto).
+// Best-effort.
 async function lastInteractionMillis(tenantId) {
   try {
-    const snap = await dataCol(tenantId, 'stronix_interactions')
-      .orderBy('createdAt', 'desc').limit(1).get();
-    return snap.empty ? null : toMillis(snap.docs[0].data()?.createdAt);
+    return await lastHumanInteractionMillis(dataCol(tenantId, 'stronix_interactions'));
   } catch (err) {
     console.error('super-overview lastActivity', tenantId, err?.message || err);
     return null;
@@ -47,7 +48,9 @@ async function tenantMetrics(doc, plansMap) {
     countOr(dataCol(id, 'stronix_users').where('role', '==', ROLES.GESTOR)),
     countOr(dataCol(id, 'stronix_users').where('role', '==', ROLES.PROFESSOR)),
     countOr(dataCol(id, 'stronix_leads')),
-    countOr(dataCol(id, 'stronix_interactions')),
+    // Total menos as linhas de sinal; se a contagem delas falhar, fica o total.
+    Promise.all([countOr(dataCol(id, 'stronix_interactions')), zapSignalCount(dataCol(id, 'stronix_interactions'))])
+      .then(([total, signals]) => humanInteractionCount(total, signals)),
     lastInteractionMillis(id),
     // Perfil e WhatsApp do responsável vivem no subdocumento privado.
     readTenantPrivate(id, data),
