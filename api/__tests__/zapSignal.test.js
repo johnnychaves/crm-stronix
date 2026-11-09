@@ -4,6 +4,7 @@ import {
   PREVIEW_MAX, ZAP_SIGNAL_MESSAGES
 } from '../_zapSignal.js';
 import { zapMatchKey } from '../_zapPhone.js';
+import { NAME_MAX } from '../_zapLead.js';
 
 const AGORA = new Date('2026-11-09T18:00:00.000Z');
 const FONE = '5551998124471';
@@ -34,6 +35,10 @@ describe('readSignalBody', () => {
     expect(value.preview).toBe('😀'.repeat(PREVIEW_MAX));
   });
 
+  it('tira os caracteres de direção do trecho, para o lead não inverter o texto na ficha', () => {
+    expect(readSignalBody(corpo({ preview: 'oi \u202Eabc\u2066d\u2069' }), AGORA).value.preview).toBe('oi abcd');
+  });
+
   it.each([['só espaços', '   '], ['número', 42], ['ausente', undefined]])('trecho %s vira null', (_nome, preview) => {
     expect(readSignalBody(corpo({ preview }), AGORA).value.preview).toBeNull();
   });
@@ -47,6 +52,22 @@ describe('readSignalBody', () => {
     expect(value).toMatchObject({
       kind: 'pessoa_enviou', answering: true, email: 'ana@stronix.com.br', actorName: 'Ana', preview: null
     });
+  });
+
+  it('nome do autor passa pela mesma limpeza do trecho', () => {
+    const lido = (name) => readSignalBody(corpo({ kind: 'pessoa_enviou', answering: true, actor: { name } }), AGORA).value.actorName;
+
+    expect(lido('Ana\n\u0007X')).toBe('Ana X');
+    expect(lido('\u202EAna')).toBe('Ana');
+    expect(lido('   ')).toBeNull();
+    expect(lido(42)).toBeNull();
+  });
+
+  it('nome do autor é cortado em NAME_MAX caracteres sem partir emoji', () => {
+    const { value } = readSignalBody(corpo({ kind: 'pessoa_enviou', answering: true, actor: { name: '😀'.repeat(200) } }), AGORA);
+
+    expect(Array.from(value.actorName)).toHaveLength(NAME_MAX);
+    expect(value.actorName).toBe('😀'.repeat(NAME_MAX));
   });
 
   it('pessoa_enviou sem actor (enviada pelo celular da academia) vale, sem e-mail nem nome', () => {
@@ -72,6 +93,15 @@ describe('readSignalBody', () => {
     expect(readSignalBody(corpo({ occurredAt: '2026-10-01T10:00:00.000Z' }), AGORA).value).toBeDefined();
   });
 
+  it('aceita ISO com fuso: Z ou deslocamento, com ou sem fração de segundo', () => {
+    expect(readSignalBody(corpo({ occurredAt: '2026-11-09T17:32:00.000Z' }), AGORA).value.at)
+      .toEqual(new Date('2026-11-09T17:32:00.000Z'));
+    expect(readSignalBody(corpo({ occurredAt: '2026-11-09T14:32:00-03:00' }), AGORA).value.at)
+      .toEqual(new Date('2026-11-09T17:32:00.000Z'));
+    expect(readSignalBody(corpo({ occurredAt: '2026-11-09T17:32:00Z' }), AGORA).value.at)
+      .toEqual(new Date('2026-11-09T17:32:00.000Z'));
+  });
+
   it.each([
     ['kind', { kind: 'outro' }],
     ['kind', { kind: undefined }],
@@ -82,7 +112,10 @@ describe('readSignalBody', () => {
     ['messageId', { messageId: undefined }],
     ['occurredAt', { occurredAt: 'ontem' }],
     ['occurredAt', { occurredAt: 1730000000000 }],
-    ['occurredAt', { occurredAt: '2026-11-09T18:11:00.000Z' }]
+    ['occurredAt', { occurredAt: '2026-11-09T18:11:00.000Z' }],
+    ['occurredAt', { occurredAt: '2026-11-09T17:32:00' }],
+    ['occurredAt', { occurredAt: '2026-11-09' }],
+    ['occurredAt', { occurredAt: '2026-11-09 17:32' }]
   ])('recusa %s inválido com 400 no campo certo', (field, extra) => {
     expect(readSignalBody(corpo(extra), AGORA)).toEqual({
       refusal: { status: 400, body: { error: 'dados_invalidos', field, message: ZAP_SIGNAL_MESSAGES[field] } }
@@ -114,6 +147,15 @@ describe('signalLineId', () => {
     expect(signalLineId('L1', at, 'ia_enviou')).toBe('zap-L1-2026-11-09-ia');
     expect(signalLineId('L2', at, 'lead_escreveu')).toBe('zap-L2-2026-11-09-lead');
   });
+
+  it('lança com data inválida, tipo desconhecido ou lead vazio, em vez de gravar um id torto', () => {
+    const at = new Date('2026-11-09T17:32:00.000Z');
+
+    expect(() => signalLineId('L1', new Date('x'), 'lead_escreveu')).toThrow();
+    expect(() => signalLineId('L1', at, 'outro')).toThrow();
+    expect(() => signalLineId('', at, 'lead_escreveu')).toThrow();
+    expect(() => signalLineId(undefined, at, 'lead_escreveu')).toThrow();
+  });
 });
 
 describe('signalText', () => {
@@ -141,7 +183,7 @@ describe('buildSignalInteraction', () => {
   const lead = { id: 'L1', name: 'Mariana Souza', consultantId: 'u-ana', consultantAuthUid: 'auth-ana' };
   const ANA = { id: 'u-ana', name: 'Ana Souza', authUid: 'auth-ana' };
   const sinal = (extra = {}) => ({
-    kind: 'pessoa_enviou', conversationId: 'conv-1', at: new Date('2026-11-09T17:40:00.000Z'),
+    kind: 'pessoa_enviou', conversationId: 'conv-1', messageId: 'MSG-1', at: new Date('2026-11-09T17:40:00.000Z'),
     answering: true, preview: null, ...extra
   });
 
@@ -151,7 +193,7 @@ describe('buildSignalInteraction', () => {
       leadConsultantId: 'u-ana', leadConsultantAuthUid: 'auth-ana',
       actorId: 'u-ana', actorAuthUid: 'auth-ana',
       type: 'zap_signal', signal: 'pessoa_enviou', answering: true, text: 'Resposta de Ana Souza.',
-      via: 'stronizap', zapConversationId: 'conv-1', createdAt: new Date('2026-11-09T17:40:00.000Z')
+      via: 'stronizap', zapConversationId: 'conv-1', zapMessageId: 'MSG-1', createdAt: new Date('2026-11-09T17:40:00.000Z')
     });
   });
 
@@ -211,8 +253,8 @@ describe('signalLeadPatch', () => {
     expect(signalLeadPatch(esperando, sinal({ kind: 'pessoa_enviou', answering: false }))).toBeNull();
   });
 
-  it('resposta quando ninguém esperava: nada muda', () => {
-    expect(signalLeadPatch({}, sinal({ kind: 'pessoa_enviou', answering: true }))).toBeNull();
+  it('resposta quando ninguém esperava: só avança a régua, sem mexer na marca', () => {
+    expect(signalLeadPatch({}, sinal({ kind: 'pessoa_enviou', answering: true }))).toEqual({ zapSignalAt: AT });
   });
 
   it('evento mais antigo que o último aplicado é ignorado, para a marca não voltar atrás', () => {
@@ -230,6 +272,31 @@ describe('signalLeadPatch', () => {
     expect(signalLeadPatch(lead, sinal({ kind: 'pessoa_enviou', answering: true }))).toEqual({
       awaitingReplySince: null, zapSignalAt: AT
     });
+  });
+
+  it('resposta mais antiga que o último sinal aplicado é ignorada', () => {
+    const lead = { zapSignalAt: new Date('2026-11-09T17:10:00Z'), awaitingReplySince: new Date('2026-11-09T17:10:00Z') };
+
+    expect(signalLeadPatch(lead, R('2026-11-09T17:05:00Z'))).toBeNull();
+  });
+
+  // Aplica os patches em ordem, como a rota faz, e devolve o lead que sobra.
+  const aplica = (eventos) => eventos.reduce((l, e) => ({ ...l, ...(signalLeadPatch(l, e) ?? {}) }), {});
+  const L = (iso) => ({ kind: 'lead_escreveu', at: new Date(iso), answering: false });
+  const R = (iso) => ({ kind: 'pessoa_enviou', at: new Date(iso), answering: true });
+
+  it('resposta que chega antes do lead_escreveu que ela responde não deixa a marca ligada', () => {
+    expect(aplica([R('2026-11-09T17:00:02Z'), L('2026-11-09T17:00:01Z')]).awaitingReplySince ?? null).toBeNull();
+  });
+
+  it('reenvio do lead_escreveu no mesmo segundo da resposta não religa a marca', () => {
+    const t = '2026-11-09T17:00:01Z';
+
+    expect(aplica([L(t), R(t), L(t)]).awaitingReplySince).toBeNull();
+  });
+
+  it('lead_escreveu reenviado depois da resposta é ignorado', () => {
+    expect(aplica([L('2026-11-09T17:00:01Z'), R('2026-11-09T17:00:02Z'), L('2026-11-09T17:00:01Z')]).awaitingReplySince).toBeNull();
   });
 });
 

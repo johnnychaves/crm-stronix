@@ -19,7 +19,8 @@ const FUTURE_TOLERANCE_MS = 10 * MINUTE_MS;
 
 export const SIGNAL_KINDS = Object.freeze(['lead_escreveu', 'pessoa_enviou', 'ia_enviou']);
 // Cada virada da conversa é um sinal, e a fila do Stronizap pode soltar uma
-// leva depois de uma parada. 600 por hora folga o uso normal.
+// leva depois de uma parada. 600 por hora folga o uso normal. O Stronizap trata
+// 429 como erro de nova tentativa (espera crescente), nunca como sinal descartado.
 export const SIGNAL_LIMIT = Object.freeze({ limit: 600, windowMs: 60 * MINUTE_MS });
 export const PREVIEW_MAX = 120;
 
@@ -35,14 +36,21 @@ export const ZAP_SIGNAL_MESSAGES = Object.freeze({
 
 const isId = (v) => typeof v === 'string' && v.length > 0 && v.length <= ID_MAX;
 
-// O trecho da mensagem do lead: uma linha só, sem caracteres de controle, em
-// até PREVIEW_MAX caracteres. Array.from conta por caractere, então um emoji
-// nunca é cortado ao meio.
-const cleanPreview = (raw) => {
-  const text = raw.replace(/\p{Cc}+/gu, ' ').replace(/\s+/g, ' ').trim();
-  const cut = Array.from(text).slice(0, PREVIEW_MAX).join('').trim();
-  return cut || null;
+// Caracteres de direção (U+202A a U+202E e U+2066 a U+2069) deixariam o lead
+// inverter o texto na ficha.
+const BIDI = /[\u202A-\u202E\u2066-\u2069]/g;
+
+// Texto de uma linha só, sem caracteres de direção nem de controle, em até
+// `max` caracteres (o do trecho e o do nome passam por aqui). Array.from conta
+// por caractere, então um emoji nunca é cortado ao meio. Vazio vira null.
+const cleanText = (raw, max) => {
+  const text = raw.replace(BIDI, '').replace(/\p{Cc}+/gu, ' ').replace(/\s+/g, ' ').trim();
+  return Array.from(text).slice(0, max).join('').trim() || null;
 };
+
+// ISO 8601 com fuso. Sem fuso (ou só a data) o Date leria em UTC na Vercel e a
+// linha cairia horas fora do dia certo.
+const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
 
 // Lê o corpo do conversation-signal. Só o formato: o que depende da academia
 // (equipe, lead, marcos) é conferido depois. Devolve { value } ou { refusal }.
@@ -55,7 +63,7 @@ export function readSignalBody(body, now = new Date()) {
   if (!isId(body.conversationId)) return { refusal: invalidData('conversationId', ZAP_SIGNAL_MESSAGES.conversationId) };
   if (!isId(body.messageId)) return { refusal: invalidData('messageId', ZAP_SIGNAL_MESSAGES.messageId) };
 
-  const at = typeof body.occurredAt === 'string' ? new Date(body.occurredAt) : null;
+  const at = typeof body.occurredAt === 'string' && ISO.test(body.occurredAt) ? new Date(body.occurredAt) : null;
   if (!at || Number.isNaN(at.getTime()) || at.getTime() > now.getTime() + FUTURE_TOLERANCE_MS) {
     return { refusal: invalidData('occurredAt', ZAP_SIGNAL_MESSAGES.occurredAt) };
   }
@@ -68,7 +76,7 @@ export function readSignalBody(body, now = new Date()) {
   // Só a pessoa tem autor. A IA e o lead não têm, e a mensagem enviada pelo
   // celular da academia chega como pessoa sem actor.
   const person = kind === 'pessoa_enviou';
-  const name = person && typeof body.actor?.name === 'string' ? body.actor.name.trim().slice(0, NAME_MAX) : '';
+  const actorName = person && typeof body.actor?.name === 'string' ? cleanText(body.actor.name, NAME_MAX) : null;
   return {
     value: {
       kind,
@@ -78,8 +86,8 @@ export function readSignalBody(body, now = new Date()) {
       at,
       answering: fromTeam ? body.answering : false,
       email: person ? emailFromActor(body.actor) : null,
-      actorName: name || null,
-      preview: kind === 'lead_escreveu' && typeof body.preview === 'string' ? cleanPreview(body.preview) : null
+      actorName,
+      preview: kind === 'lead_escreveu' && typeof body.preview === 'string' ? cleanText(body.preview, PREVIEW_MAX) : null
     }
   };
 }
@@ -89,7 +97,11 @@ const LINE_OF = Object.freeze({ lead_escreveu: 'lead', pessoa_enviou: 'equipe', 
 
 // Id fixo da linha: por lead, dia de Brasília e tipo. É ele que faz o mesmo
 // sinal, reenviado ou repetido, cair no mesmo documento em vez de abrir outro.
-export const signalLineId = (leadId, at, kind) => `zap-${leadId}-${isoDoDia(diaDeBrasilia(at))}-${LINE_OF[kind]}`;
+export function signalLineId(leadId, at, kind) {
+  const dia = diaDeBrasilia(at);
+  if (!leadId || Number.isNaN(dia) || !LINE_OF[kind]) throw new Error('signalLineId: dados inválidos');
+  return `zap-${leadId}-${isoDoDia(dia)}-${LINE_OF[kind]}`;
+}
 
 // O texto que a ficha mostra. Só o nome de quem o Stronilead conhece entra:
 // sem autor, a linha diz "da equipe".
@@ -120,6 +132,7 @@ export function buildSignalInteraction({ lead, actor, signal }) {
     }),
     via: ZAP_VIA,
     zapConversationId: signal.conversationId,
+    zapMessageId: signal.messageId ?? null,
     ...(signal.kind === 'ia_enviou' ? { byAi: true } : {}),
     createdAt: signal.at
   };
@@ -139,17 +152,21 @@ const millis = (v) => {
 // com a primeira resposta (de pessoa ou da IA) a quem esperava. A segunda
 // mensagem seguida, de qualquer lado, não grava nada no lead, e por isso o
 // Pipeline de quem está com a tela aberta não atualiza a cada mensagem.
-// `zapSignalAt` guarda o último sinal aplicado: um evento mais antigo, que
-// chegou fora de ordem, não desfaz a marca.
+// `zapSignalAt` é a régua do último sinal aplicado, e a resposta sempre a
+// avança, mesmo quando ninguém esperava: um "lead escreveu" mais velho que
+// chegue depois dela, fora de ordem, não religa a marca. O "lead escreveu" no
+// mesmo instante da régua também é ignorado, porque o WhatsApp manda a hora em
+// segundos e esse caso é reenvio, não mensagem nova.
 export function signalLeadPatch(lead, signal) {
+  const at = signal.at.getTime();
   const last = millis(lead?.zapSignalAt);
-  if (last != null && signal.at.getTime() < last) return null;
-
   const waiting = millis(lead?.awaitingReplySince) != null;
   if (signal.kind === 'lead_escreveu') {
-    return waiting ? null : { awaitingReplySince: signal.at, zapSignalAt: signal.at };
+    if (waiting || (last != null && at <= last)) return null;
+    return { awaitingReplySince: signal.at, zapSignalAt: signal.at };
   }
-  return signal.answering && waiting ? { awaitingReplySince: null, zapSignalAt: signal.at } : null;
+  if (!signal.answering || (last != null && at < last)) return null;
+  return waiting ? { awaitingReplySince: null, zapSignalAt: signal.at } : { zapSignalAt: signal.at };
 }
 
 // Lead entra sempre. Cliente só quando o cartão já mostra uma faixa de prazo
