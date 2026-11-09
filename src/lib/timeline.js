@@ -263,6 +263,9 @@ export const matchesTimelineFilter = (kind, filterId) => {
 // prefixos, então é esta coluna que diz o que a linha é.
 export const timelineTypeLabel = (i) => {
   const t = String(i?.text || '');
+  // A linha da conversa pelo Stronizap é sempre WhatsApp: o trecho do lead é
+  // texto livre, e uma palavra como "ligação" não pode mudar o rótulo.
+  if (i?.type === ZAP_SIGNAL_TYPE) return 'WhatsApp';
   switch (i?._kind) {
     case 'contract': return 'Contrato';
     case 'status': return isOwnerChangeText(t) ? 'Responsável' : 'Fase';

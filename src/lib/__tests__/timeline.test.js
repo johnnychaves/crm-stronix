@@ -774,4 +774,10 @@ describe('linha de sinal da conversa pelo Stronizap (type zap_signal)', () => {
   it('não depende do texto: um trecho que cita a meta diária continua em Conversas', () => {
     expect(classifyInteraction({ type: ZAP_SIGNAL_TYPE, text: 'Lead escreveu: “e a meta diária?”' })).toBe('conversation');
   });
+
+  it('o rótulo é sempre WhatsApp, mesmo que o trecho do lead cite ligação', () => {
+    const linha = { type: ZAP_SIGNAL_TYPE, _kind: 'conversation', text: 'Lead escreveu: “queria uma ligação”' };
+
+    expect(timelineTypeLabel(linha)).toBe('WhatsApp');
+  });
 });
