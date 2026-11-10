@@ -157,16 +157,22 @@ const millis = (v) => {
 // chegue depois dela, fora de ordem, não religa a marca. O "lead escreveu" no
 // mesmo instante da régua também é ignorado, porque o WhatsApp manda a hora em
 // segundos e esse caso é reenvio, não mensagem nova.
+// `awaitingReplyPreview` é o trecho (até 120 caracteres) da mensagem que ligou
+// a marca, e some com ela. É o que a fila do Foco agora mostra.
 export function signalLeadPatch(lead, signal) {
   const at = signal.at.getTime();
   const last = millis(lead?.zapSignalAt);
   const waiting = millis(lead?.awaitingReplySince) != null;
   if (signal.kind === 'lead_escreveu') {
     if (waiting || (last != null && at <= last)) return null;
-    return { awaitingReplySince: signal.at, zapSignalAt: signal.at };
+    // O trecho mora no lead com a marca: a linha do dia guarda só a primeira
+    // mensagem do dia, e a espera pode ter começado numa mensagem posterior.
+    return { awaitingReplySince: signal.at, awaitingReplyPreview: signal.preview ?? null, zapSignalAt: signal.at };
   }
   if (!signal.answering || (last != null && at < last)) return null;
-  return waiting ? { awaitingReplySince: null, zapSignalAt: signal.at } : { zapSignalAt: signal.at };
+  return waiting
+    ? { awaitingReplySince: null, awaitingReplyPreview: null, zapSignalAt: signal.at }
+    : { zapSignalAt: signal.at };
 }
 
 // Lead entra sempre. Cliente só quando o cartão já mostra uma faixa de prazo

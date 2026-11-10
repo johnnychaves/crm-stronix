@@ -3218,6 +3218,7 @@ describe('POST /api/zap com action conversation-signal', () => {
     const lead = leadDaAcademia('L1');
     expect(lead.awaitingReplySince).toEqual(DAS_1832);
     expect(lead.zapSignalAt).toEqual(DAS_1832);
+    expect(lead.awaitingReplyPreview).toBe('Oi, queria saber o valor da musculação');
     // A linha não é prospecção nem registro do consultor: o resto do lead não muda.
     expect(lead.interactionsCount).toBe(3);
     expect(lead.lastInteractionAt).toBeUndefined();
@@ -3261,6 +3262,7 @@ describe('POST /api/zap com action conversation-signal', () => {
     }]);
     expect(leadDaAcademia('L1').awaitingReplySince).toBeNull();
     expect(leadDaAcademia('L1').zapSignalAt).toEqual(DAS_1840);
+    expect(leadDaAcademia('L1').awaitingReplyPreview).toBeNull();
   });
 
   it('a equipe puxou a conversa (ninguém esperava): grava a linha e não escreve no lead', async () => {
