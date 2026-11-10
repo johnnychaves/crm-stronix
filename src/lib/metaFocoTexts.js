@@ -7,7 +7,8 @@ import { getSafeDateOrNull } from './dates.js';
 import { formatHourLabel } from './format.js';
 import { dayRefText } from './whenPicker.js';
 import { firstName } from './guardian.js';
-import { FOCO_ORDER, URGENT_WINDOW_MIN, inFoco, isAppt, rankFoco } from './metaFoco.js';
+import { FOCO_ESPERA, FOCO_ORDER, URGENT_WINDOW_MIN, inFoco, isAppt, rankFoco } from './metaFoco.js';
+import { esperaSince } from './metaEspera.js';
 
 // Os textos da tela da Meta (Foco agora, mockup B): o motivo de cada
 // tarefa estar onde está na fila, os fatos do bloco Agora e o que a barra "Foco
@@ -24,6 +25,7 @@ export const FOCO_LABEL = Object.freeze({
   [C.CONTATO_HOJE]: 'Contatos',
   [C.NOVO_24H]: 'Novos leads',
   [C.ATRASADO]: 'Atrasados',
+  [FOCO_ESPERA]: 'Aguardando você',
   [C.RENOVACAO]: 'Renovações',
   [C.VENCIDO]: 'Vencidos',
 });
@@ -35,17 +37,21 @@ export const CATEGORY_ONE = Object.freeze({
   [C.CONTATO_HOJE]: 'Contato',
   [C.NOVO_24H]: 'Novo lead',
   [C.ATRASADO]: 'Atrasado',
+  [FOCO_ESPERA]: 'Respondeu, aguardando você',
   [C.RENOVACAO]: 'Renovação',
   [C.VENCIDO]: 'Contrato vencido',
 });
 
 // A ordem da fila em palavras, para o "Como a ordem é definida".
-export const focoRules = (sla = DEFAULT_SLA_OVERDUE_DAYS) => [
+// A linha da espera só entra quando há espera na tela, para quem não usa o
+// Stronizap ver a lista de sempre.
+export const focoRules = (sla = DEFAULT_SLA_OVERDUE_DAYS, { espera = false } = {}) => [
   'Visita ou aula que já passou do horário e ainda está sem desfecho',
   `O que vence em até ${URGENT_WINDOW_MIN} minutos: visita, aula, contato marcado ou fim da janela de 24h de um lead novo`,
   `Atrasados críticos, a partir de ${plural(sla, 'dia', 'dias')}`,
   'O restante do que tem horário, pela hora',
   'Atrasados',
+  ...(espera ? ['Quem escreveu e espera resposta, do mais antigo'] : []),
   'Renovações, do vencimento mais próximo',
   'Vencidos, do vencimento mais recente',
 ];
@@ -104,6 +110,12 @@ export function whyOf({ slug, lead }, now, opts = {}) {
     if (d == null) return { text: 'Renovação', tone: 'calm' };
     return { text: d <= 0 ? 'Vence hoje' : `Vence em ${plural(d, 'dia', 'dias')}`, tone: 'calm' };
   }
+  if (slug === FOCO_ESPERA) {
+    // O tempo real, mesmo fora do expediente (spec, ponto 3). A marca com a
+    // hora adiantada do servidor do Stronizap não vira tempo negativo.
+    const since = esperaSince(lead);
+    return { text: since ? `Esperando há ${durationText(Math.max(0, now - since))}` : 'Esperando resposta', tone: 'warn' };
+  }
   return { text: expiredLabel(lead, now) || 'Contrato vencido', tone: 'calm' };
 }
 
@@ -147,6 +159,10 @@ export function factsOf({ slug, lead }, now, opts = {}) {
     if (lead?.currentPlanName) out.push(['Plano', lead.currentPlanName]);
     const endsAt = getSafeDateOrNull(lead?.currentContractEndsAt);
     if (endsAt) out.push(['Venceu em', fullDate(endsAt)]);
+  } else if (slug === FOCO_ESPERA) {
+    const since = esperaSince(lead);
+    if (since) out.push(['Escreveu', dayRefText(since, now)]);
+    if (lead?.awaitingReplyPreview) out.push(['Mensagem', `“${lead.awaitingReplyPreview}”`]);
   }
   const cliente = slug === C.RENOVACAO || slug === C.VENCIDO;
   if (!cliente && lead?.source) out.push(['Origem', lead.source]);
@@ -156,7 +172,8 @@ export function factsOf({ slug, lead }, now, opts = {}) {
 
 // A frase da faixa de urgência, que avisa da tarefa mais urgente que o Agora:
 // "Mateus chega em 10 min", "Bia passou do horário há 12 min, sem desfecho",
-// "Ligação para Carla em 40 min". Só as classes 0 e 1 chegam aqui.
+// "Ligação para Carla em 40 min". Chegam aqui as classes 0 e 1 e a espera com
+// 30 minutos de expediente ("Bruna escreveu há 42 min e ninguém respondeu").
 export function urgentText({ slug, lead }, now) {
   const nome = firstName(lead?.name);
   const quem = nome || 'O lead';
@@ -181,6 +198,10 @@ export function urgentText({ slug, lead }, now) {
     const at = newLeadCloses(lead);
     return at ? `${quem} sai dos novos leads em ${falta(at - now)}` : `${quem} é lead novo`;
   }
+  if (slug === FOCO_ESPERA) {
+    const since = esperaSince(lead);
+    return since ? `${quem} escreveu há ${falta(now - since)} e ninguém respondeu` : `${quem} espera resposta`;
+  }
   return `${quem}: ${whyOf({ slug, lead }, now).text}`;
 }
 
@@ -195,7 +216,8 @@ export function morningText(entries) {
 
 // A barra "Foco em": para cada foco, quantas faltam e o aviso do ponto, que
 // é vermelho quando a primeira da fila já passou e azul quando vence em até 90
-// minutos. `entries` são as pendentes de todas as categorias.
+// minutos. `entries` são as pendentes de todas as categorias. A aba da espera só
+// aparece quando há espera, para a barra de quem não usa o Stronizap ficar igual.
 export function focoTabs(entries, now, opts = {}) {
   return FOCO_ORDER.map((id) => {
     const scoped = (entries || []).filter((e) => inFoco(e.slug, id));
@@ -208,7 +230,7 @@ export function focoTabs(entries, now, opts = {}) {
       why: why ? why.text : null,
       dot: why && (why.tone === 'late' || why.tone === 'now') ? why.tone : null,
     };
-  });
+  }).filter((t) => t.id !== FOCO_ESPERA || t.pending > 0);
 }
 
 // A prova do contato de hoje pelo Stronizap (Parte B, PR 3), no bloco Agora e
