@@ -45,6 +45,14 @@ describe('MetaUrgentCount', () => {
     expect(onChange).toHaveBeenLastCalledWith(1);
   });
 
+  it('a espera do Stronizap não conta no título', () => {
+    // Lead sem tarefa da meta, esperando resposta há 2 horas.
+    const espera = base('espera', { createdAt: at(10, 0, -10), nextFollowUp: at(17, 0, 2), awaitingReplySince: at(12, 0) });
+    montar([VISITA, espera]);
+    // Às 14h nada é urgente: a visita das 17h ainda não está nos 90 minutos.
+    expect(onChange).toHaveBeenLastCalledWith(0);
+  });
+
   it('anda com o relógio, sem precisar de dado novo', () => {
     montar([VISITA, CONTATO]);
     act(() => { vi.advanceTimersByTime(91 * 60 * 1000); });
