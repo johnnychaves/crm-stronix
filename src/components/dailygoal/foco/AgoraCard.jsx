@@ -4,6 +4,7 @@ import { DAILY_GOAL_CATEGORIES as C, getLeadAppointmentDate } from '../../../lib
 import { DG_CATEGORY_META } from '../../../lib/dailyGoal.js';
 import { followUpChannelOf } from '../../../lib/contactGoal.js';
 import { CATEGORY_ONE, zapProofText } from '../../../lib/metaFocoTexts.js';
+import { FOCO_ESPERA } from '../../../lib/metaFocoCodes.js';
 import { formatHourLabel } from '../../../lib/format.js';
 import { firstName } from '../../../lib/guardian.js';
 import { cn } from '../../../lib/utils.js';
@@ -23,6 +24,10 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 // Só a que já passou da hora mantém o WhatsApp, para falar com quem faltou. As
 // outras tarefas têm o Reagendar (handleRescheduleTask), que é o único jeito
 // de reagendar um Novo lead.
+//
+// A espera ("Respondeu, aguardando você") não tem ação de concluir: a
+// resposta pelo Stronizap é que a tira da fila. Ela mostra só o pular e o
+// "Abrir ficha". O botão que abre a conversa entra com o projeto Conversar.
 //
 // O menu "Mais" leva a chave da tarefa: quando o Agora troca de lead com ele
 // aberto (o desfecho chegou por outra tela), o menu fecha, em vez de aplicar o
@@ -62,6 +67,7 @@ export const AgoraCard = forwardRef(function AgoraCard(
   }, [retorno]);
   const Icon = DG_CATEGORY_META[slug].Icon;
   const isAppt = slug === C.VISITA_HOJE || slug === C.AULA_HOJE;
+  const espera = slug === FOCO_ESPERA;
   // A prova do contato de hoje pelo Stronizap (zapProofToday, de
   // computeDailyGoalSlots). Visita e aula não usam: o próximo passo é o desfecho.
   const prova = isAppt ? null : (lead.zapProofToday || null);
@@ -168,6 +174,11 @@ export const AgoraCard = forwardRef(function AgoraCard(
           </button>
           <button type="button" className={ACT} onClick={onRetornoNao}>Ainda não</button>
         </div>
+      ) : espera ? (
+        // A espera vem antes da prova: ela não se conclui pelo Agora.
+        <p className="mt-6 max-w-[64ch] text-[14.5px] text-white/80">
+          Responda pelo Stronizap. A tarefa sai daqui quando a resposta chega.
+        </p>
       ) : prova ? (
         // A prova toma o lugar da pergunta, e o Concluir é a ação principal.
         // shortcut: sem o "Ver conversa" até existir a rota que abre a conversa a partir do lead (projeto Conversar); ele entra na faixa, depois do Concluir.

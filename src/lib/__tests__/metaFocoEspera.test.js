@@ -84,7 +84,11 @@ const filaNames = () => [...fila().querySelectorAll('li button')]
   .map((b) => b.querySelector('.truncate')?.textContent.replace('Fazer agora: ', ''));
 const button = (text, scope = host) => [...scope.querySelectorAll('button')].find((b) => b.textContent.includes(text));
 const tabLabels = () => [...host.querySelectorAll('[role="tab"]')].map((t) => t.getAttribute('aria-label'));
+const click = (el) => act(() => { el.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
 const faixa = () => button('Ir agora')?.closest('div.rounded-2xl') || null;
+const tecla = (key) => act(() => {
+  document.body.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+});
 
 describe('sem marca, a tela é a de hoje', () => {
   it('nenhuma aba, regra, linha ou faixa nova', () => {
@@ -140,5 +144,41 @@ describe('a ligação na DailyGoalView', () => {
   it('calcula as esperas só para quem vende e passa à tela', () => {
     expect(VIEW).toContain('isSeller(appUser) ? awaitingEntriesOf(leads, appUser.id, now) : NO_ESPERAS');
     expect(VIEW).toContain('esperas={esperas}');
+  });
+});
+
+describe('a espera no Agora', () => {
+  const trazerBruna = () => {
+    render({ leads: LEADS, esperas: esperasDe([BRUNA]), now: NOW });
+    click(button('Bruna Espera', fila()));
+    expect(agoraName()).toBe('Bruna Espera');
+  };
+
+  it('mostra o motivo, o trecho e o que fazer, sem Concluir, Reagendar, WhatsApp nem Ligar', () => {
+    trazerBruna();
+    const card = agora();
+    expect(card.textContent).toContain('Esperando há 42 min');
+    expect(card.textContent).toContain('Respondeu, aguardando você');
+    expect(card.textContent).toContain('“Oi, ainda tem vaga às 19h?”');
+    expect(card.textContent).toContain('Responda pelo Stronizap. A tarefa sai daqui quando a resposta chega.');
+    ['Concluir', 'Reagendar', 'WhatsApp', 'Ligar'].forEach((b) => expect(button(b, card), b).toBeUndefined());
+    expect(button('Pular por agora', card)).toBeTruthy();
+    expect(card.textContent).toContain('Abrir ficha');
+  });
+
+  it('os atalhos W, L, C e N ficam mudos, e S pula', () => {
+    trazerBruna();
+    tecla('w');
+    tecla('l');
+    tecla('c');
+    tecla('n');
+    expect(handlers.onWhatsapp).not.toHaveBeenCalled();
+    expect(handlers.onCall).not.toHaveBeenCalled();
+    expect(handlers.onOutcomePopup).not.toHaveBeenCalled();
+    expect(handlers.onConclude).not.toHaveBeenCalled();
+    expect(handlers.onOutcome).not.toHaveBeenCalled();
+    expect(host.textContent).not.toContain('Conversou com');
+    tecla('s');
+    expect(agoraName()).not.toBe('Bruna Espera');
   });
 });

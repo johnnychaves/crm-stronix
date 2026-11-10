@@ -138,7 +138,7 @@ export function MetaFocoScreen({
       window.removeEventListener('focus', voltar);
     };
   }, [retorno]);
-  const perguntar = Boolean(retorno?.pronto && agora && !isAppt(agora.slug));
+  const perguntar = Boolean(retorno?.pronto && agora && !isAppt(agora.slug) && agora.slug !== FOCO_ESPERA);
 
   const pick = (e) => {
     focusAgora.current = true;
@@ -184,6 +184,8 @@ export function MetaFocoScreen({
   // gravação depois da meia-noite daria o feito ao dia seguinte.
   const concluir = (entry) => {
     const { lead, slug, key } = entry;
+    // A espera não se conclui: a resposta pelo Stronizap é que limpa a marca.
+    if (slug === FOCO_ESPERA) return;
     if (onOutcomePopup(lead, slug)) return;
     focusAgora.current = true;
     if (prazoViraODia()) {
@@ -215,10 +217,12 @@ export function MetaFocoScreen({
   const appt = agora ? isAppt(agora.slug) : false;
   const apptAt = appt ? getLeadAppointmentDate(agora.lead) : null;
   const passou = Boolean(apptAt && apptAt < now);
+  // Na espera só o S vale: o Agora dela não tem WhatsApp, Ligar nem Concluir.
+  const espera = agora?.slug === FOCO_ESPERA;
   useAgoraShortcuts(agora ? {
-    w: perguntar || (appt && !passou) ? null : () => whatsapp(agora.lead),
-    l: perguntar || appt ? null : () => ligar(agora.lead),
-    c: perguntar ? retornoSim : appt ? () => onOutcome(agora.lead, 'attended', agora.slug) : () => concluir(agora),
+    w: perguntar || espera || (appt && !passou) ? null : () => whatsapp(agora.lead),
+    l: perguntar || espera || appt ? null : () => ligar(agora.lead),
+    c: perguntar ? retornoSim : espera ? null : appt ? () => onOutcome(agora.lead, 'attended', agora.slug) : () => concluir(agora),
     n: perguntar || !appt ? null : () => onOutcome(agora.lead, 'no_show', agora.slug),
     s: skipAgora,
   } : null);
