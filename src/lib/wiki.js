@@ -199,7 +199,7 @@ export const WIKI_ARTICLES = [
         'Decida o próximo passo. Vai falar de novo? Reagende. Vem conhecer? Agende visita ou aula. Desistiu? Marque perda com o motivo.',
       ] },
       { t: 'p', text: 'Só some da lista o que teve desfecho. Uma tarefa que você abriu e não resolveu continua ali, porque continua pendente de verdade.' },
-      { t: 'p', text: 'Quando a academia usa o Stronizap e alguém da equipe já mandou mensagem para o lead hoje por lá, o bloco Agora mostra, por exemplo, “Você respondeu às 14:40 pelo Stronizap” no lugar da pergunta “Conversou com…?”, e o Concluir contato mostra a mesma frase. A mensagem não conclui a tarefa: o próximo passo continua sendo escolhido no Concluir. Sem o Stronizap, a tela fica como sempre.' },
+      { t: 'p', text: 'Quando a academia usa o Stronizap e alguém da equipe já mandou mensagem para o lead hoje por lá, o bloco escuro com a tarefa da vez mostra, por exemplo, “Você respondeu às 14:40 pelo Stronizap” no lugar da pergunta “Conversou com…?”, e o Concluir contato mostra a mesma frase. A mensagem não conclui a tarefa: o próximo passo continua sendo escolhido no Concluir. Sem o Stronizap, a tela fica como sempre.' },
 
       { t: 'h', text: 'Prospecção e o Dia perfeito' },
       { t: 'p', text: 'Além das tarefas, existe um piso de prospecção: um mínimo de ações novas por dia. Conta agendar visita ou aula, registrar ligação ou mensagem e cadastrar lead novo.' },
