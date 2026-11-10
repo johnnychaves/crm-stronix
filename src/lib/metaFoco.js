@@ -4,7 +4,8 @@ import { daysToExpiryOf } from './renewalGoal.js';
 import { expiredSortKey } from './expiredGoal.js';
 import { getSafeDateOrNull } from './dates.js';
 import { FOCO_COMPROMISSOS, FOCO_ESPERA, FOCO_ORDER, FOCO_GRUPOS } from './metaFocoCodes.js';
-import { esperaSince } from './metaEspera.js';
+import { esperaSince, ESPERA_URGENTE_MIN } from './metaEspera.js';
+import { msDeExpediente } from './expediente.js';
 
 // ============================================================================
 // Lógica do "Foco agora" da Meta Diária. Pura: recebe as tarefas pendentes e o
@@ -173,4 +174,20 @@ export function faixaFor(ranked, agora, dispensadas) {
   const alvo = ranked.find((e) => !(dispensadas && dispensadas.get(e.key) === e.klass));
   if (!alvo || alvo.key === agora.key) return null;
   return alvo.klass <= 1 && alvo.klass < agora.klass ? alvo : null;
+}
+
+// A chave do "Agora não" de uma espera: a tarefa com o instante da marca. Uma
+// espera nova do mesmo lead no mesmo dia tem outro instante e volta a avisar.
+export const esperaDispensaKey = (entry) => `${entry.key}@${esperaSince(entry.lead)?.getTime() ?? ''}`;
+
+// A faixa da espera: a espera mais antiga da lista visível com 30 minutos
+// dentro do expediente (expediente.js), que não foi dispensada. Varredura à
+// parte do faixaFor, que só olha as classes 0 e 1 e cede a vez para ele na
+// tela. Não avisa quando o Agora já é uma espera (a pessoa está nela) nem
+// quando o Agora é urgente (classe 0 ou 1), para não interromper uma visita.
+export function faixaEspera(ranked, agora, dispensadas, now) {
+  if (!ranked || !ranked.length || !agora || agora.slug === FOCO_ESPERA || agora.klass <= 1) return null;
+  return ranked.find((e) => e.slug === FOCO_ESPERA
+    && !(dispensadas && dispensadas.has(esperaDispensaKey(e)))
+    && msDeExpediente(esperaSince(e.lead), now) >= ESPERA_URGENTE_MIN * MIN_MS) || null;
 }
