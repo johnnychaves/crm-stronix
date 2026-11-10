@@ -1,24 +1,32 @@
-import { AlarmClock, Undo2 } from 'lucide-react';
+import { AlarmClock, MessageCircle, Undo2 } from 'lucide-react';
 import { cn } from '../../../lib/utils.js';
 
 // A faixa de urgência da Meta nova (PR 4 do plano da Meta): avisa quando existe
 // uma tarefa mais urgente que a do Agora, sem trocar o Agora sozinha. "Ir agora"
 // leva a tarefa para o Agora, e "Agora não" esconde a faixa até a tarefa mudar
 // de urgência (faixaFor, em metaFoco.js). Vermelha quando a visita ou a aula já
-// passou da hora, azul quando algo vence em até 90 minutos. Quem lê o texto
-// para o leitor de tela é a região viva da MetaFocoScreen, que existe desde a
-// montagem.
-export function FaixaUrgente({ texto, passou, onIr, onDepois }) {
+// passou da hora, azul quando algo vence em até 90 minutos, e laranja quando um
+// lead escreveu e espera há 30 minutos de expediente (faixaEspera, PR 4 da
+// Parte B; mockup C). O laranja é o accent da marca: o index.css só tem os
+// tons 50, 100, 400, 500 e 600. Quem lê o texto para o leitor de tela é a
+// região viva da MetaFocoScreen, que existe desde a montagem.
+const CAIXA = {
+  passou: 'border-rose-200 bg-rose-50 dark:border-rose-500/30 dark:bg-rose-500/10',
+  breve: 'border-brand-200 bg-brand-50 dark:border-brand-500/30 dark:bg-brand-500/10',
+  espera: 'border-accent-500/40 bg-accent-50 dark:border-accent-500/30 dark:bg-accent-500/10',
+};
+const ICONE = {
+  passou: 'text-rose-600 dark:text-rose-300',
+  breve: 'text-brand-600 dark:text-brand-300',
+  espera: 'text-accent-600 dark:text-accent-400',
+};
+
+export function FaixaUrgente({ texto, passou, espera = false, onIr, onDepois }) {
+  const tom = espera ? 'espera' : passou ? 'passou' : 'breve';
+  const Icone = espera ? MessageCircle : AlarmClock;
   return (
-    <div
-      className={cn(
-        'mt-3.5 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border px-4 py-3',
-        passou
-          ? 'border-rose-200 bg-rose-50 dark:border-rose-500/30 dark:bg-rose-500/10'
-          : 'border-brand-200 bg-brand-50 dark:border-brand-500/30 dark:bg-brand-500/10',
-      )}
-    >
-      <AlarmClock size={18} aria-hidden="true" className={passou ? 'text-rose-600 dark:text-rose-300' : 'text-brand-600 dark:text-brand-300'} />
+    <div className={cn('mt-3.5 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border px-4 py-3', CAIXA[tom])}>
+      <Icone size={18} aria-hidden="true" className={ICONE[tom]} />
       <p className="min-w-0 flex-1 text-[14px] font-semibold text-foreground">{texto}</p>
       <div className="flex gap-2">
         <button

@@ -18,6 +18,7 @@ import {
 import { newLeadsOf, enrollmentsOf, lossesOf, outcomeAt, channelsOf, daysToEnrollOf } from './cohort.js';
 import { appointmentsOf, recordsByLeadOf, cohortMilestones, cohortMilestoneOf, professorsOf, visitOutcomesByLead } from './appointments.js';
 import { contactTimesByLead, firstContactOf } from './contact.js';
+import { firstReplyOf } from './firstReply.js';
 import { movesByLead, stagePassageOf, lossStagesOf, pipelineNowOf } from './stages.js';
 
 export { OTHERS_ID };
@@ -152,7 +153,7 @@ function computeMetrics(ctx, cache, { monthKey, userId, funnelId, cutEnd }) {
   if (!src || src.failed) {
     return {
       ...base, leads: null, channels: [], appts: null, enroll: null, fromCohort: null, cohort: null,
-      losses: null, lossStages: null, firstContact: null, daysToEnroll: null, passage: null
+      losses: null, lossStages: null, firstContact: null, daysToEnroll: null, passage: null, firstReply: null
     };
   }
 
@@ -210,6 +211,10 @@ function computeMetrics(ctx, cache, { monthKey, userId, funnelId, cutEnd }) {
     lossStages: stageBase ? lossStagesOf({ lostLeads: losses.leads, moves: cache.moves, start, end }) : null,
     firstContact: contactOk ? firstContactOf(cohortLeads, { contactTimes: cache.contactTimes, limit }) : null,
     daysToEnroll: daysToEnrollOf(enrollments),
+    // Tempo até a primeira resposta no Stronizap (firstReply.js): pela pessoa
+    // que respondeu, e não pelo dono do lead, então ignora o funil. Null sem
+    // linha de sinal no mês, que é o caso de toda academia sem a integração.
+    firstReply: firstReplyOf(src.interactions || [], { start, end, userId, users: ctx.users }),
     passage: funnelId && stageBase ? stagePassageOf({
       moves: cache.moves,
       funnelId,

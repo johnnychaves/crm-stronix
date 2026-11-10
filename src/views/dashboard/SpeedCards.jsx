@@ -14,6 +14,7 @@ import { CrmCard, DashedNote, DeltaPill, ReadText } from './CrmParts.jsx';
 
 const FC_HELP = 'Tempo corrido entre o cadastro do lead e a primeira interação registrada por alguém da equipe. A mediana entra com os leads sem contato há mais de um dia no fim da fila, então ela não fica bonita por esconder quem nunca foi atendido. Quem chegou há menos de um dia e ainda espera fica fora da mediana até o prazo passar.';
 const FC_READ = 'A mediana entra com os leads sem contato há mais de um dia no fim da fila, em vez de calcular só entre quem foi atendido. Lead que espera mais de um dia costuma já ter marcado em outra academia.';
+const FR_HELP = 'Quanto tempo a equipe leva para responder, no Stronizap, a primeira mensagem que o lead manda no dia. Conta só quando a resposta é de uma pessoa, no mesmo dia, e a IA não respondeu antes. Ficam de fora a segunda conversa do dia, a espera que passa da meia-noite e a resposta enviada pelo celular da academia, que não tem autor.';
 const SEGMENT = 'block h-full min-w-[6px] border-r-2 border-white last:border-r-0 dark:border-ink-800';
 const BAR_MAX_PX = 88;
 
@@ -130,6 +131,40 @@ export function DaysToEnrollCard({ dte, delta }) {
           ))}
         </div>
         <ReadText className="mt-3.5">{daysRead(counts, total)}</ReadText>
+      </div>
+    </CrmCard>
+  );
+}
+
+// Tempo até a primeira resposta no Stronizap (PR 4 da Parte B). Só existe com
+// ao menos uma conversa medida no mês (firstReplyOf devolve null sem par), o
+// que só acontece com a integração ligada: sem ela o card some, em vez de
+// mostrar um zero que pareça "ninguém responde".
+// Com uma pessoa escolhida, os outros cards filtram pelo dono do lead e este
+// pelo autor da resposta, então o hint diz isso (personName).
+export function FirstReplyCard({ fr, allFunnels = false, personName = null }) {
+  if (!fr) return null;
+  const help = <DashHelpTip text={FR_HELP} label="Como o tempo até a primeira resposta é medido" />;
+  const hint = personName ? `no Stronizap, só as respostas dadas por ${personName}` : 'no Stronizap, da primeira mensagem do lead no dia';
+  return (
+    <CrmCard title="Tempo até a primeira resposta" hint={hint} action={help}>
+      <div className="px-[18px] py-4">
+        <BigNumber value={fmtDuration(fr.median)} />
+        <p className="mt-1.5 text-[12px] text-muted-foreground">
+          {plural(fr.pairs, 'conversa medida', 'conversas medidas')}
+          {allFunnels ? '. Vale para todos os funis.' : ''}
+        </p>
+        {fr.people.length > 0 && (
+          <div className="mt-3 flex flex-col gap-[7px]">
+            {fr.people.map((p) => (
+              <div key={p.id} className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate text-[12.5px]">{p.name}</span>
+                <span className="num text-[12.5px] font-bold">{fmtDuration(p.median)}</span>
+                <span className="num w-[92px] text-right text-[11.5px] text-muted-foreground">{plural(p.pairs, 'conversa', 'conversas')}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </CrmCard>
   );

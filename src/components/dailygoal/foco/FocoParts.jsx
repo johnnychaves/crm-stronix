@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Check, CheckCircle, ChevronRight, Sparkles, X } from 'lucide-react';
 import { DG_CATEGORY_META } from '../../../lib/dailyGoal.js';
 import { DAILY_GOAL_CATEGORIES as C } from '../../../lib/leads.js';
+import { FOCO_ESPERA } from '../../../lib/metaFocoCodes.js';
 import { CATEGORY_ONE, focoRules } from '../../../lib/metaFocoTexts.js';
 import { cn } from '../../../lib/utils.js';
 import { Avatar } from '../../ui/Avatar.jsx';
@@ -94,7 +95,7 @@ const QUEUE_SHOWN = 7;
 // A fila "Depois". A linha inteira é um botão que traz a tarefa para o Agora
 // (decisão do Johnny: sem botão "Fazer agora"). Ela não abre a ficha: quem abre
 // é o nome e o "Abrir ficha" do Agora.
-export function FilaDepois({ items, sla, onPick, whyOf }) {
+export function FilaDepois({ items, sla, onPick, whyOf, comEspera = false }) {
   const [all, setAll] = useState(false);
   const shown = all ? items : items.slice(0, QUEUE_SHOWN);
   return (
@@ -107,7 +108,7 @@ export function FilaDepois({ items, sla, onPick, whyOf }) {
             Como a ordem é definida
           </summary>
           <ol className="grid list-decimal gap-1 pl-5 text-slate-700 dark:text-slate-300">
-            {focoRules(sla).map((r) => <li key={r}>{r}</li>)}
+            {focoRules(sla, { espera: comEspera }).map((r) => <li key={r}>{r}</li>)}
           </ol>
         </details>
       </div>
@@ -119,7 +120,9 @@ export function FilaDepois({ items, sla, onPick, whyOf }) {
             {shown.map((e) => {
               const Icon = DG_CATEGORY_META[e.slug].Icon;
               const cliente = e.slug === C.RENOVACAO || e.slug === C.VENCIDO;
-              const sub = cliente ? e.lead.currentPlanName : e.lead.source;
+              // A espera mostra o trecho da mensagem no lugar da origem (mockup A).
+              const trecho = e.lead.awaitingReplyPreview ? `“${e.lead.awaitingReplyPreview}”` : null;
+              const sub = e.slug === FOCO_ESPERA ? trecho : cliente ? e.lead.currentPlanName : e.lead.source;
               const why = whyOf(e);
               return (
                 <li key={e.key} className="border-b border-border last:border-b-0">

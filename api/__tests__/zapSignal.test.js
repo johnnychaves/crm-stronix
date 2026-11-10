@@ -234,7 +234,17 @@ describe('signalLeadPatch', () => {
   const esperando = { awaitingReplySince: new Date('2026-11-09T17:00:00.000Z') };
 
   it('o lead escreveu e ninguém esperava: liga a marca', () => {
-    expect(signalLeadPatch({}, sinal())).toEqual({ awaitingReplySince: AT, zapSignalAt: AT });
+    expect(signalLeadPatch({}, sinal())).toEqual({ awaitingReplySince: AT, awaitingReplyPreview: null, zapSignalAt: AT });
+  });
+
+  it('a marca guarda o trecho da mensagem que a ligou', () => {
+    expect(signalLeadPatch({}, sinal({ preview: 'Oi, ainda tem vaga às 19h?' }))).toEqual({
+      awaitingReplySince: AT, awaitingReplyPreview: 'Oi, ainda tem vaga às 19h?', zapSignalAt: AT
+    });
+  });
+
+  it('a segunda mensagem do lead não troca o trecho da primeira', () => {
+    expect(signalLeadPatch({ ...esperando, awaitingReplyPreview: 'Oi' }, sinal({ preview: 'Alô?' }))).toBeNull();
   });
 
   it('o lead escreveu de novo enquanto esperava: nada muda', () => {
@@ -242,7 +252,9 @@ describe('signalLeadPatch', () => {
   });
 
   it.each(['pessoa_enviou', 'ia_enviou'])('%s respondeu quem esperava: limpa a marca', (kind) => {
-    expect(signalLeadPatch(esperando, sinal({ kind, answering: true }))).toEqual({ awaitingReplySince: null, zapSignalAt: AT });
+    expect(signalLeadPatch(esperando, sinal({ kind, answering: true }))).toEqual({
+      awaitingReplySince: null, awaitingReplyPreview: null, zapSignalAt: AT
+    });
   });
 
   it('mensagem da equipe por iniciativa (ninguém esperava): nada muda', () => {
@@ -270,7 +282,7 @@ describe('signalLeadPatch', () => {
     };
 
     expect(signalLeadPatch(lead, sinal({ kind: 'pessoa_enviou', answering: true }))).toEqual({
-      awaitingReplySince: null, zapSignalAt: AT
+      awaitingReplySince: null, awaitingReplyPreview: null, zapSignalAt: AT
     });
   });
 

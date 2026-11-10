@@ -97,9 +97,9 @@ describe('classes da fila', () => {
     expect(urgentCount([a, visita('v', 15, 0)], NOW, null)).toBe(1);
   });
 
-  it('renovação é a classe 5 e vencido é a 6', () => {
-    expect(klassOf(renovacao('r', 50), NOW)).toBe(5);
-    expect(klassOf(vencido('x', 16), NOW)).toBe(6);
+  it('renovação é a classe 6 e vencido é a 7 (a 5 é a espera, metaFoco.espera.test.js)', () => {
+    expect(klassOf(renovacao('r', 50), NOW)).toBe(6);
+    expect(klassOf(vencido('x', 16), NOW)).toBe(7);
   });
 });
 
@@ -256,7 +256,7 @@ describe('faixa de aviso', () => {
 
 describe('grupos do Foco em', () => {
   it('a ordem dos grupos é a da barra Foco em', () => {
-    expect(FOCO_ORDER).toEqual(['all', 'compromissos', C.CONTATO_HOJE, C.NOVO_24H, C.ATRASADO, C.RENOVACAO, C.VENCIDO]);
+    expect(FOCO_ORDER).toEqual(['all', 'compromissos', C.CONTATO_HOJE, C.NOVO_24H, C.ATRASADO, 'aguardando_resposta', C.RENOVACAO, C.VENCIDO]);
   });
 
   it('compromissos junta visitas e aulas, e "all" aceita tudo', () => {

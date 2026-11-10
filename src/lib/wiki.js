@@ -190,6 +190,7 @@ export const WIKI_ARTICLES = [
         'Renovação: clientes que entraram na janela dos marcos configurados.',
         'Vencidos: cliente cujo contrato venceu e que segue na lista todo dia, enquanto o prazo configurado durar.',
       ] },
+      { t: 'p', text: 'Quem usa o Stronizap ligado ao Stronilead vê também "Respondeu, aguardando você": o lead escreveu no WhatsApp da academia e ninguém respondeu ainda. Ele aparece na fila depois dos atrasados, com o tempo de espera e o começo da mensagem, e sai sozinho quando alguém responde a conversa no Stronizap ou depois de 3 dias sem resposta. Não conta na meta do dia. Depois de 30 minutos de espera entre 8h e 21h, um aviso laranja aparece no topo. Sem o Stronizap, a lista é a de sempre.' },
 
       { t: 'h', text: 'Concluindo uma tarefa' },
       { t: 'demo', name: 'meta', caption: 'Concluída, a tarefa sai da lista.' },

@@ -14,7 +14,7 @@ import { ChannelTable } from './ChannelTable.jsx';
 import { LossCard } from './LossCard.jsx';
 import { PeopleConversionTable } from './PeopleConversionTable.jsx';
 import { ProfessorCard } from './ProfessorCard.jsx';
-import { FirstContactCard, DaysToEnrollCard } from './SpeedCards.jsx';
+import { FirstContactCard, DaysToEnrollCard, FirstReplyCard } from './SpeedCards.jsx';
 import { PipelineNowCard, NoNextContactCard } from './PipelineNowCards.jsx';
 
 const TWO = 'grid grid-cols-1 items-start gap-5 xl:grid-cols-2';
@@ -79,6 +79,7 @@ export function CrmDashboard({
             <div className="flex flex-col gap-5">
               <FirstContactCard fc={cur.firstContact} delta={speedDelta((m) => m.firstContact?.median ?? null, 'min')} />
               <DaysToEnrollCard dte={cur.daysToEnroll} delta={speedDelta((m) => m.daysToEnroll?.median ?? null, 'days')} />
+              <FirstReplyCard fr={cur.firstReply} allFunnels={Boolean(funnelId)} personName={person ? personName : null} />
             </div>
           </div>
         </>

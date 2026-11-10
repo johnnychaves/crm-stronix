@@ -4,7 +4,8 @@ import { collection, onSnapshot, query, where, serverTimestamp } from 'firebase/
 import { appId, DAILY_GOAL_HISTORY_PATH } from '../lib/firebase.js';
 import { recordGoalHit as recordGoalHitDoc } from '../lib/dailyGoalHistory.js';
 import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, APPOINTMENT_OUTCOMES, getAppointmentOutcomeMeta, getLeadAppointmentType, getLeadAppointmentDate, goalOwnerFields, isClientLead, outcomeAppliesToAula } from '../lib/leads.js';
-import { isMetaParticipant } from '../lib/acesso.js';
+import { isMetaParticipant, isSeller } from '../lib/acesso.js';
+import { awaitingEntriesOf } from '../lib/metaEspera.js';
 import { logInteraction } from '../lib/interactions.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { stageChangeFields } from '../lib/stageMove.js';
@@ -172,6 +173,8 @@ export function TomorrowApptRow({ lead, when }) {
 // DAILY GOAL VIEW (META DIÁRIA)
 // ==========================================
 
+const NO_ESPERAS = [];
+
 function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuses, db, usersList, listenersActive = true }) {
   const toast = useToast();
   // A categoria aberta vem do endereço: F5 mantém e o link abre na mesma
@@ -259,6 +262,14 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
   const processedLeads = useMemo(
     () => computeDailyGoalSlots(leads, interactionsByLead, appUser.id, renewalCheckpoints, renewalGraceDays, now),
     [leads, appUser, interactionsByLead, now, renewalCheckpoints, renewalGraceDays]
+  );
+  // "Respondeu, aguardando você" (PR 4 da Parte B): quem escreveu no WhatsApp e
+  // ficou sem resposta, nos leads de que sou dono. Só para quem vende. Nasce
+  // só da marca do lead (awaitingReplySince), então sem o Stronizap a lista é
+  // vazia e a tela fica igual. Fora do computeDailyGoalSlots: não conta no dia.
+  const esperas = useMemo(
+    () => (isSeller(appUser) ? awaitingEntriesOf(leads, appUser.id, now) : NO_ESPERAS),
+    [leads, appUser, now]
   );
 
   // Agenda do dia (painel compartilhado): todas as visitas e aulas de HOJE na
@@ -978,6 +989,7 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
           streak: ritmoMes.streak,
         }}
         processedLeads={processedLeads}
+        esperas={esperas}
         now={now}
         sla={slaOverdueDays}
         renewalCheckpoints={renewalCheckpoints}

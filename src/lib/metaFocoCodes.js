@@ -8,9 +8,15 @@ import { DAILY_GOAL_CATEGORIES as C } from './leads.js';
 
 export const FOCO_COMPROMISSOS = 'compromissos';
 
+// "Respondeu, aguardando você" (PR 4 da Parte B): o lead escreveu no WhatsApp
+// e ninguém respondeu ainda. Não é categoria da meta (não está em
+// DAILY_GOAL_CATEGORIES, nunca fica feita e não conta no dia): as entradas
+// saem de metaEspera.js. A aba só aparece com espera (focoTabs).
+export const FOCO_ESPERA = 'aguardando_resposta';
+
 // Na ordem em que aparecem na barra. 'all' é a barra inteira.
 export const FOCO_ORDER = Object.freeze([
-  'all', FOCO_COMPROMISSOS, C.CONTATO_HOJE, C.NOVO_24H, C.ATRASADO, C.RENOVACAO, C.VENCIDO,
+  'all', FOCO_COMPROMISSOS, C.CONTATO_HOJE, C.NOVO_24H, C.ATRASADO, FOCO_ESPERA, C.RENOVACAO, C.VENCIDO,
 ]);
 
 // Os grupos que juntam mais de uma categoria. Todo foco que não está aqui é a

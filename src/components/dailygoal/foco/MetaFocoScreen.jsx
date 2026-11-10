@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { faixaFor, inFoco, isAppt, pendingEntries, pickAgora, rankFoco, withSkipped } from '../../../lib/metaFoco.js';
+import { FOCO_ESPERA, esperaDispensaKey, faixaEspera, faixaFor, inFoco, isAppt, pendingEntries, pickAgora, rankFoco, withSkipped } from '../../../lib/metaFoco.js';
 import { dgDateKey } from '../../../lib/dailyGoal.js';
 import { getLeadAppointmentDate } from '../../../lib/leads.js';
 import { CATEGORY_ONE, FOCO_LABEL, factsOf, focoTabs, morningText, urgentText, whyOf } from '../../../lib/metaFocoTexts.js';
@@ -38,16 +38,19 @@ const WHATSAPP_LEAVE_MS = 5000;
 const prazoViraODia = () => dgDateKey(new Date(Date.now() + DESFAZER_MS)) !== dgDateKey(new Date());
 
 export function MetaFocoScreen({
-  strip, processedLeads, now, sla, renewalCheckpoints, meId, foco, onFoco,
+  strip, processedLeads, esperas = NONE, now, sla, renewalCheckpoints, meId, foco, onFoco,
   totalSlots, doneSlots, volume, perfectDay, tomorrow, aside,
   onOutcome, onReschedule, onPostpone, onOutcomePopup, onConclude, onWhatsapp, onCall,
 }) {
   const aviso = useConcluirComDesfazer();
   const opts = useMemo(() => ({ sla, renewalCheckpoints }), [sla, renewalCheckpoints]);
+  // As tarefas da meta e as esperas ("Respondeu, aguardando você", calculadas
+  // na DailyGoalView por metaEspera.js), numa fila só. A espera não conta no
+  // total do dia: só entra na ordem.
   const entries = useMemo(() => {
     const fora = new Set(aviso.escondidas);
-    return pendingEntries(processedLeads).filter((e) => !fora.has(e.key));
-  }, [processedLeads, aviso.escondidas]);
+    return [...pendingEntries(processedLeads), ...esperas].filter((e) => !fora.has(e.key));
+  }, [processedLeads, esperas, aviso.escondidas]);
   const tabs = useMemo(() => focoTabs(entries, now, opts), [entries, now, opts]);
   // Pular e "Agora não" valem só no dia: a chave da tarefa (lead e categoria)
   // se repete no dia seguinte, e a aba fica aberta de um dia para o outro.
@@ -97,7 +100,10 @@ export function MetaFocoScreen({
     const t = setTimeout(() => setSegurando(false), HOLD_AFTER_PAUSE_MS);
     return () => clearTimeout(t);
   }, [segurando]);
-  const urgente = segurando ? null : faixaFor(list, agora, dispensadas);
+  // A faixa de sempre (classes 0 e 1) vem primeiro. Sem ela, a da espera com
+  // 30 minutos de expediente (faixaEspera). As duas olham a lista já recortada
+  // pelo "Foco em".
+  const urgente = segurando ? null : (faixaFor(list, agora, dispensadas) || faixaEspera(list, agora, dispensadas, now));
 
   // A pergunta "Conversou com…?" na volta do contato. Depois do WhatsApp, ela
   // aparece quando a aba volta a ficar visível ou a janela volta a ter o foco
@@ -135,7 +141,7 @@ export function MetaFocoScreen({
       window.removeEventListener('focus', voltar);
     };
   }, [retorno]);
-  const perguntar = Boolean(retorno?.pronto && agora && !isAppt(agora.slug));
+  const perguntar = Boolean(retorno?.pronto && agora && !isAppt(agora.slug) && agora.slug !== FOCO_ESPERA);
 
   const pick = (e) => {
     focusAgora.current = true;
@@ -144,6 +150,12 @@ export function MetaFocoScreen({
   const skipAgora = () => {
     if (!agora) return;
     setSkip({ day: today, keys: [...skipped.filter((k) => k !== agora.key), agora.key] });
+    // Pular a espera também dispensa a faixa dela, com o instante da marca:
+    // sem isso, o Agora vira outra tarefa e a faixa avisa do mesmo lead na hora.
+    // Uma espera nova do mesmo lead tem outro instante e volta a avisar.
+    if (agora.slug === FOCO_ESPERA) {
+      setDispensa({ day: today, map: new Map(dispensadas || []).set(esperaDispensaKey(agora), 'espera') });
+    }
     setSel({ key: null, pinned: false, foco });
   };
   const unpin = () => {
@@ -164,7 +176,10 @@ export function MetaFocoScreen({
     // A faixa some com o botão em que o foco estava.
     focusAgora.current = true;
     const map = new Map(dispensadas || []);
-    map.set(urgente.key, urgente.klass);
+    // A espera guarda a chave com o instante da marca: a próxima espera do
+    // mesmo lead no dia volta a avisar.
+    if (urgente.slug === FOCO_ESPERA) map.set(esperaDispensaKey(urgente), 'espera');
+    else map.set(urgente.key, urgente.klass);
     setDispensa({ day: today, map });
   };
 
@@ -181,6 +196,8 @@ export function MetaFocoScreen({
   // gravação depois da meia-noite daria o feito ao dia seguinte.
   const concluir = (entry) => {
     const { lead, slug, key } = entry;
+    // A espera não se conclui: a resposta pelo Stronizap é que limpa a marca.
+    if (slug === FOCO_ESPERA) return;
     if (onOutcomePopup(lead, slug)) return;
     focusAgora.current = true;
     if (prazoViraODia()) {
@@ -212,19 +229,22 @@ export function MetaFocoScreen({
   const appt = agora ? isAppt(agora.slug) : false;
   const apptAt = appt ? getLeadAppointmentDate(agora.lead) : null;
   const passou = Boolean(apptAt && apptAt < now);
+  // Na espera só o S vale: o Agora dela não tem WhatsApp, Ligar nem Concluir.
+  const espera = agora?.slug === FOCO_ESPERA;
   useAgoraShortcuts(agora ? {
-    w: perguntar || (appt && !passou) ? null : () => whatsapp(agora.lead),
-    l: perguntar || appt ? null : () => ligar(agora.lead),
-    c: perguntar ? retornoSim : appt ? () => onOutcome(agora.lead, 'attended', agora.slug) : () => concluir(agora),
+    w: perguntar || espera || (appt && !passou) ? null : () => whatsapp(agora.lead),
+    l: perguntar || espera || appt ? null : () => ligar(agora.lead),
+    c: perguntar ? retornoSim : espera ? null : appt ? () => onOutcome(agora.lead, 'attended', agora.slug) : () => concluir(agora),
     n: perguntar || !appt ? null : () => onOutcome(agora.lead, 'no_show', agora.slug),
     s: skipAgora,
   } : null);
 
   const fila = agora ? list.filter((e) => e.key !== agora.key) : [];
-  const morning = doneSlots === 0 ? morningText(entries) : '';
+  const morning = doneSlots === 0 ? morningText(entries.filter((e) => e.slug !== FOCO_ESPERA)) : '';
 
   let body;
-  if (totalSlots === 0) body = <MetaVazia />;
+  // Sem tarefa da meta, a espera ainda precisa aparecer.
+  if (totalSlots === 0 && esperas.length === 0) body = <MetaVazia />;
   else if (entries.length === 0) body = <DiaFechado doneSlots={doneSlots} volume={volume} perfectDay={perfectDay} tomorrow={tomorrow} />;
   else if (!agora) body = <FocoVazio label={FOCO_LABEL[foco]} onAll={showAll} />;
   else {
@@ -234,6 +254,7 @@ export function MetaFocoScreen({
           <FaixaUrgente
             texto={urgentText(urgente, now)}
             passou={urgente.klass === 0}
+            espera={urgente.slug === FOCO_ESPERA}
             onIr={irAgora}
             onDepois={agoraNao}
           />
@@ -258,7 +279,7 @@ export function MetaFocoScreen({
           onRetornoSim={retornoSim}
           onRetornoNao={retornoNao}
         />
-        <FilaDepois items={fila} sla={sla} onPick={pick} whyOf={(e) => whyOf(e, now, opts)} />
+        <FilaDepois items={fila} sla={sla} onPick={pick} whyOf={(e) => whyOf(e, now, opts)} comEspera={esperas.length > 0} />
       </>
     );
   }
@@ -268,10 +289,15 @@ export function MetaFocoScreen({
       <DiaStrip {...strip} />
       {morning && <p className="mt-3 px-1 text-[13.5px] text-muted-foreground">{morning}</p>}
       {/* O leitor de tela ouve a tarefa nova quando o Agora troca, e a faixa de
-          urgência quando ela aparece. O texto da faixa conta os minutos, então
-          a região diz só quem e o quê, para não ser relida a cada minuto. */}
+          urgência quando ela aparece. Nas faixas de visita, aula e contato a
+          região diz só quem e o quê, porque o texto da faixa conta os minutos
+          e seria relido a cada minuto. A espera tem classe mais baixa que o
+          Agora, então "mais urgente" seria impreciso: a região diz quem escreveu
+          e que espera resposta, também sem os minutos. */}
       <p className="sr-only" aria-live="polite">{agora ? `Agora: ${agora.lead.name || 'lead sem nome'}, ${CATEGORY_ONE[agora.slug]}` : ''}</p>
-      <p className="sr-only" aria-live="polite">{urgente ? `Mais urgente que o Agora: ${urgente.lead.name || 'lead sem nome'}, ${CATEGORY_ONE[urgente.slug]}` : ''}</p>
+      <p className="sr-only" aria-live="polite">
+        {!urgente ? '' : urgente.slug === FOCO_ESPERA ? `${urgente.lead.name || 'Lead sem nome'} escreveu e espera resposta` : `Mais urgente que o Agora: ${urgente.lead.name || 'lead sem nome'}, ${CATEGORY_ONE[urgente.slug]}`}
+      </p>
       <div className="mt-4 grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0">
           <FocoBar tabs={tabs} value={foco} onChange={onFoco}>
