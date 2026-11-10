@@ -1,4 +1,5 @@
-import { AlertCircle, BookOpen, Building2, MessageSquare, RefreshCw, UserX, Zap } from 'lucide-react';
+import { AlertCircle, BookOpen, Building2, MessageCircle, MessageSquare, RefreshCw, UserX, Zap } from 'lucide-react';
+import { FOCO_ESPERA } from './metaFocoCodes.js';
 import {
   DAILY_GOAL_CATEGORIES,
   DAILY_GOAL_CATEGORY_LABEL,
@@ -36,7 +37,10 @@ export const DG_CATEGORY_META = {
   [DAILY_GOAL_CATEGORIES.CONTATO_HOJE]: { label: DAILY_GOAL_CATEGORY_LABEL.contato_hoje, short: 'Contatos', color: 'teal', Icon: MessageSquare },
   [DAILY_GOAL_CATEGORIES.ATRASADO]: { label: DAILY_GOAL_CATEGORY_LABEL.atrasado, short: 'Atrasados', color: 'rose', Icon: AlertCircle },
   [DAILY_GOAL_CATEGORIES.RENOVACAO]: { label: DAILY_GOAL_CATEGORY_LABEL.renovacao, short: 'Renovações', color: 'emerald', Icon: RefreshCw },
-  [DAILY_GOAL_CATEGORIES.VENCIDO]: { label: DAILY_GOAL_CATEGORY_LABEL.vencido, short: 'Vencidos', color: 'slate', Icon: UserX }
+  [DAILY_GOAL_CATEGORIES.VENCIDO]: { label: DAILY_GOAL_CATEGORY_LABEL.vencido, short: 'Vencidos', color: 'slate', Icon: UserX },
+  // Não é categoria da meta (metaEspera.js): a entrada existe só para a fila e
+  // o Agora do Foco agora acharem o ícone.
+  [FOCO_ESPERA]: { label: 'Respondeu, aguardando você', short: 'Aguardando você', color: 'amber', Icon: MessageCircle }
 };
 
 export const DG_CATEGORY_ORDER = [

@@ -256,7 +256,7 @@ describe('faixa de aviso', () => {
 
 describe('grupos do Foco em', () => {
   it('a ordem dos grupos é a da barra Foco em', () => {
-    expect(FOCO_ORDER).toEqual(['all', 'compromissos', C.CONTATO_HOJE, C.NOVO_24H, C.ATRASADO, C.RENOVACAO, C.VENCIDO]);
+    expect(FOCO_ORDER).toEqual(['all', 'compromissos', C.CONTATO_HOJE, C.NOVO_24H, C.ATRASADO, 'aguardando_resposta', C.RENOVACAO, C.VENCIDO]);
   });
 
   it('compromissos junta visitas e aulas, e "all" aceita tudo', () => {
