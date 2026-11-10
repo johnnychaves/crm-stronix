@@ -3,7 +3,8 @@ import { overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS } from './dailyGoal.js';
 import { daysToExpiryOf } from './renewalGoal.js';
 import { expiredSortKey } from './expiredGoal.js';
 import { getSafeDateOrNull } from './dates.js';
-import { FOCO_COMPROMISSOS, FOCO_ORDER, FOCO_GRUPOS } from './metaFocoCodes.js';
+import { FOCO_COMPROMISSOS, FOCO_ESPERA, FOCO_ORDER, FOCO_GRUPOS } from './metaFocoCodes.js';
+import { esperaSince } from './metaEspera.js';
 
 // ============================================================================
 // Lógica do "Foco agora" da Meta Diária. Pura: recebe as tarefas pendentes e o
@@ -18,8 +19,10 @@ import { FOCO_COMPROMISSOS, FOCO_ORDER, FOCO_GRUPOS } from './metaFocoCodes.js';
 //   3. atrasado crítico, a partir do SLA da academia
 //   4. o resto do que tem horário, pela hora
 //   5. atrasado, do mais antigo
-//   6. renovação, do vencimento mais próximo
-//   7. vencido, do vencimento mais recente
+//   6. quem escreveu e espera resposta ("Respondeu, aguardando você"), do mais
+//      antigo (metaEspera.js)
+//   7. renovação, do vencimento mais próximo
+//   8. vencido, do vencimento mais recente
 // Dentro de cada classe vale o critério dela; empate resolve pela chave.
 //
 // O Agora (a tarefa em destaque) não muda sozinho com o relógio: só a ação do
@@ -38,7 +41,7 @@ export const URGENT_WINDOW_MIN = 90;
 
 // Os grupos da barra "Foco em" moram em metaFocoCodes.js, que o screenParams.js
 // também lê. Aqui só se usa e se reexporta.
-export { FOCO_COMPROMISSOS, FOCO_ORDER };
+export { FOCO_COMPROMISSOS, FOCO_ESPERA, FOCO_ORDER };
 
 // A categoria entra no foco escolhido? 'all' aceita tudo, e foco desconhecido
 // não aceita nada (a busca é pela própria chave, não pela herança do objeto).
@@ -87,22 +90,26 @@ const COM_HORARIO = [C.VISITA_HOJE, C.AULA_HOJE, C.CONTATO_HOJE, C.NOVO_24H];
 // padrão: com null ou 0, todo atrasado viraria crítico.
 const slaValido = (sla) => (Number.isFinite(sla) && sla > 0 ? sla : DEFAULT_SLA_OVERDUE_DAYS);
 
-// As classes, de 0 a 6, na ordem da lista do topo do arquivo:
+// As classes, de 0 a 7, na ordem da lista do topo do arquivo:
 // 0 desfecho de visita ou aula que já passou do horário
 // 1 vence em até 90 minutos
 // 2 atrasado crítico (a partir do SLA da academia)
 // 3 o resto do que tem horário (inclusive o que tem horário e perdeu a data)
 // 4 atrasado
-// 5 renovação
-// 6 vencido
+// 5 espera ("Respondeu, aguardando você")
+// 6 renovação
+// 7 vencido
+// A espera é testada primeiro: ela não tem prazo, e nunca pode cair na classe 1
+// (urgente, contada no título) nem na dos vencidos.
 function classOf(slug, ms, days, sla) {
+  if (slug === FOCO_ESPERA) return 5;
   if (isAppt(slug) && ms != null && ms < 0) return 0;
   if (ms != null && ms <= URGENT_WINDOW_MIN * MIN_MS) return 1;
   if (slug === C.ATRASADO && days >= sla) return 2;
   if (ms != null) return 3;
   if (slug === C.ATRASADO) return 4;
-  if (slug === C.RENOVACAO) return 5;
-  return COM_HORARIO.includes(slug) ? 3 : 6;
+  if (slug === C.RENOVACAO) return 6;
+  return COM_HORARIO.includes(slug) ? 3 : 7;
 }
 
 // Mede a tarefa uma vez só: o prazo, os dias de atraso e a classe.
@@ -118,7 +125,8 @@ export const klassOf = (entry, now, opts) => measure(entry, now, opts).klass;
 function tieOf(entry, { ms, days, klass }, now) {
   if (klass === 0 || klass === 1 || klass === 3) return ms ?? Infinity; // sem data, depois das que têm
   if (klass === 2 || klass === 4) return -days;
-  if (klass === 5) return daysToExpiryOf(entry.lead.currentContractEndsAt, now) ?? Infinity;
+  if (klass === 5) return esperaSince(entry.lead)?.getTime() ?? Infinity; // a espera mais antiga primeiro
+  if (klass === 6) return daysToExpiryOf(entry.lead.currentContractEndsAt, now) ?? Infinity;
   return -expiredSortKey(entry.lead); // vencido: o vencimento mais recente primeiro
 }
 
