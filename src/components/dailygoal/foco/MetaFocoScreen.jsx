@@ -150,6 +150,12 @@ export function MetaFocoScreen({
   const skipAgora = () => {
     if (!agora) return;
     setSkip({ day: today, keys: [...skipped.filter((k) => k !== agora.key), agora.key] });
+    // Pular a espera também dispensa a faixa dela, com o instante da marca:
+    // sem isso, o Agora vira outra tarefa e a faixa avisa do mesmo lead na hora.
+    // Uma espera nova do mesmo lead tem outro instante e volta a avisar.
+    if (agora.slug === FOCO_ESPERA) {
+      setDispensa({ day: today, map: new Map(dispensadas || []).set(esperaDispensaKey(agora), 'espera') });
+    }
     setSel({ key: null, pinned: false, foco });
   };
   const unpin = () => {
@@ -283,10 +289,15 @@ export function MetaFocoScreen({
       <DiaStrip {...strip} />
       {morning && <p className="mt-3 px-1 text-[13.5px] text-muted-foreground">{morning}</p>}
       {/* O leitor de tela ouve a tarefa nova quando o Agora troca, e a faixa de
-          urgência quando ela aparece. O texto da faixa conta os minutos, então
-          a região diz só quem e o quê, para não ser relida a cada minuto. */}
+          urgência quando ela aparece. Nas faixas de visita, aula e contato a
+          região diz só quem e o quê, porque o texto da faixa conta os minutos
+          e seria relido a cada minuto. A espera tem classe mais baixa que o
+          Agora, então "mais urgente" seria impreciso: a região lê o texto da
+          própria faixa, que muda a cada minuto. */}
       <p className="sr-only" aria-live="polite">{agora ? `Agora: ${agora.lead.name || 'lead sem nome'}, ${CATEGORY_ONE[agora.slug]}` : ''}</p>
-      <p className="sr-only" aria-live="polite">{urgente ? `Mais urgente que o Agora: ${urgente.lead.name || 'lead sem nome'}, ${CATEGORY_ONE[urgente.slug]}` : ''}</p>
+      <p className="sr-only" aria-live="polite">
+        {!urgente ? '' : urgente.slug === FOCO_ESPERA ? urgentText(urgente, now) : `Mais urgente que o Agora: ${urgente.lead.name || 'lead sem nome'}, ${CATEGORY_ONE[urgente.slug]}`}
+      </p>
       <div className="mt-4 grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0">
           <FocoBar tabs={tabs} value={foco} onChange={onFoco}>

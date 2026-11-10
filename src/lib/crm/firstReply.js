@@ -33,6 +33,10 @@ export function firstReplyPairsOf(interactions, { start, end }) {
     dias.set(k, dia);
   }
   const out = [];
+  // A mensagem da mãe de dois menores marca os dois leads, e cada um tem as
+  // suas linhas do dia com o mesmo zapConversationId: é uma conversa só e conta
+  // uma vez. Linha sem o campo cai para o lead, que não repete no dia.
+  const conversas = new Set();
   for (const { L, E, I } of dias.values()) {
     if (!L || !E || E.answering !== true || !E.actorId) continue;
     const l = msOf(L.createdAt);
@@ -40,6 +44,9 @@ export function firstReplyPairsOf(interactions, { start, end }) {
     if (!(e > l) || l < start.getTime() || l >= end.getTime()) continue;
     const ia = I ? msOf(I.createdAt) : NaN;
     if (I && I.answering === true && ia > l && ia < e) continue;
+    const conversa = `${L.zapConversationId || L.leadId}|${diaDeBrasilia(L.createdAt)}`;
+    if (conversas.has(conversa)) continue;
+    conversas.add(conversa);
     out.push({ leadId: L.leadId, actorId: E.actorId, actorName: E.consultantName || null, minutes: (e - l) / 60000 });
   }
   return out;

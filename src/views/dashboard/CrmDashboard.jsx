@@ -79,7 +79,7 @@ export function CrmDashboard({
             <div className="flex flex-col gap-5">
               <FirstContactCard fc={cur.firstContact} delta={speedDelta((m) => m.firstContact?.median ?? null, 'min')} />
               <DaysToEnrollCard dte={cur.daysToEnroll} delta={speedDelta((m) => m.daysToEnroll?.median ?? null, 'days')} />
-              <FirstReplyCard fr={cur.firstReply} allFunnels={Boolean(funnelId)} />
+              <FirstReplyCard fr={cur.firstReply} allFunnels={Boolean(funnelId)} personName={person ? personName : null} />
             </div>
           </div>
         </>

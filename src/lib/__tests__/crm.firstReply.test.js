@@ -90,3 +90,41 @@ describe('firstReplyOf', () => {
     expect(firstReplyOf(linhas, { start: START, end: END, userId: 'cris' })).toBeNull();
   });
 });
+
+describe('a mesma conversa com dois leads (a mãe de dois menores)', () => {
+  // A mensagem da mãe marca cada menor, e cada um ganha as suas linhas do dia,
+  // com o mesmo zapConversationId. É uma conversa só.
+  const conv = (lead, id, signal, iso, extra = {}) => sig(id, lead, signal, iso, { zapConversationId: 'conv-mae', ...extra });
+  const dois = [
+    conv('a', 'zap-a-lead', 'lead_escreveu', '2026-11-09T12:00:00Z'),
+    conv('b', 'zap-b-lead', 'lead_escreveu', '2026-11-09T12:00:00Z'),
+    conv('a', 'zap-a-equipe', 'pessoa_enviou', '2026-11-09T12:20:00Z', { answering: true, actorId: 'ana', consultantName: 'Ana' }),
+    conv('b', 'zap-b-equipe', 'pessoa_enviou', '2026-11-09T12:20:00Z', { answering: true, actorId: 'ana', consultantName: 'Ana' }),
+  ];
+
+  it('conta um par só, na lista e na mediana', () => {
+    expect(minutos(dois)).toEqual([20]);
+    expect(firstReplyOf(dois, { start: START, end: END })).toMatchObject({ pairs: 1, median: 20 });
+  });
+
+  it('no dia seguinte, a mesma conversa conta de novo', () => {
+    const amanha = [
+      conv('a', 'zap-a-lead-2', 'lead_escreveu', '2026-11-10T12:00:00Z'),
+      conv('a', 'zap-a-equipe-2', 'pessoa_enviou', '2026-11-10T12:10:00Z', { answering: true, actorId: 'ana' }),
+    ];
+    expect(minutos([...dois, ...amanha])).toEqual([20, 10]);
+  });
+
+  it('conversas diferentes do mesmo dia contam cada uma', () => {
+    const outra = [
+      sig('zap-c-lead', 'c', 'lead_escreveu', '2026-11-09T13:00:00Z', { zapConversationId: 'conv-outra' }),
+      sig('zap-c-equipe', 'c', 'pessoa_enviou', '2026-11-09T13:30:00Z', { zapConversationId: 'conv-outra', answering: true, actorId: 'ana' }),
+    ];
+    expect(minutos([...dois, ...outra])).toEqual([20, 30]);
+  });
+
+  it('sem zapConversationId na linha, cada lead conta o seu', () => {
+    const sem = dois.map((i) => ({ ...i, zapConversationId: undefined }));
+    expect(minutos(sem)).toEqual([20, 20]);
+  });
+});

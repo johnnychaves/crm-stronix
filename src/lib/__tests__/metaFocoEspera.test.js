@@ -190,7 +190,8 @@ describe('a faixa da espera', () => {
     expect(faixa().textContent).toContain('Bruna escreveu há 42 min e ninguém respondeu');
     expect(faixa().className).toContain('bg-accent-50');
     expect(faixa().className).not.toContain('bg-rose-50');
-    expect(host.textContent).toContain('Mais urgente que o Agora: Bruna Espera, Respondeu, aguardando você');
+    // A região viva lê o texto da faixa (ver "a região viva da espera").
+    expect(host.textContent).not.toContain('Mais urgente que o Agora: Bruna Espera');
   });
 
   it('com 29 minutos ainda não', () => {
@@ -232,5 +233,57 @@ describe('a faixa da espera', () => {
     render({ leads: LEADS, esperas: esperasDe([BRUNA], at(15, 45)), now: at(15, 45) });
     expect(agoraName()).toBe('Ana Critica');
     expect(faixa().textContent).toContain('Bruno chega em 1h15');
+  });
+});
+
+describe('pular a espera', () => {
+  const CIDA = { ...BRUNA, id: 'f', name: 'Cida Espera', whatsapp: '51999990002', awaitingReplySince: new Date(NOW.getTime() - 35 * MIN) };
+  const trazerEPular = (esperas) => {
+    render({ leads: LEADS, esperas, now: NOW });
+    click(button('Bruna Espera', fila()));
+    expect(agoraName()).toBe('Bruna Espera');
+    expect(faixa()).toBeNull();
+    tecla('s');
+    expect(agoraName()).toBe('Ana Critica');
+  };
+
+  it('a espera pulada no Agora não acende a faixa dela quando o Agora vira outra tarefa', () => {
+    trazerEPular(esperasDe([BRUNA]));
+    expect(faixa()).toBeNull();
+    expect(host.textContent).not.toContain('Bruna escreveu');
+  });
+
+  it('o botão "Pular por agora" também não acende', () => {
+    render({ leads: LEADS, esperas: esperasDe([BRUNA]), now: NOW });
+    click(button('Bruna Espera', fila()));
+    click(button('Pular por agora', agora()));
+    expect(agoraName()).toBe('Ana Critica');
+    expect(faixa()).toBeNull();
+  });
+
+  it('uma espera nova do mesmo lead depois do pulo volta a avisar', () => {
+    trazerEPular(esperasDe([BRUNA]));
+    expect(faixa()).toBeNull();
+    // A Bruna foi respondida e escreveu de novo às 14:00: marca nova.
+    const deNovo = { ...BRUNA, awaitingReplySince: at(14, 0) };
+    render({ leads: LEADS, esperas: esperasDe([deNovo], at(14, 40)), now: at(14, 40) });
+    expect(faixa().textContent).toContain('Bruna escreveu há 40 min e ninguém respondeu');
+  });
+
+  it('outra espera, que não foi pulada, continua avisando', () => {
+    trazerEPular(esperasDe([BRUNA, CIDA]));
+    expect(faixa().textContent).toContain('Cida escreveu há 35 min e ninguém respondeu');
+    expect(faixa().textContent).not.toContain('Bruna');
+  });
+});
+
+describe('a região viva da espera', () => {
+  const regioes = () => [...host.querySelectorAll('p.sr-only[aria-live]')].map((p) => p.textContent);
+
+  it('diz o mesmo que a faixa, e não que a espera é mais urgente que o Agora', () => {
+    render({ leads: LEADS, esperas: esperasDe([BRUNA]), now: NOW });
+    expect(faixa().textContent).toContain('Bruna escreveu há 42 min e ninguém respondeu');
+    expect(regioes()).toContain('Bruna escreveu há 42 min e ninguém respondeu');
+    expect(regioes().join('|')).not.toContain('Mais urgente que o Agora');
   });
 });

@@ -140,11 +140,14 @@ export function DaysToEnrollCard({ dte, delta }) {
 // ao menos uma conversa medida no mês (firstReplyOf devolve null sem par), o
 // que só acontece com a integração ligada: sem ela o card some, em vez de
 // mostrar um zero que pareça "ninguém responde".
-export function FirstReplyCard({ fr, allFunnels = false }) {
+// Com uma pessoa escolhida, os outros cards filtram pelo dono do lead e este
+// pelo autor da resposta, então o hint diz isso (personName).
+export function FirstReplyCard({ fr, allFunnels = false, personName = null }) {
   if (!fr) return null;
   const help = <DashHelpTip text={FR_HELP} label="Como o tempo até a primeira resposta é medido" />;
+  const hint = personName ? `no Stronizap, só as respostas dadas por ${personName}` : 'no Stronizap, da primeira mensagem do lead no dia';
   return (
-    <CrmCard title="Tempo até a primeira resposta" hint="no Stronizap, da primeira mensagem do lead no dia" action={help}>
+    <CrmCard title="Tempo até a primeira resposta" hint={hint} action={help}>
       <div className="px-[18px] py-4">
         <BigNumber value={fmtDuration(fr.median)} />
         <p className="mt-1.5 text-[12px] text-muted-foreground">

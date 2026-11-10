@@ -5,7 +5,7 @@ import { describe, it, expect } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { TooltipProvider } from '../../components/ui/tooltip.jsx';
-import { metricsOf, seriesOf } from '../crm/metrics.js';
+import { metricsOf, seriesOf, OTHERS_ID } from '../crm/metrics.js';
 import { FirstReplyCard } from '../../views/dashboard/SpeedCards.jsx';
 import { CrmDashboard } from '../../views/dashboard/CrmDashboard.jsx';
 
@@ -76,5 +76,31 @@ describe('tempo até a primeira resposta', () => {
   it('o painel desenha o card com par e some com ele sem par', () => {
     expect(render(createElement(CrmDashboard, props(ctxCom(LINHAS))))).toContain('Tempo até a primeira resposta');
     expect(render(createElement(CrmDashboard, props(ctxCom([]))))).not.toContain('Tempo até a primeira resposta');
+  });
+});
+
+// Os outros cards filtram pelo dono do lead; este filtra por quem respondeu.
+describe('o card com uma pessoa escolhida', () => {
+  const fr = { pairs: 1, median: 15, people: [{ id: 'ana', name: 'Ana Ribeiro', pairs: 1, median: 15 }] };
+
+  it('o hint diz que são as respostas dadas por ela', () => {
+    const html = render(createElement(FirstReplyCard, { fr, personName: 'Ana Ribeiro' }));
+    expect(html).toContain('só as respostas dadas por Ana Ribeiro');
+    expect(html).not.toMatch(/[—–]/);
+  });
+
+  it('sem pessoa escolhida, o hint é o de sempre', () => {
+    const html = render(createElement(FirstReplyCard, { fr }));
+    expect(html).toContain('da primeira mensagem do lead no dia');
+    expect(html).not.toContain('respostas dadas por');
+  });
+
+  it('o painel passa a pessoa escolhida ao card', () => {
+    const html = render(createElement(CrmDashboard, { ...props(ctxCom(LINHAS)), person: 'ana', personName: 'Ana Ribeiro' }));
+    expect(html).toContain('só as respostas dadas por Ana Ribeiro');
+  });
+
+  it('com "Outros" escolhido, o card some: a conta é por quem respondeu e Outros não tem autor', () => {
+    expect(metricsOf(ctxCom(LINHAS), { monthKey: '2026-09', userId: OTHERS_ID }).firstReply).toBeNull();
   });
 });
