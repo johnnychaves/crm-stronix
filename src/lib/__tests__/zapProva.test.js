@@ -6,6 +6,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { zapTeamLineToday, ZAP_SIGNAL_TYPE, DAILY_GOAL_CATEGORIES } from '../leads.js';
 import { computeDailyGoalSlots, buildInteractionsByLead } from '../dailyGoal.js';
+import { zapProofText } from '../metaFocoTexts.js';
 
 // Segunda-feira, 09/11/2026, em horário local.
 const at = (h, m = 0, dias = 0) => new Date(2026, 10, 9 + dias, h, m);
@@ -85,5 +86,30 @@ describe('computeDailyGoalSlots: zapProofToday', () => {
     expect(processar([sinal('ia_enviou', at(14), { answering: true, byAi: true })]).zapProofToday).toBeNull();
     expect(processar([sinal('lead_escreveu', at(14), { answering: false, text: 'Lead escreveu.' })]).zapProofToday).toBeNull();
     expect(processar([sinal('pessoa_enviou', at(18, 0, -1), { answering: true, actorId: 'u1' })]).zapProofToday).toBeNull();
+  });
+});
+
+describe('zapProofText', () => {
+  const eu = { id: 'u1', authUid: 'auth-u1' };
+  const semAutor = { ...PESSOA, actorId: null, actorAuthUid: null, consultantName: null };
+
+  it.each([
+    ['quem olha é quem enviou, pelo id', PESSOA, eu, 'Você respondeu às 14:40 pelo Stronizap'],
+    ['quem olha é quem enviou, pelo authUid', { ...PESSOA, actorId: 'outro-id' }, eu, 'Você respondeu às 14:40 pelo Stronizap'],
+    ['outra pessoa, pelo primeiro nome', PESSOA, { id: 'u9', authUid: 'auth-u9' }, 'Ana respondeu às 14:40 pelo Stronizap'],
+    ['sem autor', semAutor, eu, 'A equipe respondeu às 14:40 pelo Stronizap'],
+    ['sem autor e quem olha sem id', semAutor, {}, 'A equipe respondeu às 14:40 pelo Stronizap'],
+    ['a equipe puxou a conversa', { ...PESSOA, answering: false }, eu, 'Você escreveu às 14:40 pelo Stronizap'],
+  ])('%s', (_, linha, me, esperado) => {
+    expect(zapProofText(linha, me)).toBe(esperado);
+  });
+
+  it('sem prova, texto vazio', () => {
+    expect(zapProofText(null, eu)).toBe('');
+  });
+
+  it('nenhuma frase tem travessão', () => {
+    const frases = [PESSOA, semAutor, { ...PESSOA, answering: false }].map((p) => zapProofText(p, eu));
+    frases.forEach((f) => expect(f).not.toMatch(/[—–]/));
   });
 });
