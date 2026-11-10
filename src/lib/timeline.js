@@ -4,7 +4,7 @@
 
 import { monthKeyOf, monthLabel } from './operacional/month.js';
 import { parseValorBRL } from './format.js';
-import { ZAP_SIGNUP_TYPE, ZAP_VIA, isAiInteraction } from './leads.js';
+import { ZAP_SIGNUP_TYPE, ZAP_SIGNAL_TYPE, ZAP_VIA, isAiInteraction } from './leads.js';
 
 // Troca de responsável feita pelo cadastro completo da ficha: status_change
 // com dois colchetes, "Responsável alterado de [Ana] para [Bruno]."
@@ -202,6 +202,10 @@ export const classifyInteraction = (i) => {
   // decidido pelo type. Entra em Marcos e aparece com o interruptor de
   // Sistema desligado.
   if (i.type === ZAP_SIGNUP_TYPE) return 'origin';
+  // Linha da conversa pelo Stronizap (o lead escreveu, a equipe enviou):
+  // bucket Conversas, decidido pelo type. Vem antes das regras de texto, porque
+  // o trecho da mensagem do lead é texto livre.
+  if (i.type === ZAP_SIGNAL_TYPE) return 'conversation';
   // Cadastro importado de outro sistema (clientImportWrites.js): evento de
   // sistema, atrás do interruptor. Vem antes do regex de contrato porque o
   // texto cita o plano e a vigência.
@@ -259,6 +263,9 @@ export const matchesTimelineFilter = (kind, filterId) => {
 // prefixos, então é esta coluna que diz o que a linha é.
 export const timelineTypeLabel = (i) => {
   const t = String(i?.text || '');
+  // A linha da conversa pelo Stronizap é sempre WhatsApp: o trecho do lead é
+  // texto livre, e uma palavra como "ligação" não pode mudar o rótulo.
+  if (i?.type === ZAP_SIGNAL_TYPE) return 'WhatsApp';
   switch (i?._kind) {
     case 'contract': return 'Contrato';
     case 'status': return isOwnerChangeText(t) ? 'Responsável' : 'Fase';

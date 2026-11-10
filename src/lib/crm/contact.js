@@ -2,7 +2,7 @@
 // registrada do lead. Quem chama passa o limite: o fim do mês seguinte ao do
 // cadastro, ou o corte pró-rata. Puro.
 
-import { isRegistrationNote, ZAP_SIGNUP_TYPE } from '../leads.js';
+import { isRegistrationNote, isZapSignalInteraction, ZAP_SIGNUP_TYPE } from '../leads.js';
 import { medianWithMissing } from './stats.js';
 
 // A troca de responsável é registro administrativo, não contato. Vai como
@@ -12,13 +12,15 @@ const isOwnerChange = (i) => i.type === 'status_change' && typeof i.toStatus !==
   && typeof i.text === 'string' && i.text.startsWith('Responsável alterado');
 
 // Não contam como contato: a observação do cadastro, o marco do cadastro pelo
-// Stronizap, a indicação, a importação e a troca de responsável. Qualquer
+// Stronizap, a linha de sinal da conversa (o lead escreveu, a equipe enviou), a
+// indicação, a importação e a troca de responsável. Qualquer
 // outra interação registrada conta, inclusive a de quem já saiu da equipe,
 // porque o contato aconteceu.
 export const isContactInteraction = (i) => Boolean(i)
   && i.type !== 'referral'
   && i.type !== 'import'
   && i.type !== ZAP_SIGNUP_TYPE
+  && !isZapSignalInteraction(i)
   && !(i.type === 'note' && isRegistrationNote(i.text))
   && !isOwnerChange(i);
 

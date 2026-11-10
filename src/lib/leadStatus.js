@@ -1,4 +1,4 @@
-import { getLeadAppointmentType, getLeadAppointmentDate } from './leads.js';
+import { getLeadAppointmentType, getLeadAppointmentDate, isZapSignalInteraction } from './leads.js';
 import { getSafeDateOrNull } from './dates.js';
 
 // --- HELPERS DE TEMPERATURA DO LEAD ---
@@ -71,6 +71,8 @@ const normalizeRenewalCheckpoints = (raw) => {
 const buildInteractionIndex = (interactions) => {
   const idx = new Map();
   (interactions || []).forEach(i => {
+    // A linha da conversa pelo Stronizap não é contato da equipe: fora do count e do lastDate.
+    if (isZapSignalInteraction(i)) return;
     let e = idx.get(i.leadId);
     if (!e) { e = { count: 0, lastDate: null }; idx.set(i.leadId, e); }
     e.count += 1;

@@ -4,6 +4,8 @@
 // dentro da conversa (create-lead). Desde o agendamento pelo Stronizap, pede
 // as listas do balão (schedule-options), agenda visita e aula experimental
 // (schedule) e confere os agendamentos antes do lembrete (appointment-status).
+// Desde a Parte B, recebe os sinais da conversa (conversation-signal): o lead
+// escreveu, a equipe enviou.
 //
 // O GET procura também os menores que têm aquele telefone como responsável
 // (`guardianZapMatchKey`), e o `match` conta o número do responsável como
@@ -14,9 +16,10 @@
 //
 // O POST tem dois donos. `generate` e `revoke` são do admin da academia, logado
 // no CRM, e autenticam por verifyRequest (ID token). `match`, `lead-options`,
-// `create-lead`, `schedule-options`, `schedule` e `appointment-status` são do
-// próprio Stronizap e autenticam pela chave, igual ao GET. O desvio fica no
-// começo de handlePost, e os dois caminhos nunca se misturam.
+// `create-lead`, `schedule-options`, `schedule`, `appointment-status` e
+// `conversation-signal` são do próprio Stronizap e autenticam pela chave, igual
+// ao GET. O desvio fica no começo de handlePost, e os dois caminhos nunca se
+// misturam.
 import { adminDb, admin, verifyRequest } from './_firebaseAdmin.js';
 import { withSentry } from './_sentry.js';
 import { isTenantAdmin } from './_auth.js';
@@ -25,6 +28,10 @@ import { generateZapKey, verifyZapKey } from './_zapAuth.js';
 import { zapMatchKey } from './_zapPhone.js';
 import { fillZapMatchKeys } from './_zapMatchKeyFill.js';
 import { buildZapCard, buildGuardianCard, buildZapWards } from './_zapCard.js';
+import { buildZapStrip } from './_zapStrip.js';
+import {
+  SIGNAL_LIMIT, ZAP_SIGNAL_MESSAGES, readSignalBody, signalLineId, buildSignalInteraction, signalLeadPatch, signalEligibility
+} from './_zapSignal.js';
 import {
   LEAD_CREATE_LIMIT, ZAP_LEAD_MESSAGES, refusal, invalidData, tenantBlocked, emailFromActor, findTeamMember,
   buildLeadOptions, readCreateLeadBody, checkMinor, withStoredNames, checkCatalog, resolveOwner, sameStudentName, studentKey,
@@ -123,7 +130,9 @@ async function loadZapIntegration(tenantId) {
 // do próprio número, sem aviso, e o agendamento gravado responderia 201 com um
 // cartão sem os menores, quando o contrato promete o cartão já com o
 // agendamento novo. Com o erro, o "Tentar de novo" recebe ja_agendado com o
-// cartão inteiro.
+// cartão inteiro. O conversation-signal também passa `strictWards: true`: sem
+// os menores, o número de um responsável pareceria desconhecido e o sinal seria
+// dado como sem cadastro, quando o 5xx faria o Stronizap tentar de novo.
 async function numberPeople(tenantId, matchKey, agora, { strictWards = false } = {}) {
   const menoresQuery = leadsCollection(tenantId).where('guardianZapMatchKey', '==', matchKey).limit(WARDS_MAX).get();
   const [achados, menoresSnap] = await Promise.all([
@@ -218,9 +227,9 @@ export default withSentry(async function handler(req, res) {
 // as opções, a gravação e a conferência do agendamento. Ver o desvio logo
 // abaixo.
 async function handlePost(req, res) {
-  // match, lead-options, create-lead, schedule-options, schedule e
-  // appointment-status são do próprio Stronizap e autenticam pela chave do
-  // Zap. generate e revoke são do admin logado e seguem exigindo ID token.
+  // match, lead-options, create-lead, schedule-options, schedule,
+  // appointment-status e conversation-signal são do próprio Stronizap e
+  // autenticam pela chave do Zap. generate e revoke são do admin logado e seguem exigindo ID token.
   // Ação desconhecida cai no caminho do login e é recusada lá.
   const action = req.body?.action;
   if (action === 'match') return handleMatch(req, res);
@@ -229,6 +238,7 @@ async function handlePost(req, res) {
   if (action === 'schedule-options') return handleScheduleOptions(req, res);
   if (action === 'schedule') return handleSchedule(req, res);
   if (action === 'appointment-status') return handleAppointmentStatus(req, res);
+  if (action === 'conversation-signal') return handleConversationSignal(req, res);
 
   try {
     const auth = await verifyRequest(req);
@@ -691,5 +701,79 @@ async function handleAppointmentStatus(req, res) {
     return res.status(200).json({ appointments });
   } catch (e) {
     throw scrubbedError('appointment-status', e);
+  }
+}
+
+// O Stronizap avisa que o lead escreveu ou que a equipe (pessoa ou IA) enviou
+// mensagem. Grava, em cada cadastro que o número tem (o dono e os menores de
+// quem ele é responsável), no máximo uma linha por tipo de sinal e por dia de
+// Brasília, e mantém a marca de espera (awaitingReplySince) no lead. Cliente só
+// entra quando o cartão já mostra uma faixa de prazo. Nada daqui toca
+// lastInteractionAt, interactionsCount nem volumeKind: contato puro não é
+// prospecção. As regras moram em _zapSignal.js.
+async function handleConversationSignal(req, res) {
+  try {
+    const access = await openByKey(req);
+    if (access.refusal) return responder(res, access.refusal);
+    const { tenantId } = access;
+
+    const agora = new Date();
+    const read = readSignalBody(req.body, agora);
+    if (read.refusal) return responder(res, read.refusal);
+    const signal = read.value;
+
+    const limit = await checkRateLimit(`zap-signal:${tenantId}`, SIGNAL_LIMIT);
+    if (!limit.ok) return responder(res, refusal(429, 'limite', ZAP_SIGNAL_MESSAGES.rateLimited));
+
+    // Sinal é gravação sem volta: com a busca dos menores falhando, o 5xx faz o
+    // Stronizap tentar de novo, em vez de dar o número como desconhecido.
+    const { dono, menores } = await numberPeople(tenantId, signal.matchKey, agora, { strictWards: true });
+    const alvos = [dono, ...menores].filter(Boolean);
+    if (alvos.length === 0) return res.status(200).json({ ok: true, found: false, recorded: false });
+
+    // Os marcos da academia só são lidos quando há cliente entre os alvos.
+    const temCliente = alvos.some((l) => l.lifecycleStage === 'cliente');
+    const configSnap = temCliente ? await academyCollection(tenantId, CONFIG_PATH).doc(CONFIG_GENERAL_ID).get() : null;
+    const marcos = configSnap?.exists ? configSnap.data()?.renewalCheckpoints : undefined;
+
+    // A faixa do cliente é avaliada pelo dia de hoje (`agora`), e não pelo dia da
+    // mensagem: um sinal que volta da fila no dia seguinte entra na linha do dia
+    // dele, mas com a faixa de hoje. É raro e aceitável.
+    const entram = alvos.filter((alvo) =>
+      signalEligibility(alvo, alvo.lifecycleStage === 'cliente' ? buildZapStrip(alvo, agora, marcos) : null));
+    if (entram.length === 0) return res.status(200).json({ ok: true, found: true, recorded: false, reason: 'cliente_sem_tarefa' });
+
+    // Quem enviou: só pessoa da equipe com login. Mensagem enviada pelo celular
+    // da academia, ou e-mail que a equipe não conhece, grava sem autor. A equipe
+    // só é lida quando alguém entra.
+    const member = signal.email ? findTeamMember(await readTeam(tenantId), signal.email) : null;
+    const actor = member ? { ...member, name: member.name || signal.actorName } : null;
+
+    const resultados = [];
+    for (const alvo of entram) {
+      resultados.push(await adminDb.runTransaction(async (tx) => {
+        const leadRef = leadsCollection(tenantId).doc(alvo.id);
+        const lineRef = academyCollection(tenantId, INTERACTIONS_PATH).doc(signalLineId(alvo.id, signal.at, signal.kind));
+        // As duas leituras antes de qualquer gravação, como exige a transação.
+        const leadSnap = await tx.get(leadRef);
+        const lineSnap = await tx.get(lineRef);
+        // O lead pode ter sido apagado entre a busca do número e agora.
+        if (!leadSnap.exists) return { gone: true };
+        const lead = leadDoDoc(leadSnap);
+        const patch = signalLeadPatch(lead, signal);
+        if (!lineSnap.exists) tx.create(lineRef, buildSignalInteraction({ lead, actor, signal }));
+        if (patch) tx.update(leadRef, patch);
+        return { lineCreated: !lineSnap.exists, flagChanged: Boolean(patch) };
+      }));
+    }
+
+    if (resultados.every((r) => r.gone)) return res.status(200).json({ ok: true, found: false, recorded: false });
+
+    const recorded = resultados.some((r) => r.lineCreated || r.flagChanged);
+    const body = { ok: true, found: true, recorded };
+    if (!recorded) body.reason = 'ja_registrado_hoje';
+    return res.status(200).json(body);
+  } catch (e) {
+    throw scrubbedError('conversation-signal', e);
   }
 }

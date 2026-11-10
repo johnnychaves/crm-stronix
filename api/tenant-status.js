@@ -5,6 +5,7 @@ import { sanitizeProfile } from './_profile.js';
 import { writeTenantPrivate } from './_tenantPrivate.js';
 import { withSentry } from './_sentry.js';
 import { KNOWN_MODULES, normalizeModules } from '../src/lib/modules.js';
+import { humanInteractionCount, zapSignalCount } from './_interactionStats.js';
 
 // Atualiza status / plano / cobrança / perfil de uma organização — SUPERADMIN only.
 //
@@ -79,10 +80,12 @@ export default withSentry(async function handler(req, res) {
     const tid = String(req.query?.tenantId || '').trim().toLowerCase();
     if (!tid) return res.status(400).json({ error: 'Campo obrigatório: tenantId.' });
     try {
-      const [seats, leadCountSnap, interactionCountSnap] = await Promise.all([
+      const [seats, leadCountSnap, interactionCountSnap, signalCount] = await Promise.all([
         getSeatUsage(tid),
         dataCol(tid, 'stronix_leads').count().get(),
         dataCol(tid, 'stronix_interactions').count().get(),
+        // A linha de sinal da conversa pelo Stronizap não é interação registrada.
+        zapSignalCount(dataCol(tid, 'stronix_interactions')),
       ]);
       return res.status(200).json({
         tenantId: tid, plan: seats.plan,
@@ -99,7 +102,7 @@ export default withSentry(async function handler(req, res) {
         extraConsultants: seats.extraConsultants,
         extraUserPrice: seats.extraUserPrice,
         leadCount: leadCountSnap.data().count || 0,
-        interactionCount: interactionCountSnap.data().count || 0,
+        interactionCount: humanInteractionCount(interactionCountSnap.data().count, signalCount),
       });
     } catch (err) {
       console.error('tenant-status GET stats:', err?.message || err);

@@ -1669,4 +1669,16 @@ describe('clientTouchCount', () => {
     const after = clientTouchCount([{ leadId: 'c1', type: 'daily_goal_done' }], clientIds, liveIds, 'u1');
     expect(after).toBeGreaterThan(before);
   });
+
+  it('a linha de sinal da conversa pelo Stronizap não mexe no total', () => {
+    const base = [{ leadId: 'c1', actorId: 'outro' }, { leadId: 'c2', actorId: 'u1' }];
+    const sinais = [
+      { leadId: 'c1', type: 'zap_signal', actorId: 'outro' },
+      { leadId: 'c2', type: 'zap_signal', actorId: 'u1' },
+      { leadId: 'c1', type: 'zap_signal' }
+    ];
+    expect(clientTouchCount([...base, ...sinais], clientIds, liveIds, 'u1'))
+      .toBe(clientTouchCount(base, clientIds, liveIds, 'u1'));
+    expect(clientTouchCount(sinais, clientIds, liveIds, 'u1')).toBe(clientTouchCount([], clientIds, liveIds, 'u1'));
+  });
 });

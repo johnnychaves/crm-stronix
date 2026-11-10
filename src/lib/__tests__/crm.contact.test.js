@@ -13,6 +13,11 @@ describe('interação que conta como contato', () => {
     expect(isContactInteraction({ type: 'daily_goal_done' })).toBe(true);
   });
 
+  it('a linha de sinal da conversa pelo Stronizap não é contato da equipe', () => {
+    expect(isContactInteraction({ type: 'zap_signal', signal: 'lead_escreveu', text: 'Lead escreveu: “oi”' })).toBe(false);
+    expect(isContactInteraction({ type: 'zap_signal', signal: 'pessoa_enviou', text: 'Resposta de Ana Souza.' })).toBe(false);
+  });
+
   it('a troca de responsável é registro administrativo, não contato; a troca de etapa antiga, sem toStatus, segue contando', () => {
     expect(isContactInteraction({ type: 'status_change', text: 'Responsável alterado de [Ana] para [Diego].' })).toBe(false);
     expect(isContactInteraction({ type: 'status_change', text: 'Movido para a etapa [Contato feito] via Kanban.' })).toBe(true);
@@ -73,6 +78,26 @@ describe('tempo até o primeiro contato', () => {
 
   it('com o limite mais longe, a interação passa a contar', () => {
     expect(firstContactOf([lead('f')], { contactTimes, limit: T(30).getTime() })).toMatchObject({ total: 1, over: 1, none: 0 });
+  });
+});
+
+describe('linha de sinal da conversa pelo Stronizap no tempo até o primeiro contato', () => {
+  const lead = { id: 'a', createdAt: T(1, 10) };
+  const nota = { id: 'n1', leadId: 'a', type: 'note', text: 'oi', createdAt: T(1, 12) };
+  const sinal = { id: 's1', leadId: 'a', type: 'zap_signal', signal: 'lead_escreveu', text: 'Lead escreveu: “oi”', createdAt: T(1, 10, 5) };
+  const limit = T(15).getTime();
+
+  it('o índice de contatos fica igual ao de sem a linha', () => {
+    expect(contactTimesByLead([sinal, nota])).toEqual(contactTimesByLead([nota]));
+    expect(contactTimesByLead([sinal]).size).toBe(0);
+  });
+
+  it('o primeiro contato continua sendo o da equipe, e quem só tem a linha segue sem contato', () => {
+    const comLinha = contactTimesByLead([sinal, nota]);
+    const semLinha = contactTimesByLead([nota]);
+    expect(firstContactMinutesOf(lead, { contactTimes: comLinha, limit })).toBe(firstContactMinutesOf(lead, { contactTimes: semLinha, limit }));
+    expect(firstContactMinutesOf(lead, { contactTimes: comLinha, limit })).toBe(120);
+    expect(firstContactMinutesOf(lead, { contactTimes: contactTimesByLead([sinal]), limit })).toBeNull();
   });
 });
 
