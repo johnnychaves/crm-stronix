@@ -10,15 +10,19 @@ import { cn } from '@/lib/utils';
 const BALAO = 'M 120 30 C 70 30, 30 70, 30 120 C 30 148, 43.5 173.5, 64 190.5 C 61 201, 56.5 213, 50.5 222 C 49 224, 51 226, 53 225 C 64 222, 79 217, 92 211 C 101 213, 110 214, 120 214 C 170 214, 210 173, 210 122 C 210 71, 170 30, 120 30 Z';
 const RAIO = 'M 138 56 L 84 132 L 116 132 L 102 184 L 156 108 L 124 108 Z';
 
-export function StronizapMark({ size = 13, className }) {
+// `onDark`: para fundo escuro nos dois temas (o bloco Agora da Meta). O balão
+// fica branco e o raio verde, e o tema do app não troca as cores.
+export function StronizapMark({ size = 13, className, onDark = false }) {
   return (
     <svg viewBox="0 0 240 240" width={size} height={size} aria-hidden="true" className={cn('shrink-0', className)}>
-      <path d={BALAO} className="fill-[#1A1D20] dark:fill-white" />
+      <path d={BALAO} className={onDark ? 'fill-white' : 'fill-[#1A1D20] dark:fill-white'} />
       <path
         d={RAIO}
         strokeWidth={8}
         strokeLinejoin="round"
-        className="fill-[#25D366] stroke-[#25D366] dark:fill-[#128C7E] dark:stroke-[#128C7E]"
+        className={onDark
+          ? 'fill-[#25D366] stroke-[#25D366]'
+          : 'fill-[#25D366] stroke-[#25D366] dark:fill-[#128C7E] dark:stroke-[#128C7E]'}
       />
     </svg>
   );
@@ -26,11 +30,12 @@ export function StronizapMark({ size = 13, className }) {
 
 // A marca num círculo discreto, ao lado de um nome: na coluna do autor e no
 // rodapé do desfecho de um agendamento feito pelo Stronizap, na linha do tempo
-// da ficha.
-export function StronizapBadge({ className }) {
+// da ficha, no cartão do dia da ficha e na prova da Meta (com `onDark` no
+// bloco Agora).
+export function StronizapBadge({ className, onDark = false }) {
   return (
-    <span className={cn('grid size-[17px] shrink-0 place-items-center rounded-full bg-muted', className)}>
-      <StronizapMark size={11} />
+    <span className={cn('grid size-[17px] shrink-0 place-items-center rounded-full', onDark ? 'bg-white/[0.14]' : 'bg-muted', className)}>
+      <StronizapMark size={11} onDark={onDark} />
     </span>
   );
 }
