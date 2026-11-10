@@ -280,10 +280,12 @@ describe('pular a espera', () => {
 describe('a região viva da espera', () => {
   const regioes = () => [...host.querySelectorAll('p.sr-only[aria-live]')].map((p) => p.textContent);
 
-  it('diz o mesmo que a faixa, e não que a espera é mais urgente que o Agora', () => {
+  it('diz quem escreveu e que espera resposta, sem os minutos e sem "mais urgente que o Agora"', () => {
     render({ leads: LEADS, esperas: esperasDe([BRUNA]), now: NOW });
     expect(faixa().textContent).toContain('Bruna escreveu há 42 min e ninguém respondeu');
-    expect(regioes()).toContain('Bruna escreveu há 42 min e ninguém respondeu');
+    // A faixa conta minutos; a região viva não, para o leitor de tela não relê-la a cada minuto.
+    expect(regioes()).toContain('Bruna Espera escreveu e espera resposta');
+    expect(regioes().join('|')).not.toMatch(/\d+ min/);
     expect(regioes().join('|')).not.toContain('Mais urgente que o Agora');
   });
 });

@@ -292,11 +292,11 @@ export function MetaFocoScreen({
           urgência quando ela aparece. Nas faixas de visita, aula e contato a
           região diz só quem e o quê, porque o texto da faixa conta os minutos
           e seria relido a cada minuto. A espera tem classe mais baixa que o
-          Agora, então "mais urgente" seria impreciso: a região lê o texto da
-          própria faixa, que muda a cada minuto. */}
+          Agora, então "mais urgente" seria impreciso: a região diz quem escreveu
+          e que espera resposta, também sem os minutos. */}
       <p className="sr-only" aria-live="polite">{agora ? `Agora: ${agora.lead.name || 'lead sem nome'}, ${CATEGORY_ONE[agora.slug]}` : ''}</p>
       <p className="sr-only" aria-live="polite">
-        {!urgente ? '' : urgente.slug === FOCO_ESPERA ? urgentText(urgente, now) : `Mais urgente que o Agora: ${urgente.lead.name || 'lead sem nome'}, ${CATEGORY_ONE[urgente.slug]}`}
+        {!urgente ? '' : urgente.slug === FOCO_ESPERA ? `${urgente.lead.name || 'Lead sem nome'} escreveu e espera resposta` : `Mais urgente que o Agora: ${urgente.lead.name || 'lead sem nome'}, ${CATEGORY_ONE[urgente.slug]}`}
       </p>
       <div className="mt-4 grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0">
