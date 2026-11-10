@@ -1,0 +1,5 @@
+# Fim de linha LF em todo arquivo de texto, também no Windows. O Git do
+# Windows troca por CRLF na hora de baixar os arquivos, e as varreduras que
+# leem o código como texto (marcaDoDia, professorRules, rotinaRules e outras)
+# passam a achar coisa a mais e falham, com o CI verde no Linux.
+* text=auto eol=lf
