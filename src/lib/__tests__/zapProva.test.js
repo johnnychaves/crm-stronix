@@ -3,8 +3,9 @@
 // linha de uma PESSOA da equipe, de hoje, prova o contato: a IA, a linha do
 // lead, a de ontem e a nota digitada na ficha não provam. A prova só mostra:
 // não conclui a tarefa nem acende o "Já interagido".
-import { describe, it, expect } from 'vitest';
-import { zapTeamLineToday, ZAP_SIGNAL_TYPE } from '../leads.js';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { zapTeamLineToday, ZAP_SIGNAL_TYPE, DAILY_GOAL_CATEGORIES } from '../leads.js';
+import { computeDailyGoalSlots, buildInteractionsByLead } from '../dailyGoal.js';
 
 // Segunda-feira, 09/11/2026, em horário local.
 const at = (h, m = 0, dias = 0) => new Date(2026, 10, 9 + dias, h, m);
@@ -49,5 +50,40 @@ describe('zapTeamLineToday', () => {
   it('sem lista ou sem o início do dia, null', () => {
     expect(zapTeamLineToday(undefined, HOJE)).toBeNull();
     expect(zapTeamLineToday([PESSOA], null)).toBeNull();
+  });
+});
+
+describe('computeDailyGoalSlots: zapProofToday', () => {
+  const NOW = at(15, 0);
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(NOW); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  // Contato de hoje às 16h, de um lead antigo: só a categoria Contato.
+  const CONTATO = {
+    id: 'l1', name: 'Carla Souza', status: 'Contato', consultantId: 'u1',
+    createdAt: new Date(2026, 9, 1), nextFollowUp: at(16), nextFollowUpType: 'Mensagem',
+  };
+  const processar = (interactions) =>
+    computeDailyGoalSlots([CONTATO], buildInteractionsByLead(interactions), 'u1', [90, 60, 30], 15, NOW)[0];
+
+  it('sem linha do Stronizap, o campo é null e o resto não muda (quem não usa o Stronizap)', () => {
+    const l = processar([]);
+    expect(l.categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.CONTATO_HOJE]);
+    expect(l.zapProofToday).toBeNull();
+    expect(l.categoryStatus[DAILY_GOAL_CATEGORIES.CONTATO_HOJE]).toBe(false);
+    expect(l.hasOtherActivityToday).toBe(false);
+  });
+
+  it('a linha da equipe vira prova, sem concluir a tarefa nem acender "Já interagido"', () => {
+    const l = processar([PESSOA]);
+    expect(l.zapProofToday).toBe(PESSOA);
+    expect(l.categoryStatus[DAILY_GOAL_CATEGORIES.CONTATO_HOJE]).toBe(false);
+    expect(l.hasOtherActivityToday).toBe(false);
+  });
+
+  it('a linha só da IA, só do lead ou de ontem não é prova', () => {
+    expect(processar([sinal('ia_enviou', at(14), { answering: true, byAi: true })]).zapProofToday).toBeNull();
+    expect(processar([sinal('lead_escreveu', at(14), { answering: false, text: 'Lead escreveu.' })]).zapProofToday).toBeNull();
+    expect(processar([sinal('pessoa_enviou', at(18, 0, -1), { answering: true, actorId: 'u1' })]).zapProofToday).toBeNull();
   });
 });
