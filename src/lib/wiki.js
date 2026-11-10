@@ -167,6 +167,7 @@ export const WIKI_ARTICLES = [
         'Mudar fase: move a pessoa no funil sem sair da ficha.',
         'Agendar: marca visita ou aula experimental.',
       ] },
+      { t: 'p', text: 'Quando a academia usa o Stronizap, a conversa pelo WhatsApp aparece sozinha no registro, num cartão por dia chamado “Conversa no Stronizap”: a hora em que o lead escreveu, com o começo da mensagem, e a hora da primeira mensagem da equipe e da IA naquele dia. O cartão entra no filtro Conversas. Sem o Stronizap, nada muda, e o registro continua sendo o que a equipe anota.' },
       { t: 'tip', text: 'Qualquer consultor pode registrar na linha do tempo de qualquer pessoa, mesmo não sendo o responsável, e também pode passar o lead ou o aluno para outro colega pelo campo Consultor, no Contexto comercial da Linha do tempo. A troca fica registrada na linha do tempo e quem recebeu é avisado no sino. Gestor e consultor também editam os dados e marcam venda ou perda. Excluir a ficha é só do gestor, e o professor só registra e agenda.' },
     ],
   },
@@ -198,6 +199,7 @@ export const WIKI_ARTICLES = [
         'Decida o próximo passo. Vai falar de novo? Reagende. Vem conhecer? Agende visita ou aula. Desistiu? Marque perda com o motivo.',
       ] },
       { t: 'p', text: 'Só some da lista o que teve desfecho. Uma tarefa que você abriu e não resolveu continua ali, porque continua pendente de verdade.' },
+      { t: 'p', text: 'Quando a academia usa o Stronizap e alguém da equipe já mandou mensagem para o lead hoje por lá, o bloco escuro com a tarefa da vez mostra, por exemplo, “Você respondeu às 14:40 pelo Stronizap” no lugar da pergunta “Conversou com…?”, e o Concluir contato mostra a mesma frase. A mensagem não conclui a tarefa: o próximo passo continua sendo escolhido no Concluir. Sem o Stronizap, a tela fica como sempre.' },
 
       { t: 'h', text: 'Prospecção e o Dia perfeito' },
       { t: 'p', text: 'Além das tarefas, existe um piso de prospecção: um mínimo de ações novas por dia. Conta agendar visita ou aula, registrar ligação ou mensagem e cadastrar lead novo.' },

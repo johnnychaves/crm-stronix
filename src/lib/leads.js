@@ -235,6 +235,26 @@ export const isZapSignalInteraction = (i) => i?.type === ZAP_SIGNAL_TYPE;
 // ao lado da marca do Stronizap.
 export const isAiInteraction = (i) => i?.byAi === true;
 
+// A prova do contato de hoje na Meta Diária (Parte B, PR 3): a linha de uma
+// PESSOA da equipe pelo Stronizap (signal 'pessoa_enviou', sem byAi), criada no
+// dia local de `todayStart`. A IA, a linha do lead e a de outro dia não contam.
+// Com mais de uma (fora do fuso de Brasília o dia local pode pegar duas), vale
+// a mais nova. A ponte guarda só a PRIMEIRA mensagem da equipe por lead e por
+// dia de Brasília, então a prova pode ser de outra pessoa e de antes da tarefa.
+export const zapTeamLineToday = (interactions, todayStart) => {
+  if (!(todayStart instanceof Date) || Number.isNaN(todayStart.getTime())) return null;
+  const start = todayStart.getTime();
+  const end = new Date(todayStart.getFullYear(), todayStart.getMonth(), todayStart.getDate() + 1).getTime();
+  let best = null;
+  (interactions || []).forEach((i) => {
+    if (!isZapSignalInteraction(i) || i.signal !== 'pessoa_enviou' || isAiInteraction(i)) return;
+    const t = i.createdAt instanceof Date ? i.createdAt.getTime() : NaN;
+    if (!(t >= start && t < end)) return;
+    if (!best || t > best.createdAt.getTime()) best = i;
+  });
+  return best;
+};
+
 // A interação é o registro do próprio cadastro, não um contato com a pessoa:
 // a observação do Novo lead ou o marco do cadastro pelo Stronizap.
 export const isRegistrationInteraction = (i) =>

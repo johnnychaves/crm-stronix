@@ -105,8 +105,12 @@ export function MetaFocoScreen({
   // não tira a pessoa da aba, aparece 1,5 s depois do clique. Visita e aula
   // não perguntam: o próximo passo é o desfecho. Lead sem telefone de contato
   // não abre nada, e aí não há o que perguntar.
+  // Com a prova do Stronizap no Agora (zapProofToday, Parte B) a pergunta não
+  // existe: ela não arma, e a que estava aberta sai. O AgoraCard leva o foco ao
+  // Concluir da faixa.
+  const prova = agora && !isAppt(agora.slug) ? agora.lead.zapProofToday || null : null;
   const [retorno, setRetorno] = useState(null);
-  if (retorno && retorno.key !== agoraKey) setRetorno(null);
+  if (retorno && (retorno.key !== agoraKey || prova)) setRetorno(null);
   useEffect(() => {
     if (!retorno || retorno.pronto) return undefined;
     const pronto = () => setRetorno((r) => (r && r.key === retorno.key ? { ...r, pronto: true } : r));
@@ -165,10 +169,10 @@ export function MetaFocoScreen({
   };
 
   const whatsapp = (lead) => {
-    if (onWhatsapp(lead) && agora && !isAppt(agora.slug)) setRetorno({ key: agora.key, via: 'whatsapp', pronto: false });
+    if (onWhatsapp(lead) && agora && !isAppt(agora.slug) && !prova) setRetorno({ key: agora.key, via: 'whatsapp', pronto: false });
   };
   const ligar = (lead) => {
-    if (onCall(lead) && agora && !isAppt(agora.slug)) setRetorno({ key: agora.key, via: 'ligacao', pronto: false });
+    if (onCall(lead) && agora && !isAppt(agora.slug) && !prova) setRetorno({ key: agora.key, via: 'ligacao', pronto: false });
   };
 
   // Concluir: as categorias com pop-up concluem nele; o Novo lead sai da tela

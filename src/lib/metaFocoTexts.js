@@ -210,3 +210,19 @@ export function focoTabs(entries, now, opts = {}) {
     };
   });
 }
+
+// A prova do contato de hoje pelo Stronizap (Parte B, PR 3), no bloco Agora e
+// no Concluir contato: "Você respondeu às 14:40 pelo Stronizap". "Você" quando
+// quem olha é quem enviou (o id do usuário, e o authUid de reserva), o primeiro
+// nome quando foi outra pessoa e "A equipe" quando a mensagem saiu sem autor,
+// pelo celular da academia. Quem puxou a conversa "escreveu". Sem prova, ''.
+export function zapProofText(proof, me) {
+  if (!proof) return '';
+  const mine = Boolean(
+    (proof.actorId && me?.id && proof.actorId === me.id)
+    || (proof.actorAuthUid && me?.authUid && proof.actorAuthUid === me.authUid)
+  );
+  const quem = mine ? 'Você' : (firstName(proof.consultantName) || 'A equipe');
+  const verbo = proof.answering === true ? 'respondeu' : 'escreveu';
+  return `${quem} ${verbo} às ${formatHourLabel(proof.createdAt)} pelo Stronizap`;
+}

@@ -2,9 +2,9 @@
 // LeadDetailsModal para serem compartilhados pela nova LeadProfileView.
 // Sem React state — só apresentação/classificação/parse de interactions.
 
-import { monthKeyOf, monthLabel } from './operacional/month.js';
+import { dayKeyOf, monthKeyOf, monthLabel } from './operacional/month.js';
 import { parseValorBRL } from './format.js';
-import { ZAP_SIGNUP_TYPE, ZAP_SIGNAL_TYPE, ZAP_VIA, isAiInteraction } from './leads.js';
+import { ZAP_SIGNUP_TYPE, ZAP_SIGNAL_TYPE, ZAP_VIA, isAiInteraction, isZapSignalInteraction } from './leads.js';
 
 // Troca de responsável feita pelo cadastro completo da ficha: status_change
 // com dois colchetes, "Responsável alterado de [Ana] para [Bruno]."
@@ -51,6 +51,99 @@ export const timelineStamp = (date) => {
   const d = validDate(date);
   if (!d) return '';
   return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+};
+
+// ---- Cartão do dia do Stronizap (Parte B, PR 3, desenho B) ----
+// A ponte grava no máximo uma linha por tipo (lead, equipe, IA), por lead e por
+// dia de Brasília, com o dia no fim do id: zap-<lead>-<AAAA-MM-DD>-<lead|equipe|ia>
+// (signalLineId, em api/_zapSignal.js). A tela junta as linhas do mesmo dia num
+// cartão só. O dado continua sendo uma linha por tipo.
+const ZAP_SIGNAL_DAY_RE = /-(\d{4}-\d{2}-\d{2})-(?:lead|equipe|ia)$/;
+
+// O dia do cartão: o do id, que é o de Brasília. A linha sem esse id (de teste
+// ou de outro formato) cai no dia local da hora gravada. Sem os dois, null.
+export const zapSignalDayOf = (i) => {
+  const m = ZAP_SIGNAL_DAY_RE.exec(String(i?.id || ''));
+  if (m) return m[1];
+  const d = validDate(i?.createdAt);
+  return d ? dayKeyOf(d) : null;
+};
+
+// "8 min depois", "menos de 1 min depois", "1h depois" ou "2h05 depois".
+export const zapReplyDelayText = (ms) => {
+  const m = Math.round(ms / 60000);
+  if (m < 1) return 'menos de 1 min depois';
+  if (m < 60) return `${m} min depois`;
+  const r = m % 60;
+  return `${Math.floor(m / 60)}h${r ? pad2(r) : ''} depois`;
+};
+
+// O trecho da mensagem do lead, que a ponte grava dentro do texto, entre aspas
+// curvas ('Lead escreveu: “oi”', signalText em api/_zapSignal.js). Sem trecho, null.
+const zapLeadQuote = (text) => {
+  const m = /“([\s\S]*)”\s*$/.exec(String(text || ''));
+  const q = m ? m[1].trim() : '';
+  return q ? `“${q}”` : null;
+};
+
+// O rótulo de uma linha, lido dos campos e não do texto gravado.
+export const zapSignalLabel = (i) => {
+  if (i?.signal === 'lead_escreveu') return 'Lead escreveu';
+  const verbo = i?.answering === true ? 'Resposta' : 'Mensagem';
+  if (i?.signal === 'ia_enviou') return `${verbo} da IA`;
+  const quem = String(i?.consultantName || '').trim();
+  return `${verbo} ${quem ? `de ${quem}` : 'da equipe'}`;
+};
+
+// As linhas de dentro do cartão, da mais nova para a mais antiga: { id, time,
+// label, extra }. O extra é o trecho do lead ou, na resposta de uma pessoa a
+// quem esperava, há quanto tempo o lead tinha escrito. A ponte guarda só a
+// PRIMEIRA mensagem do lead no dia, então o tempo conta dela, e não da última
+// antes da resposta.
+export const zapDayRows = (rows) => {
+  const list = (rows || [])
+    .filter((r) => validDate(r?.createdAt))
+    .slice()
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  const leadRow = list.filter((r) => r.signal === 'lead_escreveu').at(-1) || null;
+  return list.map((r) => {
+    let extra = null;
+    if (r.signal === 'lead_escreveu') extra = zapLeadQuote(r.text);
+    else if (r.signal === 'pessoa_enviou' && r.answering === true && leadRow && leadRow.createdAt <= r.createdAt) {
+      extra = zapReplyDelayText(r.createdAt.getTime() - leadRow.createdAt.getTime());
+    }
+    return { id: r.id, time: `${pad2(r.createdAt.getHours())}:${pad2(r.createdAt.getMinutes())}`, label: zapSignalLabel(r), extra };
+  });
+};
+
+// Troca as linhas de sinal de cada dia por um cartão: { id: 'zapdia-<dia>',
+// type: 'zap_signal', _kind: 'conversation', _zapDay: true, createdAt (o da
+// linha mais nova), rows }. O cartão fica no lugar da linha mais nova do dia,
+// e o resto não muda de lugar. Recebe e devolve a lista na ordem da tela (a
+// mais nova primeiro). Sem linha de sinal, devolve a MESMA lista, e a ficha
+// fica como era. O type fica no cartão para o lastRecordOf o descartar.
+export const groupZapSignalDays = (list) => {
+  const dayOf = (i) => (isZapSignalInteraction(i) ? zapSignalDayOf(i) : null);
+  const byDay = new Map();
+  (list || []).forEach((i) => {
+    const day = dayOf(i);
+    if (!day) return;
+    if (!byDay.has(day)) byDay.set(day, []);
+    byDay.get(day).push(i);
+  });
+  if (byDay.size === 0) return list;
+  const time = (i) => validDate(i?.createdAt)?.getTime() ?? 0;
+  const placed = new Set();
+  const out = [];
+  list.forEach((i) => {
+    const day = dayOf(i);
+    if (!day) { out.push(i); return; }
+    if (placed.has(day)) return;
+    placed.add(day);
+    const rows = byDay.get(day).slice().sort((a, b) => time(b) - time(a));
+    out.push({ id: `zapdia-${day}`, type: ZAP_SIGNAL_TYPE, _kind: 'conversation', _zapDay: true, createdAt: rows[0].createdAt, rows });
+  });
+  return out;
 };
 
 // Textos do marco de início do lead cadastrado pelo Stronizap (modelo C da

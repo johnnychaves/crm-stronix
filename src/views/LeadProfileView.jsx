@@ -72,7 +72,8 @@ import {
   TIMELINE_FILTERS,
   TIMELINE_SYSTEM_KIND,
   originLastOnTies,
-  isAppointmentReschedule
+  isAppointmentReschedule,
+  groupZapSignalDays
 } from '../lib/timeline.js';
 import { ArrowLeft, Award, Cake, Clock, FileText, Handshake, IdCard, MessageCircle, Pencil, Phone, RotateCcw, Search, TrendingUp } from 'lucide-react';
 
@@ -891,11 +892,19 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     return timelineVisible.filter(i => `${i.text || ''} ${i.consultantName || ''}`.toLowerCase().includes(q));
   })();
 
+  // Cartão do dia (Parte B, desenho B): as linhas do Stronizap de um mesmo dia
+  // viram um bloco só. Só para a tela, e depois da busca: interactionsWithClass,
+  // o último registro, as transições e a origem do desfecho seguem com as
+  // linhas gravadas. As pílulas e o "N registros" do mês contam o cartão como
+  // um; o número da aba continua contando linhas. Sem linha do Stronizap, a
+  // lista é a mesma.
+  const timelineShown = groupZapSignalDays(timelineSearched);
+
   const timelineCounts = Object.fromEntries(
-    TIMELINE_FILTERS.map(f => [f.id, timelineSearched.filter(i => matchesTimelineFilter(i._kind, f.id)).length])
+    TIMELINE_FILTERS.map(f => [f.id, timelineShown.filter(i => matchesTimelineFilter(i._kind, f.id)).length])
   );
 
-  const filteredInteractions = timelineSearched.filter(i => matchesTimelineFilter(i._kind, timelineFilter));
+  const filteredInteractions = timelineShown.filter(i => matchesTimelineFilter(i._kind, timelineFilter));
 
   const groupedEvents = groupTimeline(filteredInteractions);
 

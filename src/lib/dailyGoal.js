@@ -13,6 +13,7 @@ import {
   isTaskOwnerGoalCategory,
   isClientLead,
   isZapSignalInteraction,
+  zapTeamLineToday,
   APPOINTMENT_GOAL_CATEGORIES
 } from './leads.js';
 import { getSafeDateOrNull, normalizeAppointmentType } from './dates.js';
@@ -352,7 +353,10 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
         categories: [],
         categorySlugs: [],
         categoryStatus: {},
-        hasOtherActivityToday: hasActiveInteractionToday(lead, leadInteractions(lead.id), todayStart)
+        hasOtherActivityToday: hasActiveInteractionToday(lead, leadInteractions(lead.id), todayStart),
+        // A prova do contato de hoje pelo Stronizap (Parte B): só mostra, não
+        // conclui nada. O bloco Agora e o Concluir contato a leem.
+        zapProofToday: zapTeamLineToday(leadInteractions(lead.id), todayStart)
       });
     }
     const entry = allTargetLeadsMap.get(lead.id);

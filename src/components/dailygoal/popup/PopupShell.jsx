@@ -14,7 +14,10 @@ import { POPUP_FIELD } from './popupKit.js';
 
 const LABEL = 'mb-2 block text-[13px] font-semibold text-foreground';
 
-export function PopupShell({ title, lead, context, chip = null, busy = false, onClose, hint = '', actions, children }) {
+// `proof`: uma linha opcional entre a faixa do lead e o corpo, só para ler
+// (sem role e sem foco). Hoje só o Concluir contato a usa, com a prova do
+// contato pelo Stronizap (Parte B).
+export function PopupShell({ title, lead, context, chip = null, proof = null, busy = false, onClose, hint = '', actions, children }) {
   const contentRef = useRef(null);
   return (
     <Dialog open onOpenChange={(next) => { if (!next && !busy) onClose?.(); }}>
@@ -49,6 +52,7 @@ export function PopupShell({ title, lead, context, chip = null, busy = false, on
             </span>
           )}
         </div>
+        {proof && <div className="mx-5 mt-2.5">{proof}</div>}
         <div className="grid gap-[18px] overflow-y-auto px-5 pb-1.5 pt-[18px]">{children}</div>
         <div className="flex flex-wrap items-center gap-3 px-5 pb-[18px] pt-4">
           {/* Existe desde o começo, para o leitor de tela ler o que falta quando muda. */}

@@ -8,7 +8,9 @@ import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, goalOwnerFields } fro
 import { overdueDaysOf } from '../lib/dailyGoal.js';
 import { dayRefText, whenFromPreset, whenInstant, whenProblem } from '../lib/whenPicker.js';
 import { useToast } from '../contexts/ToastContext.jsx';
-import { MotivoField, PopupButton, PopupShell } from '../components/dailygoal/popup/PopupShell.jsx';
+import { MotivoField, PopupButton, PopupNote, PopupShell } from '../components/dailygoal/popup/PopupShell.jsx';
+import { StronizapBadge } from '../components/brand/StronizapMark.jsx';
+import { zapProofText } from '../lib/metaFocoTexts.js';
 import { OutcomeCards } from '../components/dailygoal/popup/OutcomeCards.jsx';
 import { WhenPicker } from '../components/dailygoal/popup/WhenPicker.jsx';
 
@@ -69,6 +71,10 @@ function ContactOutcomeModal({ onClose, lead, categorySlug = DAILY_GOAL_CATEGORI
   const motivoTrimmed = motivo.trim();
   const categoryLabel = DAILY_GOAL_CATEGORY_LABEL[categorySlug] || 'Contato';
   const reagendar = outcome === OUTCOMES.REAGENDAR;
+  // A prova do contato de hoje pelo Stronizap (zapProofToday, de
+  // computeDailyGoalSlots), embaixo de quem é o lead. Só mostra: nada aqui
+  // muda o que o pop-up grava.
+  const prova = zapProofText(lead?.zapProofToday, appUser);
   const hint = !reagendar ? ''
     : whenProblem(when, nowMs, { fromTomorrow: true }) ? 'Escolha um dia a partir de amanhã.'
       : !motivoTrimmed ? 'Escreva o motivo do reagendamento.' : '';
@@ -128,6 +134,11 @@ function ContactOutcomeModal({ onClose, lead, categorySlug = DAILY_GOAL_CATEGORI
       title="Concluir contato"
       lead={lead}
       context={contextOf(lead, categorySlug, new Date(nowMs))}
+      proof={prova ? (
+        <PopupNote tone="ok" icon={Check}>
+          {prova} <StronizapBadge className="ml-0.5 inline-grid align-[-4px]" />
+        </PopupNote>
+      ) : null}
       busy={submitting}
       onClose={onClose}
       hint={hint}
