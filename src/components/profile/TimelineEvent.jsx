@@ -18,6 +18,7 @@ import { AiBadge } from '../brand/AiBadge.jsx';
 import { StronizapBadge } from '../brand/StronizapMark.jsx';
 import { TimelineAuthor } from './TimelineAuthor.jsx';
 import { ZapSignupMarker } from './ZapSignupMarker.jsx';
+import { ZapDayCard } from './ZapDayCard.jsx';
 
 // Uma linha do registro da ficha, no desenho A2: o carimbo à esquerda, um nó
 // numa régua vertical e, à direita, o tipo e o autor no cabeçalho com o corpo
@@ -171,7 +172,11 @@ export function TimelineEvent({ i, statuses, stageTransitions, outcomeOrigin, fl
   let body = null;
   let stageTone = null;
 
-  if (i._kind === 'status' && stageName) {
+  if (i._zapDay) {
+    // Cartão do dia do Stronizap (groupZapSignalDays, em lib/timeline.js): as
+    // linhas do dia num bloco só, sem o cabeçalho de tipo e autor.
+    body = <ZapDayCard rows={i.rows} />;
+  } else if (i._kind === 'status' && stageName) {
     // Mudança de fase: dois chips e a duração na etapa anterior. O nó leva a
     // cor da etapa de destino.
     stageTone = getTone(phaseToneName(stageName, statuses));
@@ -275,12 +280,14 @@ export function TimelineEvent({ i, statuses, stageTransitions, outcomeOrigin, fl
         <node.Icon size={14} aria-hidden="true" />
       </div>
       <div className="min-w-0 pt-[3px]">
-        <div className="flex flex-wrap items-baseline gap-x-2">
-          <span className="text-[13.5px] font-semibold">{typeLabel}</span>
-          <div className="min-w-0 max-w-[220px]">
-            <TimelineAuthor author={author} zapTitle={zapTitle} ai={zapAi} />
+        {!i._zapDay && (
+          <div className="flex flex-wrap items-baseline gap-x-2">
+            <span className="text-[13.5px] font-semibold">{typeLabel}</span>
+            <div className="min-w-0 max-w-[220px]">
+              <TimelineAuthor author={author} zapTitle={zapTitle} ai={zapAi} />
+            </div>
           </div>
-        </div>
+        )}
         {body}
       </div>
     </article>

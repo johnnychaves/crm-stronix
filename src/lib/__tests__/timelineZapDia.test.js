@@ -2,6 +2,9 @@
 // zap_signal de um dia viram um bloco só, só na tela: o dado continua sendo
 // uma linha por tipo. Aqui ficam as funções puras de lib/timeline.js.
 import { describe, it, expect } from 'vitest';
+import { createElement as h } from 'react';
+import { renderToString } from 'react-dom/server';
+import { TimelineEvent } from '../../components/profile/TimelineEvent.jsx';
 import {
   classifyInteraction, groupZapSignalDays, zapDayRows, zapSignalDayOf, zapReplyDelayText, zapSignalLabel,
 } from '../timeline.js';
@@ -134,5 +137,35 @@ describe('groupZapSignalDays', () => {
     const lista = classificar([EQUIPE, LEAD, cedo]);
     expect(lastRecordOf(lista)?.id).toBe('n0');
     expect(lastRecordOf(groupZapSignalDays(lista))?.id).toBe('n0');
+  });
+});
+
+describe('TimelineEvent: o cartão do dia', () => {
+  const cartao = () => groupZapSignalDays(classificar([EQUIPE, IA, LEAD]))[0];
+  const desenhar = (i) => renderToString(h(TimelineEvent, { i, statuses: [], stageTransitions: {}, outcomeOrigin: {} }));
+
+  it('régua, nó de conversa e o carimbo da linha mais nova, com id para o histórico', () => {
+    const out = desenhar(cartao());
+    expect(out).toContain('id="ev-zapdia-2026-11-09"');
+    expect(out).toContain('tabindex="-1"');
+    expect(out).toContain('>09/11 14:40<');
+    expect(out).toContain('border-emerald-300');
+  });
+
+  it('título com a marca e as linhas, sem o cabeçalho de tipo e autor', () => {
+    const out = desenhar(cartao());
+    expect(out).toContain('Conversa no Stronizap');
+    expect(out).toContain('<b class="font-semibold">Resposta de Ana Souza</b> · 8 min depois');
+    expect(out).toContain('<b class="font-semibold">Resposta da IA</b>');
+    expect(out).toContain('<b class="font-semibold">Lead escreveu</b> · “Oi, queria saber o valor da musculação”');
+    expect(out).not.toContain('>WhatsApp<');
+    expect(out).not.toContain('Ver no Stronizap');
+    expect(out).not.toMatch(/[—–]/);
+  });
+
+  it('a linha solta de um sinal, fora do cartão, segue como no PR 1', () => {
+    const out = desenhar({ ...EQUIPE, _kind: classifyInteraction(EQUIPE) });
+    expect(out).toContain('>WhatsApp<');
+    expect(out).toContain('Resposta de Ana Souza.');
   });
 });
