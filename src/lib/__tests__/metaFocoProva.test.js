@@ -136,10 +136,48 @@ describe('Meta: a prova do Stronizap no bloco Agora', () => {
     expect(document.activeElement).toBe(button('Concluir', faixa()));
   });
 
-  it('o Novo lead com prova conclui pelo caminho de sempre', () => {
-    render({ leads: [comProva(NOVO)], now: NOW });
-    click(button('Concluir', faixa()));
-    expect(handlers.onOutcomePopup).toHaveBeenCalledWith(expect.objectContaining({ id: 'n' }), 'novo_24h');
+  it('a pergunta aberta para um lead não leva o foco ao Concluir de outro lead que chega com prova', () => {
+    const DAVI = lead('d', 'Davi Contato', 'contato_hoje', { nextFollowUp: at(18, 30), nextFollowUpType: 'Mensagem' });
+    render({ leads: [CONTATO], now: NOW });
+    click(button('WhatsApp', agora()));
+    mudarAba('hidden');
+    mudarAba('visible');
+    expect(pergunta()).not.toBeNull();
+    // A Carla sai do Agora (concluída em outra aba) e o Davi entra já com prova.
+    render({ leads: [comProva(DAVI)], now: NOW });
+    expect(agora().querySelector('h2').textContent).toBe('Davi Contato');
+    expect(pergunta()).toBeNull();
+    expect(document.activeElement).not.toBe(button('Concluir', faixa()));
+  });
+
+  describe('o Novo lead com prova conclui pelo caminho de sempre', () => {
+    beforeEach(() => { vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }); });
+    afterEach(() => { vi.useRealTimers(); });
+    const aviso = () => button('Desfazer')?.parentElement || null;
+    const nome = () => agora()?.querySelector('h2')?.textContent;
+
+    it('o aviso com Desfazer aparece e a gravação sai depois de 6 segundos', () => {
+      render({ leads: [comProva(NOVO), CONTATO], now: NOW });
+      click(button('Concluir', faixa()));
+      expect(handlers.onOutcomePopup).toHaveBeenCalledWith(expect.objectContaining({ id: 'n' }), 'novo_24h');
+      expect(nome()).toBe('Carla Contato');
+      expect(aviso().textContent).toContain('Tarefa de Nina Nova concluída.');
+      act(() => { vi.advanceTimersByTime(5900); });
+      expect(handlers.onConclude).not.toHaveBeenCalled();
+      act(() => { vi.advanceTimersByTime(100); });
+      expect(handlers.onConclude).toHaveBeenCalledWith(expect.objectContaining({ id: 'n' }), 'novo_24h', '', { quiet: true });
+      expect(aviso()).toBeNull();
+    });
+
+    it('Desfazer traz a tarefa de volta ao Agora, sem gravar', () => {
+      render({ leads: [comProva(NOVO), CONTATO], now: NOW });
+      click(button('Concluir', faixa()));
+      click(button('Desfazer'));
+      act(() => { vi.advanceTimersByTime(10000); });
+      expect(handlers.onConclude).not.toHaveBeenCalled();
+      expect(nome()).toBe('Nina Nova');
+      expect(aviso()).toBeNull();
+    });
   });
 
   it('visita com linha da equipe continua no desfecho, sem faixa', () => {

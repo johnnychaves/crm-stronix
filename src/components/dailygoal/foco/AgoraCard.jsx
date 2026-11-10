@@ -67,14 +67,16 @@ export const AgoraCard = forwardRef(function AgoraCard(
   const prova = isAppt ? null : (lead.zapProofToday || null);
   const temProva = Boolean(prova);
   const provaRef = useRef(null);
-  const perguntava = useRef(retorno);
+  // A chave da tarefa da pergunta: o AgoraCard não tem key por tarefa, e a
+  // pergunta aberta para um lead não pode levar o foco ao Concluir de outro.
+  const perguntava = useRef(retorno ? entry.key : null);
   useEffect(() => {
     // A prova chegou com a pergunta na tela: o "Sim" sumiu com o foco, que vai
     // para o Concluir da faixa. Em efeito, porque ref não se escreve no render.
     const solto = !document.activeElement || document.activeElement === document.body;
-    if (perguntava.current && !retorno && temProva && solto) provaRef.current?.focus();
-    perguntava.current = retorno;
-  }, [retorno, temProva]);
+    if (perguntava.current === entry.key && !retorno && temProva && solto) provaRef.current?.focus();
+    perguntava.current = retorno ? entry.key : null;
+  }, [retorno, temProva, entry.key]);
   const apptAt = isAppt ? getLeadAppointmentDate(lead) : null;
   const hora = isAppt ? apptAt : (slug === C.CONTATO_HOJE ? lead.nextFollowUp : null);
   const passou = Boolean(apptAt && apptAt < now);
