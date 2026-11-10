@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FOCO_ESPERA, faixaFor, inFoco, isAppt, pendingEntries, pickAgora, rankFoco, withSkipped } from '../../../lib/metaFoco.js';
+import { FOCO_ESPERA, esperaDispensaKey, faixaEspera, faixaFor, inFoco, isAppt, pendingEntries, pickAgora, rankFoco, withSkipped } from '../../../lib/metaFoco.js';
 import { dgDateKey } from '../../../lib/dailyGoal.js';
 import { getLeadAppointmentDate } from '../../../lib/leads.js';
 import { CATEGORY_ONE, FOCO_LABEL, factsOf, focoTabs, morningText, urgentText, whyOf } from '../../../lib/metaFocoTexts.js';
@@ -100,7 +100,10 @@ export function MetaFocoScreen({
     const t = setTimeout(() => setSegurando(false), HOLD_AFTER_PAUSE_MS);
     return () => clearTimeout(t);
   }, [segurando]);
-  const urgente = segurando ? null : faixaFor(list, agora, dispensadas);
+  // A faixa de sempre (classes 0 e 1) vem primeiro. Sem ela, a da espera com
+  // 30 minutos de expediente (faixaEspera). As duas olham a lista já recortada
+  // pelo "Foco em".
+  const urgente = segurando ? null : (faixaFor(list, agora, dispensadas) || faixaEspera(list, agora, dispensadas, now));
 
   // A pergunta "Conversou com…?" na volta do contato. Depois do WhatsApp, ela
   // aparece quando a aba volta a ficar visível ou a janela volta a ter o foco
@@ -167,7 +170,10 @@ export function MetaFocoScreen({
     // A faixa some com o botão em que o foco estava.
     focusAgora.current = true;
     const map = new Map(dispensadas || []);
-    map.set(urgente.key, urgente.klass);
+    // A espera guarda a chave com o instante da marca: a próxima espera do
+    // mesmo lead no dia volta a avisar.
+    if (urgente.slug === FOCO_ESPERA) map.set(esperaDispensaKey(urgente), 'espera');
+    else map.set(urgente.key, urgente.klass);
     setDispensa({ day: today, map });
   };
 
@@ -242,6 +248,7 @@ export function MetaFocoScreen({
           <FaixaUrgente
             texto={urgentText(urgente, now)}
             passou={urgente.klass === 0}
+            espera={urgente.slug === FOCO_ESPERA}
             onIr={irAgora}
             onDepois={agoraNao}
           />

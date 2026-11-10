@@ -182,3 +182,55 @@ describe('a espera no Agora', () => {
     expect(agoraName()).not.toBe('Bruna Espera');
   });
 });
+
+describe('a faixa da espera', () => {
+  it('com 42 minutos avisa em laranja, sem trocar o Agora', () => {
+    render({ leads: LEADS, esperas: esperasDe([BRUNA]), now: NOW });
+    expect(agoraName()).toBe('Ana Critica');
+    expect(faixa().textContent).toContain('Bruna escreveu há 42 min e ninguém respondeu');
+    expect(faixa().className).toContain('bg-accent-50');
+    expect(faixa().className).not.toContain('bg-rose-50');
+    expect(host.textContent).toContain('Mais urgente que o Agora: Bruna Espera, Respondeu, aguardando você');
+  });
+
+  it('com 29 minutos ainda não', () => {
+    const cedo = { ...BRUNA, awaitingReplySince: new Date(NOW.getTime() - 29 * MIN) };
+    render({ leads: LEADS, esperas: esperasDe([cedo]), now: NOW });
+    expect(faixa()).toBeNull();
+  });
+
+  it('"Ir agora" traz a espera para o Agora', () => {
+    render({ leads: LEADS, esperas: esperasDe([BRUNA]), now: NOW });
+    click(button('Ir agora'));
+    expect(agoraName()).toBe('Bruna Espera');
+    expect(faixa()).toBeNull();
+  });
+
+  it('"Agora não" esconde, e a espera nova do mesmo lead volta a avisar', () => {
+    render({ leads: LEADS, esperas: esperasDe([BRUNA]), now: NOW });
+    click(button('Agora não'));
+    expect(faixa()).toBeNull();
+    render({ leads: LEADS, esperas: esperasDe([BRUNA], at(14, 40)), now: at(14, 40) });
+    expect(faixa()).toBeNull();
+    // A Bruna foi respondida e escreveu de novo às 14:00: marca nova.
+    const deNovo = { ...BRUNA, awaitingReplySince: at(14, 0) };
+    render({ leads: LEADS, esperas: esperasDe([deNovo], at(14, 40)), now: at(14, 40) });
+    expect(faixa().textContent).toContain('Bruna escreveu há 40 min e ninguém respondeu');
+  });
+
+  it('com o "Foco em" em Atrasados, não avisa', () => {
+    render({ leads: LEADS, esperas: esperasDe([BRUNA]), now: NOW, startFoco: 'atrasado' });
+    expect(faixa()).toBeNull();
+  });
+
+  it('a faixa de sempre vem antes da da espera', () => {
+    // O Agora é a Ana desde as 14:32, com a faixa da espera. Às 15:45 a visita
+    // das 17h vence em 75 minutos e a faixa de sempre toma o lugar. Montar
+    // direto às 15:45 poria a visita no Agora, e aí não haveria faixa.
+    render({ leads: LEADS, esperas: esperasDe([BRUNA]), now: NOW });
+    expect(faixa().textContent).toContain('Bruna escreveu');
+    render({ leads: LEADS, esperas: esperasDe([BRUNA], at(15, 45)), now: at(15, 45) });
+    expect(agoraName()).toBe('Ana Critica');
+    expect(faixa().textContent).toContain('Bruno chega em 1h15');
+  });
+});
