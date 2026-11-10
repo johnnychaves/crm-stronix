@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { faixaFor, inFoco, isAppt, pendingEntries, pickAgora, rankFoco, withSkipped } from '../../../lib/metaFoco.js';
+import { FOCO_ESPERA, faixaFor, inFoco, isAppt, pendingEntries, pickAgora, rankFoco, withSkipped } from '../../../lib/metaFoco.js';
 import { dgDateKey } from '../../../lib/dailyGoal.js';
 import { getLeadAppointmentDate } from '../../../lib/leads.js';
 import { CATEGORY_ONE, FOCO_LABEL, factsOf, focoTabs, morningText, urgentText, whyOf } from '../../../lib/metaFocoTexts.js';
@@ -38,16 +38,19 @@ const WHATSAPP_LEAVE_MS = 5000;
 const prazoViraODia = () => dgDateKey(new Date(Date.now() + DESFAZER_MS)) !== dgDateKey(new Date());
 
 export function MetaFocoScreen({
-  strip, processedLeads, now, sla, renewalCheckpoints, meId, foco, onFoco,
+  strip, processedLeads, esperas = NONE, now, sla, renewalCheckpoints, meId, foco, onFoco,
   totalSlots, doneSlots, volume, perfectDay, tomorrow, aside,
   onOutcome, onReschedule, onPostpone, onOutcomePopup, onConclude, onWhatsapp, onCall,
 }) {
   const aviso = useConcluirComDesfazer();
   const opts = useMemo(() => ({ sla, renewalCheckpoints }), [sla, renewalCheckpoints]);
+  // As tarefas da meta e as esperas ("Respondeu, aguardando você", calculadas
+  // na DailyGoalView por metaEspera.js), numa fila só. A espera não conta no
+  // total do dia: só entra na ordem.
   const entries = useMemo(() => {
     const fora = new Set(aviso.escondidas);
-    return pendingEntries(processedLeads).filter((e) => !fora.has(e.key));
-  }, [processedLeads, aviso.escondidas]);
+    return [...pendingEntries(processedLeads), ...esperas].filter((e) => !fora.has(e.key));
+  }, [processedLeads, esperas, aviso.escondidas]);
   const tabs = useMemo(() => focoTabs(entries, now, opts), [entries, now, opts]);
   // Pular e "Agora não" valem só no dia: a chave da tarefa (lead e categoria)
   // se repete no dia seguinte, e a aba fica aberta de um dia para o outro.
@@ -221,10 +224,11 @@ export function MetaFocoScreen({
   } : null);
 
   const fila = agora ? list.filter((e) => e.key !== agora.key) : [];
-  const morning = doneSlots === 0 ? morningText(entries) : '';
+  const morning = doneSlots === 0 ? morningText(entries.filter((e) => e.slug !== FOCO_ESPERA)) : '';
 
   let body;
-  if (totalSlots === 0) body = <MetaVazia />;
+  // Sem tarefa da meta, a espera ainda precisa aparecer.
+  if (totalSlots === 0 && esperas.length === 0) body = <MetaVazia />;
   else if (entries.length === 0) body = <DiaFechado doneSlots={doneSlots} volume={volume} perfectDay={perfectDay} tomorrow={tomorrow} />;
   else if (!agora) body = <FocoVazio label={FOCO_LABEL[foco]} onAll={showAll} />;
   else {
@@ -258,7 +262,7 @@ export function MetaFocoScreen({
           onRetornoSim={retornoSim}
           onRetornoNao={retornoNao}
         />
-        <FilaDepois items={fila} sla={sla} onPick={pick} whyOf={(e) => whyOf(e, now, opts)} />
+        <FilaDepois items={fila} sla={sla} onPick={pick} whyOf={(e) => whyOf(e, now, opts)} comEspera={esperas.length > 0} />
       </>
     );
   }
