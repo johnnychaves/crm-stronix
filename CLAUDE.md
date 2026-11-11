@@ -680,6 +680,21 @@ O trabalho feito e a saúde da base de clientes, por mês de competência. Spec 
 - **Quem vence no mês** desenha um quadrado por contrato, pintado pelo desfecho; acima de 300 contratos (`UNITS_MAX`) vira uma barra. **Por que saem** são duas roscas, cancelamentos (da academia) e "não vão renovar" (da carteira, quando há pessoa filtrada), com a mesma cor por motivo nas duas (`reasonColor`, paleta validada contra daltonismo; "Outro" e motivo fora da lista ficam em cinza). Quem saiu sem motivo gravado vira a fatia "Sem motivo", para o anel fechar com o número do centro.
 - **O marco mais esquecido** (`forgottenMilestone`) é o de menor taxa entre os marcos com cliente, quando ela fica abaixo de 70%.
 
+## Acerto da base com a Next Fit
+
+`scripts/sync-clientes-next-fit.js` compara duas exportações da Next Fit (lista de clientes e relatório de contratos a vencer) com os leads de uma academia. Spec em `docs/superpowers/specs/2026-11-11-motor-acerto-base-next-fit-design.md`, plano em `docs/superpowers/plans/2026-11-11-motor-acerto-base-next-fit.md`. As regras moram em `src/lib/nextFitSync.js`, com teste. Rodou na STRONIX em 11/11/2026: etapa 1 completou CPF e nascimento de 65 fichas, e etapa 2 registrou 39 matrículas (19 cadastros novos).
+
+- **Só grava com `--apply --etapa=N`.** Sem isso é relatório. Etapa 1 completa CPF e nascimento vazios de quem já é cliente. Etapa 2 cria as matrículas que faltam. O tenant é obrigatório e a credencial de administrador vem do `.env.local` do checkout principal, pelo `node --env-file`.
+- **Casamento:** CPF, depois telefone (`zapMatchKey`) com o mesmo primeiro nome, depois nome completo único. Homônimo vira ambíguo e nada é gravado nele, e na ficha do Stronilead vale o cliente. CPF diferente do da ficha é conflito e também não grava.
+- **O contrato do relatório vai para o aluno ativo** entre homônimos, porque o relatório só traz contrato vigente. Dois ativos com o mesmo nome continuam ambíguos.
+- **O dono do cadastro novo** sai do consultor da lista de clientes ou do relatório, ligado ao usuário pelo `resolveByName`: a Next Fit escreve o nome completo ("Ana Julia Kubiczewski dos Santos") e o Stronilead guarda o curto ("Ana Júlia"). Casa o nome igual, ou o único usuário de duas palavras ou mais todas presentes no nome completo. Sem candidato único, o cadastro nasce sem dono. Ficha que já existe mantém o dono.
+- **O contrato da etapa 2 nasce marcado como importado** (`importSource` e `importBatchId`, como na importação de clientes), para não entrar como venda nos painéis. Conferido em 11/11/2026 com a regra real do Gerencial: nenhum dos 39 entrou nas vendas de novembro. Não leva `renewedFromId`.
+- **A tabela de planos liga a descrição do contrato da Next Fit a um plano do catálogo.** Valores: id do plano, `__skip__` (não cria contrato) ou `__text__`. O script recusa a etapa 2 enquanto sobrar descrição usada sem ligação.
+- **A gravação usa a hora da leitura como precondição** (`lastUpdateTime`), em lotes, e guarda a cópia do estado anterior antes de gravar. Rodar de novo não grava nada: quem foi acertado sai das listas.
+- **Planilha e relatório levam nome e telefone.** Ficam em `~/Backups/next-fit-sync/`, fora do repositório, assim como a cópia de segurança de cada etapa. Nunca versionar.
+- **As planilhas são lidas sem `cellDates`.** Com `cellDates` o SheetJS desloca datas antigas no fuso de São Paulo. A data chega como número serial e o `parseImportDate` a converte.
+- **A etapa 1 recalcula os campos de busca** (`buildLeadSearchFields`) quando grava o CPF. Em 3 fichas isso aparou um espaço no fim do `nameLower`, o que é inofensivo.
+
 ## Proteção de erro fora do conteúdo
 
 O `AppErrorBoundary` envolve só o conteúdo da tela (a key sai do `screenKey`, ver "Endereço de cada tela"). O que o `App.jsx` monta fora dele tem proteção própria, em `src/components/ErrorBoundary.jsx`, porque um erro de render sem proteção desmonta a raiz do React e a página fica toda branca. Em 2026-09-25 foi assim no Novo lead com indicação e no título do cabeçalho (Sentry STRONILEAD-8 e STRONILEAD-6).
