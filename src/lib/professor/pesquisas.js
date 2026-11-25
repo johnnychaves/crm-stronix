@@ -123,3 +123,13 @@ export function npsDoCiclo({ pesquisas, totais, professorId, ciclo, meta = 9 }) 
   });
   return { itens, ...npsDoAno(itens.map((i) => i.resultado), { meta }), promotores: pct(promotores, respostas) };
 }
+
+// A pesquisa em curso com as respostas e a turma de todos os professores, para
+// o cartão da lista de professores. Null sem pesquisa aberta.
+export function resumoDaPesquisa(pesquisas, totais, hoje) {
+  const pesquisa = pesquisaEmCurso(pesquisas, hoje);
+  if (!pesquisa) return null;
+  const respostas = (totais || []).filter((t) => t.pesquisaId === pesquisa.id).reduce((a, t) => a + (Number(t.respostas) || 0), 0);
+  const turma = Object.values(pesquisa.turmas || {}).reduce((a, n) => a + (Number(n) || 0), 0);
+  return { pesquisa, respostas, turma };
+}

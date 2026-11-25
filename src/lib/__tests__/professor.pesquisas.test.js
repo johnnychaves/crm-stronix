@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { normalizeContracts } from '../operacional/base.js';
 import {
   ciclosDaPesquisa, estadoDaPesquisa, novaPesquisa, npsDoCiclo, paraGravar, PERGUNTA_PRINCIPAL_PADRAO,
-  pesquisaEmCurso, problemaDaPesquisa, progressoDaTurma, recebeRespostas, turmasDoDia,
+  pesquisaEmCurso, problemaDaPesquisa, progressoDaTurma, recebeRespostas, resumoDaPesquisa, turmasDoDia,
 } from '../professor/pesquisas.js';
 import { somarResposta } from '../professor/nps.js';
 
@@ -157,5 +157,14 @@ describe('npsDoCiclo', () => {
     expect(r.nota).toBe(9.66); // (9,33 + 10) ÷ 2, com a média de duas casas de cada pesquisa
     expect(r.pesquisas).toBe(2);
     expect(r.promotores).toBe(91);
+  });
+});
+
+describe('resumoDaPesquisa', () => {
+  it('soma as respostas e a turma da pesquisa em curso', () => {
+    const p = { id: 'a', situacao: 'aberta', inicio: '2027-06-01', fim: '2027-06-20', turmas: { p1: 20, p2: 24 } };
+    const totais = [{ pesquisaId: 'a', professorId: 'p1', respostas: 14 }, { pesquisaId: 'a', professorId: 'p2', respostas: 9 }, { pesquisaId: 'x', professorId: 'p1', respostas: 3 }];
+    expect(resumoDaPesquisa([p], totais, '2027-06-10')).toEqual({ pesquisa: p, respostas: 23, turma: 44 });
+    expect(resumoDaPesquisa([p], totais, '2027-06-21')).toBeNull();
   });
 });

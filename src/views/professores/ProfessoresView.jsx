@@ -1,33 +1,43 @@
 import { useMemo, useState } from 'react';
+import { ClipboardList } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useNpsDados } from '../../hooks/useNpsDados.js';
 import { useProfessoresDados } from '../../hooks/useProfessoresDados.js';
 import { useScreenParams } from '../../hooks/useScreenParams.js';
+import { dayKeyOf } from '../../lib/operacional/month.js';
 import { cicloDe } from '../../lib/professor/ciclo.js';
+import { estadoDaPesquisa, npsDoCiclo, resumoDaPesquisa, turmasDoDia } from '../../lib/professor/pesquisas.js';
 import { conversaoDoCiclo } from '../../lib/professor/conversao.js';
 import { renovacaoDoCiclo } from '../../lib/professor/renovacao.js';
 import { FilterBar } from '../dashboard/DashFilterBar.jsx';
-import { CRITERIO_ADERENCIA, CRITERIO_NPS, criterioConversao, criterioRenovacao } from './criterios.js';
+import { CRITERIO_ADERENCIA, criterioConversao, criterioNps, criterioRenovacao } from './criterios.js';
 import { LegendaDosEstados, ProfessoresTabela } from './ProfessoresTabela.jsx';
 import { MetasForm } from './MetasForm.jsx';
+import { PesquisasTab } from './PesquisasTab.jsx';
+import { diaTexto } from './pesquisasTexto.js';
 import { CicloControl, TAB_CONTAGEM, TAB_TRIGGER } from './ProfessoresComum.jsx';
 
 // A tela Professores do gestor (mockup A de 25/11/2026): a lista de placar e
-// a sub-tela Metas. O ciclo mora no endereço (`ciclo`), e a aba é a sub-tela
-// (/professores e /professores/metas), que o App troca com replace.
+// as sub-telas Pesquisas (mockup B das pesquisas) e Metas. O ciclo mora no
+// endereço (`ciclo`), e a aba é a sub-tela (/professores, /professores/pesquisas
+// e /professores/metas), que o App troca com replace.
 const porNome = (a, b) => String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR');
 
-export function ProfessoresView({ db, tenantId, tab, onTab, listenersActive }) {
+export function ProfessoresView({ db, appUser, tenantId, tab, onTab, listenersActive }) {
   // Um relógio só por montagem: as contas do ciclo cortam no mesmo instante.
   const [agora] = useState(() => new Date());
   const ctx = useMemo(() => ({ cicloAtual: cicloDe(agora) }), [agora]);
   const [{ ciclo }, setParams] = useScreenParams('professores', ctx);
   const dados = useProfessoresDados({ db, ciclo, listenersActive });
   const { carregando, erro, professores, planos, contratos, clientes, aulas, metas, salvarMetas } = dados;
+  const nps = useNpsDados({ db, listenersActive });
+  const hoje = dayKeyOf(agora);
 
   const ativos = useMemo(() => (professores || []).filter((p) => p.ativo !== false).sort(porNome), [professores]);
 
   const contas = useMemo(() => {
-    if (carregando || !metas) return null;
+    if (carregando || !metas || nps.carregando) return null;
     const { janelaDias, tolerancia } = metas.conversao;
     const linhas = ativos.map((prof) => {
       const renovacao = renovacaoDoCiclo({ leads: clientes, contratos, planos, professor: prof, ciclo, asOf: agora });
@@ -36,7 +46,7 @@ export function ProfessoresView({ db, tenantId, tab, onTab, listenersActive }) {
         prof,
         criterios: {
           renovacao: criterioRenovacao(renovacao, metas, prof.nivel),
-          nps: CRITERIO_NPS,
+          nps: criterioNps(npsDoCiclo({ pesquisas: nps.pesquisas, totais: nps.totais, professorId: prof.id, ciclo, meta: metas.nps.meta }), metas),
           conversao: criterioConversao(conversao),
           aderencia: CRITERIO_ADERENCIA,
         },
@@ -45,9 +55,16 @@ export function ProfessoresView({ db, tenantId, tab, onTab, listenersActive }) {
     // A academia é a mesma para todos; sai da conta sem filtro de professor.
     const academia = conversaoDoCiclo({ aulas, contratos, professorId: null, ciclo, asOf: agora, janelaDias, tolerancia });
     return { linhas, academia };
-  }, [carregando, metas, ativos, clientes, contratos, planos, aulas, ciclo, agora]);
+  }, [carregando, metas, nps.carregando, nps.pesquisas, nps.totais, ativos, clientes, contratos, planos, aulas, ciclo, agora]);
 
-  const aba = tab === 'metas' ? 'metas' : 'lista';
+  // A turma de cada professor se a pesquisa abrisse agora (o formulário e o
+  // Abrir mostram o total). Null enquanto os clientes não chegaram.
+  const turmasHoje = useMemo(
+    () => (carregando ? null : turmasDoDia({ clientes, contratos, planos, professores, agora })),
+    [carregando, clientes, contratos, planos, professores, agora],
+  );
+
+  const aba = tab === 'metas' || tab === 'pesquisas' ? tab : 'lista';
   const academiaTaxa = contas?.academia.academia.taxa ?? null;
 
   return (
@@ -66,6 +83,7 @@ export function ProfessoresView({ db, tenantId, tab, onTab, listenersActive }) {
               Professores
               <span className={TAB_CONTAGEM}>{ativos.length}</span>
             </TabsTrigger>
+            <TabsTrigger value="pesquisas" className={TAB_TRIGGER}>Pesquisas</TabsTrigger>
             <TabsTrigger value="metas" className={TAB_TRIGGER}>Metas</TabsTrigger>
           </TabsList>
 
@@ -79,6 +97,7 @@ export function ProfessoresView({ db, tenantId, tab, onTab, listenersActive }) {
               </div>
             ) : (
               <>
+                <CartaoDaPesquisa nps={nps} hoje={hoje} onVer={() => onTab?.('pesquisas')} />
                 <p className="mb-3 flex flex-wrap gap-x-[22px] gap-y-2 text-[13.5px] text-foreground/80">
                   <span>
                     <b className="font-bold">Conversão da academia:</b>{' '}
@@ -92,6 +111,13 @@ export function ProfessoresView({ db, tenantId, tab, onTab, listenersActive }) {
             )}
           </TabsContent>
 
+          <TabsContent value="pesquisas" tabIndex={-1}>
+            {nps.erro && <p role="alert" className="mb-3 text-[13px] font-semibold text-rose-700 dark:text-rose-300">Não deu para ler as pesquisas. Recarregue a página.</p>}
+            {nps.carregando
+              ? <p className="text-[13px] text-muted-foreground">Carregando as pesquisas…</p>
+              : <PesquisasTab db={db} appUser={appUser} pesquisas={nps.pesquisas} totais={nps.totais} professores={professores} turmasHoje={turmasHoje} hoje={hoje} agora={agora} />}
+          </TabsContent>
+
           <TabsContent value="metas" tabIndex={-1}>
             {metas
               ? <MetasForm metas={metas} salvarMetas={salvarMetas} academia={academiaTaxa} />
@@ -100,5 +126,38 @@ export function ProfessoresView({ db, tenantId, tab, onTab, listenersActive }) {
         </Tabs>
       </div>
     </div>
+  );
+}
+
+// O cartão da pesquisa em cima da lista (mockup A): a pesquisa aberta com o
+// andamento, ou a última que houve.
+function CartaoDaPesquisa({ nps, hoje, onVer }) {
+  const resumo = resumoDaPesquisa(nps.pesquisas, nps.totais, hoje);
+  const ultima = resumo ? null : [...nps.pesquisas]
+    .filter((p) => estadoDaPesquisa(p, hoje) === 'encerrada')
+    .sort((a, b) => String(b.fim).localeCompare(String(a.fim)))[0];
+  const pct = resumo && resumo.turma > 0 ? Math.round((resumo.respostas / resumo.turma) * 100) : 0;
+  return (
+    <section aria-label="Pesquisa dos alunos" className="mb-4 flex flex-wrap items-center gap-4 rounded-[18px] border border-border bg-card px-[18px] py-3.5 shadow-card">
+      <span aria-hidden="true" className={cn('grid size-[38px] flex-none place-items-center rounded-xl', resumo ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300' : 'bg-muted text-muted-foreground')}>
+        <ClipboardList size={19} />
+      </span>
+      <div className="min-w-0 flex-[1_1_260px]">
+        <b className="block font-semibold">{resumo ? `${resumo.pesquisa.nome}, aberta até ${diaTexto(resumo.pesquisa.fim).slice(0, 5)}` : 'Nenhuma pesquisa aberta'}</b>
+        <span className="text-[13px] text-muted-foreground">
+          {resumo
+            ? `${resumo.respostas} ${resumo.respostas === 1 ? 'resposta' : 'respostas'} de ${resumo.turma} alunos nas turmas dos professores.`
+            : ultima ? `A última foi a ${ultima.nome}, encerrada.` : 'Crie a primeira na aba Pesquisas.'}
+        </span>
+      </div>
+      {resumo && (
+        <div aria-hidden="true" className="h-2 flex-[0_1_220px] overflow-hidden rounded-full bg-slate-200 dark:bg-white/10">
+          <i className="block h-full rounded-full bg-brand-600" style={{ width: `${Math.min(100, pct)}%` }} />
+        </div>
+      )}
+      <button type="button" onClick={onVer} className="inline-flex h-[34px] items-center whitespace-nowrap rounded-[10px] border border-border bg-card px-3 text-[13px] font-semibold outline-none hover:border-brand-200 hover:text-brand-700 focus-visible:anel-foco dark:hover:text-brand-300">
+        Ver pesquisas
+      </button>
+    </section>
   );
 }
