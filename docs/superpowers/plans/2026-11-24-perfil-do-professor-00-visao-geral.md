@@ -50,6 +50,8 @@ Os arquivos não importam pacote nem tela, porque a `api/` do PR 5 lê a carteir
 
 ### PR 3: lista e perfil
 
+**Plano:** `docs/superpowers/plans/2026-11-25-perfil-do-professor-03-lista-e-perfil.md` (pronto). Lista no desenho A, escolhido pelo Johnny em 25/11/2026.
+
 - O rótulo "Stronix 2.0" no `TenantModulesCard.jsx`.
 - `SCREENS.professores` em `src/lib/routes.js`, com as sub-telas `pesquisas` e `metas` e o perfil em `perfil/<id>/<aba>`, lido à parte como o modelo de rotina. `professores` entra em `RESERVED_TENANT_SLUGS`. O id do professor ganha expressão no `sentryScrub.js`.
 - Menu: "Professores" para o gestor e "Meu perfil" para o professor, pelo `sidebarNav`, e o `canOpenScreen` deixa o professor abrir só o próprio perfil.
