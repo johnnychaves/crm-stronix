@@ -460,6 +460,47 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Pesquisa de NPS dos alunos (spec
+    // docs/superpowers/specs/2026-11-24-perfil-do-professor-design.md e plano
+    // docs/superpowers/plans/2026-11-25-perfil-do-professor-04-pesquisas.md).
+    // As três coleções só existem com o módulo da STRONIX (Stronix 2.0, chave
+    // faltosos). A pesquisa: lê quem é da academia, grava só o gestor. O
+    // rascunho só nasce rascunho. Depois de aberta, as perguntas e as turmas
+    // não mudam, porque a resposta guarda o id das perguntas e a nota vale com
+    // metade da turma, e a única troca de situação é para encerrada (não
+    // reabre). Só o rascunho se apaga. O src/lib/__tests__/npsRules.test.js lê
+    // estes blocos.
+    match /artifacts/{appId}/public/data/stronix_nps_pesquisas/{id} {
+      allow read: if inTenant(appId) && tenantActive(appId) && hasModule(appId, 'faltosos');
+      allow create: if isAdmin(appId) && inTenant(appId) && tenantActive(appId) && hasModule(appId, 'faltosos')
+        && request.resource.data.situacao == 'rascunho';
+      allow update: if isAdmin(appId) && inTenant(appId) && tenantActive(appId) && hasModule(appId, 'faltosos')
+        && (resource.data.situacao == 'rascunho'
+          || (request.resource.data.situacao == 'encerrada'
+            && request.resource.data.perguntas == resource.data.perguntas
+            && request.resource.data.get('turmas', null) == resource.data.get('turmas', null)));
+      allow delete: if isAdmin(appId) && inTenant(appId) && tenantActive(appId) && hasModule(appId, 'faltosos')
+        && resource.data.situacao == 'rascunho';
+    }
+
+    // A resposta de cada aluno, com o nome, as notas e o comentário. Só o
+    // gestor lê. Quem grava é o servidor (api/tenant-resolve.js, PR 5), pelo
+    // Admin SDK, que passa por cima destas regras.
+    match /artifacts/{appId}/public/data/stronix_nps_respostas/{id} {
+      allow read: if isAdmin(appId) && inTenant(appId) && tenantActive(appId) && hasModule(appId, 'faltosos');
+      allow write: if false;
+    }
+
+    // Os totais de cada professor numa pesquisa, somados pelo servidor na
+    // transação da resposta. O gestor lê todos; o professor lê só os dele, e
+    // por isso a tela dele consulta com where('professorId', '==', ...).
+    match /artifacts/{appId}/public/data/stronix_nps_totais/{id} {
+      allow read: if inTenant(appId) && tenantActive(appId) && hasModule(appId, 'faltosos')
+        && (isAdmin(appId)
+          || (isProfessor(appId) && resource.data.professorId == userDoc(appId).data.get('professorId', null)));
+      allow write: if false;
+    }
+
     // O dia da rotina (date, 'AAAA-MM-DD') tem de ser o dia de agora em algum
     // fuso entre UTC-12 e UTC+14. Duas regras usam esta conta: a do check
     // (stronix_rotina_marcas) e a da versão do dia do modelo
