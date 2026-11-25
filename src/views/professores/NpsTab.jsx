@@ -233,14 +233,14 @@ export function NpsTab({ nps, metaNps, pode, professorLogado, primeiroNome, db, 
                         </tr>
                       </thead>
                       <tbody>
-                        {respostas.map((resp) => (
-                          <tr key={resp.id} className="border-t border-border align-top">
-                            <td className="py-2.5 pr-3"><LeadLink leadId={resp.leadId} className="rounded font-semibold outline-none hover:text-brand-700 hover:underline focus-visible:anel-foco dark:hover:text-brand-300">{nomeCurto(resp.nome)}</LeadLink></td>
+                        {respostas.map((resposta) => (
+                          <tr key={resposta.id} className="border-t border-border align-top">
+                            <td className="py-2.5 pr-3"><LeadLink leadId={resposta.leadId} className="rounded font-semibold outline-none hover:text-brand-700 hover:underline focus-visible:anel-foco dark:hover:text-brand-300">{nomeCurto(resposta.nome)}</LeadLink></td>
                             {(pesquisa.perguntas || []).map((q) => {
-                              const n = resp.notas?.[q.id];
+                              const n = resposta.notas?.[q.id];
                               return <td key={q.id} className="px-1.5 py-2.5 text-center">{Number.isInteger(n) ? <span className={cn('num inline-grid size-7 place-items-center rounded-lg font-bold', COR_TEXTO[tomDaNota(n)])}>{n}</span> : '–'}</td>;
                             })}
-                            <td className="min-w-[180px] py-2.5 pl-3 text-foreground/80">{resp.comentario || <span className="text-muted-foreground">Sem comentário</span>}</td>
+                            <td className="min-w-[180px] py-2.5 pl-3 text-foreground/80">{resposta.comentario || <span className="text-muted-foreground">Sem comentário</span>}</td>
                           </tr>
                         ))}
                       </tbody>
