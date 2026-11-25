@@ -26,7 +26,7 @@ Decididas pelo Johnny em 24/11/2026, na conversa que gerou esta spec.
 7. **As perguntas são do gestor**, todas de 0 a 10, com a mesma regra de promotor, neutro e detrator. Uma delas é a principal, e só ela conta no plano de carreira.
 8. **O CPF é a única porta.** O aluno digita o CPF, o sistema confere que ele é cliente com contrato de funcional na carteira do professor do link e mostra "Oi, Ana!" e as perguntas. Não há link individual por aluno.
 9. **O gestor vê quem respondeu**, com as notas e o comentário. O professor vê só os totais. O link é divulgado só entre os alunos ativos, na sala e no WhatsApp.
-10. **Aderência:** o perfil reserva o bloco, e a conta e o limiar ficam para depois.
+10. **Aderência:** o aluno-semana (de segunda a sexta) com 2 ou mais aulas de funcional é aderente (decisão do Johnny, 24/11/2026). A barra, a janela de semanas e a meta por nível ficam configuráveis. A meta por nível ainda não foi fixada: a faixa que ele imaginou é de 60% a 70%, e a proposta em estudo é Júnior 55%, Pleno 62% e Sênior 70%.
 
 ## O que já existe no código
 
@@ -50,7 +50,7 @@ O histórico fica no próprio lead porque as contas rodam sobre os leads que o a
 ### Nível e metas
 
 - `stronix_professores/{id}`: ganha `nivel` (`junior`, `pleno` ou `senior`), `nivelDesde` (data) e `npsCode` (o código do link público, 10 caracteres aleatórios de letras e números).
-- `stronix_config/carreira`: as médias esperadas por nível e por critério, editadas pelo gestor. Começa com renovação em 45, 55 e 65% (a confirmar) e com conversão e aderência em branco. O NPS não tem meta por nível: a regra é ser positivo.
+- `stronix_config/carreira`: as médias esperadas por nível e por critério, editadas pelo gestor, e os parâmetros da aderência. Começa com renovação em 45, 55 e 65% (a confirmar), aderência em 55, 62 e 70% (a confirmar), conversão em branco, a barra da aderência em 2 aulas por semana e a janela da aderência no ciclo inteiro. O NPS não tem meta por nível: a regra é ser positivo.
 
 ### Pesquisa de NPS
 
@@ -70,7 +70,7 @@ Funções puras em `src/lib/professor/`, sem import de tela nem de pacote, com t
 - **Renovação do ciclo:** os contratos da carteira com fim previsto no ciclo (o `originalEndsAt`, ou o `endsAt` sem encurtamento, como no Operacional), que chegaram a valer (fora o `neverTookEffect`), sem troca de professor nos 90 dias antes do fim. Renovado é quem tem `liveRenewalOf`. O cancelado antes do fim segue a mesma regra da taxa de renovação do Operacional: o PR 2 reusa a função de lá se ela servir, e um teste compara as duas. A tela mostra sempre "9 de 15" junto da porcentagem e o aviso "base pequena" com menos de 10 contratos.
 - **Conversão:** as aulas experimentais do ciclo com o professor e com "Compareceu", e quantas viraram matrícula, pelas linhas do `professorRowsOf`. Treino sozinho não entra.
 - **NPS:** a nota de cada pergunta a partir dos totais, e se ela vale (respostas ≥ 50% da turma e ≥ 10). Sem validade, a tela diz "sem nota válida" e não mostra o número.
-- **Aderência:** fica para quando a conta for decidida. A proposta em estudo é o aluno-semana de segunda a sexta: 2 ou mais presenças é aderente, 1 é parcial, 0 é faltoso, sem contar a semana de trancamento nem a primeira semana do contrato, sobre a mesma carteira da renovação.
+- **Aderência:** aluno-semanas aderentes ÷ aluno-semanas que contam, na janela configurada. Conta a semana de segunda a sexta de cada aluno da carteira na data (a mesma da renovação), com contrato de funcional em vigor. Ficam fora a semana em que o contrato estava trancado (o trancado paga mas não treina) e a primeira semana do contrato. A semana é aderente com presenças na aula de funcional iguais ou acima da barra (2). A tela mostra também quantos alunos-semana ficaram com 1 presença e com nenhuma, para o professor saber quem chamar. O relatório da Next Fit não traz o professor: quem diz de qual professor é o aluno é a carteira do Stronilead.
 
 ## Telas
 
@@ -149,7 +149,7 @@ As regras são publicadas à mão no console, com o OK do Johnny, antes do merge
 
 Um script em `scripts/` lê o relatório da Next Fit (CSV), casa cada linha com o lead pelo CPF (`cpfDigits`) e grava uma entrada por aluno e semana. Sem `--apply`, só mostra o que gravaria. Linha sem CPF casado vai para a lista de pendências da saída, sem palpite pelo nome. Quem roda toda semana é a sessão do plano de carreira, com o relatório que o Johnny puxar.
 
-Está parado até confirmar qual relatório da Next Fit traz a presença na aula de funcional. A catraca sozinha não serve: o plano Move também dá acesso à musculação.
+A fonte é o relatório de Presenças da Next Fit, filtrado pela aula de funcional (Tipo Agenda, modalidade Treinamento Funcional). A catraca não serve, porque o plano Move também dá acesso à musculação. O script soma as presenças de cada aluno por semana antes de gravar. Base medida pela sessão do plano de carreira em outubro de 2026, nos contratos Clube+ Move: 54% dos 59 contratos (64% dos 50 que apareceram no mês) tiveram 2 ou mais aulas por semana. Os 59 incluem trancados, que a conta do perfil tira.
 
 ## Entrega em PRs
 
@@ -160,7 +160,7 @@ Cada PR fica atrás do módulo. Ordem:
 3. **Lista e perfil.** O rótulo "Stronix 2.0", o menu, as rotas, a lista, as metas, o nível, o perfil com Carteira e Aulas experimentais. Mockups antes.
 4. **Pesquisa por dentro.** As coleções e as regras, a sub-tela de pesquisas, o link e o QR code no perfil e a aba NPS.
 5. **Página pública.** As três ações, os limites e a página `/avaliar`. Antes dele, com o OK do Johnny, uma contagem só de leitura de quantos clientes do funcional têm CPF no cadastro, sem listar CPF.
-6. **Aderência.** O script e a aba, depois de decidida a conta e confirmado o relatório.
+6. **Aderência.** O script de importação, a conta e a aba. A conta e o relatório já estão decididos, e a meta por nível pode entrar depois, porque é configurável.
 
 Os PRs 1 a 5 cabem até março de 2027. Abril e maio ficam para testar com a Heloísa e acertar o CPF de quem não tem.
 
@@ -182,7 +182,6 @@ Os PRs 1 a 5 cabem até março de 2027. Abril e maio ficam para testar com a Hel
 
 ## Em aberto
 
-- As médias de renovação por nível (45, 55 e 65%) estão a confirmar, e a meta de conversão ainda não existe. As duas ficam editáveis em `/professores/metas`.
-- A conta e o limiar da aderência, e qual relatório da Next Fit traz a presença na aula de funcional.
+- As médias de renovação (45, 55 e 65%) e de aderência (55, 62 e 70%) por nível estão a confirmar, e a meta de conversão ainda não existe. Todas ficam editáveis em `/professores/metas`.
 - Conferir se a cláusula de LGPD do contrato do aluno cobre pesquisa de satisfação. Se não cobrir, uma linha a mais no contrato resolve.
 - Quantos clientes do funcional têm CPF no cadastro (contagem antes do PR 5).
