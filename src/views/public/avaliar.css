@@ -107,3 +107,5 @@
 @media (prefers-reduced-motion:reduce){.avl *{transition:none!important;animation:none!important}}
 @media (max-width:370px){.avl h1{font-size:44px}.avl .pt{font-size:26px}.avl .rosto{width:124px;height:124px}.avl .valor{font-size:64px}}
 @media (max-height:760px){.avl .palco{margin-top:16px}.avl .rosto{width:112px;height:112px}.avl .valor{font-size:60px;margin-top:6px}.avl .regua{margin-top:18px}.avl .prof{margin-top:24px}.avl h1{font-size:44px}}
+/* O título que recebe o foco por código (troca de tela) não mostra o contorno. */
+.avl [tabindex="-1"]:focus-visible{outline:none}
