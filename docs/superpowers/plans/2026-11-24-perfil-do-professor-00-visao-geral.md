@@ -66,6 +66,7 @@ Os arquivos não importam pacote nem tela, porque a `api/` do PR 5 lê a carteir
 - Coleções `stronix_nps_pesquisas`, `stronix_nps_respostas` e `stronix_nps_totais` e as regras (o professor lê só os próprios totais; resposta e total só pelo servidor).
 - A sub-tela de pesquisas (criar, abrir com a turma de cada professor, encerrar), o link e o QR code no perfil e a aba NPS.
 - Teste das regras ao lado do `professorRules.test.js`.
+- Plano: `2026-11-25-perfil-do-professor-04-pesquisas.md`. Mockup das pesquisas: opção B (`docs/superpowers/specs/mockups/2026-11-25-professores-pesquisas-b.html`).
 
 **Fecha quando:** o Johnny publicou as regras, os testes passam e uma pesquisa de teste abre e fecha no preview.
 

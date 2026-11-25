@@ -1,12 +1,13 @@
 // O resumo de cada critério do plano de carreira para a tela: o número, o
 // texto de referência embaixo dele e o estado (bateu, ficou abaixo ou sem
 // dados). As contas são as de src/lib/professor/; aqui só se decide o texto.
-// NPS e aderência ainda não têm dados (PR 4 e PR 6 do plano).
+// A aderência ainda não tem dados (PR 6 do plano).
 import { referenciaDaRenovacao } from '../../lib/professor/metas.js';
 
 export const ESTADO_TEXTO = Object.freeze({ ok: 'bateu', baixo: 'ficou abaixo', sem: 'sem dados no ciclo' });
 
 const pctTexto = (n) => `${n}%`;
+export const notaTexto = (n) => n.toFixed(2).replace('.', ',');
 
 // A renovação bate quando chega à média esperada do nível. Sem nível não há
 // com o que comparar.
@@ -25,7 +26,13 @@ export function criterioConversao(conversao) {
   return { valor: pctTexto(conversao.professor.taxa), ref, estado: conversao.passa ? 'ok' : 'baixo' };
 }
 
-export const CRITERIO_NPS = Object.freeze({ valor: null, ref: 'sem pesquisa ainda', estado: 'sem' });
+// A nota dos alunos: a nota do ano (npsDoCiclo) contra a meta. Pesquisa que
+// não valeu não dá nota.
+export function criterioNps(nps, metas) {
+  if (!nps?.itens?.length) return { valor: null, ref: 'sem pesquisa ainda', estado: 'sem' };
+  if (nps.nota == null) return { valor: null, ref: 'sem nota válida', estado: 'sem' };
+  return { valor: notaTexto(nps.nota), ref: `meta ${metas.nps.meta}`, estado: nps.passa ? 'ok' : 'baixo' };
+}
 export const CRITERIO_ADERENCIA = Object.freeze({ valor: null, ref: 'sem dados ainda', estado: 'sem' });
 
 // Escala da régua da renovação, no placar do perfil e na prévia das metas: as

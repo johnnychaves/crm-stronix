@@ -173,3 +173,8 @@ export const DAILY_GOAL_HISTORY_PATH = 'stronix_daily_goal_history';
 export const ROUTINE_MODELS_PATH = 'stronix_rotina_modelos';
 export const ROUTINE_VERSIONS_PATH = 'stronix_rotina_versoes';
 export const ROUTINE_MARKS_PATH = 'stronix_rotina_marcas';
+// Pesquisa de NPS dos alunos (perfil do professor, PR 4). As respostas e os
+// totais só o servidor grava.
+export const NPS_PESQUISAS_PATH = 'stronix_nps_pesquisas';
+export const NPS_RESPOSTAS_PATH = 'stronix_nps_respostas';
+export const NPS_TOTAIS_PATH = 'stronix_nps_totais';

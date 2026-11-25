@@ -1,13 +1,16 @@
-import { Camera } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Camera, Copy, QrCode, RefreshCw } from 'lucide-react';
 import { getSafeDateOrNull } from '../../lib/dates.js';
 import { RingAvatar } from '../../components/profile/RingAvatar.jsx';
 import { NivelPopover } from './NivelPopover.jsx';
 import { SeloDoNivel } from './ProfessoresTabela.jsx';
+import { BOTAO, Confirmacao } from './Confirmacao.jsx';
 
 // Cabeçalho do perfil (mockup B): a foto com o anel azul, o nome, o nível com
-// a data, as modalidades e, só para o gestor, a câmera e o "Trocar nível". O
-// link do NPS e o QR code entram no PR 4.
-export function PerfilCabecalho({ prof, modalidades, pode, fotoOcupada, onFoto, onSalvarNivel }) {
+// a data, as modalidades e, só para o gestor, a câmera e o "Trocar nível".
+// Embaixo, o link do NPS: o professor copia e baixa o QR code; só o gestor
+// gera o link (e um novo, que derruba o antigo).
+export function PerfilCabecalho({ prof, modalidades, pode, fotoOcupada, onFoto, onSalvarNivel, link, onCopiar, onBaixarQr, onGerarLink }) {
   const desde = getSafeDateOrNull(prof.nivelDesde)?.toLocaleDateString('pt-BR') ?? null;
   return (
     <header className="flex flex-wrap items-center gap-x-6 gap-y-4 rounded-[18px] border border-border bg-card px-5 py-4 shadow-card md:px-[22px]">
@@ -38,6 +41,60 @@ export function PerfilCabecalho({ prof, modalidades, pode, fotoOcupada, onFoto, 
           </div>
         </div>
       </div>
+      <LinhaDoLink link={link} pode={pode} onCopiar={onCopiar} onBaixarQr={onBaixarQr} onGerarLink={onGerarLink} />
     </header>
+  );
+}
+
+function LinhaDoLink({ link, pode, onCopiar, onBaixarQr, onGerarLink }) {
+  const [confirmar, setConfirmar] = useState(false);
+  const [ocupado, setOcupado] = useState(false);
+  const gerarRef = useRef(null);
+  const gerar = async () => {
+    setOcupado(true);
+    try {
+      await onGerarLink();
+    } finally {
+      setOcupado(false);
+      setConfirmar(false);
+      requestAnimationFrame(() => gerarRef.current?.focus());
+    }
+  };
+  const semProtocolo = link ? link.replace(/^https?:\/\//, '') : null;
+  return (
+    <div className="flex min-w-0 flex-[1_1_100%] flex-col gap-2.5 border-t border-border pt-3.5">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <span className="whitespace-nowrap text-[13px] font-semibold">Link do NPS</span>
+        {link ? (
+          <>
+            <span title={semProtocolo} className="num block h-[34px] min-w-0 max-w-full flex-[1_1_260px] truncate rounded-[10px] bg-muted px-2.5 text-[12.5px] leading-[34px] text-foreground/80">{semProtocolo}</span>
+            <button type="button" onClick={onCopiar} className={BOTAO}><Copy size={15} aria-hidden="true" />Copiar link</button>
+            <button type="button" onClick={onBaixarQr} className={BOTAO}><QrCode size={15} aria-hidden="true" />Baixar QR code</button>
+            {pode && !confirmar && (
+              <button ref={gerarRef} type="button" title="O link antigo para de funcionar" onClick={() => setConfirmar(true)} className={BOTAO}>
+                <RefreshCw size={15} aria-hidden="true" />Gerar novo link
+              </button>
+            )}
+          </>
+        ) : pode ? (
+          <button ref={gerarRef} type="button" disabled={ocupado} onClick={gerar} className={BOTAO}>
+            <RefreshCw size={15} aria-hidden="true" />{ocupado ? 'Gerando…' : 'Gerar link'}
+          </button>
+        ) : (
+          <span className="text-[13px] text-muted-foreground">O gestor ainda não gerou o link.</span>
+        )}
+      </div>
+      {confirmar && (
+        <Confirmacao
+          titulo="Gerar um link novo?"
+          texto="O link antigo e o QR code que já foi impresso param de funcionar. Quem for responder precisa do link novo."
+          acao="Gerar novo link"
+          perigo
+          ocupado={ocupado}
+          onConfirmar={gerar}
+          onVoltar={() => { setConfirmar(false); requestAnimationFrame(() => gerarRef.current?.focus()); }}
+        />
+      )}
+    </div>
   );
 }

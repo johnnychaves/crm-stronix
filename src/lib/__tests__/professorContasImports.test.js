@@ -42,7 +42,7 @@ const ARQUIVOS = readdirSync(PASTA).filter((f) => f.endsWith('.js')).sort();
 
 describe('as contas do professor cabem na api/', () => {
   it('a pasta tem as contas e as metas', () => {
-    expect(ARQUIVOS).toEqual(['aderencia.js', 'carteira.js', 'ciclo.js', 'conversao.js', 'metas.js', 'nps.js', 'renovacao.js']);
+    expect(ARQUIVOS).toEqual(['aderencia.js', 'carteira.js', 'ciclo.js', 'conversao.js', 'metas.js', 'nps.js', 'pesquisas.js', 'renovacao.js']);
   });
 
   for (const arquivo of ARQUIVOS) {

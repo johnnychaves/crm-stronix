@@ -17,6 +17,10 @@ vi.mock('../../hooks/useProfessoresDados.js', () => ({
   },
 }));
 vi.mock('../firebase.js', () => ({ appId: 'acad', db: {}, auth: {} }));
+vi.mock('../../hooks/useNpsDados.js', () => ({
+  useNpsDados: () => ({ carregando: false, erro: null, pesquisas: [], totais: [] }),
+  useNpsRespostas: () => ({ carregando: false, erro: null, respostas: [] }),
+}));
 
 const { hrefFor } = await import('../routes.js');
 const { METAS_PADRAO } = await import('../professor/metas.js');
