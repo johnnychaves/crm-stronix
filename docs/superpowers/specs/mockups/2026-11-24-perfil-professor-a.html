@@ -1,0 +1,451 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Perfil do professor A · Ficha</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#0E1A40;--ink2:#334155;--muted:#64748b;--faint:#94a3b8;--paper:#F5F7FB;--line:#e2e8f0;--rule:#eef2f7;
+--blue:#2B59FF;--blue50:#EAF0FF;--blue200:#B8CCFF;--blue700:#1C3FC4;--orange:#FF6A2B;
+--green:#15B981;--green700:#047857;--green50:rgba(21,185,129,.12);
+--rose:#F43F5E;--rose700:#BE123C;--rose50:rgba(244,63,94,.10);
+--amber:#F59E0B;--amber700:#B45309;--amber50:rgba(245,158,11,.14)}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.45 Geist,ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+h1,h2,h3,p{margin:0}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit;cursor:pointer}
+.d{font-family:'Space Grotesk',sans-serif}
+.num{font-variant-numeric:tabular-nums}
+.mut{color:var(--muted)}
+:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.wrap{max-width:1240px;margin:0 auto;padding:20px 32px 80px}
+.crumb{display:inline-flex;align-items:center;gap:4px;color:var(--muted);font-weight:500;margin-bottom:14px;border-radius:6px}
+.crumb svg{width:16px;height:16px}
+.crumb:hover{color:var(--blue700)}
+.card{background:#fff;border-radius:18px}
+.tag{position:fixed;left:12px;bottom:12px;z-index:99;background:var(--ink);color:#fff;border-radius:999px;padding:6px 12px;font-size:11.5px;font-weight:600;opacity:.92;max-width:calc(100vw - 24px)}
+.btn{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:#fff;font-size:13px;font-weight:600;white-space:nowrap}
+.btn:hover{border-color:var(--blue200);color:var(--blue700)}
+.btn svg{width:15px;height:15px;flex:none}
+.btn.done{border-color:rgba(21,185,129,.45);color:var(--green700)}
+.lnk{border:0;background:none;padding:0;color:var(--blue700);font-weight:600;border-radius:4px}
+.lnk:hover{text-decoration:underline}
+.av{display:grid;place-items:center;border-radius:50%;background:var(--blue50);color:var(--blue700);font:700 12px/1 'Space Grotesk',sans-serif;flex:none;width:34px;height:34px}
+.lvl{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:999px;background:var(--blue50);color:var(--blue700);font-size:12.5px;font-weight:600;white-space:nowrap}
+.lvl i{width:7px;height:7px;border-radius:50%;background:var(--blue)}
+.mod{display:inline-flex;height:24px;align-items:center;padding:0 9px;border-radius:7px;background:#eef0f5;color:var(--ink2);font-size:12px;font-weight:600}
+.flag{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:7px;font-size:12px;font-weight:600;white-space:nowrap}
+.flag.amber{background:var(--amber50);color:var(--amber700)}
+.flag.green{background:var(--green50);color:var(--green700)}
+.flag.quiet{background:#eef0f5;color:var(--muted)}
+.period{display:inline-flex;align-items:center;gap:2px;height:38px;padding:3px;border-radius:12px;border:1px solid var(--line);background:#fff}
+.period button{width:30px;height:30px;display:grid;place-items:center;border:0;background:none;border-radius:9px;color:var(--ink2);padding:0}
+.period button svg{width:16px;height:16px}
+.period button:hover:not(:disabled){background:var(--blue50);color:var(--blue700)}
+.period button:disabled{color:#cbd5e1;cursor:default}
+.period span{padding:0 6px;font-weight:600;font-size:13px;white-space:nowrap}
+
+/* abas */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:28px 0 16px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none}
+.tab{border:0;background:none;padding:10px 12px 12px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap;display:flex;gap:7px;align-items:center;border-radius:6px 6px 0 0}
+.tab:hover{color:var(--ink)}
+.tab[aria-selected=true]{color:var(--ink);border-bottom-color:var(--blue)}
+.tab .n{font-size:12px;font-weight:600;color:var(--muted);background:#eef0f5;border-radius:999px;padding:1px 7px}
+.panel[hidden]{display:none}
+
+/* pílulas de filtro */
+.ptop{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.pills{display:flex;gap:8px;flex-wrap:wrap}
+.fp{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 13px;border-radius:999px;border:1px solid var(--line);background:#fff;font-size:13px;font-weight:500}
+.fp:hover{border-color:var(--blue200)}
+.fp[aria-pressed=true]{background:var(--blue50);border-color:var(--blue200);color:var(--blue700)}
+.fp b{font-weight:700}
+
+/* situação */
+.s-vencer{--c:#F59E0B;--t:#B45309;--bg:rgba(245,158,11,.15)}
+.s-renovou{--c:#10B981;--t:#047857;--bg:rgba(16,185,129,.12)}
+.s-nao{--c:#F43F5E;--t:#BE123C;--bg:rgba(244,63,94,.10)}
+.st{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:999px;background:var(--bg);color:var(--t);font-size:12px;font-weight:600;white-space:nowrap}
+.st::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--c)}
+
+/* aviso */
+.warn{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:12px;background:#FFF8EB;border:1px solid #FCE3B4;color:#7A4A06;margin-bottom:12px}
+.warn svg{width:17px;height:17px;flex:none;margin-top:1px;color:var(--amber700)}
+.warn p{flex:1;min-width:0}
+.warn .lnk{color:#7A4A06;text-decoration:underline;margin-left:4px}
+
+/* lista */
+.tbl{overflow:hidden}
+.th,.tr{display:grid;grid-template-columns:minmax(220px,1.6fr) minmax(140px,1fr) minmax(170px,1fr) 128px;gap:16px;align-items:center;padding:0 22px}
+.th{height:44px;border-bottom:1px solid var(--rule);color:var(--muted);font-size:12.5px;font-weight:500}
+.tr{min-height:58px;border-bottom:1px solid var(--rule)}
+.tr:last-child{border-bottom:0}
+.tr:hover{background:#f8faff}
+.who{display:flex;align-items:center;gap:12px;min-width:0}
+.who>div{min-width:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.nm{font-weight:600;border-radius:4px}
+.nm:hover{color:var(--blue700);text-decoration:underline}
+.nocpf{display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:6px;background:var(--amber50);color:var(--amber700);font-size:11.5px;font-weight:600}
+.plan{color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.venc b{display:block;font-weight:500}
+.venc small{display:block;font-size:12px;color:var(--muted)}
+.venc small.soon{color:var(--amber700);font-weight:600}
+.empty{padding:28px 22px;color:var(--muted);text-align:center}
+
+/* aulas */
+.ta,.ra{display:grid;grid-template-columns:110px minmax(180px,1.4fr) minmax(150px,1fr) 130px 140px;gap:16px;align-items:center;padding:0 22px}
+.ta{height:44px;border-bottom:1px solid var(--rule);color:var(--muted);font-size:12.5px;font-weight:500}
+.ra{min-height:54px;border-bottom:1px solid var(--rule)}
+.ra:last-child{border-bottom:0}
+.ra.faltou{color:var(--muted)}
+.pres{display:inline-flex;align-items:center;gap:6px;font-weight:500}
+.pres i{width:7px;height:7px;border-radius:50%;background:var(--green)}
+.pres.no i{background:var(--faint)}
+.mat{font-weight:600;color:var(--green700)}
+.sum{display:flex;gap:28px;flex-wrap:wrap;align-items:flex-end;padding:20px 22px;border-bottom:1px solid var(--rule)}
+.sum .k{font-size:28px;font-weight:700;letter-spacing:-.02em;line-height:1.1}
+.sum .k.g{color:var(--green700)}
+.sum p{max-width:46ch}
+
+/* nps */
+.nsel{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.ngrid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:16px}
+.nmain,.nval,.nother,.nlist{padding:22px 24px}
+.qlbl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-weight:600}
+.qt{color:var(--ink2);margin-top:6px;max-width:60ch}
+.score{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;margin:18px 0 14px}
+.score .big{font-size:64px;font-weight:700;letter-spacing:-.04em;line-height:.95}
+.score .big.pos{color:var(--green700)}
+.score .soft{font-size:26px;font-weight:700;color:var(--muted);letter-spacing:-.02em}
+.score p{color:var(--muted);font-size:13px;max-width:30ch;padding-bottom:6px}
+.stack{display:flex;height:14px;border-radius:7px;overflow:hidden;background:#e9edf5;gap:2px}
+.stack i{display:block;height:100%}
+.stack .p{background:var(--green)}.stack .n{background:#cbd5e1}.stack .x{background:var(--rose)}
+.leg{display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;font-size:12.5px;color:var(--ink2)}
+.leg span{display:inline-flex;gap:6px;align-items:center}
+.leg i{width:9px;height:9px;border-radius:3px}
+.leg .p{background:var(--green)}.leg .n{background:#cbd5e1}.leg .x{background:var(--rose)}
+.prog{position:relative;height:10px;border-radius:999px;background:#e9edf5;margin:16px 0 26px}
+.prog i{display:block;height:100%;border-radius:999px;background:var(--blue)}
+.prog b{position:absolute;left:50%;top:-5px;width:2px;height:20px;background:var(--ink)}
+.prog em{position:absolute;left:50%;top:18px;transform:translateX(-50%);font-style:normal;font-size:11.5px;color:var(--muted);white-space:nowrap}
+.nval .k{font-size:36px;font-weight:700;letter-spacing:-.03em;line-height:1.05;margin-top:8px}
+.nval .k small{font-size:15px;color:var(--muted);font-weight:600;letter-spacing:0}
+.nval ul{margin:14px 0 0;padding:0;list-style:none;display:grid;gap:6px;color:var(--ink2);font-size:13px}
+.oq{display:grid;grid-template-columns:minmax(0,1fr) 70px minmax(120px,220px);gap:18px;align-items:center;padding:14px 0;border-top:1px solid var(--rule)}
+.oq:first-of-type{border-top:0}
+.oq b{display:block;font-weight:600}
+.oq small{display:block;color:var(--muted);font-size:12.5px}
+.oq .v{font-size:22px;font-weight:700;text-align:right}
+.h3{font-size:16px;font-weight:700;letter-spacing:-.01em}
+.sec{margin-top:16px}
+.rgrid{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:16px;margin-top:16px;align-items:start}
+.rh,.rr{display:grid;grid-template-columns:minmax(150px,1.3fr) repeat(4,66px) minmax(0,1.6fr);gap:10px;align-items:center}
+.rh{font-size:12px;color:var(--muted);padding:12px 0 8px;border-bottom:1px solid var(--rule)}
+.rh span:nth-child(n+2):nth-child(-n+5){text-align:center}
+.rr{padding:10px 0;border-bottom:1px solid var(--rule);font-size:13px}
+.rr:last-child{border-bottom:0}
+.nt{display:grid;place-items:center;width:30px;height:26px;margin:0 auto;border-radius:7px;font-weight:700;font-size:13px}
+.nt.p{background:var(--green50);color:var(--green700)}.nt.n{background:#eef0f5;color:var(--ink2)}.nt.x{background:var(--rose50);color:var(--rose700)}
+.rr .c{color:var(--ink2)}
+.rr .c:empty::before{content:"Sem comentário";color:var(--faint)}
+.nolist{list-style:none;margin:10px 0 0;padding:0}
+.nolist li{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--rule)}
+.nolist li:last-child{border-bottom:0}
+.foot{margin-top:14px;color:var(--muted);font-size:13px;display:flex;gap:8px;align-items:flex-start}
+.foot svg{width:16px;height:16px;flex:none;margin-top:1px}
+.invalid{padding:16px;border-radius:12px;background:#f6f8fc;color:var(--ink2)}
+
+/* aderência */
+.adh{padding:40px 28px;display:flex;gap:20px;align-items:flex-start;max-width:720px}
+.adh .ico{width:48px;height:48px;border-radius:14px;border:1.5px dashed #cbd5e1;display:grid;place-items:center;color:var(--faint);flex:none}
+.adh .ico svg{width:22px;height:22px}
+.adh h3{font-size:18px;font-weight:700;margin-bottom:6px}
+.adh p{color:var(--ink2);max-width:62ch}
+.adh p+p{margin-top:8px;color:var(--muted)}
+
+@media (max-width:900px){
+ .ngrid,.rgrid{grid-template-columns:1fr}
+}
+@media (max-width:760px){
+ .wrap{padding:16px 16px 80px}
+ .th,.ta{display:none}
+ .tr{grid-template-columns:1fr auto;grid-template-areas:"who st" "plan venc";gap:6px 12px;padding:14px 16px}
+ .tr .who{grid-area:who}.tr .plan{grid-area:plan;font-size:13px}.tr .venc{grid-area:venc;text-align:right}.tr .stc{grid-area:st}
+ .venc b{font-size:13px}
+ .ra{grid-template-columns:1fr auto;gap:4px 12px;padding:12px 16px}
+ .ra .dt{order:3;font-size:12.5px;color:var(--muted)}.ra .tp{order:4;font-size:12.5px;color:var(--muted);text-align:right}
+ .sum{padding:16px}
+ .nmain,.nval,.nother,.nlist{padding:18px}
+ .score .big{font-size:52px}
+ .oq{grid-template-columns:1fr auto;gap:6px 12px}.oq .stack{grid-column:1/-1}
+ .rh{display:none}
+ .rr{grid-template-columns:repeat(4,auto) 1fr;gap:6px 8px}
+ .rr .nm-cell{grid-column:1/-1}.rr .c{grid-column:1/-1}
+ .rr .nt{margin:0}
+ .adh{padding:24px 18px;flex-direction:column}
+}
+@media (max-width:560px){.tag{font-size:10.5px;padding:4px 10px;opacity:.8}}
+@media (prefers-reduced-motion:reduce){*{transition:none !important;animation:none !important}}
+
+.fic{padding:24px 26px 0;overflow:hidden}
+.fic-top{display:flex;justify-content:space-between;gap:20px 28px;flex-wrap:wrap;padding-bottom:22px}
+.id{display:flex;gap:16px;align-items:flex-start;min-width:0;flex:1 1 320px}
+.id .av{width:60px;height:60px;font-size:20px}
+.id h1{font-size:26px;font-weight:700;letter-spacing:-.02em;line-height:1.15}
+.meta{display:flex;gap:8px 12px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.npsl{flex:0 1 440px;border:1px solid var(--line);border-radius:14px;padding:14px 16px;min-width:0}
+.npsl .h{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.npsl .h b{font-weight:600}
+.url{margin:8px 0 10px;padding:8px 10px;border-radius:9px;background:var(--paper);font-size:12.5px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.acts{display:flex;gap:6px;flex-wrap:wrap}
+.band{margin:0 -26px;padding:18px 26px 24px;background:#FAFBFE;border-top:1px solid var(--rule)}
+.band-h{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.band-h h2{font-size:16px;font-weight:700;letter-spacing:-.01em}
+.band-h p{font-size:13px}
+.crit-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
+.crit{padding:2px 22px;border-left:1px solid var(--line);min-width:0}
+.crit:first-child{border-left:0;padding-left:0}
+.cl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;color:var(--ink2);font-weight:500;min-height:24px}
+.cv{font-size:34px;font-weight:700;letter-spacing:-.03em;line-height:1.1;margin:8px 0 2px}
+.cv.g{color:var(--green700)}
+.cv.soft{font-size:21px;color:var(--muted);letter-spacing:-.01em;line-height:1.2;margin:14px 0 4px}
+.cs{font-size:13px;color:var(--ink2)}
+.meter{position:relative;height:8px;border-radius:999px;background:#e5eaf3;margin:14px 0 10px}
+.meter i{display:block;height:100%;border-radius:999px;background:var(--blue)}
+.meter i.g{background:var(--green)}
+.meter i.hatch{background:repeating-linear-gradient(135deg,var(--blue) 0 4px,#7FA0FF 4px 8px)}
+.meter b{position:absolute;top:-5px;width:2px;height:18px;margin-left:-1px;background:var(--ink);border-radius:1px}
+.meter.dash{background:repeating-linear-gradient(90deg,#d8dee9 0 6px,transparent 6px 11px)}
+.ce{font-size:12.5px;color:var(--muted)}
+.ce strong{color:var(--ink);font-weight:600}
+.cx{font-size:12.5px;color:var(--muted);margin-top:2px}
+@media (max-width:980px){.crit-grid{grid-template-columns:1fr 1fr;row-gap:22px}.crit:nth-child(3){border-left:0;padding-left:0}}
+@media (max-width:560px){
+ .fic{padding:18px 16px 0}.band{margin:0 -16px;padding:16px}
+ .id .av{width:48px;height:48px;font-size:16px}.id h1{font-size:22px}
+ .npsl{flex-basis:100%}
+ .crit-grid{grid-template-columns:1fr 1fr;row-gap:20px;column-gap:16px}
+ .crit,.crit:nth-child(3){padding:0;border-left:0}
+ .cv{font-size:28px}.cv.soft{font-size:17px}
+}
+</style></head><body>
+<div class="wrap">
+<a class="crumb" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>Professores</a>
+
+<section class="card fic">
+ <div class="fic-top">
+  <div class="id"><span class="av" aria-hidden="true">BC</span>
+   <div><h1 class="d">Bruno Carvalho</h1>
+    <div class="meta"><span class="lvl"><i></i>Júnior desde 01/12/2026</span><button type="button" class="lnk">Trocar nível</button></div>
+    <div class="meta"><span class="mut">Modalidade</span><span class="mod">Funcional</span></div>
+   </div>
+  </div>
+  <div class="npsl">
+   <div class="h"><b>Link da pesquisa de NPS</b><span class="mut">O aluno entra com o CPF.</span></div>
+   <div class="url" title="stronilead.com.br/avaliar/stronix-crm-app/k7q2mx9pla">stronilead.com.br/avaliar/stronix-crm-app/k7q2mx9pla</div>
+   <div class="acts"><button type="button" class="btn" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg><span> Copiar link</span></button>
+<button type="button" class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/></svg><span> Baixar QR code</span></button>
+<button type="button" class="btn" title="O link antigo para de funcionar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg><span> Gerar novo link</span></button></div>
+  </div>
+ </div>
+ <div class="band">
+  <div class="band-h"><div><h2 class="d">Critérios do plano de carreira</h2><p class="mut">Cada número ao lado da média esperada no Júnior.</p></div><div class="period" role="group" aria-label="Ciclo de avaliação"><button type="button" aria-label="Ciclo anterior, dezembro de 2025 a novembro de 2026"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button><span class="num">Ciclo dez/2026 a nov/2027</span><button type="button" disabled aria-label="Próximo ciclo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button></div></div>
+  <div class="crit-grid">
+   <div class="crit">
+    <div class="cl">Renovação da carteira <span class="flag amber" title="Menos de 10 contratos venceram no ciclo">Base pequena</span></div>
+    <div class="cv d num">67%</div>
+    <div class="cs num">6 de 9 contratos renovaram</div>
+    <div class="meter" role="img" aria-label="67%, esperado 45%"><i class="hatch" style="width:67%"></i><b style="left:45%"></b></div>
+    <div class="ce">Esperado no Júnior: <strong class="num">45%</strong></div>
+    <div class="cx">Com menos de 10 contratos, um aluno muda muito a conta.</div>
+   </div>
+   <div class="crit">
+    <div class="cl">NPS dos alunos</div>
+    <div class="cv soft d">Sem nota válida</div>
+    <div class="cs num">6 de 22 responderam em novembro. Precisava de 11.</div>
+    <div class="meter" role="img" aria-label="27% da turma respondeu, o mínimo é metade"><i style="width:27%;background:var(--faint)"></i><b style="left:50%"></b></div>
+    <div class="ce">Esperado: <strong>acima de zero</strong></div>
+    <div class="cx num">Em junho foi +43, com 14 respostas.</div>
+   </div>
+   <div class="crit">
+    <div class="cl">Conversão de aula experimental</div>
+    <div class="cv d num g">60%</div>
+    <div class="cs num">9 de 15 aulas viraram matrícula</div>
+    <div class="meter" role="img" aria-label="60%"><i class="g" style="width:60%"></i></div>
+    <div class="ce">Média esperada ainda não definida</div>
+   </div>
+   <div class="crit">
+    <div class="cl">Aderência às aulas</div>
+    <div class="cv soft d">Sem dados ainda</div>
+    <div class="cs">Aparece depois da primeira importação das presenças.</div>
+    <div class="meter dash" aria-hidden="true"></div>
+    <div class="ce">Média esperada a definir</div>
+   </div>
+  </div>
+ </div>
+</section>
+
+<div class="tabs" role="tablist" aria-label="Seções do perfil">
+ <button type="button" class="tab" role="tab" data-tab="carteira" aria-controls="p-carteira">Carteira <span class="n num">25</span></button>
+ <button type="button" class="tab" role="tab" data-tab="aulas" aria-controls="p-aulas">Aulas experimentais <span class="n num">18</span></button>
+ <button type="button" class="tab" role="tab" data-tab="nps" aria-controls="p-nps">NPS</button>
+ <button type="button" class="tab" role="tab" data-tab="aderencia" aria-controls="p-aderencia">Aderência</button>
+</div>
+<section class="panel" id="p-carteira" role="tabpanel" aria-label="Carteira">
+ <div class="ptop"><div class="pills" id="pills" role="group" aria-label="Filtrar por situação"></div><p class="mut">Clientes com o Bruno no cadastro, em planos de funcional.</p></div>
+ <div class="warn" id="warn"></div>
+ <div class="card tbl" role="table" aria-label="Carteira do professor"><div class="th" role="row"><span>Aluno</span><span>Plano</span><span>Vencimento</span><span>Situação</span></div><div id="rows"></div></div>
+</section>
+<section class="panel" id="p-aulas" role="tabpanel" aria-label="Aulas experimentais"><div class="card tbl" id="aulas" role="table" aria-label="Aulas experimentais do ciclo"></div></section>
+<section class="panel" id="p-nps" role="tabpanel" aria-label="NPS"><div id="nps"></div></section>
+<section class="panel" id="p-aderencia" role="tabpanel" aria-label="Aderência"><div class="card adh"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v4M16 2v4"/><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/></svg></span>
+<div><h3 class="d">Sem dados ainda</h3>
+<p>A aderência vai mostrar quantas vezes por semana cada aluno da carteira veio à aula de funcional. Ela aparece depois da primeira importação das presenças da Next Fit.</p>
+<p>A conta e a média esperada para cada nível ainda vão ser definidas.</p></div></div></section>
+
+
+</div>
+<div class="tag">Mockup A · Ficha com faixa clara · exemplo em 10/12/2027, visão do gestor</div>
+<script>const ICON_INFO = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"M12 8v4M12 16h.01\"/></svg>";
+
+const D = {"carteira": [{"n": "Camila Duarte", "p": "Clube+ Move", "end": "2027-01-14", "st": "renovou", "cpf": true}, {"n": "Rafael Nunes", "p": "Clube+ Move", "end": "2027-03-03", "st": "renovou", "cpf": true}, {"n": "Juliana Prates", "p": "Clube+ Move", "end": "2027-04-22", "st": "renovou", "cpf": true}, {"n": "Thiago Moreira", "p": "No Limit Funcional", "end": "2027-06-09", "st": "renovou", "cpf": true}, {"n": "Fernanda Lopes", "p": "Clube+ Move", "end": "2027-08-30", "st": "renovou", "cpf": true}, {"n": "Diego Albuquerque", "p": "Clube+ Move", "end": "2027-10-17", "st": "renovou", "cpf": true}, {"n": "Patrícia Siqueira", "p": "Clube+ Move", "end": "2027-02-28", "st": "nao", "cpf": true}, {"n": "Lucas Fontana", "p": "No Limit Funcional", "end": "2027-07-11", "st": "nao", "cpf": true}, {"n": "Bianca Teles", "p": "Clube+ Move", "end": "2027-11-05", "st": "nao", "cpf": true}, {"n": "Gustavo Rangel", "p": "No Limit Funcional", "end": "2027-12-12", "st": "vencer", "cpf": false}, {"n": "Pedro Henrique Sales", "p": "Clube+ Move", "end": "2027-12-28", "st": "vencer", "cpf": true}, {"n": "Eduardo Bastos", "p": "Flex Funcional", "end": "2028-01-05", "st": "vencer", "cpf": true}, {"n": "Rodrigo Pacheco", "p": "Clube+ Move", "end": "2028-01-19", "st": "vencer", "cpf": true}, {"n": "Henrique Brandão", "p": "Clube+ Move", "end": "2028-01-31", "st": "vencer", "cpf": true}, {"n": "Felipe Antunes", "p": "No Limit Funcional", "end": "2028-02-24", "st": "vencer", "cpf": true}, {"n": "Vinícius Lacerda", "p": "Clube+ Move", "end": "2028-03-11", "st": "vencer", "cpf": true}, {"n": "Aline Furtado", "p": "Clube+ Move", "end": "2028-04-15", "st": "vencer", "cpf": true}, {"n": "Natália Freire", "p": "Clube+ Move", "end": "2028-05-30", "st": "vencer", "cpf": true}, {"n": "Letícia Barros", "p": "Clube+ Move", "end": "2028-06-21", "st": "vencer", "cpf": true}, {"n": "Bruna Cardoso", "p": "Clube+ Move", "end": "2028-07-02", "st": "vencer", "cpf": true}, {"n": "Carolina Viana", "p": "Clube+ Move", "end": "2028-08-10", "st": "vencer", "cpf": true}, {"n": "Mariana Coelho", "p": "Clube+ Move", "end": "2028-09-03", "st": "vencer", "cpf": true}, {"n": "Otávio Mendes", "p": "Clube+ Move", "end": "2028-09-27", "st": "vencer", "cpf": true}, {"n": "Larissa Tavares", "p": "Clube+ Move", "end": "2028-10-18", "st": "vencer", "cpf": true}, {"n": "Sabrina Rocha", "p": "Clube+ Move", "end": "2028-11-02", "st": "vencer", "cpf": false}], "aulas": [{"d": "2027-11-22", "n": "Isabela Paiva", "t": "Aula experimental", "pres": "veio", "mat": false}, {"d": "2027-11-08", "n": "Murilo Assis", "t": "Aula experimental", "pres": "faltou", "mat": null}, {"d": "2027-10-14", "n": "Larissa Tavares", "t": "Freepass de 7 dias", "pres": "veio", "mat": true}, {"d": "2027-09-23", "n": "Matheus Godoy", "t": "Aula experimental", "pres": "veio", "mat": false}, {"d": "2027-09-02", "n": "Otávio Mendes", "t": "Aula experimental", "pres": "veio", "mat": true}, {"d": "2027-08-19", "n": "Mariana Coelho", "t": "Aula experimental", "pres": "veio", "mat": true}, {"d": "2027-08-05", "n": "Paula Reis", "t": "Freepass de 7 dias", "pres": "faltou", "mat": null}, {"d": "2027-07-28", "n": "Carolina Viana", "t": "Aula experimental", "pres": "veio", "mat": true}, {"d": "2027-06-30", "n": "Renan Ferraz", "t": "Aula experimental", "pres": "veio", "mat": false}, {"d": "2027-06-17", "n": "Bruna Cardoso", "t": "Freepass de 7 dias", "pres": "veio", "mat": true}, {"d": "2027-05-27", "n": "Letícia Barros", "t": "Aula experimental", "pres": "veio", "mat": true}, {"d": "2027-05-06", "n": "Tatiane Moura", "t": "Aula experimental", "pres": "veio", "mat": false}, {"d": "2027-04-22", "n": "Natália Freire", "t": "Aula experimental", "pres": "veio", "mat": true}, {"d": "2027-04-08", "n": "Jéssica Amaral", "t": "Aula experimental", "pres": "faltou", "mat": null}, {"d": "2027-03-18", "n": "Aline Furtado", "t": "Aula experimental", "pres": "veio", "mat": true}, {"d": "2027-02-25", "n": "Caio Ventura", "t": "Aula experimental", "pres": "veio", "mat": false}, {"d": "2027-01-21", "n": "Sabrina Rocha", "t": "Freepass de 7 dias", "pres": "veio", "mat": true}, {"d": "2026-12-09", "n": "Elisa Prado", "t": "Aula experimental", "pres": "veio", "mat": false}], "perguntas": [{"id": "q1", "curto": "Indicaria", "texto": "De 0 a 10, quanto você indicaria as aulas deste professor a um amigo?", "principal": true}, {"id": "q2", "curto": "Correção", "texto": "De 0 a 10, quanto o professor corrige o seu movimento durante a aula?"}, {"id": "q3", "curto": "Evolução", "texto": "De 0 a 10, quanto você sente que evoluiu desde que começou?"}, {"id": "q4", "curto": "Horário", "texto": "De 0 a 10, quanto as aulas começam e terminam no horário?"}], "nps": {"jun": {"nome": "Junho de 2027", "fim": "30/06/2027", "abriu": "01/06/2027", "turma": 22, "resp": [{"n": "Camila Duarte", "notas": {"q1": 10, "q2": 10, "q3": 7, "q4": 10}, "com": "Corrige a postura o tempo todo, gosto disso."}, {"n": "Rafael Nunes", "notas": {"q1": 8, "q2": 8, "q3": 6, "q4": 10}, "com": "A aula das 7h às vezes começa uns minutos atrasada."}, {"n": "Juliana Prates", "notas": {"q1": 4, "q2": 7, "q3": 9, "q4": 10}, "com": "Queria mais variação nos treinos de sexta."}, {"n": "Thiago Moreira", "notas": {"q1": 9, "q2": 7, "q3": 9, "q4": 10}, "com": "A sala fica cheia demais no horário das 18h."}, {"n": "Fernanda Lopes", "notas": {"q1": 7, "q2": 10, "q3": 6, "q4": 4}, "com": ""}, {"n": "Pedro Henrique Sales", "notas": {"q1": 10, "q2": 10, "q3": 10, "q4": 7}, "com": ""}, {"n": "Rodrigo Pacheco", "notas": {"q1": 5, "q2": 10, "q3": 8, "q4": 10}, "com": ""}, {"n": "Vinícius Lacerda", "notas": {"q1": 7, "q2": 7, "q3": 10, "q4": 8}, "com": ""}, {"n": "Aline Furtado", "notas": {"q1": 10, "q2": 10, "q3": 10, "q4": 10}, "com": ""}, {"n": "Letícia Barros", "notas": {"q1": 9, "q2": 4, "q3": 10, "q4": 7}, "com": "Explica bem o porquê de cada exercício."}, {"n": "Bruna Cardoso", "notas": {"q1": 7, "q2": 10, "q3": 10, "q4": 9}, "com": ""}, {"n": "Carolina Viana", "notas": {"q1": 10, "q2": 6, "q3": 10, "q4": 10}, "com": ""}, {"n": "Mariana Coelho", "notas": {"q1": 10, "q2": 7, "q3": 7, "q4": 10}, "com": "Me sinto bem mais disposta desde que comecei."}, {"n": "Larissa Tavares", "notas": {"q1": 10, "q2": 10, "q3": 9, "q4": 10}, "com": ""}], "tot": {"q1": {"p": 8, "n": 4, "d": 2, "nps": 43}, "q2": {"p": 7, "n": 5, "d": 2, "nps": 36}, "q3": {"p": 9, "n": 3, "d": 2, "nps": 50}, "q4": {"p": 10, "n": 3, "d": 1, "nps": 64}}, "nao": ["Diego Albuquerque", "Gustavo Rangel", "Eduardo Bastos", "Henrique Brandão", "Felipe Antunes", "Natália Freire", "Otávio Mendes", "Sabrina Rocha"]}, "nov": {"nome": "Novembro de 2027", "fim": "30/11/2027", "abriu": "01/11/2027", "turma": 22, "resp": [{"n": "Camila Duarte", "notas": {"q1": 10, "q2": 10, "q3": 10, "q4": 10}, "com": ""}, {"n": "Juliana Prates", "notas": {"q1": 8, "q2": 10, "q3": 10, "q4": 9}, "com": ""}, {"n": "Mariana Coelho", "notas": {"q1": 8, "q2": 10, "q3": 8, "q4": 9}, "com": "Seguiria com o Bruno no ano que vem sem pensar."}, {"n": "Letícia Barros", "notas": {"q1": 10, "q2": 9, "q3": 9, "q4": 10}, "com": ""}, {"n": "Carolina Viana", "notas": {"q1": 10, "q2": 10, "q3": 8, "q4": 9}, "com": ""}, {"n": "Larissa Tavares", "notas": {"q1": 10, "q2": 10, "q3": 10, "q4": 9}, "com": ""}], "tot": null, "nao": ["Rafael Nunes", "Thiago Moreira", "Fernanda Lopes", "Diego Albuquerque", "Gustavo Rangel", "Pedro Henrique Sales", "Eduardo Bastos", "Rodrigo Pacheco", "Henrique Brandão", "Felipe Antunes", "Vinícius Lacerda", "Aline Furtado", "Natália Freire", "Bruna Cardoso", "Otávio Mendes", "Sabrina Rocha"]}}};
+const MODE = "lista";
+const TODAY = new Date('2027-12-10T12:00:00');
+const MESES = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+const ST = {vencer:'A vencer', renovou:'Renovou', nao:'Não renovou'};
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const dmy = iso => iso.split('-').reverse().join('/');
+const daysTo = iso => Math.round((new Date(iso+'T12:00:00') - TODAY) / 864e5);
+const ini = n => { const w = n.split(' '); return (w[0][0] + w[w.length-1][0]).toUpperCase(); };
+const av = n => `<span class="av" aria-hidden="true">${ini(n)}</span>`;
+const nm = n => `<a class="nm" href="#" onclick="return false">${esc(n)}</a>`;
+const cpfOf = n => { const c = D.carteira.find(x => x.n === n); return !c || c.cpf; };
+
+/* ---- carteira */
+let filtro = 'todos', soSemCpf = false;
+const ORDEM = {vencer:0, renovou:1, nao:2};
+function linha(c){
+  let venc;
+  if (c.st === 'vencer') {
+    const d = daysTo(c.end);
+    venc = `<b class="num">Vence em ${dmy(c.end)}</b>` + (d <= 30 ? `<small class="soon">daqui a ${d} dias</small>` : '');
+  } else venc = `<b class="num">Venceu em ${dmy(c.end)}</b><small>${c.st === 'renovou' ? 'Contrato novo em seguida' : 'Saiu da carteira'}</small>`;
+  return `<div class="tr" role="row">
+    <div class="who" role="cell">${av(c.n)}<div>${nm(c.n)}${c.cpf ? '' : '<span class="nocpf">Sem CPF</span>'}</div></div>
+    <span class="plan" role="cell">${esc(c.p)}</span>
+    <span class="venc" role="cell">${venc}</span>
+    <span class="stc" role="cell"><span class="st s-${c.st}">${ST[c.st]}</span></span></div>`;
+}
+function renderCarteira(){
+  const base = D.carteira.filter(c => !soSemCpf || !c.cpf);
+  const cnt = k => base.filter(c => k === 'todos' || c.st === k).length;
+  $('#pills').innerHTML = ['todos','vencer','renovou','nao'].map(k =>
+    `<button type="button" class="fp" data-f="${k}" aria-pressed="${filtro===k}">${k==='todos'?'Todos':ST[k]} <b class="num">${cnt(k)}</b></button>`).join('');
+  const semCpf = D.carteira.filter(c => !c.cpf).length;
+  $('#warn').innerHTML = `${ICON_INFO}<p>${soSemCpf
+    ? `Mostrando só os ${semCpf} alunos sem CPF no cadastro. <button type="button" class="lnk" data-cpf>Mostrar todos</button>`
+    : `${semCpf} alunos não têm CPF no cadastro e não conseguem responder o NPS. Peça o CPF na recepção e complete o cadastro. <button type="button" class="lnk" data-cpf>Ver quem são</button>`}</p>`;
+  const list = base.filter(c => filtro === 'todos' || c.st === filtro)
+    .sort((a,b) => ORDEM[a.st]-ORDEM[b.st] || (a.st==='vencer' ? a.end.localeCompare(b.end) : b.end.localeCompare(a.end)));
+  const box = $('#rows');
+  if (!list.length) { box.innerHTML = '<p class="empty">Ninguém nesta situação.</p>'; return; }
+  if (MODE !== 'meses') { box.innerHTML = list.map(linha).join(''); return; }
+  // boletim: os contratos que venceram no ciclo agrupados por mês, depois os que vencem depois do ciclo
+  const ciclo = list.filter(c => c.st !== 'vencer').sort((a,b) => a.end.localeCompare(b.end));
+  const depois = list.filter(c => c.st === 'vencer');
+  const grupos = {};
+  ciclo.forEach(c => { const k = c.end.slice(0,7); (grupos[k] = grupos[k] || []).push(c); });
+  let html = '';
+  if (ciclo.length) {
+    html += `<div class="grp"><h3 class="d">Venceram no ciclo</h3><p>${ciclo.filter(c=>c.st==='renovou').length} de ${ciclo.length} renovaram. É esta conta que vira a taxa de renovação.</p></div>`;
+    Object.keys(grupos).forEach(k => {
+      const g = grupos[k], [y,m] = k.split('-');
+      html += `<div class="mes"><span class="d">${MESES[+m-1][0].toUpperCase()+MESES[+m-1].slice(1)} de ${y}</span><span class="mut num">${g.filter(c=>c.st==='renovou').length} de ${g.length} renovou</span></div>` + g.map(linha).join('');
+    });
+  }
+  if (depois.length) {
+    html += `<div class="grp"><h3 class="d">Vencem depois do ciclo</h3><p>${depois.length} contratos. Entram na conta do ciclo de dezembro de 2027 a novembro de 2028.</p></div>` + depois.map(linha).join('');
+  }
+  box.innerHTML = html;
+}
+
+/* ---- aulas */
+function renderAulas(){
+  const veio = D.aulas.filter(a => a.pres === 'veio'), mat = veio.filter(a => a.mat);
+  $('#aulas').innerHTML = `<div class="sum">
+      <div><div class="mut">Aulas com presença</div><div class="k d num">${veio.length}</div></div>
+      <div><div class="mut">Viraram matrícula</div><div class="k d num g">${mat.length} <span style="font-size:16px">(${Math.round(mat.length/veio.length*100)}%)</span></div></div>
+      <p class="mut">Aulas experimentais e freepass do ciclo com o Bruno. Falta e treino sozinho não entram na conta.</p></div>
+    <div class="ta" role="row"><span>Data</span><span>Lead</span><span>Tipo</span><span>Presença</span><span>Matrícula</span></div>` +
+    D.aulas.map(a => `<div class="ra ${a.pres==='faltou'?'faltou':''}" role="row">
+      <span class="dt num">${dmy(a.d)}</span>
+      <span>${nm(a.n)}</span>
+      <span class="tp">${a.t}</span>
+      <span class="pres ${a.pres==='faltou'?'no':''}"><i></i>${a.pres==='veio'?'Compareceu':'Faltou'}</span>
+      <span>${a.mat===true?'<span class="mat">Matriculou</span>':a.mat===false?'<span class="mut">Não matriculou</span>':'<span class="mut">Não conta</span>'}</span></div>`).join('');
+}
+
+/* ---- nps (visão do gestor) */
+let pesquisa = 'jun';
+const catOf = v => v >= 9 ? 'p' : v >= 7 ? 'n' : 'x';
+const sinal = v => (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v);
+const stack = t => { const s = t.p+t.n+t.d; return `<div class="stack" aria-hidden="true"><i class="p" style="width:${t.p/s*100}%"></i><i class="n" style="width:${t.n/s*100}%"></i><i class="x" style="width:${t.d/s*100}%"></i></div>`; };
+function renderNps(){
+  const S = D.nps[pesquisa], r = S.resp.length, pct = Math.round(r/S.turma*100);
+  const precisa = Math.max(10, Math.ceil(S.turma/2)), vale = r >= precisa;
+  const P = D.perguntas;
+  const sel = ['nov','jun'].map(k => `<button type="button" class="fp" data-pq="${k}" aria-pressed="${pesquisa===k}">${D.nps[k].nome}</button>`).join('');
+  const t1 = S.tot && S.tot.q1;
+  const main = `<div class="card nmain">
+      <div class="qlbl">Pergunta principal <span class="flag quiet">conta no plano de carreira</span></div>
+      <p class="qt">${P[0].texto}</p>
+      ${vale ? `<div class="score"><span class="big d num ${t1.nps>0?'pos':''}">${sinal(t1.nps)}</span><p>O NPS vai de −100 a 100. Conta como positivo acima de zero.</p></div>
+        ${stack(t1)}
+        <div class="leg"><span><i class="p"></i><b class="num">${t1.p}</b> promotores, notas 9 e 10</span><span><i class="n"></i><b class="num">${t1.n}</b> neutros, 7 e 8</span><span><i class="x"></i><b class="num">${t1.d}</b> detratores, 0 a 6</span></div>`
+      : `<div class="score"><span class="soft d">Sem nota válida</span></div>
+        <p class="invalid">Responderam ${r} dos ${S.turma} alunos da turma. Para a nota valer, precisava de ${precisa} respostas. As notas de cada aluno aparecem embaixo, mas o NPS desta pesquisa não entra no plano de carreira.</p>`}
+    </div>`;
+  const val = `<div class="card nval">
+      <div class="qlbl">Respostas ${vale ? '<span class="flag green">A nota vale</span>' : '<span class="flag amber">Sem nota válida</span>'}</div>
+      <div class="k d num">${r} de ${S.turma} <small>${pct}% da turma</small></div>
+      <div class="prog" role="img" aria-label="${pct}% da turma respondeu. O mínimo é metade."><i style="width:${pct}%"></i><b></b><em>metade da turma</em></div>
+      <ul><li>A nota vale com pelo menos 10 respostas e metade da turma.</li>
+      <li>Turma: os ${S.turma} alunos ativos de funcional do Bruno em ${S.abriu}.</li>
+      <li>Aberta de ${S.abriu} a ${S.fim}. Encerrada.</li></ul></div>`;
+  const outras = `<div class="card nother sec"><h3 class="h3 d">Outras perguntas</h3>
+      ${vale ? P.slice(1).map(q => { const t = S.tot[q.id]; return `<div class="oq"><div><b>${q.curto}</b><small>${q.texto}</small></div><span class="v d num">${sinal(t.nps)}</span>${stack(t)}</div>`; }).join('')
+        : `<p class="mut" style="margin-top:8px">Também ficam sem nota, porque a pesquisa não teve respostas suficientes.</p>`}</div>`;
+  const resp = `<div class="card nlist"><h3 class="h3 d">Quem respondeu <span class="mut num" style="font-weight:500">${r}</span></h3>
+      <div class="rh"><span>Aluno</span>${P.map(q=>`<span>${q.curto}</span>`).join('')}<span>Comentário</span></div>
+      ${S.resp.map(x => `<div class="rr"><span class="nm-cell">${nm(x.n)}</span>${P.map(q => `<span class="nt ${catOf(x.notas[q.id])} num" title="${q.curto}: ${x.notas[q.id]}">${x.notas[q.id]}</span>`).join('')}<span class="c">${esc(x.com)}</span></div>`).join('')}</div>`;
+  const nao = `<div class="card nlist"><h3 class="h3 d">Não responderam <span class="mut num" style="font-weight:500">${S.nao.length}</span></h3>
+      <ul class="nolist">${S.nao.map(n => `<li>${av(n)}${nm(n)}${cpfOf(n)?'':'<span class="nocpf">Sem CPF</span>'}</li>`).join('')}</ul></div>`;
+  $('#nps').innerHTML = `<div class="nsel"><span class="mut">Pesquisa</span>${sel}</div>
+    <div class="ngrid">${main}${val}</div>${outras}
+    <div class="rgrid">${resp}${nao}</div>
+    <p class="foot">${ICON_INFO}<span>Só a gestão vê os nomes, as notas de cada aluno e os comentários. Na tela do Bruno, esta aba mostra só os totais.</span></p>`;
+}
+
+/* ---- abas */
+function abrir(id){
+  document.querySelectorAll('.tab').forEach(t => { const on = t.dataset.tab === id; t.setAttribute('aria-selected', on); t.tabIndex = on ? 0 : -1; });
+  document.querySelectorAll('.panel').forEach(p => p.hidden = p.id !== 'p-' + id);
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest('.tab'); if (t) { abrir(t.dataset.tab); history.replaceState(null,'','#'+t.dataset.tab); return; }
+  const f = e.target.closest('[data-f]'); if (f) { filtro = f.dataset.f; renderCarteira(); document.querySelector(`[data-f="${filtro}"]`).focus(); return; }
+  if (e.target.closest('[data-cpf]')) { soSemCpf = !soSemCpf; filtro = 'todos'; renderCarteira(); document.querySelector('[data-cpf]').focus(); return; }
+  const q = e.target.closest('[data-pq]'); if (q) { pesquisa = q.dataset.pq; renderNps(); document.querySelector(`[data-pq="${pesquisa}"]`).focus(); return; }
+  const c = e.target.closest('[data-copy]');
+  if (c && !c.classList.contains('done')) { const s = c.querySelector('span'), old = s.textContent; c.classList.add('done'); s.textContent = ' Link copiado'; setTimeout(() => { s.textContent = old; c.classList.remove('done'); }, 1800); }
+});
+document.querySelector('.tabs').addEventListener('keydown', e => {
+  if (!['ArrowLeft','ArrowRight'].includes(e.key)) return;
+  const ts = [...document.querySelectorAll('.tab')], i = ts.indexOf(document.activeElement);
+  const n = ts[(i + (e.key === 'ArrowRight' ? 1 : -1) + ts.length) % ts.length]; n.focus(); n.click();
+});
+renderCarteira(); renderAulas(); renderNps();
+abrir(['carteira','aulas','nps','aderencia'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'carteira');
+</script></body></html>
