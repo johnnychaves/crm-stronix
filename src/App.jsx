@@ -109,6 +109,7 @@ import { DailyGoalView } from './views/DailyGoalView.jsx';
 import { ProfessorGoalPlaceholder } from './views/ProfessorGoalPlaceholder.jsx';
 import { RotinasView } from './views/RotinasView.jsx';
 import { ProfessoresView } from './views/professores/ProfessoresView.jsx';
+import { ProfessorPerfilView } from './views/professores/ProfessorPerfilView.jsx';
 import { RelatoriosView } from './views/relatorios/RelatoriosView.jsx';
 import { RelatoriosNovo, NOVO_ATE as RELATORIOS_NOVO_ATE } from './views/relatorios/RelatoriosNovo.jsx';
 import { RotinasNovo, NOVO_ATE as ROTINAS_NOVO_ATE } from './components/rotinas/RotinasIntro.jsx';
@@ -218,7 +219,7 @@ function AppInner() {
   // `sub` é a seção das Configurações ou a aba da ficha, já com o padrão da
   // tela quando o endereço não traz segmento. Ela NÃO entra na screenKey: o
   // AppErrorBoundary e a rolagem não podem remontar a cada troca de seção.
-  const { fichaOpen, profileLeadId, activeTab, resolvedTab, superTab, sub, modelId } = screenState(shown, location.state, appUser);
+  const { fichaOpen, profileLeadId, activeTab, resolvedTab, superTab, sub, modelId, profId } = screenState(shown, location.state, appUser);
   // As três abas da Visão geral. O grupo do menu fica aberto enquanto uma
   // delas está ativa; fora delas, vale o toggle do usuário.
   const isDashTab = resolvedTab === 'dashOperacional' || resolvedTab === 'dashCrm' || resolvedTab === 'dashGerencial';
@@ -1977,6 +1978,20 @@ useEffect(() => {
                   tenantId={sessionTenant}
                   tab={sub}
                   onTab={(subId) => goToSub('professores', subId)}
+                  listenersActive={listenersActive}
+                />
+              )}
+              {/* O perfil: o id vai junto na troca de aba (sem ele o hrefFor não
+                  monta o endereço) e o ciclo também, porque as duas abas são do
+                  ciclo escolhido. */}
+              {activeTab === 'professorPerfil' && (
+                <ProfessorPerfilView
+                  db={db}
+                  appUser={appUser}
+                  tenantId={sessionTenant}
+                  profId={profId}
+                  tab={sub}
+                  onTab={(subId) => goToSub('professorPerfil', subId, { profId }, location.search)}
                   listenersActive={listenersActive}
                 />
               )}
