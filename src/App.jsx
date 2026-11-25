@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
-import { LayoutDashboard, Users, Plus, AlertTriangle, Activity, X, Menu, Settings, Kanban, Moon, Sun, Target, Globe, LifeBuoy, GraduationCap, ListChecks, ChartColumn } from 'lucide-react';
+import { LayoutDashboard, Users, Plus, AlertTriangle, Activity, X, Menu, Settings, Kanban, Moon, Sun, Target, Globe, LifeBuoy, GraduationCap, ListChecks, ChartColumn, IdCard } from 'lucide-react';
 
 import {
   onAuthStateChanged,
@@ -1687,6 +1687,7 @@ useEffect(() => {
                 {nav.kanban && <SidebarItem icon={<Kanban className="w-[18px] h-[18px]" />} label="Pipeline" href={menuHref('kanban')} onNavigate={closeDrawer} active={activeTab === 'kanban'} />}
                 {nav.clientes && <SidebarItem icon={<GraduationCap className="w-[18px] h-[18px]" />} label="Clientes" badge={clientsAVencer > 0 ? clientsAVencer : null} href={menuHref('clientes')} onNavigate={closeDrawer} active={activeTab === 'clientes'} />}
                 {nav.dailyGoal && <SidebarItem icon={<Target className="w-[18px] h-[18px]" />} label="Meta diária" badge={dailyGoalPending > 0 ? dailyGoalPending : null} href={menuHref('dailyGoal')} onNavigate={closeDrawer} active={activeTab === 'dailyGoal'} />}
+                {nav.meuPerfil && <SidebarItem icon={<IdCard className="w-[18px] h-[18px]" />} label="Meu perfil" href={menuHref('professorPerfil', { profId: appUser.professorId })} onNavigate={closeDrawer} active={activeTab === 'professorPerfil'} />}
                 {nav.leads && (
                   <SidebarGroup
                     icon={<Users className="w-[18px] h-[18px]" />}
@@ -1713,6 +1714,9 @@ useEffect(() => {
             <>
               <div className={`px-2.5 mt-6 mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-gray-400 dark:text-neutral-500 whitespace-nowrap ${SIDEBAR_EXPANDED_ONLY}`}>Administração</div>
               <div className="space-y-1">
+                {nav.professores && (
+                  <SidebarItem icon={<GraduationCap className="w-[18px] h-[18px]" />} label="Professores" href={menuHref('professores')} onNavigate={closeDrawer} active={activeTab === 'professores' || activeTab === 'professorPerfil'} />
+                )}
                 {/* O balão "Novo" das Rotinas, em vermelho, fica no item do
                     menu até o ROTINAS_NOVO_ATE (mockup 2026-10-08, opção C).
                     O clique nele abre a explicação, e no resto do item abre
@@ -1781,6 +1785,8 @@ useEffect(() => {
               {activeTab === 'clientes' && 'Clientes'}
               {activeTab === 'dailyGoal' && 'Sua Meta Diária'}
               {activeTab === 'rotinas' && 'Rotinas'}
+              {activeTab === 'professores' && 'Professores'}
+              {activeTab === 'professorPerfil' && 'Perfil do professor'}
               {activeTab === 'leads' && 'Todos os Leads'}
               {activeTab === 'aulas' && 'Aulas Experimentais'}
               {activeTab === 'visitas' && 'Visitas'}
