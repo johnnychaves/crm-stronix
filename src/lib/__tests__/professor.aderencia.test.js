@@ -81,6 +81,17 @@ describe('aderenciaPorSemana', () => {
   });
 });
 
+describe('aderência sem presença importada para a turma', () => {
+  it('professor de uma modalidade fora do relatório fica sem dados, não com 0%', () => {
+    const contratos = normalizeContracts([contrato('dani', { planId: 'start' })]);
+    const leads = [{ id: 'dani', professorId: 'pm' }];
+    const presencas = [{ leadId: 'ana', semana: '2027-03-01', presencas: 3 }];
+    const linhas = aderenciaPorSemana({ presencas, leads, contratos, planos: PLANOS, professor: { id: 'pm', modalidadeIds: ['musc'] }, asOf: new Date('2027-03-24T12:00:00') });
+    expect(linhas).toEqual([]);
+    expect(aderenciaResumo(linhas, 2027, new Date('2027-03-24T12:00:00')).taxa).toBeNull();
+  });
+});
+
 describe('aderenciaDoSemestre e aderenciaDoAno', () => {
   const linhas = [
     { semana: '2027-12-27', contam: 10, aderentes: 0 },

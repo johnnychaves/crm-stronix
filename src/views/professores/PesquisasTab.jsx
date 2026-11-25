@@ -3,11 +3,12 @@ import { ClipboardList, Plus, TriangleAlert } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Avatar } from '../../components/ui/Avatar.jsx';
 import { useToast } from '../../contexts/ToastContext.jsx';
+import { npsLinkDe } from '../../lib/npsLink.js';
 import { abrirPesquisa, encerrarPesquisa, excluirRascunho, gerarLinksQueFaltam, salvarRascunho } from '../../lib/npsWrites.js';
-import { estadoDaPesquisa, novaPesquisa, pesquisaEmCurso, progressoDaTurma } from '../../lib/professor/pesquisas.js';
+import { abreAPartirDe, estadoDaPesquisa, novaPesquisa, pesquisaEmCurso, podeAbrir, progressoDaTurma } from '../../lib/professor/pesquisas.js';
 import { BOTAO, BOTAO_PRI, Confirmacao } from './Confirmacao.jsx';
 import { PesquisaForm } from './PesquisaForm.jsx';
-import { cicloCurto, periodoTexto, prazoTexto } from './pesquisasTexto.js';
+import { cicloCurto, diaTexto, periodoTexto, prazoTexto } from './pesquisasTexto.js';
 
 // A sub-tela Pesquisas do gestor (mockup B de 25/11/2026, pesquisa em
 // destaque): a pesquisa aberta num cartão escuro, com o andamento de cada
@@ -35,14 +36,21 @@ function Selo({ estado, escuro = false }) {
   );
 }
 
-function LinhaDoProfessor({ prof, turma, respostas }) {
+function LinhaDoProfessor({ prof, turma, respostas, onCopiar }) {
   const p = progressoDaTurma(turma, respostas);
   const nome = prof?.nome || 'Professor removido';
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 border-t border-white/10 py-3 [grid-template-areas:'who_vale''pb_pb'] md:grid-cols-[minmax(200px,1.3fr)_minmax(170px,1.6fr)_150px] md:items-center md:[grid-template-areas:'who_pb_vale']">
       <div className="flex min-w-0 items-center gap-2.5 [grid-area:who]">
         <span aria-hidden="true"><Avatar name={nome} photoUrl={prof?.photoUrl || null} size={34} /></span>
-        <b className="truncate font-semibold text-white">{nome}</b>
+        <span className="flex min-w-0 flex-col items-start">
+          <b className="max-w-full truncate font-semibold text-white">{nome}</b>
+          {prof?.npsCode && onCopiar && (
+            <button type="button" onClick={() => onCopiar(prof)} className="rounded text-[12px] font-semibold text-[#9FB6FF] outline-none hover:underline focus-visible:anel-foco">
+              Copiar link<span className="sr-only"> de {nome}</span>
+            </button>
+          )}
+        </span>
       </div>
       <div className="flex flex-col gap-1.5 [grid-area:pb]">
         <small className="num text-[12.5px] text-white/80">{respostas} de {turma} alunos responderam ({p.pct}%)</small>
@@ -87,7 +95,7 @@ function SemLink({ profs, onGerar, onGerou }) {
   );
 }
 
-function Destaque({ pesquisa, totaisPorId, profsPorId, hoje, onEncerrar, onGerarLinks }) {
+function Destaque({ pesquisa, totaisPorId, profsPorId, hoje, onEncerrar, onGerarLinks, onCopiarLink }) {
   const [confirmar, setConfirmar] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const botao = useRef(null);
@@ -142,18 +150,20 @@ function Destaque({ pesquisa, totaisPorId, profsPorId, hoje, onEncerrar, onGerar
         <span className="text-white/75">de {turmaTotal} alunos já responderam</span>
       </div>
       <div className="mt-3">
-        {linhas.map((l) => <LinhaDoProfessor key={l.id} prof={l.prof} turma={l.turma} respostas={l.respostas} />)}
+        {linhas.map((l) => <LinhaDoProfessor key={l.id} prof={l.prof} turma={l.turma} respostas={l.respostas} onCopiar={onCopiarLink} />)}
       </div>
     </section>
   );
 }
 
-function Proxima({ pesquisa, emCurso, turmaHoje, onEditar, onAbrir }) {
+function Proxima({ pesquisa, emCurso, turmaHoje, hoje, onEditar, onAbrir }) {
   const [confirmar, setConfirmar] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const botao = useRef(null);
   const perguntas = pesquisa.perguntas || [];
-  const motivo = emCurso ? `Só abre depois que a ${emCurso.nome} encerrar.` : turmaHoje == null ? 'Contando os alunos de cada professor…' : null;
+  const motivo = emCurso ? `Só abre depois que a ${emCurso.nome} encerrar.`
+    : !podeAbrir(pesquisa, hoje) ? `Abre a partir de ${diaTexto(abreAPartirDe(pesquisa.inicio)).slice(0, 5)}, uma semana antes do início, para a turma ser a da época da pesquisa.`
+      : turmaHoje == null ? 'Contando os alunos de cada professor…' : null;
   const abrir = async () => {
     setOcupado(true);
     try {
@@ -223,7 +233,7 @@ function Historico({ pesquisas, totaisPorPesquisa, hoje, onEditar }) {
   );
 }
 
-export function PesquisasTab({ db, appUser, pesquisas, totais, professores, turmasHoje, hoje, agora }) {
+export function PesquisasTab({ db, appUser, tenantId, pesquisas, totais, professores, turmasHoje, turmasDoMomento, hoje, agora }) {
   const toast = useToast();
   const [editando, setEditando] = useState(null); // { id, form }
   const novaRef = useRef(null);
@@ -259,8 +269,10 @@ export function PesquisasTab({ db, appUser, pesquisas, totais, professores, turm
       toast.success('Pesquisa encerrada.');
     } catch (e) { falhou(e, 'Não deu para encerrar a pesquisa. Tente de novo.'); }
   };
+  // A turma sai do instante do clique: a tela pode ter ficado aberta por dias.
   const abrir = async (id) => {
-    await abrirPesquisa(db, id, { turmas: turmasHoje, conhecidas: pesquisas, agora });
+    const noClique = turmasDoMomento ? new Date() : agora;
+    await abrirPesquisa(db, id, { turmas: turmasDoMomento ? turmasDoMomento(noClique) : turmasHoje, conhecidas: pesquisas, agora: noClique });
     toast.success('Pesquisa aberta.');
   };
   const gerarLinks = async (ids) => {
@@ -273,6 +285,16 @@ export function PesquisasTab({ db, appUser, pesquisas, totais, professores, turm
       return false;
     }
   };
+  // Quem não tem acesso de professor recebe o link do gestor.
+  const copiarLink = async (prof) => {
+    const primeiro = String(prof.nome || '').trim().split(/\s+/)[0];
+    try {
+      await navigator.clipboard.writeText(npsLinkDe(window.location.origin, tenantId, prof.npsCode));
+      toast.success(`Link de ${primeiro} copiado.`);
+    } catch {
+      toast.error('Não deu para copiar. Abra o perfil do professor e copie de lá.');
+    }
+  };
   const abrirDaLista = async (p) => {
     try { await abrir(p.id); } catch (e) { falhou(e, 'Não deu para abrir a pesquisa. Tente de novo.'); }
   };
@@ -283,6 +305,7 @@ export function PesquisasTab({ db, appUser, pesquisas, totais, professores, turm
         id={editando.id}
         inicial={editando.form}
         turmaHoje={turmaHoje}
+        hoje={hoje}
         outraAberta={emCurso && emCurso.id !== editando.id ? emCurso : null}
         onVoltar={voltar}
         onSalvar={async (form) => {
@@ -313,9 +336,9 @@ export function PesquisasTab({ db, appUser, pesquisas, totais, professores, turm
 
   return (
     <div>
-      <Destaque pesquisa={emCurso} totaisPorId={totaisPorId} profsPorId={profsPorId} hoje={hoje} onEncerrar={encerrar} onGerarLinks={gerarLinks} />
+      <Destaque pesquisa={emCurso} totaisPorId={totaisPorId} profsPorId={profsPorId} hoje={hoje} onEncerrar={encerrar} onGerarLinks={gerarLinks} onCopiarLink={tenantId ? copiarLink : null} />
       <div className={cn('grid grid-cols-1 items-start gap-4', proxima && 'lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]')}>
-        {proxima && <Proxima pesquisa={proxima} emCurso={emCurso} turmaHoje={turmaHoje} onEditar={(p) => setEditando({ id: p.id, form: doForm(p) })} onAbrir={abrirDaLista} />}
+        {proxima && <Proxima pesquisa={proxima} emCurso={emCurso} turmaHoje={turmaHoje} hoje={hoje} onEditar={(p) => setEditando({ id: p.id, form: doForm(p) })} onAbrir={abrirDaLista} />}
         <Historico pesquisas={ordenadas} totaisPorPesquisa={totaisPorPesquisa} hoje={hoje} onEditar={(p) => setEditando({ id: p.id, form: doForm(p) })} />
       </div>
       <p className="mt-4">

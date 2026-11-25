@@ -3,6 +3,7 @@ import { collection, doc, getDocs, onSnapshot, query, setDoc, where } from 'fire
 import { appId, CONFIG_PATH, LEADS_PATH, PRESENCAS_PATH } from '../lib/firebase.js';
 import { clientsAllQuerySpec } from '../lib/leadQueries.js';
 import { normalizeContracts } from '../lib/operacional/base.js';
+import { planosDoProfessor } from '../lib/professor/carteira.js';
 import { limitesDoCiclo } from '../lib/professor/ciclo.js';
 import { metasDe } from '../lib/professor/metas.js';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
@@ -28,8 +29,11 @@ const CARREIRA_ID = 'carreira';
 const CLIENTES_SPEC_KEY = 'professores-clientes';
 
 export function useProfessoresDados({ db, ciclo, listenersActive }) {
-  const { professores, planos, contratos: contratosCrus } = useGeneralConfig();
+  const { professores, planos: planosCrus, contratos: contratosCrus, modalities } = useGeneralConfig();
   const contratos = useMemo(() => normalizeContracts(contratosCrus), [contratosCrus]);
+  // O Flow e o Move contam para o professor de pilates e o de funcional, não
+  // para o de musculação (planosDoProfessor).
+  const planos = useMemo(() => planosDoProfessor(planosCrus, modalities), [planosCrus, modalities]);
 
   const [ligado, setLigado] = useState(Boolean(listenersActive));
   if (listenersActive && !ligado) setLigado(true);

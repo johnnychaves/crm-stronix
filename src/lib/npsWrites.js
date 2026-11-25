@@ -6,7 +6,7 @@ import { addDoc, collection, deleteDoc, doc, runTransaction, serverTimestamp, up
 import { appId, NPS_PESQUISAS_PATH, PROFESSORS_PATH } from './firebase.js';
 import { gerarNpsCode } from './npsLink.js';
 import { dayKeyOf } from './operacional/month.js';
-import { estadoDaPesquisa, paraGravar, problemaDaPesquisa } from './professor/pesquisas.js';
+import { abreAPartirDe, estadoDaPesquisa, paraGravar, podeAbrir, problemaDaPesquisa } from './professor/pesquisas.js';
 
 const colecao = (db) => collection(db, 'artifacts', appId, 'public', 'data', NPS_PESQUISAS_PATH);
 const refDe = (db, id) => doc(colecao(db), id);
@@ -41,6 +41,7 @@ export async function abrirPesquisa(db, id, { turmas, conhecidas = [], agora = n
     const profs = await Promise.all(Object.keys(turmas).map((p) => tx.get(refProfessor(db, p))));
     if (!alvo.exists() || alvo.data().situacao !== 'rascunho') throw erroDaTela('Essa pesquisa não é mais um rascunho.');
     if (problemaDaPesquisa(alvo.data())) throw erroDaTela('Complete a pesquisa antes de abrir.');
+    if (!podeAbrir(alvo.data(), hoje)) throw erroDaTela(`A pesquisa abre a partir de ${abreAPartirDe(alvo.data().inicio).split('-').reverse().join('/')}.`);
     if (snaps.some((s) => s.exists() && estadoDaPesquisa(s.data(), hoje) === 'aberta')) {
       throw erroDaTela('Já tem uma pesquisa aberta. Encerre ela antes de abrir outra.');
     }

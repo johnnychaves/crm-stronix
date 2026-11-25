@@ -16,7 +16,7 @@ import { aderenciaPorSemana, aderenciaResumo } from '../../lib/professor/aderenc
 import { LegendaDosEstados, ProfessoresTabela } from './ProfessoresTabela.jsx';
 import { MetasForm } from './MetasForm.jsx';
 import { PesquisasTab } from './PesquisasTab.jsx';
-import { diaTexto } from './pesquisasTexto.js';
+import { diaTexto, prazoTexto } from './pesquisasTexto.js';
 import { CicloControl, TAB_CONTAGEM, TAB_TRIGGER } from './ProfessoresComum.jsx';
 
 // A tela Professores do gestor (mockup A de 25/11/2026): a lista de placar e
@@ -64,6 +64,8 @@ export function ProfessoresView({ db, appUser, tenantId, tab, onTab, listenersAc
     () => (carregando ? null : turmasDoDia({ clientes, contratos, planos, professores, agora })),
     [carregando, clientes, contratos, planos, professores, agora],
   );
+
+  const turmasDoMomento = (instante) => turmasDoDia({ clientes, contratos, planos, professores, agora: instante });
 
   const aba = tab === 'metas' || tab === 'pesquisas' ? tab : 'lista';
   const academiaTaxa = contas?.academia.academia.taxa ?? null;
@@ -116,7 +118,7 @@ export function ProfessoresView({ db, appUser, tenantId, tab, onTab, listenersAc
             {nps.erro && <p role="alert" className="mb-3 text-[13px] font-semibold text-rose-700 dark:text-rose-300">Não deu para ler as pesquisas. Recarregue a página.</p>}
             {nps.carregando
               ? <p className="text-[13px] text-muted-foreground">Carregando as pesquisas…</p>
-              : <PesquisasTab db={db} appUser={appUser} pesquisas={nps.pesquisas} totais={nps.totais} professores={professores} turmasHoje={turmasHoje} hoje={hoje} agora={agora} />}
+              : <PesquisasTab db={db} appUser={appUser} tenantId={tenantId} pesquisas={nps.pesquisas} totais={nps.totais} professores={professores} turmasHoje={turmasHoje} turmasDoMomento={turmasDoMomento} hoje={hoje} agora={agora} />}
           </TabsContent>
 
           <TabsContent value="metas" tabIndex={-1}>
@@ -138,20 +140,22 @@ function CartaoDaPesquisa({ nps, hoje, onVer }) {
     .filter((p) => estadoDaPesquisa(p, hoje) === 'encerrada')
     .sort((a, b) => String(b.fim).localeCompare(String(a.fim)))[0];
   const pct = resumo && resumo.turma > 0 ? Math.round((resumo.respostas / resumo.turma) * 100) : 0;
+  // Aberta antes do início, a pesquisa ainda não aceita resposta.
+  const comecou = resumo ? hoje >= resumo.pesquisa.inicio : false;
   return (
     <section aria-label="Pesquisa dos alunos" className="mb-4 flex flex-wrap items-center gap-4 rounded-[18px] border border-border bg-card px-[18px] py-3.5 shadow-card">
       <span aria-hidden="true" className={cn('grid size-[38px] flex-none place-items-center rounded-xl', resumo ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300' : 'bg-muted text-muted-foreground')}>
         <ClipboardList size={19} />
       </span>
       <div className="min-w-0 flex-[1_1_260px]">
-        <b className="block font-semibold">{resumo ? `${resumo.pesquisa.nome}, aberta até ${diaTexto(resumo.pesquisa.fim).slice(0, 5)}` : 'Nenhuma pesquisa aberta'}</b>
+        <b className="block font-semibold">{!resumo ? 'Nenhuma pesquisa aberta' : comecou ? `${resumo.pesquisa.nome}, aberta até ${diaTexto(resumo.pesquisa.fim).slice(0, 5)}` : `${resumo.pesquisa.nome}, ${prazoTexto(resumo.pesquisa, hoje)}`}</b>
         <span className="text-[13px] text-muted-foreground">
           {resumo
             ? `${resumo.respostas} ${resumo.respostas === 1 ? 'resposta' : 'respostas'} de ${resumo.turma} alunos nas turmas dos professores.`
             : ultima ? `A última foi a ${ultima.nome}, encerrada.` : 'Crie a primeira na aba Pesquisas.'}
         </span>
       </div>
-      {resumo && (
+      {resumo && comecou && (
         <div aria-hidden="true" className="h-2 flex-[0_1_220px] overflow-hidden rounded-full bg-slate-200 dark:bg-white/10">
           <i className="block h-full rounded-full bg-brand-600" style={{ width: `${Math.min(100, pct)}%` }} />
         </div>

@@ -11,6 +11,8 @@
 //   - nenhum dia de segunda a sexta, ao meio-dia, o encontra trancado.
 // Só entram as semanas que já têm registro importado e que acabaram (sábado
 // às 00:00 até o corte). Aluno sem registro na semana teve nenhuma presença.
+// Sem nenhuma presença de aluno da turma em semana nenhuma, a lista volta
+// vazia: o relatório importado não cobre a modalidade do professor.
 import { pct } from '../crm/stats.js';
 import { fromDateInputValue } from '../dates.js';
 import { professorAt } from '../professorHistory.js';
@@ -44,6 +46,7 @@ export function aderenciaPorSemana({ presencas, leads, contratos, planos, profes
   const leadsById = new Map((leads || []).map((l) => [l.id, l]));
   const daModalidade = contratosDaModalidade(contratos, professor, planos);
   const linhas = [];
+  let algumRegistro = false;
   [...semanas].sort().reverse().forEach((semana) => {
     const segunda = fromDateInputValue(semana);
     if (!segunda || dia(segunda, 5) > asOf) return;
@@ -52,13 +55,17 @@ export function aderenciaPorSemana({ presencas, leads, contratos, planos, profes
       const lead = leadsById.get(leadId);
       if (!lead || professorAt(lead, segunda) !== professor?.id || !contaNaSemana(lista, segunda)) return;
       const n = porChave.get(`${leadId}_${semana}`) || 0;
+      if (n > 0) algumRegistro = true;
       linha.contam += 1;
       if (n >= barra) linha.aderentes += 1;
       else if (n === 1) { linha.umaPresenca += 1; linha.umaIds.push(leadId); } else if (n === 0) { linha.nenhuma += 1; linha.nenhumaIds.push(leadId); }
     });
     linhas.push({ ...linha, taxa: pct(linha.aderentes, linha.contam) });
   });
-  return linhas;
+  // Nenhum aluno da turma tem presença importada: a modalidade dele não entra
+  // no relatório importado (hoje só o funcional), e a aderência é "sem dados",
+  // não 0%.
+  return algumRegistro ? linhas : [];
 }
 
 // Aluno-semanas aderentes ÷ que contam, nas semanas com a segunda-feira em

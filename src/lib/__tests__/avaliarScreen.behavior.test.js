@@ -112,6 +112,20 @@ describe('a página pública da pesquisa', () => {
     expect(document.activeElement.textContent).toBe('Obrigado!');
   });
 
+  it('se o aluno sai da turma antes de enviar, volta ao CPF com o aviso, sem pedir para tentar de novo', async () => {
+    await abrir();
+    await enviarCpf('529.982.247-25');
+    await darNota(9);
+    await clicar(botao('Próxima'));
+    await darNota(8);
+    await clicar(botao('Continuar'));
+    respostas['nps-answer'] = [200, { ok: false, motivo: 'fora' }];
+    await clicar(botao('Enviar resposta'));
+    expect(container.querySelector('#avl-cpf')).not.toBeNull();
+    expect(container.textContent).toContain('Não encontramos esse CPF na turma.');
+    expect(container.textContent).not.toContain('Tente de novo em instantes');
+  });
+
   it('mudar uma nota pelo resumo volta para ele', async () => {
     await abrir();
     await enviarCpf('529.982.247-25');

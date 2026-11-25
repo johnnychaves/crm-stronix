@@ -1795,7 +1795,7 @@ useEffect(() => {
               {activeTab === 'dailyGoal' && 'Sua Meta Diária'}
               {activeTab === 'rotinas' && 'Rotinas'}
               {activeTab === 'professores' && 'Professores'}
-              {activeTab === 'professorPerfil' && 'Perfil do professor'}
+              {activeTab === 'professorPerfil' && (isProfessor(appUser) ? 'Meu perfil' : 'Professores')}
               {activeTab === 'leads' && 'Todos os Leads'}
               {activeTab === 'aulas' && 'Aulas Experimentais'}
               {activeTab === 'visitas' && 'Visitas'}

@@ -41,6 +41,9 @@ describe('regras da pesquisa de NPS', () => {
     const update = allow(pesquisas, 'update');
     expect(update).toContain("resource.data.situacao == 'rascunho'");
     expect(update).toContain("request.resource.data.situacao == 'encerrada'");
+    expect(update).toContain('request.resource.data.inicio == resource.data.inicio');
+    expect(update).toContain('request.resource.data.fim == resource.data.fim');
+    expect(update).toContain('request.resource.data.ciclo == resource.data.ciclo');
     expect(update).toContain('request.resource.data.perguntas == resource.data.perguntas');
     expect(update).toContain("request.resource.data.get('turmas', null) == resource.data.get('turmas', null)");
   });

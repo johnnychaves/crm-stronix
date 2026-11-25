@@ -3,6 +3,8 @@
 // navegador compara com o dia local e o servidor, com o dia de Brasília. A
 // situação gravada só muda pelo gestor, e a pesquisa aberta cujo fim passou
 // conta como encerrada sem ninguém gravar nada.
+import { getSafeDateOrNull } from '../dates.js';
+import { dayKeyOf } from '../operacional/month.js';
 import { cicloDe } from './ciclo.js';
 import { carteiraAt } from './carteira.js';
 import { npsDe, npsDoAno, RESPOSTAS_MINIMAS } from './nps.js';
@@ -71,6 +73,28 @@ export function estadoDaPesquisa(p, hoje) {
   return 'rascunho';
 }
 
+// A pesquisa abre no máximo DIAS_PARA_ABRIR dias antes do início. A turma de
+// cada professor fica gravada no dia em que abre; aberta meses antes, ela seria
+// a carteira de outra época (a SEMESTRE 1 foi aberta em novembro para junho).
+export const DIAS_PARA_ABRIR = 7;
+export function abreAPartirDe(inicio) {
+  const d = diaDe(inicio);
+  if (!d) return null;
+  d.setDate(d.getDate() - DIAS_PARA_ABRIR);
+  return dayKeyOf(d);
+}
+export const podeAbrir = (p, hoje) => {
+  const desde = abreAPartirDe(p?.inicio);
+  return desde != null && hoje >= desde;
+};
+
+// Encerrada antes do dia do início, a pesquisa nunca recebeu resposta e não
+// conta no ciclo.
+const nuncaRecebeu = (p) => {
+  const fechou = getSafeDateOrNull(p?.encerradaEm);
+  return p?.situacao === 'encerrada' && fechou != null && dayKeyOf(fechou) < p.inicio;
+};
+
 // Aberta antes do início, a pesquisa ainda não recebe resposta.
 export const recebeRespostas = (p, hoje) => estadoDaPesquisa(p, hoje) === 'aberta' && hoje >= p.inicio;
 
@@ -107,7 +131,7 @@ export function progressoDaTurma(turma, respostas) {
 export function npsDoCiclo({ pesquisas, totais, professorId, ciclo, meta = 9 }) {
   const porId = new Map((totais || []).map((t) => [`${t.pesquisaId}_${t.professorId}`, t]));
   const itens = (pesquisas || [])
-    .filter((p) => p.ciclo === ciclo && p.situacao !== 'rascunho' && Number(p.turmas?.[professorId]) > 0)
+    .filter((p) => p.ciclo === ciclo && p.situacao !== 'rascunho' && !nuncaRecebeu(p) && Number(p.turmas?.[professorId]) > 0)
     .sort((a, b) => String(a.inicio).localeCompare(String(b.inicio)))
     .map((pesquisa) => {
       const t = porId.get(`${pesquisa.id}_${professorId}`) ?? null;

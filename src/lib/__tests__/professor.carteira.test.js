@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { normalizeContracts } from '../operacional/base.js';
-import { carteiraAt, contratosDaModalidade, estadoEm } from '../professor/carteira.js';
+import { carteiraAt, contratosDaModalidade, estadoEm, planosDoProfessor } from '../professor/carteira.js';
 import { carteiraDoCiclo } from '../professor/renovacao.js';
 
 const ts = (iso) => ({ toDate: () => new Date(iso) });
@@ -24,6 +24,26 @@ describe('contratosDaModalidade', () => {
     ]);
     const mapa = contratosDaModalidade(lista, PROF, PLANOS);
     expect([...mapa.keys()].sort()).toEqual(['ana', 'caio']);
+  });
+});
+
+describe('planosDoProfessor', () => {
+  const MODS = [{ id: 'musc', name: 'Musculação' }, { id: 'func', name: 'Treinamento funcional' }, { id: 'pil', name: 'Pilates' }];
+  const planos = [
+    { id: 'move', modalityIds: ['func', 'musc'] },
+    { id: 'start', modalityIds: ['musc'] },
+    { id: 'exp', modalityIds: ['musc', 'pil', 'func'] },
+  ];
+  it('plano com a musculação e mais uma fica só com a outra; o de três e o só de musculação não mudam', () => {
+    const r = planosDoProfessor(planos, MODS);
+    expect(r.map((p) => p.modalityIds)).toEqual([['func'], ['musc'], ['musc', 'pil', 'func']]);
+  });
+  it('o aluno do Move com professor de musculação não entra na carteira dele', () => {
+    const contratos = normalizeContracts([contrato('c1', 'l1', 'move')]);
+    const leads = [{ id: 'l1', professorId: 'pm' }];
+    const pm = { id: 'pm', modalidadeIds: ['musc'] };
+    expect(carteiraAt({ leads, contratos, planos, professor: pm, data: new Date('2027-03-10T12:00:00') })).toHaveLength(1);
+    expect(carteiraAt({ leads, contratos, planos: planosDoProfessor(planos, MODS), professor: pm, data: new Date('2027-03-10T12:00:00') })).toEqual([]);
   });
 });
 
