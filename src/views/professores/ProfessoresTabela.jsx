@@ -64,7 +64,8 @@ function Celula({ titulo, criterio }) {
   );
 }
 
-export function SeloDoNivel({ nivel }) {
+// `desde` (dd/mm/aaaa) entra no perfil: "Júnior desde 01/12/2026".
+export function SeloDoNivel({ nivel, desde = null }) {
   const tem = nivelTexto(nivel) !== 'Sem nível';
   return (
     <span
@@ -75,6 +76,7 @@ export function SeloDoNivel({ nivel }) {
     >
       {tem && <i className="size-[7px] rounded-full bg-brand-600" />}
       {nivelTexto(nivel)}
+      {tem && desde && ` desde ${desde}`}
     </span>
   );
 }

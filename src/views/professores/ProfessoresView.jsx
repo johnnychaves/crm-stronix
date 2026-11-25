@@ -1,9 +1,7 @@
 import { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useProfessoresDados } from '../../hooks/useProfessoresDados.js';
 import { useScreenParams } from '../../hooks/useScreenParams.js';
-import { PRIMEIRO_CICLO } from '../../lib/screenParams.js';
 import { cicloDe } from '../../lib/professor/ciclo.js';
 import { conversaoDoCiclo } from '../../lib/professor/conversao.js';
 import { renovacaoDoCiclo } from '../../lib/professor/renovacao.js';
@@ -11,28 +9,12 @@ import { FilterBar } from '../dashboard/DashFilterBar.jsx';
 import { CRITERIO_ADERENCIA, CRITERIO_NPS, criterioConversao, criterioRenovacao } from './criterios.js';
 import { LegendaDosEstados, ProfessoresTabela } from './ProfessoresTabela.jsx';
 import { MetasForm } from './MetasForm.jsx';
+import { CicloControl, TAB_CONTAGEM, TAB_TRIGGER } from './ProfessoresComum.jsx';
 
 // A tela Professores do gestor (mockup A de 25/11/2026): a lista de placar e
 // a sub-tela Metas. O ciclo mora no endereço (`ciclo`), e a aba é a sub-tela
 // (/professores e /professores/metas), que o App troca com replace.
-const TAB_TRIGGER = 'h-10 flex-none rounded-t-lg px-3 text-[13.5px] font-medium text-muted-foreground hover:text-foreground data-[state=active]:font-semibold data-[state=active]:text-foreground after:rounded-full after:bg-brand-600 group-data-[orientation=horizontal]/tabs:after:bottom-[-1px]';
-const SETA = 'grid size-[30px] flex-none place-items-center rounded-[9px] text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:anel-foco disabled:pointer-events-none disabled:opacity-35';
-
 const porNome = (a, b) => String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR');
-
-function CicloControl({ ciclo, cicloAtual, onCiclo }) {
-  return (
-    <div role="group" aria-label="Ciclo de avaliação" className="flex h-[38px] items-center gap-0.5 rounded-xl border border-border bg-card p-[3px] shadow-card">
-      <button type="button" aria-label="Ciclo anterior" disabled={ciclo <= PRIMEIRO_CICLO} onClick={() => onCiclo(ciclo - 1)} className={SETA}>
-        <ChevronLeft size={15} strokeWidth={2} />
-      </button>
-      <span className="num whitespace-nowrap px-1.5 text-[13px] font-semibold">Ciclo dez/{ciclo - 1} a nov/{ciclo}</span>
-      <button type="button" aria-label="Próximo ciclo" disabled={ciclo >= cicloAtual} onClick={() => onCiclo(ciclo + 1)} className={SETA}>
-        <ChevronRight size={15} strokeWidth={2} />
-      </button>
-    </div>
-  );
-}
 
 export function ProfessoresView({ db, tenantId, tab, onTab, listenersActive }) {
   // Um relógio só por montagem: as contas do ciclo cortam no mesmo instante.
@@ -82,7 +64,7 @@ export function ProfessoresView({ db, tenantId, tab, onTab, listenersActive }) {
           <TabsList variant="line" className="w-full justify-start gap-1 overflow-x-auto overscroll-x-contain rounded-none border-b border-border p-0 group-data-[orientation=horizontal]/tabs:h-10">
             <TabsTrigger value="lista" className={TAB_TRIGGER}>
               Professores
-              <span className="rounded-full bg-muted px-[7px] py-px text-[12px] font-semibold text-muted-foreground">{ativos.length}</span>
+              <span className={TAB_CONTAGEM}>{ativos.length}</span>
             </TabsTrigger>
             <TabsTrigger value="metas" className={TAB_TRIGGER}>Metas</TabsTrigger>
           </TabsList>
