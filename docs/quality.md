@@ -30,7 +30,7 @@ Nenhuma correção de auditoria foi aplicada neste setup. `npm audit fix --force
 
 - Testes ao lado do código, em `src/lib/__tests__/` e `api/__tests__/`. Teste de tela usa jsdom.
 - **Varreduras (sweeps)** reprovam o padrão proibido em todo o código, em vez de testar um caso: `acessoSweep`, `filtrosNoEndereco.sweep`, `leadLinkSweep`, `newLeadSweep`, `marcaDoDia.sweep`, `donoDaEpoca.sweep`, `protecaoDeErro.sweep` e `registroDoAgendamento.sweep`. Código novo que repita o padrão antigo quebra o teste.
-- **Testes de importação** (`acessoImports`, `rotinasImports`, `newLeadImports`, `teamRolesImports`, `guardianImports`) travam, arquivo por arquivo, que o que a `api/` lê não importe pacote. Não há uma varredura geral de tudo que a `api/` importa de `src/lib/`.
+- **Testes de importação** (`acessoImports`, `rotinasImports`, `newLeadImports`, `teamRolesImports`, `guardianImports`, `professorContasImports`) travam, arquivo por arquivo, que o que a `api/` lê não importe pacote. Não há uma varredura geral de tudo que a `api/` importa de `src/lib/`.
 - **Testes que leem o texto das regras do Firestore** conferem a lista de campos gravados pelo app contra `firestore.rules` (`professorRules`, `rotinaRules`) e as chamadas de módulo (`modules`). Mudou a gravação, o teste quebra até a regra acompanhar. As regras não são executadas em teste, e não há emulador.
 - O banco falso de `api/__tests__/zapRoute.test.js` imita o SDK de servidor, e é ele que pega erro de `snap.exists`.
 
