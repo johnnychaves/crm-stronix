@@ -34,6 +34,8 @@ Não muda regra do Firestore. Grava em toda academia, sem tela.
 
 ### PR 2: as contas
 
+**Plano:** `docs/superpowers/plans/2026-11-25-perfil-do-professor-02-contas.md` (pronto).
+
 Funções puras em `src/lib/professor/`, sem tela:
 
 - `carteiraAt(leads, contracts, planos, professor, data)`: os alunos do professor na data, com contrato de plano da modalidade dele.
