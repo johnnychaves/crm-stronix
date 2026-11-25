@@ -1,0 +1,570 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Perfil do professor C · Boletim</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#0E1A40;--ink2:#334155;--muted:#64748b;--faint:#94a3b8;--paper:#F5F7FB;--line:#e2e8f0;--rule:#eef2f7;
+--blue:#2B59FF;--blue50:#EAF0FF;--blue200:#B8CCFF;--blue700:#1C3FC4;--orange:#FF6A2B;
+--green:#15B981;--green700:#047857;--green50:rgba(21,185,129,.12);
+--rose:#F43F5E;--rose700:#BE123C;--rose50:rgba(244,63,94,.10);
+--amber:#F59E0B;--amber700:#B45309;--amber50:rgba(245,158,11,.14)}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.45 Geist,ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+h1,h2,h3,p{margin:0}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit;cursor:pointer}
+.d{font-family:'Space Grotesk',sans-serif}
+.num{font-variant-numeric:tabular-nums}
+.mut{color:var(--muted)}
+:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.wrap{max-width:1240px;margin:0 auto;padding:20px 32px 80px}
+.crumb{display:inline-flex;align-items:center;gap:4px;color:var(--muted);font-weight:500;margin-bottom:14px;border-radius:6px}
+.crumb svg{width:16px;height:16px}
+.crumb:hover{color:var(--blue700)}
+.ro{display:flex;align-items:center;gap:8px;color:var(--muted);margin-bottom:14px;font-size:13px}
+.ro svg{width:16px;height:16px;flex:none}
+.ro b{color:var(--ink);font-weight:600}
+.card{background:#fff;border-radius:18px}
+.tag{position:fixed;left:12px;bottom:12px;z-index:99;background:var(--ink);color:#fff;border-radius:999px;padding:6px 12px;font-size:11.5px;font-weight:600;opacity:.92;max-width:calc(100vw - 24px)}
+.btn{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:#fff;font-size:13px;font-weight:600;white-space:nowrap}
+.btn:hover{border-color:var(--blue200);color:var(--blue700)}
+.btn svg{width:15px;height:15px;flex:none}
+.btn.done{border-color:rgba(21,185,129,.45);color:var(--green700)}
+.lnk{border:0;background:none;padding:0;color:var(--blue700);font-weight:600;border-radius:4px}
+.lnk:hover{text-decoration:underline}
+.av{display:grid;place-items:center;border-radius:50%;background:var(--blue50);color:var(--blue700);font:700 12px/1 'Space Grotesk',sans-serif;flex:none;width:34px;height:34px}
+.lvl{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:999px;background:var(--blue50);color:var(--blue700);font-size:12.5px;font-weight:600;white-space:nowrap}
+.lvl i{width:7px;height:7px;border-radius:50%;background:var(--blue)}
+.mod{display:inline-flex;height:24px;align-items:center;padding:0 9px;border-radius:7px;background:#eef0f5;color:var(--ink2);font-size:12px;font-weight:600}
+.flag{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:7px;font-size:12px;font-weight:600;white-space:nowrap}
+.flag.amber{background:var(--amber50);color:var(--amber700)}
+.flag.green{background:var(--green50);color:var(--green700)}
+.flag.quiet{background:#eef0f5;color:var(--muted)}
+.period{display:inline-flex;align-items:center;gap:2px;height:38px;padding:3px;border-radius:12px;border:1px solid var(--line);background:#fff}
+.period button{width:30px;height:30px;display:grid;place-items:center;border:0;background:none;border-radius:9px;color:var(--ink2);padding:0}
+.period button svg{width:16px;height:16px}
+.period button:hover:not(:disabled){background:var(--blue50);color:var(--blue700)}
+.period button:disabled{color:#cbd5e1;cursor:default}
+.period span{padding:0 6px;font-weight:600;font-size:13px;white-space:nowrap}
+
+/* abas */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:28px 0 16px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none}
+.tab{border:0;background:none;padding:10px 12px 12px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap;display:flex;gap:7px;align-items:center;border-radius:6px 6px 0 0}
+.tab:hover{color:var(--ink)}
+.tab[aria-selected=true]{color:var(--ink);border-bottom-color:var(--blue)}
+.tab .n{font-size:12px;font-weight:600;color:var(--muted);background:#eef0f5;border-radius:999px;padding:1px 7px}
+.panel[hidden]{display:none}
+
+/* pílulas de filtro */
+.ptop{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.pills{display:flex;gap:8px;flex-wrap:wrap}
+.fp{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 13px;border-radius:999px;border:1px solid var(--line);background:#fff;font-size:13px;font-weight:500}
+.fp:hover{border-color:var(--blue200)}
+.fp[aria-pressed=true]{background:var(--blue50);border-color:var(--blue200);color:var(--blue700)}
+.fp b{font-weight:700}
+
+/* situação */
+.s-vencer{--c:#F59E0B;--t:#B45309;--bg:rgba(245,158,11,.15)}
+.s-renovou{--c:#10B981;--t:#047857;--bg:rgba(16,185,129,.12)}
+.s-nao{--c:#F43F5E;--t:#BE123C;--bg:rgba(244,63,94,.10)}
+.st{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:999px;background:var(--bg);color:var(--t);font-size:12px;font-weight:600;white-space:nowrap}
+.st::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--c)}
+
+/* aviso */
+.warn{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:12px;background:#FFF8EB;border:1px solid #FCE3B4;color:#7A4A06;margin-bottom:12px}
+.warn svg{width:17px;height:17px;flex:none;margin-top:1px;color:var(--amber700)}
+.warn p{flex:1;min-width:0}
+.warn .lnk{color:#7A4A06;text-decoration:underline;margin-left:4px}
+
+/* lista */
+.tbl{overflow:hidden}
+.th,.tr{display:grid;grid-template-columns:minmax(220px,1.6fr) minmax(140px,1fr) minmax(170px,1fr) 128px;gap:16px;align-items:center;padding:0 22px}
+.th{height:44px;border-bottom:1px solid var(--rule);color:var(--muted);font-size:12.5px;font-weight:500}
+.tr{min-height:58px;border-bottom:1px solid var(--rule)}
+.tr:last-child{border-bottom:0}
+.tr:hover{background:#f8faff}
+.who{display:flex;align-items:center;gap:12px;min-width:0}
+.who>div{min-width:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.nm{font-weight:600;border-radius:4px}
+.nm:hover{color:var(--blue700);text-decoration:underline}
+.nocpf{display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:6px;background:var(--amber50);color:var(--amber700);font-size:11.5px;font-weight:600}
+.plan{color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.venc b{display:block;font-weight:500}
+.venc small{display:block;font-size:12px;color:var(--muted)}
+.venc small.soon{color:var(--amber700);font-weight:600}
+.empty{padding:28px 22px;color:var(--muted);text-align:center}
+
+/* aulas */
+.ta,.ra{display:grid;grid-template-columns:minmax(200px,1.5fr) minmax(170px,1.2fr) 110px 150px;gap:16px;align-items:center;padding:0 22px}
+.pp{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.n30{display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:6px;background:var(--blue50);color:var(--blue700);font-size:11.5px;font-weight:600}
+.tp small{display:block;font-size:12px;color:var(--muted)}
+.ta{height:44px;border-bottom:1px solid var(--rule);color:var(--muted);font-size:12.5px;font-weight:500}
+.ra{min-height:54px;border-bottom:1px solid var(--rule)}
+.ra:last-child{border-bottom:0}
+.ra.faltou{color:var(--muted)}
+.pres{display:inline-flex;align-items:center;gap:6px;font-weight:500}
+.pres i{width:7px;height:7px;border-radius:50%;background:var(--green)}
+.pres.no i{background:var(--faint)}
+.mat{font-weight:600;color:var(--green700)}
+.sum{display:flex;gap:28px;flex-wrap:wrap;align-items:flex-end;padding:20px 22px;border-bottom:1px solid var(--rule)}
+.sum .k{font-size:28px;font-weight:700;letter-spacing:-.02em;line-height:1.1}
+.sum .k.g{color:var(--green700)}
+.sum p{max-width:46ch}
+
+/* nps */
+.nsel{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.ngrid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:16px}
+.nmain,.nval,.nother,.nlist{padding:22px 24px}
+.qlbl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-weight:600}
+.qt{color:var(--ink2);margin-top:6px;max-width:60ch}
+.score{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;margin:18px 0 14px}
+.score .big{font-size:64px;font-weight:700;letter-spacing:-.04em;line-height:.95}
+.score .big.pos{color:var(--green700)}
+.score .soft{font-size:26px;font-weight:700;color:var(--muted);letter-spacing:-.02em}
+.score p{color:var(--muted);font-size:13px;max-width:30ch;padding-bottom:6px}
+.stack{display:flex;height:14px;border-radius:7px;overflow:hidden;background:#e9edf5;gap:2px}
+.stack i{display:block;height:100%}
+.stack .p{background:var(--green)}.stack .n{background:#cbd5e1}.stack .x{background:var(--rose)}
+.leg{display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;font-size:12.5px;color:var(--ink2)}
+.leg span{display:inline-flex;gap:6px;align-items:center}
+.leg i{width:9px;height:9px;border-radius:3px}
+.leg .p{background:var(--green)}.leg .n{background:#cbd5e1}.leg .x{background:var(--rose)}
+.prog{position:relative;height:10px;border-radius:999px;background:#e9edf5;margin:16px 0 26px}
+.prog i{display:block;height:100%;border-radius:999px;background:var(--blue)}
+.prog b{position:absolute;left:50%;top:-5px;width:2px;height:20px;background:var(--ink)}
+.prog em{position:absolute;left:50%;top:18px;transform:translateX(-50%);font-style:normal;font-size:11.5px;color:var(--muted);white-space:nowrap}
+.nval .k{font-size:36px;font-weight:700;letter-spacing:-.03em;line-height:1.05;margin-top:8px}
+.nval .k small{font-size:15px;color:var(--muted);font-weight:600;letter-spacing:0}
+.nval ul{margin:14px 0 0;padding:0;list-style:none;display:grid;gap:6px;color:var(--ink2);font-size:13px}
+.oq{display:grid;grid-template-columns:minmax(0,1fr) 140px minmax(120px,220px);gap:18px;align-items:center;padding:14px 0;border-top:1px solid var(--rule)}
+.oq:first-of-type{border-top:0}
+.oq b{display:block;font-weight:600}
+.oq small{display:block;color:var(--muted);font-size:12.5px}
+.oq .v{text-align:right}
+.oq .v b{display:block;font-size:22px;font-weight:700}
+.oq .v small{font-size:12px}
+.nano{display:flex;justify-content:space-between;gap:18px 32px;flex-wrap:wrap;align-items:center;padding:20px 24px;margin-bottom:16px}
+.nano .ano{font-size:44px;font-weight:700;letter-spacing:-.03em;line-height:1;margin:8px 0 6px}
+.nano .ano.pos{color:var(--green700)}
+.anos{list-style:none;margin:0;padding:0;display:flex;gap:12px;flex-wrap:wrap}
+.anos li{display:grid;gap:2px;padding:12px 16px;border:1px solid var(--line);border-radius:12px;min-width:136px;flex:1 1 136px}
+.anos li span{font-size:12.5px;color:var(--muted)}
+.anos li b{font-size:22px;font-weight:700}
+.anos li b.soft{font-size:15px;color:var(--muted);font-weight:600}
+.anos li small{font-size:12px;color:var(--muted)}
+.score .sv{display:grid;gap:6px;justify-items:start}
+.histo{display:grid;grid-template-columns:repeat(11,minmax(0,1fr));gap:6px;align-items:end;height:104px;margin-top:6px}
+.hc{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;height:100%}
+.hc i{display:block;width:100%;max-width:30px;border-radius:5px 5px 2px 2px}
+.hc i.p{background:var(--green)}.hc i.n{background:#cbd5e1}.hc i.x{background:var(--rose)}
+.hn{font-size:12px;font-weight:600;color:var(--ink2);min-height:16px}
+.hl{font-size:11.5px;color:var(--muted)}
+.info{margin-top:12px;font-size:13px;color:var(--muted)}
+.h3{font-size:16px;font-weight:700;letter-spacing:-.01em}
+.sec{margin-top:16px}
+.rgrid{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:16px;margin-top:16px;align-items:start}
+.rh,.rr{display:grid;grid-template-columns:minmax(150px,1.3fr) repeat(4,72px) minmax(0,1.6fr);gap:10px;align-items:center}
+.rh{font-size:12px;color:var(--muted);padding:12px 0 8px;border-bottom:1px solid var(--rule)}
+.rh span:nth-child(n+2):nth-child(-n+5){text-align:center}
+.rr{padding:10px 0;border-bottom:1px solid var(--rule);font-size:13px}
+.rr:last-child{border-bottom:0}
+.nt{display:grid;place-items:center;width:30px;height:26px;margin:0 auto;border-radius:7px;font-weight:700;font-size:13px}
+.nt.p{background:var(--green50);color:var(--green700)}.nt.n{background:#eef0f5;color:var(--ink2)}.nt.x{background:var(--rose50);color:var(--rose700)}
+.rr .c{color:var(--ink2)}
+.rr .c:empty::before{content:"Sem comentário";color:var(--faint)}
+.nolist{list-style:none;margin:10px 0 0;padding:0}
+.nolist li{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--rule)}
+.nolist li:last-child{border-bottom:0}
+.foot{margin-top:14px;color:var(--muted);font-size:13px;display:flex;gap:8px;align-items:flex-start}
+.foot svg{width:16px;height:16px;flex:none;margin-top:1px}
+.invalid{padding:16px;border-radius:12px;background:#f6f8fc;color:var(--ink2)}
+
+/* aderência */
+.adh{padding:40px 28px;display:flex;gap:20px;align-items:flex-start;max-width:720px}
+.adh .ico{width:48px;height:48px;border-radius:14px;border:1.5px dashed #cbd5e1;display:grid;place-items:center;color:var(--faint);flex:none}
+.adh .ico svg{width:22px;height:22px}
+.adh h3{font-size:18px;font-weight:700;margin-bottom:6px}
+.adh p{color:var(--ink2);max-width:62ch}
+.adh p+p{margin-top:8px;color:var(--muted)}
+.sum .ameta{display:inline-flex;align-items:center;gap:8px;font-weight:600;color:var(--ink2);white-space:nowrap;max-width:none}
+.sw{width:22px;height:10px;border-radius:3px;background:rgba(21,185,129,.25);border:1.5px solid rgba(21,185,129,.7)}
+.wh,.wr{display:grid;grid-template-columns:minmax(96px,124px) 84px minmax(60px,1fr) minmax(64px,96px) minmax(64px,96px) minmax(90px,1fr) 128px;gap:12px;align-items:center;padding:0 22px}
+.wh{height:44px;border-bottom:1px solid var(--rule);color:var(--muted);font-size:12.5px;font-weight:500}
+.wr{min-height:58px;border-bottom:1px solid var(--rule)}
+.wr.on{background:#f8faff}
+.sem{font-weight:600}
+.sem small{display:block;font-weight:500;font-size:12px;color:var(--muted)}
+.ap b{font-size:20px;font-weight:700;letter-spacing:-.02em;line-height:1.1}
+.ap small{display:block;font-size:12px;color:var(--muted)}
+.abar{position:relative;display:block;height:8px;border-radius:999px;background:#e9edf5}
+.abar i{position:absolute;left:0;top:0;bottom:0;border-radius:999px;background:var(--blue)}
+.abar .zona{position:absolute;left:60%;width:10%;top:-4px;bottom:-4px;border-radius:3px;background:rgba(21,185,129,.22);border:1.5px solid rgba(21,185,129,.7)}
+.c1 b,.c0 b{font-weight:700}
+.c1 small,.c0 small{display:none;font-size:12.5px;color:var(--muted)}
+.fora{font-size:13px;color:var(--ink2)}
+.vq{justify-self:end;white-space:nowrap}
+.chamar{display:grid;grid-template-columns:1fr 1fr;gap:20px;padding:14px 22px 18px;background:#f8faff;border-bottom:1px solid var(--rule)}
+.chamar b{font-size:13px}
+.chamar ul{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:8px}
+.chamar li{display:inline-flex;align-items:center;gap:8px;padding:4px 10px 4px 4px;border-radius:999px;background:#fff;border:1px solid var(--line);font-size:13px}
+.chamar li .av{width:26px;height:26px;font-size:10px}
+.chamar li.mut{padding:4px 10px;border:0;background:none}
+.more{display:flex;justify-content:center;padding:16px}
+
+@media (max-width:900px){
+ .ngrid,.rgrid{grid-template-columns:1fr}
+}
+@media (max-width:760px){
+ .wrap{padding:16px 16px 80px}
+ .th,.ta{display:none}
+ .tr{grid-template-columns:1fr auto;grid-template-areas:"who st" "plan venc";gap:6px 12px;padding:14px 16px}
+ .tr .who{grid-area:who}.tr .plan{grid-area:plan;font-size:13px}.tr .venc{grid-area:venc;text-align:right}.tr .stc{grid-area:st}
+ .venc b{font-size:13px}
+ .ra{grid-template-columns:1fr auto;gap:4px 12px;padding:12px 16px}
+ .ra .m{order:2;text-align:right}.ra .tp{order:3;font-size:12.5px;color:var(--muted)}.ra .dt{order:4;font-size:12.5px;color:var(--muted);text-align:right}
+ .sum{padding:16px}
+ .nmain,.nval,.nother,.nlist{padding:18px}
+ .score .big{font-size:52px}
+ .oq{grid-template-columns:1fr auto;gap:6px 12px}.oq .stack{grid-column:1/-1}
+ .rh{display:none}
+ .rr{grid-template-columns:repeat(4,auto) 1fr;gap:6px 8px}
+ .rr .nm-cell{grid-column:1/-1}.rr .c{grid-column:1/-1}
+ .rr .nt{margin:0}
+ .adh{padding:24px 18px;flex-direction:column}
+ .wh{display:none}
+ .wr{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"sem ap" "bar bar" "c1 c0" "fora vq";gap:8px 12px;padding:14px 16px}
+ .wr .sem{grid-area:sem}.wr .ap{grid-area:ap;text-align:right}.wr .abar{grid-area:bar}.wr .c1{grid-area:c1}.wr .c0{grid-area:c0;text-align:right}.wr .fora{grid-area:fora;font-size:12.5px}.wr .vq{grid-area:vq}
+ .wr .fora:has(.mut){visibility:hidden}
+ .c1 small,.c0 small{display:inline}
+ .chamar{grid-template-columns:1fr;padding:12px 16px 16px}
+}
+@media (max-width:560px){.tag{font-size:10.5px;padding:4px 10px;opacity:.8}}
+@media (prefers-reduced-motion:reduce){*{transition:none !important;animation:none !important}}
+
+.lay{display:grid;grid-template-columns:292px minmax(0,1fr);gap:20px;align-items:start}
+.side{padding:22px;position:sticky;top:16px}
+.side .av{width:64px;height:64px;font-size:21px}
+.side h1{font-size:23px;font-weight:700;letter-spacing:-.02em;line-height:1.15;margin-top:14px}
+.side .meta{display:flex;gap:8px 10px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.side hr{border:0;border-top:1px solid var(--rule);margin:20px 0}
+.side h2{font-size:15px;font-weight:700}
+.side .hint{font-size:12.5px;color:var(--muted);margin-top:3px}
+.qrbox{display:flex;gap:12px;align-items:center;margin:14px 0 10px}
+.qrbox svg{border:1px solid var(--line);border-radius:10px;flex:none}
+.qrbox .url{font-size:12px;color:var(--ink2);word-break:break-all;line-height:1.4}
+.side .acts{display:grid;gap:6px}
+.side .acts .btn{justify-content:flex-start}
+.bol{padding:22px 26px 8px}
+.bol-h{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:8px}
+.bol-h h2{font-size:20px;font-weight:700;letter-spacing:-.015em}
+.bol-h p{color:var(--muted);margin-top:2px;max-width:56ch}
+.bh,.br{display:grid;grid-template-columns:minmax(150px,1fr) 128px 118px minmax(220px,1.7fr);gap:18px;align-items:start}
+.bh{font-size:12.5px;color:var(--muted);padding:12px 0 10px;border-bottom:1px solid var(--line)}
+.br{padding:18px 0;border-bottom:1px solid var(--rule)}
+.br:last-child{border-bottom:0}
+.br .cr b{display:block;font-weight:600;font-size:14.5px}
+.br .cr small{display:block;color:var(--muted);font-size:12.5px;margin-top:2px}
+.res{font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1}
+.res.g{color:var(--green700)}
+.res.soft{font-size:16px;color:var(--muted);letter-spacing:0;line-height:1.3;padding-top:4px}
+.res small{display:block;font:500 12.5px/1.4 Geist,sans-serif;color:var(--muted);letter-spacing:0;margin-top:6px}
+.exp{font-weight:600;padding-top:4px}
+.exp.q{color:var(--muted);font-weight:500}
+.rd{display:grid;gap:6px;justify-items:start}
+.rd p{color:var(--ink2);font-size:13px}
+.grp{padding:18px 22px 10px;border-bottom:1px solid var(--rule);background:#fff}
+.grp h3{font-size:16px;font-weight:700}
+.grp p{color:var(--muted);font-size:13px;margin-top:2px}
+.mes{display:flex;justify-content:space-between;gap:12px;padding:10px 22px;background:#f8fafd;border-bottom:1px solid var(--rule);font-size:13px}
+.mes .d{font-weight:600}
+@media (max-width:1060px){.lay{grid-template-columns:minmax(0,1fr)}.side{position:static;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 28px}.side hr{display:none}.side .npsb{border-left:1px solid var(--rule);padding-left:28px}}
+@media (max-width:760px){
+ .side{grid-template-columns:minmax(0,1fr);padding:18px}.side .npsb{border-left:0;padding-left:0;border-top:1px solid var(--rule);margin-top:18px;padding-top:18px}
+ .side .acts{grid-template-columns:1fr 1fr}.side .acts .btn:last-child{grid-column:1/-1}
+ .bol{padding:18px 16px 4px}
+ .bh{display:none}
+ .br{grid-template-columns:minmax(0,1fr) auto;gap:8px 16px}
+ .br .cr{grid-column:1/-1}.br .rd{grid-column:1/-1}
+ .exp{text-align:right}
+ .exp::before{content:"Referência: ";color:var(--muted);font-weight:500}
+ .grp{padding:16px 16px 8px}.mes{padding:9px 16px}
+}
+</style></head><body>
+<div class="wrap">
+<a class="crumb" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>Professores</a>
+
+<div class="lay">
+ <aside class="card side" aria-label="Professor">
+  <div>
+   <span class="av" aria-hidden="true">BC</span>
+   <h1 class="d">Bruno Carvalho</h1>
+   <div class="meta"><span class="lvl"><i></i>Júnior desde 01/12/2026</span><button type="button" class="lnk">Trocar nível</button></div>
+   <div class="meta"><span class="mut">Modalidade</span><span class="mod">Funcional</span></div>
+  </div>
+  <hr>
+  <div class="npsb">
+   <h2 class="d">Pesquisa de NPS</h2>
+   <p class="hint">Divulgue na sala e no WhatsApp, só para alunos ativos. O aluno entra com o CPF.</p>
+   <div class="qrbox"><svg viewBox="-4 -4 92 92" width="92" height="92" aria-hidden="true"><rect x="-4" y="-4" width="92" height="92" fill="#fff"/><g fill="#0E1A40"><rect x="0" y="0" width="4" height="4"/><rect x="4" y="0" width="4" height="4"/><rect x="8" y="0" width="4" height="4"/><rect x="12" y="0" width="4" height="4"/><rect x="16" y="0" width="4" height="4"/><rect x="20" y="0" width="4" height="4"/><rect x="24" y="0" width="4" height="4"/><rect x="40" y="0" width="4" height="4"/><rect x="44" y="0" width="4" height="4"/><rect x="48" y="0" width="4" height="4"/><rect x="56" y="0" width="4" height="4"/><rect x="60" y="0" width="4" height="4"/><rect x="64" y="0" width="4" height="4"/><rect x="68" y="0" width="4" height="4"/><rect x="72" y="0" width="4" height="4"/><rect x="76" y="0" width="4" height="4"/><rect x="80" y="0" width="4" height="4"/><rect x="0" y="4" width="4" height="4"/><rect x="24" y="4" width="4" height="4"/><rect x="56" y="4" width="4" height="4"/><rect x="80" y="4" width="4" height="4"/><rect x="0" y="8" width="4" height="4"/><rect x="8" y="8" width="4" height="4"/><rect x="12" y="8" width="4" height="4"/><rect x="16" y="8" width="4" height="4"/><rect x="24" y="8" width="4" height="4"/><rect x="32" y="8" width="4" height="4"/><rect x="36" y="8" width="4" height="4"/><rect x="44" y="8" width="4" height="4"/><rect x="56" y="8" width="4" height="4"/><rect x="64" y="8" width="4" height="4"/><rect x="68" y="8" width="4" height="4"/><rect x="72" y="8" width="4" height="4"/><rect x="80" y="8" width="4" height="4"/><rect x="0" y="12" width="4" height="4"/><rect x="8" y="12" width="4" height="4"/><rect x="12" y="12" width="4" height="4"/><rect x="16" y="12" width="4" height="4"/><rect x="24" y="12" width="4" height="4"/><rect x="32" y="12" width="4" height="4"/><rect x="36" y="12" width="4" height="4"/><rect x="44" y="12" width="4" height="4"/><rect x="56" y="12" width="4" height="4"/><rect x="64" y="12" width="4" height="4"/><rect x="68" y="12" width="4" height="4"/><rect x="72" y="12" width="4" height="4"/><rect x="80" y="12" width="4" height="4"/><rect x="0" y="16" width="4" height="4"/><rect x="8" y="16" width="4" height="4"/><rect x="12" y="16" width="4" height="4"/><rect x="16" y="16" width="4" height="4"/><rect x="24" y="16" width="4" height="4"/><rect x="36" y="16" width="4" height="4"/><rect x="40" y="16" width="4" height="4"/><rect x="44" y="16" width="4" height="4"/><rect x="48" y="16" width="4" height="4"/><rect x="56" y="16" width="4" height="4"/><rect x="64" y="16" width="4" height="4"/><rect x="68" y="16" width="4" height="4"/><rect x="72" y="16" width="4" height="4"/><rect x="80" y="16" width="4" height="4"/><rect x="0" y="20" width="4" height="4"/><rect x="24" y="20" width="4" height="4"/><rect x="36" y="20" width="4" height="4"/><rect x="56" y="20" width="4" height="4"/><rect x="80" y="20" width="4" height="4"/><rect x="0" y="24" width="4" height="4"/><rect x="4" y="24" width="4" height="4"/><rect x="8" y="24" width="4" height="4"/><rect x="12" y="24" width="4" height="4"/><rect x="16" y="24" width="4" height="4"/><rect x="20" y="24" width="4" height="4"/><rect x="24" y="24" width="4" height="4"/><rect x="36" y="24" width="4" height="4"/><rect x="44" y="24" width="4" height="4"/><rect x="48" y="24" width="4" height="4"/><rect x="56" y="24" width="4" height="4"/><rect x="60" y="24" width="4" height="4"/><rect x="64" y="24" width="4" height="4"/><rect x="68" y="24" width="4" height="4"/><rect x="72" y="24" width="4" height="4"/><rect x="76" y="24" width="4" height="4"/><rect x="80" y="24" width="4" height="4"/><rect x="44" y="28" width="4" height="4"/><rect x="16" y="32" width="4" height="4"/><rect x="32" y="32" width="4" height="4"/><rect x="52" y="32" width="4" height="4"/><rect x="64" y="32" width="4" height="4"/><rect x="0" y="36" width="4" height="4"/><rect x="12" y="36" width="4" height="4"/><rect x="20" y="36" width="4" height="4"/><rect x="28" y="36" width="4" height="4"/><rect x="40" y="36" width="4" height="4"/><rect x="60" y="36" width="4" height="4"/><rect x="64" y="36" width="4" height="4"/><rect x="68" y="36" width="4" height="4"/><rect x="76" y="36" width="4" height="4"/><rect x="80" y="36" width="4" height="4"/><rect x="8" y="40" width="4" height="4"/><rect x="16" y="40" width="4" height="4"/><rect x="24" y="40" width="4" height="4"/><rect x="28" y="40" width="4" height="4"/><rect x="44" y="40" width="4" height="4"/><rect x="52" y="40" width="4" height="4"/><rect x="56" y="40" width="4" height="4"/><rect x="80" y="40" width="4" height="4"/><rect x="0" y="44" width="4" height="4"/><rect x="4" y="44" width="4" height="4"/><rect x="8" y="44" width="4" height="4"/><rect x="12" y="44" width="4" height="4"/><rect x="16" y="44" width="4" height="4"/><rect x="28" y="44" width="4" height="4"/><rect x="40" y="44" width="4" height="4"/><rect x="44" y="44" width="4" height="4"/><rect x="48" y="44" width="4" height="4"/><rect x="56" y="44" width="4" height="4"/><rect x="68" y="44" width="4" height="4"/><rect x="76" y="44" width="4" height="4"/><rect x="80" y="44" width="4" height="4"/><rect x="0" y="48" width="4" height="4"/><rect x="4" y="48" width="4" height="4"/><rect x="12" y="48" width="4" height="4"/><rect x="16" y="48" width="4" height="4"/><rect x="20" y="48" width="4" height="4"/><rect x="28" y="48" width="4" height="4"/><rect x="52" y="48" width="4" height="4"/><rect x="56" y="48" width="4" height="4"/><rect x="60" y="48" width="4" height="4"/><rect x="64" y="48" width="4" height="4"/><rect x="68" y="48" width="4" height="4"/><rect x="76" y="48" width="4" height="4"/><rect x="80" y="48" width="4" height="4"/><rect x="32" y="52" width="4" height="4"/><rect x="44" y="52" width="4" height="4"/><rect x="48" y="52" width="4" height="4"/><rect x="60" y="52" width="4" height="4"/><rect x="80" y="52" width="4" height="4"/><rect x="0" y="56" width="4" height="4"/><rect x="4" y="56" width="4" height="4"/><rect x="8" y="56" width="4" height="4"/><rect x="12" y="56" width="4" height="4"/><rect x="16" y="56" width="4" height="4"/><rect x="20" y="56" width="4" height="4"/><rect x="24" y="56" width="4" height="4"/><rect x="48" y="56" width="4" height="4"/><rect x="60" y="56" width="4" height="4"/><rect x="64" y="56" width="4" height="4"/><rect x="68" y="56" width="4" height="4"/><rect x="0" y="60" width="4" height="4"/><rect x="24" y="60" width="4" height="4"/><rect x="32" y="60" width="4" height="4"/><rect x="64" y="60" width="4" height="4"/><rect x="68" y="60" width="4" height="4"/><rect x="76" y="60" width="4" height="4"/><rect x="0" y="64" width="4" height="4"/><rect x="8" y="64" width="4" height="4"/><rect x="12" y="64" width="4" height="4"/><rect x="16" y="64" width="4" height="4"/><rect x="24" y="64" width="4" height="4"/><rect x="32" y="64" width="4" height="4"/><rect x="52" y="64" width="4" height="4"/><rect x="68" y="64" width="4" height="4"/><rect x="80" y="64" width="4" height="4"/><rect x="0" y="68" width="4" height="4"/><rect x="8" y="68" width="4" height="4"/><rect x="12" y="68" width="4" height="4"/><rect x="16" y="68" width="4" height="4"/><rect x="24" y="68" width="4" height="4"/><rect x="36" y="68" width="4" height="4"/><rect x="40" y="68" width="4" height="4"/><rect x="44" y="68" width="4" height="4"/><rect x="48" y="68" width="4" height="4"/><rect x="60" y="68" width="4" height="4"/><rect x="64" y="68" width="4" height="4"/><rect x="68" y="68" width="4" height="4"/><rect x="80" y="68" width="4" height="4"/><rect x="0" y="72" width="4" height="4"/><rect x="8" y="72" width="4" height="4"/><rect x="12" y="72" width="4" height="4"/><rect x="16" y="72" width="4" height="4"/><rect x="24" y="72" width="4" height="4"/><rect x="32" y="72" width="4" height="4"/><rect x="40" y="72" width="4" height="4"/><rect x="48" y="72" width="4" height="4"/><rect x="52" y="72" width="4" height="4"/><rect x="60" y="72" width="4" height="4"/><rect x="64" y="72" width="4" height="4"/><rect x="68" y="72" width="4" height="4"/><rect x="76" y="72" width="4" height="4"/><rect x="80" y="72" width="4" height="4"/><rect x="0" y="76" width="4" height="4"/><rect x="24" y="76" width="4" height="4"/><rect x="40" y="76" width="4" height="4"/><rect x="44" y="76" width="4" height="4"/><rect x="52" y="76" width="4" height="4"/><rect x="64" y="76" width="4" height="4"/><rect x="68" y="76" width="4" height="4"/><rect x="76" y="76" width="4" height="4"/><rect x="80" y="76" width="4" height="4"/><rect x="0" y="80" width="4" height="4"/><rect x="4" y="80" width="4" height="4"/><rect x="8" y="80" width="4" height="4"/><rect x="12" y="80" width="4" height="4"/><rect x="16" y="80" width="4" height="4"/><rect x="20" y="80" width="4" height="4"/><rect x="24" y="80" width="4" height="4"/><rect x="44" y="80" width="4" height="4"/><rect x="64" y="80" width="4" height="4"/><rect x="68" y="80" width="4" height="4"/><rect x="72" y="80" width="4" height="4"/><rect x="76" y="80" width="4" height="4"/></g></svg><span class="url">stronilead.com.br/avaliar/stronix-crm-app/k7q2mx9pla</span></div>
+   <div class="acts"><button type="button" class="btn" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg><span> Copiar link</span></button>
+<button type="button" class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/></svg><span> Baixar QR code</span></button>
+<button type="button" class="btn" title="O link antigo para de funcionar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg><span> Gerar novo link</span></button></div>
+  </div>
+ </aside>
+ <main>
+  <section class="card bol" aria-label="Boletim do ciclo">
+   <div class="bol-h"><div><h2 class="d">Boletim do ciclo</h2><p>O que vai para a avaliação de dezembro. A renovação usa a média do nível Júnior, o nível de hoje.</p></div><div class="period" role="group" aria-label="Ciclo de avaliação"><button type="button" aria-label="Ciclo anterior, dezembro de 2025 a novembro de 2026"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button><span class="num">Ciclo dez/2026 a nov/2027</span><button type="button" disabled aria-label="Próximo ciclo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button></div></div>
+   <div class="bh"><span>Critério</span><span>Resultado</span><span>Referência</span><span>Leitura</span></div>
+   <div class="br">
+    <div class="cr"><b>Renovação da carteira</b><small>Contratos de funcional que venceram no ciclo</small></div>
+    <div class="res d num">67%<small>6 de 9 renovaram</small></div>
+    <div class="exp num">Média do Júnior: 45%</div>
+    <div class="rd"><span class="flag green">Acima do esperado</span><p>6 dos 9 contratos que venceram no ciclo foram renovados. A média esperada no Júnior é 45%.</p></div>
+   </div>
+   <div class="br">
+    <div class="cr"><b>NPS dos alunos</b><small>Média das notas da pergunta principal</small></div>
+    <div class="res d num">9,13<small>nota do ano</small></div>
+    <div class="exp">Meta: 9 ou mais</div>
+    <div class="rd"><span class="flag green">Nota de promotor</span><p>Junho deu 9,33, com 12 de 20 respostas. Dezembro deu 8,92, com 13 de 22. A nota do ano é a média das duas.</p></div>
+   </div>
+   <div class="br">
+    <div class="cr"><b>Conversão em matrícula</b><small>Pessoas que vieram à aula experimental ou ao freepass</small></div>
+    <div class="res d num g">53%<small>8 de 15 pessoas</small></div>
+    <div class="exp num">Academia: 45%</div>
+    <div class="rd"><span class="flag green">Acima da academia</span><p>8 das 15 pessoas se matricularam com contrato pago, contra 45% da academia toda. Ficar igual à academia não passa.</p></div>
+   </div>
+   <div class="br">
+    <div class="cr"><b>Aderência às aulas</b><small>Alunos com 2 ou mais aulas, na última semana fechada</small></div>
+    <div class="res d num">57%<small>12 de 21 alunos</small></div>
+    <div class="exp num">Meta: 60% a 70%</div>
+    <div class="rd"><span class="flag amber">Abaixo da meta</span><p>Na semana de 29/11 a 03/12, 5 alunos vieram uma vez e 4 não vieram.</p></div>
+   </div>
+  </section>
+  
+<div class="tabs" role="tablist" aria-label="Seções do perfil">
+ <button type="button" class="tab" role="tab" data-tab="carteira" aria-controls="p-carteira">Carteira <span class="n num">25</span></button>
+ <button type="button" class="tab" role="tab" data-tab="aulas" aria-controls="p-aulas">Aulas experimentais <span class="n num">17</span></button>
+ <button type="button" class="tab" role="tab" data-tab="nps" aria-controls="p-nps">NPS</button>
+ <button type="button" class="tab" role="tab" data-tab="aderencia" aria-controls="p-aderencia">Aderência</button>
+</div>
+<section class="panel" id="p-carteira" role="tabpanel" aria-label="Carteira">
+ <div class="ptop"><div class="pills" id="pills" role="group" aria-label="Filtrar por situação"></div><p class="mut">Clientes com o Bruno no cadastro, em planos de funcional.</p></div>
+ <div class="warn" id="warn"></div>
+ <div class="card tbl" role="table" aria-label="Carteira do professor"><div id="rows"></div></div>
+</section>
+<section class="panel" id="p-aulas" role="tabpanel" aria-label="Aulas experimentais"><div class="card tbl" id="aulas" role="table" aria-label="Aulas experimentais do ciclo"></div></section>
+<section class="panel" id="p-nps" role="tabpanel" aria-label="NPS"><div id="nps"></div></section>
+<section class="panel" id="p-aderencia" role="tabpanel" aria-label="Aderência"><div id="ader"></div></section>
+
+ </main>
+</div>
+
+</div>
+<div class="tag">Mockup C · Boletim do ciclo · exemplo em 10/12/2027, visão do gestor</div>
+<script>const ICON_INFO = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"M12 8v4M12 16h.01\"/></svg>";
+const ADH_VAZIO = "<div class=\"card adh\"><span class=\"ico\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M8 2v4M16 2v4\"/><rect x=\"3\" y=\"4\" width=\"18\" height=\"18\" rx=\"2\"/><path d=\"M3 10h18\"/></svg></span>\n<div><h3 class=\"d\">Sem dados ainda</h3>\n<p>A ader\u00eancia aparece depois da primeira importa\u00e7\u00e3o das presen\u00e7as da Next Fit. Cada semana vai mostrar quantos alunos da carteira vieram a 2 ou mais aulas de funcional.</p></div></div>";
+const PROF = false;
+
+const D = {"carteira": [{"n": "Camila Duarte", "p": "Clube+ Move", "end": "2027-01-14", "st": "renovou", "cpf": true}, {"n": "Rafael Nunes", "p": "Clube+ Move", "end": "2027-03-03", "st": "renovou", "cpf": true}, {"n": "Juliana Prates", "p": "Clube+ Move", "end": "2027-04-22", "st": "renovou", "cpf": true}, {"n": "Thiago Moreira", "p": "No Limit Funcional", "end": "2027-06-09", "st": "renovou", "cpf": true}, {"n": "Fernanda Lopes", "p": "Clube+ Move", "end": "2027-08-30", "st": "renovou", "cpf": true}, {"n": "Diego Albuquerque", "p": "Clube+ Move", "end": "2027-10-17", "st": "renovou", "cpf": true}, {"n": "Patrícia Siqueira", "p": "Clube+ Move", "end": "2027-02-28", "st": "nao", "cpf": true}, {"n": "Lucas Fontana", "p": "No Limit Funcional", "end": "2027-07-11", "st": "nao", "cpf": true}, {"n": "Bianca Teles", "p": "Clube+ Move", "end": "2027-11-05", "st": "nao", "cpf": true}, {"n": "Gustavo Rangel", "p": "No Limit Funcional", "end": "2027-12-12", "st": "vencer", "cpf": false}, {"n": "Pedro Henrique Sales", "p": "Clube+ Move", "end": "2027-12-28", "st": "vencer", "cpf": true}, {"n": "Eduardo Bastos", "p": "Flex Funcional", "end": "2028-01-05", "st": "vencer", "cpf": true}, {"n": "Rodrigo Pacheco", "p": "Clube+ Move", "end": "2028-01-19", "st": "vencer", "cpf": true}, {"n": "Henrique Brandão", "p": "Clube+ Move", "end": "2028-01-31", "st": "vencer", "cpf": true}, {"n": "Felipe Antunes", "p": "No Limit Funcional", "end": "2028-02-24", "st": "vencer", "cpf": true}, {"n": "Vinícius Lacerda", "p": "Clube+ Move", "end": "2028-03-11", "st": "vencer", "cpf": true}, {"n": "Aline Furtado", "p": "Clube+ Move", "end": "2028-04-15", "st": "vencer", "cpf": true}, {"n": "Natália Freire", "p": "Clube+ Move", "end": "2028-05-30", "st": "vencer", "cpf": true}, {"n": "Letícia Barros", "p": "Clube+ Move", "end": "2028-06-21", "st": "vencer", "cpf": true}, {"n": "Bruna Cardoso", "p": "Clube+ Move", "end": "2028-07-02", "st": "vencer", "cpf": true}, {"n": "Carolina Viana", "p": "Clube+ Move", "end": "2028-08-10", "st": "vencer", "cpf": true}, {"n": "Mariana Coelho", "p": "Clube+ Move", "end": "2028-09-03", "st": "vencer", "cpf": true}, {"n": "Otávio Mendes", "p": "Clube+ Move", "end": "2028-09-27", "st": "vencer", "cpf": true}, {"n": "Larissa Tavares", "p": "Clube+ Move", "end": "2028-10-18", "st": "vencer", "cpf": true}, {"n": "Sabrina Rocha", "p": "Clube+ Move", "end": "2028-11-02", "st": "vencer", "cpf": false}], "aulas": [{"d": "2027-11-22", "n": "Isabela Paiva", "t": "Aula experimental", "mat": false, "n30": true}, {"d": "2027-11-18", "n": "Renata Coimbra", "t": "Freepass", "mat": false, "n30": true}, {"d": "2027-10-14", "n": "Larissa Tavares", "t": "Freepass", "mat": true, "n30": false}, {"d": "2027-09-23", "n": "Matheus Godoy", "t": "Aula experimental e freepass", "mat": false, "n30": false}, {"d": "2027-09-02", "n": "Otávio Mendes", "t": "Aula experimental", "mat": true, "n30": false}, {"d": "2027-08-19", "n": "Mariana Coelho", "t": "Aula experimental", "mat": true, "n30": false}, {"d": "2027-08-05", "n": "Paula Reis", "t": "Freepass", "mat": false, "n30": false}, {"d": "2027-07-28", "n": "Carolina Viana", "t": "Aula experimental", "mat": true, "n30": false}, {"d": "2027-06-30", "n": "Renan Ferraz", "t": "Aula experimental", "mat": false, "n30": false}, {"d": "2027-06-17", "n": "Bruna Cardoso", "t": "Freepass", "mat": true, "n30": false}, {"d": "2027-05-27", "n": "Letícia Barros", "t": "Aula experimental", "mat": true, "n30": false}, {"d": "2027-05-06", "n": "Tatiane Moura", "t": "Aula experimental", "mat": false, "n30": false}, {"d": "2027-04-22", "n": "Natália Freire", "t": "Aula experimental", "mat": true, "n30": false}, {"d": "2027-03-18", "n": "Aline Furtado", "t": "Aula experimental", "mat": true, "n30": false}, {"d": "2027-02-25", "n": "Caio Ventura", "t": "Aula experimental", "mat": false, "n30": false}, {"d": "2027-01-12", "n": "Murilo Assis", "t": "Aula experimental", "mat": false, "n30": false}, {"d": "2026-12-09", "n": "Elisa Prado", "t": "Aula experimental", "mat": false, "n30": false}], "academia": {"veio": 140, "mat": 63}, "perguntas": [{"id": "q1", "curto": "Recomenda", "texto": "De 0 a 10, quanto você recomendaria o professor a um amigo?", "principal": true}, {"id": "q2", "curto": "Correção", "texto": "De 0 a 10, quanto o professor corrige o seu movimento durante a aula?"}, {"id": "q3", "curto": "Evolução", "texto": "De 0 a 10, quanto você sente que evoluiu desde que começou?"}, {"id": "q4", "curto": "Horário", "texto": "De 0 a 10, quanto as aulas começam e terminam no horário?"}], "ader": [{"ini": "2027-11-29", "fim": "2027-12-03", "conta": 21, "ok": 12, "um": ["Diego Albuquerque", "Felipe Antunes", "Fernanda Lopes", "Larissa Tavares", "Vinícius Lacerda"], "zero": ["Aline Furtado", "Bruna Cardoso", "Mariana Coelho", "Thiago Moreira"], "fora": "1 trancado"}, {"ini": "2027-11-22", "fim": "2027-11-26", "conta": 21, "ok": 13, "um": ["Diego Albuquerque", "Larissa Tavares", "Mariana Coelho", "Pedro Henrique Sales", "Rodrigo Pacheco"], "zero": ["Aline Furtado", "Gustavo Rangel", "Natália Freire"], "fora": "1 trancado"}, {"ini": "2027-11-15", "fim": "2027-11-19", "conta": 22, "ok": 14, "um": ["Henrique Brandão", "Larissa Tavares", "Mariana Coelho", "Thiago Moreira", "Vinícius Lacerda"], "zero": ["Carolina Viana", "Otávio Mendes", "Sabrina Rocha"], "fora": ""}, {"ini": "2027-11-08", "fim": "2027-11-12", "conta": 22, "ok": 12, "um": ["Camila Duarte", "Felipe Antunes", "Fernanda Lopes", "Gustavo Rangel", "Rafael Nunes", "Thiago Moreira"], "zero": ["Aline Furtado", "Juliana Prates", "Otávio Mendes", "Vinícius Lacerda"], "fora": ""}, {"ini": "2027-11-01", "fim": "2027-11-05", "conta": 21, "ok": 13, "um": ["Larissa Tavares", "Letícia Barros", "Rodrigo Pacheco", "Thiago Moreira"], "zero": ["Carolina Viana", "Henrique Brandão", "Juliana Prates", "Sabrina Rocha"], "fora": "1 trancado"}, {"ini": "2027-10-25", "fim": "2027-10-29", "conta": 21, "ok": 12, "um": ["Gustavo Rangel", "Letícia Barros", "Mariana Coelho", "Pedro Henrique Sales", "Thiago Moreira", "Vinícius Lacerda"], "zero": ["Diego Albuquerque", "Juliana Prates", "Rafael Nunes"], "fora": "1 trancado"}, {"ini": "2027-10-18", "fim": "2027-10-22", "conta": 22, "ok": 13, "um": ["Carolina Viana", "Larissa Tavares", "Mariana Coelho", "Natália Freire", "Vinícius Lacerda"], "zero": ["Aline Furtado", "Bruna Cardoso", "Eduardo Bastos", "Pedro Henrique Sales"], "fora": ""}, {"ini": "2027-10-11", "fim": "2027-10-15", "conta": 22, "ok": 12, "um": ["Aline Furtado", "Camila Duarte", "Diego Albuquerque", "Larissa Tavares", "Letícia Barros", "Mariana Coelho", "Thiago Moreira"], "zero": ["Fernanda Lopes", "Gustavo Rangel", "Rodrigo Pacheco"], "fora": ""}, {"ini": "2027-10-04", "fim": "2027-10-08", "conta": 21, "ok": 13, "um": ["Fernanda Lopes", "Gustavo Rangel", "Mariana Coelho", "Otávio Mendes", "Rafael Nunes"], "zero": ["Bruna Cardoso", "Eduardo Bastos", "Pedro Henrique Sales"], "fora": "1 na primeira semana do contrato"}, {"ini": "2027-09-27", "fim": "2027-10-01", "conta": 21, "ok": 12, "um": ["Bruna Cardoso", "Carolina Viana", "Natália Freire", "Rafael Nunes", "Thiago Moreira"], "zero": ["Aline Furtado", "Juliana Prates", "Larissa Tavares", "Letícia Barros"], "fora": "1 na primeira semana do contrato"}], "nps": {"jun": {"nome": "Junho de 2027", "abriu": "01/06/2027", "fim": "30/06/2027", "turma": 20, "resp": [{"n": "Camila Duarte", "notas": {"q1": 10, "q2": 10, "q3": 10, "q4": 10}, "com": "Corrige a postura o tempo todo, gosto disso."}, {"n": "Rafael Nunes", "notas": {"q1": 10, "q2": 10, "q3": 10, "q4": 10}, "com": "A aula das 7h às vezes começa uns minutos atrasada."}, {"n": "Juliana Prates", "notas": {"q1": 9, "q2": 9, "q3": 10, "q4": 10}, "com": "Queria mais variação nos treinos de sexta."}, {"n": "Thiago Moreira", "notas": {"q1": 10, "q2": 9, "q3": 9, "q4": 10}, "com": "A sala fica cheia demais no horário das 18h."}, {"n": "Fernanda Lopes", "notas": {"q1": 8, "q2": 9, "q3": 9, "q4": 9}, "com": ""}, {"n": "Pedro Henrique Sales", "notas": {"q1": 9, "q2": 8, "q3": 9, "q4": 9}, "com": ""}, {"n": "Rodrigo Pacheco", "notas": {"q1": 10, "q2": 8, "q3": 9, "q4": 9}, "com": ""}, {"n": "Vinícius Lacerda", "notas": {"q1": 9, "q2": 8, "q3": 8, "q4": 9}, "com": ""}, {"n": "Aline Furtado", "notas": {"q1": 10, "q2": 7, "q3": 8, "q4": 8}, "com": ""}, {"n": "Letícia Barros", "notas": {"q1": 8, "q2": 9, "q3": 10, "q4": 10}, "com": "Explica bem o porquê de cada exercício."}, {"n": "Bruna Cardoso", "notas": {"q1": 9, "q2": 10, "q3": 9, "q4": 10}, "com": ""}, {"n": "Bianca Teles", "notas": {"q1": 10, "q2": 6, "q3": 7, "q4": 8}, "com": "Gostei das aulas, saí por causa do horário do trabalho."}], "nao": ["Gustavo Rangel", "Sabrina Rocha", "Henrique Brandão", "Eduardo Bastos", "Felipe Antunes", "Diego Albuquerque", "Natália Freire", "Lucas Fontana"]}, "dez": {"nome": "Dezembro de 2027", "abriu": "01/12/2027", "fim": "08/12/2027", "turma": 22, "resp": [{"n": "Camila Duarte", "notas": {"q1": 10, "q2": 9, "q3": 10, "q4": 10}, "com": "Corrige a postura o tempo todo, gosto disso."}, {"n": "Rafael Nunes", "notas": {"q1": 9, "q2": 9, "q3": 9, "q4": 10}, "com": "A aula das 7h às vezes começa uns minutos atrasada."}, {"n": "Juliana Prates", "notas": {"q1": 10, "q2": 10, "q3": 9, "q4": 9}, "com": "Queria mais variação nos treinos de sexta."}, {"n": "Thiago Moreira", "notas": {"q1": 8, "q2": 8, "q3": 8, "q4": 9}, "com": "A sala fica cheia demais no horário das 18h."}, {"n": "Fernanda Lopes", "notas": {"q1": 9, "q2": 9, "q3": 9, "q4": 10}, "com": ""}, {"n": "Diego Albuquerque", "notas": {"q1": 10, "q2": 10, "q3": 10, "q4": 10}, "com": ""}, {"n": "Pedro Henrique Sales", "notas": {"q1": 5, "q2": 6, "q3": 7, "q4": 8}, "com": ""}, {"n": "Eduardo Bastos", "notas": {"q1": 9, "q2": 8, "q3": 9, "q4": 9}, "com": ""}, {"n": "Natália Freire", "notas": {"q1": 10, "q2": 9, "q3": 10, "q4": 10}, "com": ""}, {"n": "Letícia Barros", "notas": {"q1": 9, "q2": 9, "q3": 8, "q4": 9}, "com": "Explica bem o porquê de cada exercício."}, {"n": "Carolina Viana", "notas": {"q1": 8, "q2": 8, "q3": 8, "q4": 9}, "com": ""}, {"n": "Mariana Coelho", "notas": {"q1": 10, "q2": 10, "q3": 9, "q4": 10}, "com": "Me sinto bem mais disposta desde que comecei."}, {"n": "Larissa Tavares", "notas": {"q1": 9, "q2": 9, "q3": 9, "q4": 10}, "com": ""}], "nao": ["Gustavo Rangel", "Sabrina Rocha", "Rodrigo Pacheco", "Henrique Brandão", "Felipe Antunes", "Vinícius Lacerda", "Aline Furtado", "Bruna Cardoso", "Otávio Mendes"]}, "dezInv": {"nome": "Dezembro de 2027", "abriu": "01/12/2027", "fim": "08/12/2027", "turma": 22, "resp": [{"n": "Camila Duarte", "notas": {"q1": 10, "q2": 9, "q3": 10, "q4": 10}, "com": "Corrige a postura o tempo todo, gosto disso."}, {"n": "Juliana Prates", "notas": {"q1": 9, "q2": 9, "q3": 9, "q4": 10}, "com": "Queria mais variação nos treinos de sexta."}, {"n": "Mariana Coelho", "notas": {"q1": 9, "q2": 8, "q3": 9, "q4": 9}, "com": "Me sinto bem mais disposta desde que comecei."}, {"n": "Letícia Barros", "notas": {"q1": 8, "q2": 10, "q3": 9, "q4": 9}, "com": "Explica bem o porquê de cada exercício."}, {"n": "Carolina Viana", "notas": {"q1": 10, "q2": 8, "q3": 8, "q4": 9}, "com": ""}, {"n": "Larissa Tavares", "notas": {"q1": 9, "q2": 9, "q3": 10, "q4": 8}, "com": ""}], "nao": ["Rafael Nunes", "Thiago Moreira", "Fernanda Lopes", "Diego Albuquerque", "Gustavo Rangel", "Pedro Henrique Sales", "Eduardo Bastos", "Rodrigo Pacheco", "Henrique Brandão", "Felipe Antunes", "Vinícius Lacerda", "Aline Furtado", "Natália Freire", "Bruna Cardoso", "Otávio Mendes", "Sabrina Rocha"]}}};
+const MODE = "meses";
+const TODAY = new Date('2027-12-10T12:00:00');
+const MESES = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+const ST = {vencer:'A vencer', renovou:'Renovou', nao:'Não renovou'};
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const dmy = iso => iso.split('-').reverse().join('/');
+const daysTo = iso => Math.round((new Date(iso+'T12:00:00') - TODAY) / 864e5);
+const ini = n => { const w = n.split(' '); return (w[0][0] + w[w.length-1][0]).toUpperCase(); };
+const av = n => `<span class="av" aria-hidden="true">${ini(n)}</span>`;
+const nm = n => `<a class="nm" href="#" onclick="return false">${esc(n)}</a>`;
+const cpfOf = n => { const c = D.carteira.find(x => x.n === n); return !c || c.cpf; };
+
+/* ---- carteira */
+let filtro = 'todos', soSemCpf = false;
+const ORDEM = {vencer:0, renovou:1, nao:2};
+function linha(c){
+  let venc;
+  if (c.st === 'vencer') {
+    const d = daysTo(c.end);
+    venc = `<b class="num">Vence em ${dmy(c.end)}</b>` + (d <= 30 ? `<small class="soon">daqui a ${d} dias</small>` : '');
+  } else venc = `<b class="num">Venceu em ${dmy(c.end)}</b><small>${c.st === 'renovou' ? 'Contrato novo em seguida' : 'Saiu da carteira'}</small>`;
+  return `<div class="tr" role="row">
+    <div class="who" role="cell">${av(c.n)}<div>${nm(c.n)}${c.cpf ? '' : '<span class="nocpf">Sem CPF</span>'}</div></div>
+    <span class="plan" role="cell">${esc(c.p)}</span>
+    <span class="venc" role="cell">${venc}</span>
+    <span class="stc" role="cell"><span class="st s-${c.st}">${ST[c.st]}</span></span></div>`;
+}
+function renderCarteira(){
+  const base = D.carteira.filter(c => !soSemCpf || !c.cpf);
+  const cnt = k => base.filter(c => k === 'todos' || c.st === k).length;
+  $('#pills').innerHTML = ['todos','vencer','renovou','nao'].map(k =>
+    `<button type="button" class="fp" data-f="${k}" aria-pressed="${filtro===k}">${k==='todos'?'Todos':ST[k]} <b class="num">${cnt(k)}</b></button>`).join('');
+  const semCpf = D.carteira.filter(c => !c.cpf).length;
+  $('#warn').innerHTML = `${ICON_INFO}<p>${soSemCpf
+    ? `Mostrando só os ${semCpf} alunos sem CPF no cadastro. <button type="button" class="lnk" data-cpf>Mostrar todos</button>`
+    : `${semCpf} alunos não têm CPF no cadastro e não conseguem responder o NPS. ${PROF ? 'Peça o CPF ao aluno e avise a recepção para completar o cadastro.' : 'Peça o CPF na recepção e complete o cadastro.'} <button type="button" class="lnk" data-cpf>Ver quem são</button>`}</p>`;
+  const list = base.filter(c => filtro === 'todos' || c.st === filtro)
+    .sort((a,b) => ORDEM[a.st]-ORDEM[b.st] || (a.st==='vencer' ? a.end.localeCompare(b.end) : b.end.localeCompare(a.end)));
+  const box = $('#rows');
+  if (!list.length) { box.innerHTML = '<p class="empty">Ninguém nesta situação.</p>'; return; }
+  if (MODE !== 'meses') { box.innerHTML = list.map(linha).join(''); return; }
+  // boletim: os contratos que venceram no ciclo agrupados por mês, depois os que vencem depois do ciclo
+  const ciclo = list.filter(c => c.st !== 'vencer').sort((a,b) => a.end.localeCompare(b.end));
+  const depois = list.filter(c => c.st === 'vencer');
+  const grupos = {};
+  ciclo.forEach(c => { const k = c.end.slice(0,7); (grupos[k] = grupos[k] || []).push(c); });
+  let html = '';
+  if (ciclo.length) {
+    html += `<div class="grp"><h3 class="d">Venceram no ciclo</h3><p>${ciclo.filter(c=>c.st==='renovou').length} de ${ciclo.length} renovaram. É esta conta que vira a taxa de renovação.</p></div>`;
+    Object.keys(grupos).forEach(k => {
+      const g = grupos[k], [y,m] = k.split('-');
+      html += `<div class="mes"><span class="d">${MESES[+m-1][0].toUpperCase()+MESES[+m-1].slice(1)} de ${y}</span><span class="mut num">${g.filter(c=>c.st==='renovou').length} de ${g.length} renovou</span></div>` + g.map(linha).join('');
+    });
+  }
+  if (depois.length) {
+    html += `<div class="grp"><h3 class="d">Vencem depois do ciclo</h3><p>${depois.length} contratos. Entram na conta do ciclo de dezembro de 2027 a novembro de 2028.</p></div>` + depois.map(linha).join('');
+  }
+  box.innerHTML = html;
+}
+
+/* ---- aulas */
+let cicloAntigo = false;
+function renderAulas(){
+  const conta = D.aulas.filter(a => !a.n30), mat = conta.filter(a => a.mat), A = D.academia;
+  $('#aulas').innerHTML = (cicloAntigo ? `<div class="warn" style="margin:16px 16px 0">${ICON_INFO}<p>Os registros de aula de antes de setembro de 2026 estão incompletos, então a conta deste ciclo deixa de fora parte das pessoas que vieram.</p></div>` : '') +
+    `<div class="sum">
+      <div><div class="mut">Pessoas na conta</div><div class="k d num">${conta.length}</div></div>
+      <div><div class="mut">Matricularam</div><div class="k d num g">${mat.length} <span style="font-size:16px">(${Math.round(mat.length/conta.length*100)}%)</span></div></div>
+      <div><div class="mut">Academia toda</div><div class="k d num">${Math.round(A.mat/A.veio*100)}% <span class="mut" style="font-size:14px;font-weight:500">${A.mat} de ${A.veio}</span></div></div>
+      <span class="flag green" style="align-self:center">${mat.length/conta.length > A.mat/A.veio ? 'Acima da academia' : 'Abaixo da academia'}</span>
+      <p class="mut">Cada pessoa conta uma vez, com aula experimental e freepass juntos. Só contrato pago conta como matrícula. Quem veio nos últimos 30 dias fica fora até ter tempo de decidir.</p></div>
+    <div class="ta" role="row"><span>Pessoa</span><span>Como veio</span><span>Última vez</span><span>Matrícula</span></div>` +
+    D.aulas.map(a => `<div class="ra" role="row">
+      <span class="pp">${nm(a.n)}${a.n30 ? '<span class="n30">nos 30 dias</span>' : ''}</span>
+      <span class="tp">${a.t}${a.t.includes(' e ') ? '<small>2 agendamentos, conta uma vez</small>' : ''}</span>
+      <span class="dt num">${dmy(a.d)}</span>
+      <span class="m">${a.n30 ? '<span class="mut">Fora da conta</span>' : a.mat ? '<span class="mat">Matriculou</span>' : '<span class="mut">Não se matriculou</span>'}</span></div>`).join('') +
+    `<p class="foot" style="padding:0 22px 18px">${ICON_INFO}<span>${cicloAntigo ? 'Este é o aviso do ciclo de dezembro de 2025 a novembro de 2026.' : 'O ciclo de dezembro de 2025 a novembro de 2026 começa antes de setembro de 2026 e mostra um aviso.'} <button type="button" class="lnk" data-ciclo>${cicloAntigo ? 'Esconder o aviso' : 'Ver como fica'}</button></span></p>`;
+}
+document.addEventListener('click', e => { if (e.target.closest('[data-ciclo]')) { cicloAntigo = !cicloAntigo; renderAulas(); document.querySelector('[data-ciclo]').focus(); } });
+
+/* ---- nps: a nota é a média das notas de 0 a 10 da pergunta principal, meta 9 */
+const META = 9;
+let pesquisa = 'dez', dezSemNota = false;
+const catOf = v => v >= 9 ? 'p' : v >= 7 ? 'n' : 'x';
+const sinal = v => (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v);
+const surv = k => k === 'dez' && dezSemNota ? D.nps.dezInv : D.nps[k];
+const precisaDe = S => Math.max(10, Math.ceil(S.turma / 2));
+const valida = S => S.resp.length >= precisaDe(S);
+const mediaDe = (S, q) => S.resp.reduce((a, x) => a + x.notas[q], 0) / S.resp.length;
+const n2 = v => v.toFixed(2).replace('.', ',');
+const pct = (a, b) => Math.round(a / b * 100);
+const pnd = (S, q) => { const v = S.resp.map(x => x.notas[q]), p = v.filter(x => x >= 9).length, d = v.filter(x => x <= 6).length; return {p, n: v.length - p - d, d, tot: v.length}; };
+const selo = v => v >= META ? '<span class="flag green">Nota de promotor</span>' : '<span class="flag amber">Abaixo da meta</span>';
+const stack = t => `<div class="stack" aria-hidden="true"><i class="p" style="width:${t.p/t.tot*100}%"></i><i class="n" style="width:${t.n/t.tot*100}%"></i><i class="x" style="width:${t.d/t.tot*100}%"></i></div>`;
+function histo(S){
+  const c = Array(11).fill(0); S.resp.forEach(x => c[x.notas.q1]++);
+  const mx = Math.max(...c);
+  return `<div class="histo" role="img" aria-label="${c.map((k,i) => k ? `${k} deram ${i}` : '').filter(Boolean).join(', ')}">${c.map((k,i) =>
+    `<div class="hc"><span class="hn num">${k || ''}</span><i class="${catOf(i)}" style="height:${k ? Math.max(8, k / mx * 64) : 2}px"></i><span class="hl num">${i}</span></div>`).join('')}</div>`;
+}
+function renderNps(){
+  const P = D.perguntas, S = surv(pesquisa), r = S.resp.length, vale = valida(S), precisa = precisaDe(S);
+  const doAno = ['jun','dez'].map(surv), validas = doAno.filter(valida);
+  const ano = validas.length ? validas.reduce((a, s) => a + mediaDe(s, 'q1'), 0) / validas.length : null;
+  const anoCard = `<div class="card nano">
+      <div><div class="qlbl">Nota do ano ${ano !== null ? selo(ano) : ''}</div>
+        <div class="ano d num ${ano !== null && ano >= META ? 'pos' : ''}">${ano !== null ? n2(ano) : 'Sem nota válida'}</div>
+        <p class="mut">${validas.length === 2 ? 'Média das duas pesquisas do ano.' : validas.length === 1 ? 'Só uma pesquisa valeu, então a nota do ano é a dela.' : 'Nenhuma pesquisa do ano valeu.'} Meta: 9 ou mais.</p></div>
+      <ul class="anos">${doAno.map(s => `<li><span>${s.nome}</span>${valida(s) ? `<b class="d num">${n2(mediaDe(s, 'q1'))}</b>` : '<b class="soft">Sem nota válida</b>'}<small class="num">${s.resp.length} de ${s.turma} responderam</small></li>`).join('')}</ul></div>`;
+  const sel = ['dez','jun'].map(k => `<button type="button" class="fp" data-pq="${k}" aria-pressed="${pesquisa===k}">${D.nps[k].nome}</button>`).join('');
+  const t1 = pnd(S, 'q1'), m1 = vale ? mediaDe(S, 'q1') : null;
+  const main = `<div class="card nmain">
+      <div class="qlbl">Pergunta principal <span class="flag quiet">conta no plano de carreira</span></div>
+      <p class="qt">${P[0].texto}</p>
+      ${vale ? `<div class="score"><span class="big d num ${m1 >= META ? 'pos' : ''}">${n2(m1)}</span><div class="sv">${selo(m1)}<p>Média das notas de 0 a 10. Meta: 9 ou mais.</p></div></div>
+        ${histo(S)}
+        <p class="info num">${pct(t1.p, t1.tot)}% deram 9 ou 10. NPS clássico ${sinal(Math.round((t1.p - t1.d) / t1.tot * 100))}, só como informação.</p>`
+      : `<div class="score"><span class="soft d">Sem nota válida</span></div>
+        <p class="invalid">Responderam ${r} dos ${S.turma} alunos da turma. Para a nota valer, precisava de ${precisa} respostas. ${PROF ? 'Esta' : 'As notas de cada aluno aparecem embaixo, mas esta'} pesquisa não entra na nota do ano.</p>`}
+    </div>`;
+  const val = `<div class="card nval">
+      <div class="qlbl">Respostas ${vale ? '<span class="flag green">A nota vale</span>' : '<span class="flag amber">Sem nota válida</span>'}</div>
+      <div class="k d num">${r} de ${S.turma} <small>${pct(r, S.turma)}% da turma</small></div>
+      <div class="prog" role="img" aria-label="${pct(r, S.turma)}% da turma respondeu. O mínimo é metade."><i style="width:${pct(r, S.turma)}%"></i><b></b><em>metade da turma</em></div>
+      <ul><li>A nota vale com pelo menos 10 respostas e metade da turma.</li>
+      <li>Turma: ${PROF ? `os seus ${S.turma} alunos ativos de funcional` : `os ${S.turma} alunos ativos de funcional do Bruno`} em ${S.abriu}.</li>
+      <li>Aberta de ${S.abriu} a ${S.fim}. Encerrada.</li></ul></div>`;
+  const outras = `<div class="card nother sec"><h3 class="h3 d">Outras perguntas</h3><p class="mut" style="margin-top:2px">Não entram no plano de carreira.</p>
+      ${vale ? P.slice(1).map(q => { const t = pnd(S, q.id); return `<div class="oq"><div><b>${q.curto}</b><small>${q.texto}</small></div><span class="v"><b class="d num">${n2(mediaDe(S, q.id))}</b><small class="num">${pct(t.p, t.tot)}% deram 9 ou 10</small></span>${stack(t)}</div>`; }).join('')
+        : `<p class="mut" style="margin-top:8px">Também ficam sem nota, porque a pesquisa não teve respostas suficientes.</p>`}</div>`;
+  const resp = `<div class="card nlist"><h3 class="h3 d">Quem respondeu <span class="mut num" style="font-weight:500">${r}</span></h3>
+      <div class="rh"><span>Aluno</span>${P.map(q=>`<span>${q.curto}</span>`).join('')}<span>Comentário</span></div>
+      ${S.resp.map(x => `<div class="rr"><span class="nm-cell">${nm(x.n)}</span>${P.map(q => `<span class="nt ${catOf(x.notas[q.id])} num" title="${q.curto}: ${x.notas[q.id]}">${x.notas[q.id]}</span>`).join('')}<span class="c">${esc(x.com)}</span></div>`).join('')}</div>`;
+  const nao = `<div class="card nlist"><h3 class="h3 d">Não responderam <span class="mut num" style="font-weight:500">${S.nao.length}</span></h3>
+      <ul class="nolist">${S.nao.map(n => `<li>${av(n)}${nm(n)}${cpfOf(n)?'':'<span class="nocpf">Sem CPF</span>'}</li>`).join('')}</ul></div>`;
+  $('#nps').innerHTML = `${anoCard}<div class="nsel"><span class="mut">Pesquisa</span>${sel}</div>
+    <div class="ngrid">${main}${val}</div>${outras}
+    ${PROF ? '' : `<div class="rgrid">${resp}${nao}</div>`}
+    <p class="foot">${ICON_INFO}<span>${PROF ? 'Você vê só o resultado da turma. Os nomes, as notas de cada aluno e os comentários ficam com a gestão.' : 'Só a gestão vê os nomes, as notas de cada aluno e os comentários. Na tela do Bruno, esta aba mostra só os totais.'}
+      <button type="button" class="lnk" data-semnota>${dezSemNota ? 'Voltar ao exemplo com as duas notas' : 'Ver como fica dezembro sem nota válida'}</button></span></p>`;
+}
+document.addEventListener('click', e => { if (e.target.closest('[data-semnota]')) { dezSemNota = !dezSemNota; pesquisa = 'dez'; renderNps(); document.querySelector('[data-semnota]').focus(); } });
+
+/* ---- abas */
+function abrir(id){
+  document.querySelectorAll('.tab').forEach(t => { const on = t.dataset.tab === id; t.setAttribute('aria-selected', on); t.tabIndex = on ? 0 : -1; });
+  document.querySelectorAll('.panel').forEach(p => p.hidden = p.id !== 'p-' + id);
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest('.tab'); if (t) { abrir(t.dataset.tab); history.replaceState(null,'','#'+t.dataset.tab); return; }
+  const f = e.target.closest('[data-f]'); if (f) { filtro = f.dataset.f; renderCarteira(); document.querySelector(`[data-f="${filtro}"]`).focus(); return; }
+  if (e.target.closest('[data-cpf]')) { soSemCpf = !soSemCpf; filtro = 'todos'; renderCarteira(); document.querySelector('[data-cpf]').focus(); return; }
+  const q = e.target.closest('[data-pq]'); if (q) { pesquisa = q.dataset.pq; renderNps(); document.querySelector(`[data-pq="${pesquisa}"]`).focus(); return; }
+  const c = e.target.closest('[data-copy]');
+  if (c && !c.classList.contains('done')) { const s = c.querySelector('span'), old = s.textContent; c.classList.add('done'); s.textContent = ' Link copiado'; setTimeout(() => { s.textContent = old; c.classList.remove('done'); }, 1800); }
+});
+document.querySelector('.tabs').addEventListener('keydown', e => {
+  if (!['ArrowLeft','ArrowRight'].includes(e.key)) return;
+  const ts = [...document.querySelectorAll('.tab')], i = ts.indexOf(document.activeElement);
+  const n = ts[(i + (e.key === 'ArrowRight' ? 1 : -1) + ts.length) % ts.length]; n.focus(); n.click();
+});
+/* ---- aderência */
+const dm = iso => iso.split('-').reverse().slice(0,2).join('/');
+const pc = w => Math.round(w.ok / w.conta * 100);
+let aderAberta = 0, aderVazio = false;
+const chips = ns => ns.length ? ns.map(n => `<li>${av(n)}${nm(n)}</li>`).join('') : '<li class="mut">Ninguém</li>';
+function renderAder(){
+  const box = $('#ader');
+  if (aderVazio) {
+    box.innerHTML = ADH_VAZIO + `<p class="foot">${ICON_INFO}<span>Este é o estado antes da primeira importação. <button type="button" class="lnk" data-adh>Voltar às semanas</button></span></p>`;
+    return;
+  }
+  box.innerHTML = `<div class="card tbl">
+    <div class="sum"><div><h3 class="h3 d">Semanas com 2 ou mais aulas</h3>
+      <p class="mut" style="margin-top:4px">A semana do aluno vai de segunda a sexta e conta como aderente com 2 ou mais aulas de funcional. Ficam fora a semana de trancamento e a primeira semana do contrato.</p></div>
+      <p class="ameta"><span class="sw"></span>Meta: 60% a 70%</p></div>
+    <div class="wh" role="row"><span>Semana</span><span>Aderentes</span><span></span><span>1 presença</span><span>Nenhuma</span><span>Fora da conta</span><span></span></div>
+    ${D.ader.map((w,i) => `<div class="wr${aderAberta===i?' on':''}" role="row">
+      <span class="sem num">${dm(w.ini)} a ${dm(w.fim)}${i===0?'<small>última fechada</small>':''}</span>
+      <span class="ap"><b class="d num">${pc(w)}%</b><small class="num">${w.ok} de ${w.conta}</small></span>
+      <span class="abar" role="img" aria-label="${pc(w)}%, meta de 60% a 70%"><i style="width:${pc(w)}%"></i><span class="zona"></span></span>
+      <span class="num c1"><b>${w.um.length}</b><small> com 1 presença</small></span>
+      <span class="num c0"><b>${w.zero.length}</b><small> sem nenhuma</small></span>
+      <span class="fora">${w.fora || '<span class="mut">Ninguém</span>'}</span>
+      <button type="button" class="lnk vq" data-sem="${i}" aria-expanded="${aderAberta===i}">${aderAberta===i?'Esconder nomes':'Ver quem chamar'}</button></div>
+      ${aderAberta===i ? `<div class="chamar"><div><b>Vieram 1 vez</b><ul>${chips(w.um)}</ul></div><div><b>Não vieram</b><ul>${chips(w.zero)}</ul></div></div>` : ''}`).join('')}
+    <div class="more"><button type="button" class="btn">Mostrar semanas anteriores</button></div></div>
+    <p class="foot">${ICON_INFO}<span>As presenças vêm do relatório da Next Fit, importado toda semana. Antes da primeira importação, esta aba diz "Sem dados ainda". <button type="button" class="lnk" data-adh>Ver como fica</button></span></p>`;
+}
+document.addEventListener('click', e => {
+  const s = e.target.closest('[data-sem]');
+  if (s) { const i = +s.dataset.sem; aderAberta = aderAberta === i ? -1 : i; renderAder(); document.querySelector(`[data-sem="${i}"]`).focus(); return; }
+  if (e.target.closest('[data-adh]')) { aderVazio = !aderVazio; renderAder(); document.querySelector('[data-adh]').focus(); }
+});
+
+renderCarteira(); renderAulas(); renderNps(); renderAder();
+abrir(['carteira','aulas','nps','aderencia'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'carteira');
+</script></body></html>
