@@ -1,0 +1,108 @@
+// Importa o relatório de Presenças da Next Fit (aula de funcional) para a
+// aderência do perfil do professor (spec 2026-11-24-perfil-do-professor e
+// plano docs/superpowers/plans/2026-11-25-perfil-do-professor-06-aderencia.md).
+//
+// Soma as presenças de cada aluno por semana (segunda a sexta), casa pelo CPF
+// (cpfDigits do lead) e grava stronix_presencas/{leadId}_{segunda}:
+// { leadId, semana, presencas, fonte, arquivo, importadoEm }. Regravar a mesma
+// semana troca o número. Só entram as semanas inteiras de --de a --ate, o
+// período do relatório, para um relatório que corta a semana não gravar uma
+// contagem pela metade.
+//
+// SEM --apply NÃO GRAVA NADA: mostra o que gravaria. A saída só traz
+// contagens. A lista de pendências (linha sem CPF, CPF sem lead, CPF com mais
+// de um cadastro), com nome e CPF para a recepção acertar, só sai num arquivo,
+// com --pendencias=<caminho>, e esse arquivo nunca entra no repositório.
+//
+// Uso (mesmas credenciais Admin das funções api/):
+//   node --env-file=.env.local scripts/import-presencas.js <relatorio.xlsx|csv> \
+//     --tenant=stronix-crm-app --de=2026-11-01 --ate=2026-11-30 \
+//     [--pendencias=/caminho/pendencias.csv] [--apply]
+import { readFileSync, writeFileSync } from 'node:fs';
+import { basename } from 'node:path';
+import process from 'node:process';
+import admin from 'firebase-admin';
+import * as XLSX from 'xlsx';
+import { casarComLeads, colunasDoRelatorio, presencasDoRelatorio } from '../src/lib/professor/presencas.js';
+
+const args = process.argv.slice(2);
+const arquivo = args.find((a) => !a.startsWith('--'));
+const opt = (nome) => args.find((a) => a.startsWith(`--${nome}=`))?.split('=').slice(1).join('=') ?? null;
+const aplicar = args.includes('--apply');
+const tenant = opt('tenant');
+const de = opt('de');
+const ate = opt('ate');
+const pendencias = opt('pendencias');
+const DIA_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+if (!arquivo || !tenant || !DIA_RE.test(de || '') || !DIA_RE.test(ate || '')) {
+  console.error('Uso: node --env-file=.env.local scripts/import-presencas.js <relatorio> --tenant=<id> --de=AAAA-MM-DD --ate=AAAA-MM-DD [--pendencias=<arquivo>] [--apply]');
+  process.exit(1);
+}
+
+const livro = XLSX.read(readFileSync(arquivo), { cellDates: true });
+const folha = livro.Sheets[livro.SheetNames[0]];
+const linhas = XLSX.utils.sheet_to_json(folha, { defval: '' });
+const cabecalho = linhas.length ? Object.keys(linhas[0]) : [];
+const colunas = colunasDoRelatorio(cabecalho);
+if (!colunas.cpf || !colunas.data) {
+  console.error(`Não achei a coluna de ${!colunas.cpf ? 'CPF' : 'data'} no relatório. Colunas: ${cabecalho.join(' | ')}`);
+  console.error('Acrescente o nome em APELIDOS, em src/lib/professor/presencas.js.');
+  process.exit(1);
+}
+console.log('Colunas usadas:', colunas);
+
+const { contagem, resumo, semCpf, semanas } = presencasDoRelatorio(linhas, colunas, { de, ate });
+console.log('Semanas inteiras no período:', semanas.join(', ') || 'nenhuma');
+console.log('Linhas do relatório:', resumo);
+
+admin.initializeApp({
+  credential: admin.credential.cert({
+    projectId: process.env.FIREBASE_ADMIN_PROJECT_ID,
+    clientEmail: process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
+    privateKey: process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+  }),
+});
+const db = admin.firestore();
+const col = (n) => db.collection('artifacts').doc(tenant).collection('public').doc('data').collection(n);
+
+const cpfs = [...new Set([...contagem.keys()].map((k) => k.split('_')[0]))];
+const leads = [];
+for (let i = 0; i < cpfs.length; i += 30) {
+  const snap = await col('stronix_leads').where('cpfDigits', 'in', cpfs.slice(i, i + 30)).get();
+  snap.docs.forEach((d) => leads.push({ id: d.id, ...d.data() }));
+}
+const { registros, semLead, duplicados } = casarComLeads(contagem, leads);
+const alunos = new Set(registros.map((r) => r.leadId)).size;
+console.log(`Casados: ${registros.length} registros de ${alunos} alunos. CPF sem cadastro: ${semLead.length}. CPF com mais de um cadastro: ${duplicados.length}. Linhas sem CPF: ${semCpf.length}.`);
+
+if (pendencias) {
+  const nome = (l) => String(l[colunas.nome] ?? '').replace(/[;\n]/g, ' ');
+  const porCpf = new Map();
+  linhas.forEach((l) => {
+    const cpf = String(l[colunas.cpf] ?? '').replace(/\D/g, '');
+    if (cpf && !porCpf.has(cpf)) porCpf.set(cpf, nome(l));
+  });
+  const saida = ['motivo;nome;cpf'];
+  semLead.forEach((c) => saida.push(`CPF sem cadastro no Stronilead;${porCpf.get(c) ?? ''};${c}`));
+  duplicados.forEach((c) => saida.push(`CPF em mais de um cadastro;${porCpf.get(c) ?? ''};${c}`));
+  semCpf.forEach((l) => saida.push(`Linha sem CPF;${nome(l)};`));
+  writeFileSync(pendencias, `${saida.join('\n')}\n`);
+  console.log(`Pendências gravadas em ${pendencias} (${saida.length - 1} linhas).`);
+}
+
+if (!aplicar) {
+  console.log('Simulação: nada foi gravado. Rode de novo com --apply para gravar.');
+  process.exit(0);
+}
+
+const agora = admin.firestore.FieldValue.serverTimestamp();
+for (let i = 0; i < registros.length; i += 400) {
+  const lote = db.batch();
+  registros.slice(i, i + 400).forEach((r) => {
+    lote.set(col('stronix_presencas').doc(`${r.leadId}_${r.semana}`), { ...r, fonte: 'nextfit', arquivo: basename(arquivo), importadoEm: agora });
+  });
+  await lote.commit();
+}
+console.log(`Gravados: ${registros.length} registros em stronix_presencas.`);
+process.exit(0);
