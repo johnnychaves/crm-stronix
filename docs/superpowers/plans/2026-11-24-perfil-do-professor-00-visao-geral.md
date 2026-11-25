@@ -38,7 +38,7 @@ Funções puras em `src/lib/professor/`, sem tela:
 
 - `carteiraAt(leads, contracts, planos, professor, data)`: os alunos do professor na data, com contrato de plano da modalidade dele.
 - `renovacaoDoCiclo(...)`: renovados ÷ venceram no ciclo de dezembro a novembro, com a regra dos 90 dias (troca de professor registrada no `professorHistory`), o `neverTookEffect` de fora e `liveRenewalOf` como renovado. Antes de escrever, ler a conta da taxa de renovação do Operacional (`src/lib/operacional/`) e reusar a regra do cancelado. Um teste compara as duas.
-- `conversaoDoCiclo(...)`: reusa `professorRowsOf` (`src/lib/relatorios/leads/visitas.js`).
+- `conversaoDoCiclo(...)`: pessoas que vieram ÷ matriculadas, cada lead uma vez por professor, sobre os registros de aula de `stronix_aulas` (freepass e aula experimental são o mesmo registro). Não reusa o `professorRowsOf`, que conta registros. Matrícula só com contrato pago (valor acima de zero, não importado, fora o `neverTookEffect`). Aula dos últimos 30 dias fora (janela da configuração). Aviso de registros incompletos antes de `APPTS_COMPLETE_MONTH`. Sem meta e sem mínimo de aulas: os dois estão em aberto.
 - `npsDe(totais, turma)`: nota por pergunta e validade (≥ 50% da turma e ≥ 10 respostas).
 - `aderenciaPorSemana(presencas, carteira, contratos, { barra })`: a taxa de cada semana, separada (aderentes ÷ alunos que contam), sem semana trancada nem a primeira do contrato, com quantos tiveram 1 presença e quantos nenhuma. A barra vem da configuração (2). Não somar as semanas numa média: isso está em aberto.
 
@@ -51,7 +51,7 @@ Os arquivos não importam pacote nem tela, porque a `api/` do PR 5 lê a carteir
 - O rótulo "Stronix 2.0" no `TenantModulesCard.jsx`.
 - `SCREENS.professores` em `src/lib/routes.js`, com as sub-telas `pesquisas` e `metas` e o perfil em `perfil/<id>/<aba>`, lido à parte como o modelo de rotina. `professores` entra em `RESERVED_TENANT_SLUGS`. O id do professor ganha expressão no `sentryScrub.js`.
 - Menu: "Professores" para o gestor e "Meu perfil" para o professor, pelo `sidebarNav`, e o `canOpenScreen` deixa o professor abrir só o próprio perfil.
-- `stronix_professores` ganha `nivel`, `nivelDesde` e `npsCode`. `stronix_config/carreira` guarda as metas de renovação e conversão por nível e a barra (2) e a faixa (60% a 70%) da aderência. A aderência não tem meta por nível.
+- `stronix_professores` ganha `nivel`, `nivelDesde` e `npsCode`. `stronix_config/carreira` guarda as metas de renovação por nível, a barra (2) e a faixa (60% a 70%) da aderência e a janela da conversão (30 dias). A aderência não tem meta por nível.
 - A lista, as metas e o perfil com as abas Carteira e Aulas experimentais. O ciclo vai no endereço pela tabela do `screenParams.js`.
 - Mockups escolhidos pelo Johnny antes de escrever tela (sessão "Mockups do perfil do professor", arquivos em `docs/superpowers/specs/mockups/2026-11-24-perfil-professor-*.html`).
 

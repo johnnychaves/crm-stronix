@@ -27,13 +27,16 @@ Decididas pelo Johnny em 24/11/2026, na conversa que gerou esta spec.
 8. **O CPF é a única porta.** O aluno digita o CPF, o sistema confere que ele é cliente com contrato de funcional na carteira do professor do link e mostra "Oi, Ana!" e as perguntas. Não há link individual por aluno.
 9. **O gestor vê quem respondeu**, com as notas e o comentário. O professor vê só os totais. O link é divulgado só entre os alunos ativos, na sala e no WhatsApp.
 10. **Aderência:** a conta é por aluno-semana (de segunda a sexta), sem os trancados, pelo relatório de Presenças da Next Fit. A semana é aderente com 2 ou mais presenças na aula de funcional. A barra fica configurável, com o valor 2 decidido. A meta mostrada ao lado do número é a faixa de 60% a 70% (decisões do Johnny, 24/11/2026). Continuam em aberto e não entram agora: um padrão único para todos os professores, a média do semestre ou do ano e a meta por nível.
+11. **Conversão:** freepass e aula experimental contam juntos. A taxa é matrículas ÷ pessoas que vieram (decisão do Johnny, 24/11/2026). Só contrato pago conta como matrícula. O padrão de comparação e o mínimo de aulas para o professor ser medido estão em aberto e não entram agora.
 
 ## O que já existe no código
 
 - `stronix_professores`: nome, modalidades (`modalidadeIds`) e ativo. Só o gestor grava.
 - O lead do cliente guarda `professorId` e `professorName`, gravados pelo Contexto comercial (`src/lib/contextPatch.js`) e pela importação de clientes (`src/lib/clientImport.js`). Quando o professor troca, o valor antigo se perde.
 - `stronix_aulas` guarda o professor e a conversão de cada aula experimental, e a aba Por professor do relatório de Visitas e aulas já faz a conta (`professorRowsOf`, em `src/lib/relatorios/leads/visitas.js`).
-- O freepass é a aula experimental com passe em dias (`trialClassesPlanned`, `src/lib/freePass.js`). A conversão dele é a mesma conta da aula.
+- O freepass não tem registro próprio: é o mesmo agendamento de aula experimental, com passe de vários dias (`trialClassesPlanned`, gravado no lead; `src/lib/freePass.js`). Cada agendamento gera um registro em `stronix_aulas`, então contar esses registros já soma freepass e aula experimental.
+- O `professorRowsOf` conta registros, e não pessoas: quem veio em dois agendamentos com o mesmo professor entra duas vezes. A conversão do perfil conta pessoas, então não reaproveita essa conta como está.
+- A matrícula marca `converted` e `convertedAt` só no último registro com "Compareceu" do lead (`markConvertingAula`), e por isso a matrícula vai para o professor dessa última aula.
 - `liveRenewalOf` (`src/lib/contracts.js`) diz se um contrato tem renovação ligada e não cancelada.
 - A página pública de indicação (`/i/<slug>`) mora na `api/tenant-resolve.js`, com limite por IP e por academia. As funções da Vercel estão em 11 de 12.
 
@@ -50,7 +53,7 @@ O histórico fica no próprio lead porque as contas rodam sobre os leads que o a
 ### Nível e metas
 
 - `stronix_professores/{id}`: ganha `nivel` (`junior`, `pleno` ou `senior`), `nivelDesde` (data) e `npsCode` (o código do link público, 10 caracteres aleatórios de letras e números).
-- `stronix_config/carreira`: as médias esperadas por nível da renovação e da conversão, editadas pelo gestor, e a barra e a faixa da aderência. Começa com renovação em 45, 55 e 65% (a confirmar), conversão em branco, a barra em 2 aulas por semana e a faixa da aderência em 60% a 70%. A aderência não tem meta por nível, e o NPS também não: a regra dele é ser positivo.
+- `stronix_config/carreira`: as médias esperadas por nível da renovação, editadas pelo gestor, a barra e a faixa da aderência e a janela da conversão. Começa com renovação em 45, 55 e 65% (a confirmar), a barra em 2 aulas por semana, a faixa da aderência em 60% a 70% e a janela da conversão em 30 dias (proposta). A conversão não tem meta nem padrão por enquanto. A aderência não tem meta por nível, e o NPS também não: a regra dele é ser positivo.
 
 ### Pesquisa de NPS
 
@@ -68,7 +71,7 @@ Funções puras em `src/lib/professor/`, sem import de tela nem de pacote, com t
 
 - **Carteira na data:** os clientes cujo professor na data (`professorAt`) é o professor, com contrato de plano da modalidade dele.
 - **Renovação do ciclo:** os contratos da carteira com fim previsto no ciclo (o `originalEndsAt`, ou o `endsAt` sem encurtamento, como no Operacional), que chegaram a valer (fora o `neverTookEffect`), sem troca de professor nos 90 dias antes do fim. Renovado é quem tem `liveRenewalOf`. O cancelado antes do fim segue a mesma regra da taxa de renovação do Operacional: o PR 2 reusa a função de lá se ela servir, e um teste compara as duas. A tela mostra sempre "9 de 15" junto da porcentagem e o aviso "base pequena" com menos de 10 contratos.
-- **Conversão:** as aulas experimentais do ciclo com o professor e com "Compareceu", e quantas viraram matrícula, pelas linhas do `professorRowsOf`. Treino sozinho não entra.
+- **Conversão:** pessoas que vieram (registros de aula do ciclo, com o professor e com "Compareceu", contando cada lead uma vez por professor) e quantas delas se matricularam (algum desses registros com `converted`). Freepass e aula experimental entram juntos, porque são o mesmo registro. Treino sozinho não entra. A matrícula só conta com contrato pago: o lead precisa ter um contrato com valor acima de zero, que não seja importado (`isImportedContract`) e que tenha chegado a valer (fora o `neverTookEffect`), porque a importação promove a cliente quem tinha só freepass de R$ 0. A aula dos últimos 30 dias fica fora da conta, porque ainda não teve tempo de virar matrícula; os 30 dias são proposta e ficam na configuração. Antes de setembro de 2026 os agendamentos estão incompletos (`APPTS_COMPLETE_MONTH`), e a tela avisa quando o ciclo pega esse trecho.
 - **NPS:** a nota de cada pergunta a partir dos totais, e se ela vale (respostas ≥ 50% da turma e ≥ 10). Sem validade, a tela diz "sem nota válida" e não mostra o número.
 - **Aderência:** a taxa de cada semana, separada: alunos aderentes naquela semana ÷ alunos que contam naquela semana. Não há média do semestre, do ano nem um número único do período, porque isso está em aberto. Conta a semana de segunda a sexta de cada aluno da carteira na data (a mesma da renovação), com contrato de funcional em vigor. Ficam fora a semana em que o contrato estava trancado (o trancado paga mas não treina) e a primeira semana do contrato. A semana é aderente com presenças na aula de funcional iguais ou acima da barra (2). A tela mostra também quantos alunos-semana ficaram com 1 presença e com nenhuma, para o professor saber quem chamar. O relatório da Next Fit não traz o professor: quem diz de qual professor é o aluno é a carteira do Stronilead.
 
@@ -98,9 +101,9 @@ Todas só com o módulo ligado. Sem ele, os endereços caem em "Não achamos ess
 ### Perfil
 
 - **Cabeçalho:** nome, nível e desde quando, modalidades e o link do NPS, com "Copiar link", "Baixar QR code" e "Gerar novo link". O gestor troca o nível ali.
-- **Faixa dos critérios:** renovação, NPS, conversão e aderência. Renovação e conversão mostram a média esperada do nível embaixo, e o NPS mostra se está positivo. A aderência mostra a taxa da última semana fechada, a barra ("2 ou mais aulas por semana") e a faixa de 60% a 70% ao lado. O período é o ciclo de dezembro a novembro, com seta para o ciclo anterior. O ciclo vai no endereço (`ciclo=2026`), na tabela do `screenParams.js`.
+- **Faixa dos critérios:** renovação, NPS, conversão e aderência. A renovação mostra a média esperada do nível embaixo, a conversão mostra "8 de 15" sem meta, e o NPS mostra se está positivo. A aderência mostra a taxa da última semana fechada, a barra ("2 ou mais aulas por semana") e a faixa de 60% a 70% ao lado. O período é o ciclo de dezembro a novembro, com seta para o ciclo anterior. O ciclo vai no endereço (`ciclo=2026`), na tabela do `screenParams.js`.
 - **Carteira:** os alunos com plano, vencimento e situação (a vencer, renovou, não renovou), com filtro em pílulas, no padrão das outras telas. O nome abre a ficha (`LeadLink`). Quem não tem CPF no cadastro leva um aviso, porque não consegue responder o NPS, e o topo da aba diz quantos são.
-- **Aulas experimentais:** as aulas do ciclo, com presença e matrícula.
+- **Aulas experimentais:** as pessoas que vieram no ciclo, por aula experimental ou freepass, com a data, se se matricularam e quais ainda estão nos 30 dias.
 - **NPS:** escolha da pesquisa, a nota da principal, respostas, porcentagem da turma e se vale, e as outras perguntas embaixo. Só o gestor vê a lista de quem respondeu (nome, notas e comentário) e a de quem ainda não respondeu.
 - **Aderência:** a taxa de cada semana importada, da mais nova para a mais antiga, com quantos alunos ficaram com 1 presença e quantos com nenhuma, para o professor saber quem chamar. Antes da primeira importação, "Sem dados ainda".
 - O professor logado vê o mesmo perfil sem botões, e a aba NPS mostra só os totais.
@@ -166,7 +169,7 @@ Os PRs 1 a 5 cabem até março de 2027. Abril e maio ficam para testar com a Hel
 
 ## Testes
 
-- **Contas:** professor trocado 60 e 100 dias antes do vencimento, lead sem histórico, contrato que nunca valeu, renovação cancelada, base pequena, plano de outra modalidade, NPS com 49% e 50% da turma, com 9 e 10 respostas, e a conta de promotores e detratores por pergunta.
+- **Contas:** professor trocado 60 e 100 dias antes do vencimento, lead sem histórico, contrato que nunca valeu, renovação cancelada, base pequena, plano de outra modalidade, a mesma pessoa em dois agendamentos (conta uma vez), matrícula com freepass importado de R$ 0 (não conta), aula dos últimos 30 dias (fora), NPS com 49% e 50% da turma, com 9 e 10 respostas, e a conta de promotores e detratores por pergunta.
 - **Histórico:** a varredura de quem grava `professorId` e o montador acrescentando só quando o valor muda.
 - **Rota pública,** com o banco falso que imita o SDK de servidor (como `api/__tests__/zapRoute.test.js`): CPF que não existe, de outra carteira, de cliente sem contrato de funcional, resposta repetida, pesquisa fechada, módulo desligado, código desconhecido, nota fora de 0 a 10, pergunta faltando, campo invisível e limite estourado.
 - **Regras:** o professor não lê respostas nem os totais de outro professor, ninguém grava resposta pelo navegador, e outra academia não lê nada.
@@ -182,7 +185,8 @@ Os PRs 1 a 5 cabem até março de 2027. Abril e maio ficam para testar com a Hel
 
 ## Em aberto
 
-- As médias de renovação por nível (45, 55 e 65%) estão a confirmar, e a meta de conversão ainda não existe. As duas ficam editáveis em `/professores/metas`.
+- As médias de renovação por nível (45, 55 e 65%) estão a confirmar e ficam editáveis em `/professores/metas`.
+- Na conversão: o padrão de comparação (a proposta é a média da academia), o mínimo de aulas para o professor ser medido (a proposta é 20 no ano) e a janela de 30 dias.
 - Na aderência: se o padrão vale igual para todos os professores, como juntar as semanas (média do semestre ou do ano) e se haverá meta por nível.
 - Conferir se a cláusula de LGPD do contrato do aluno cobre pesquisa de satisfação. Se não cobrir, uma linha a mais no contrato resolve.
 - Quantos clientes do funcional têm CPF no cadastro (contagem antes do PR 5).
