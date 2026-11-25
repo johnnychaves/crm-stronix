@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// A chave "Professor e faltosos" na página da academia do super console
+// A chave "Stronix 2.0" na página da academia do super console
 // (TenantModulesCard). Ligar manda a lista com o módulo, desligar manda sem
 // ele, desligar com professor de login pede confirmação, enquanto grava a
 // chave fica travada, e a recusa da api aparece no cartão. Quem grava de
@@ -42,9 +42,9 @@ const clicar = async () => { await act(async () => { chave().click(); }); };
 describe('TenantModulesCard', () => {
   it('academia sem o campo: a chave aparece desligada, com o nome do módulo', async () => {
     await montar({ tenant: { id: 'shape-one' }, save: vi.fn() });
-    expect(document.body.textContent).toContain('Professor e faltosos');
+    expect(document.body.textContent).toContain('Stronix 2.0');
     expect(chave().getAttribute('aria-checked')).toBe('false');
-    expect(chave().getAttribute('aria-label')).toBe('Professor e faltosos');
+    expect(chave().getAttribute('aria-label')).toBe('Stronix 2.0');
   });
 
   it('ligar manda a lista com o faltosos, sem pedir confirmação', async () => {
@@ -71,7 +71,7 @@ describe('TenantModulesCard', () => {
     await montar({ tenant: { id: 'stronix-crm-app', modules: ['faltosos'] }, save, professores: 3 });
     await clicar();
     expect(confirm).toHaveBeenCalledTimes(1);
-    expect(confirm.mock.calls[0][0]).toBe('Desligar Professor e faltosos? Os 3 professores com login passam a ver só o aviso de acesso desligado, a partir do próximo login ou F5.');
+    expect(confirm.mock.calls[0][0]).toBe('Desligar Stronix 2.0? Os 3 professores com login passam a ver só o aviso de acesso desligado, a partir do próximo login ou F5.');
     expect(save).not.toHaveBeenCalled();
     expect(chave().getAttribute('aria-checked')).toBe('true');
   });
@@ -80,7 +80,7 @@ describe('TenantModulesCard', () => {
     const save = vi.fn(async () => {});
     await montar({ tenant: { id: 'stronix-crm-app', modules: ['faltosos'] }, save, professores: 1 });
     await clicar();
-    expect(confirm.mock.calls[0][0]).toBe('Desligar Professor e faltosos? O professor com login passa a ver só o aviso de acesso desligado, a partir do próximo login ou F5.');
+    expect(confirm.mock.calls[0][0]).toBe('Desligar Stronix 2.0? O professor com login passa a ver só o aviso de acesso desligado, a partir do próximo login ou F5.');
     expect(save).toHaveBeenCalledWith([]);
   });
 
@@ -129,7 +129,7 @@ describe('o cartão com os professores que o Detail passa', () => {
     await montar({ tenant: t, save, professores: professoresDoDetail(t, null) });
     await clicar();
     expect(confirm).toHaveBeenCalledTimes(1);
-    expect(confirm.mock.calls[0][0]).toBe('Desligar Professor e faltosos? Os 2 professores com login passam a ver só o aviso de acesso desligado, a partir do próximo login ou F5.');
+    expect(confirm.mock.calls[0][0]).toBe('Desligar Stronix 2.0? Os 2 professores com login passam a ver só o aviso de acesso desligado, a partir do próximo login ou F5.');
     expect(save).toHaveBeenCalledWith([]);
   });
 

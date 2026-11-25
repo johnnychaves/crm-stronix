@@ -16,7 +16,7 @@ export const SET_ROLE_ACTION = 'set-role';
 const nameOrSomeone = (name) => (typeof name === 'string' && name.trim() ? name.trim() : 'Essa pessoa');
 
 export const PROFESSOR_LINK_MESSAGES = Object.freeze({
-  moduleOff: 'O papel Professor só existe com o módulo Professor e faltosos ligado nesta academia.',
+  moduleOff: 'O papel Professor só existe com o módulo Stronix 2.0 ligado nesta academia.',
   missing: 'Escolha qual professor do cadastro é esta pessoa.',
   notFound: 'Esse professor não está mais no cadastro de professores. Atualize a tela e escolha de novo.',
   inactive: 'Esse professor está inativo no cadastro. Escolha um professor ativo.',

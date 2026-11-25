@@ -28,7 +28,7 @@ export function sidebarNav(appUser) {
   });
 }
 
-// Professor numa academia com o módulo "Professor e faltosos" desligado. O
+// Professor numa academia com o módulo Stronix 2.0 (antes "Professor e faltosos") desligado. O
 // login continua valendo, mas nenhuma tela é dele: o App mostra só o aviso,
 // com o Sair, e as regras do Firestore recusam as gravações dele no lead e nas
 // interações (no registro da aula, não: ver stronix_aulas). A lista vem
