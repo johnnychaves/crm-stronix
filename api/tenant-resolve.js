@@ -15,6 +15,7 @@ import {
   referralLinkGenericText
 } from './_referral.js';
 import { isPasswordResetAction, handlePasswordReset } from './_passwordResetRoute.js';
+import { isNpsAction, handleNps } from './_npsPublico.js';
 import { zapMatchKey } from './_zapPhone.js';
 
 // Resolve PÚBLICO de organização por slug (?slug=ironfit).
@@ -36,6 +37,9 @@ import { zapMatchKey } from './_zapPhone.js';
 //   { action:'password-reset-request', email } → 200 antes do trabalho, com conta ou sem
 //   { action:'password-reset-confirm', email, code, newPassword }
 // Tudo mora em _passwordResetRoute.js e nos arquivos _passwordReset*.js.
+//
+// PESQUISA DE NPS DOS ALUNOS (perfil do professor, PR 5): nps-info, nps-check e
+// nps-answer, para a página /avaliar/<academia>/<código>. Tudo em _npsPublico.js.
 
 // Mesma regra de leitura do endereço do app (src/lib/tenantSlug.js).
 const SLUG_RE = TENANT_SLUG_READ_RE;
@@ -50,6 +54,8 @@ export default withSentry(async function handler(req, res) {
     // "Esqueci a senha": as duas ações públicas moram aqui, e não numa função
     // nova (docs/superpowers/specs/2026-09-28-esqueci-a-senha-design.md).
     if (isPasswordResetAction(req.body?.action)) return handlePasswordReset(req, res);
+    // A página pública da pesquisa de NPS (/avaliar), pelo mesmo motivo.
+    if (isNpsAction(req.body?.action)) return handleNps(req, res);
     return handleReferral(req, res);
   }
   if (req.method !== 'GET') {
