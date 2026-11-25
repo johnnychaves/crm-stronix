@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   AULA_STATUS, isAulaRecord, outcomeToAulaStatus, pickConvertingAula, pickMirrorAppointment, aulaRecordFields, rescheduleRecordPlan,
-  recordPlanFor, recordMatchesAppointment
+  recordPlanFor, recordMatchesAppointment, isSoloTrainingRecord
 } from '../aulas.js';
+import { isSoloTrainingRecord as soloDoCrm } from '../crm/appointments.js';
 
 describe('outcomeToAulaStatus', () => {
   it('mapeia os desfechos que resolvem a aula', () => {
@@ -339,5 +340,17 @@ describe('recordMatchesAppointment: a guarda da data', () => {
     expect(recordMatchesAppointment({ scheduledFor: null }, { appointmentScheduledFor: SET_28 })).toBe(true);
     expect(recordMatchesAppointment({ scheduledFor: SET_28 }, {})).toBe(true);
     expect(recordMatchesAppointment(null, null)).toBe(true);
+  });
+});
+
+describe('isSoloTrainingRecord', () => {
+  it('treino sozinho é a marca ou a falta de professor', () => {
+    expect(isSoloTrainingRecord({ soloTraining: true, professorId: 'p1' })).toBe(true);
+    expect(isSoloTrainingRecord({ professorId: null })).toBe(true);
+    expect(isSoloTrainingRecord({ professorId: 'p1' })).toBe(false);
+  });
+
+  it('crm/appointments.js continua exportando a mesma função', () => {
+    expect(soloDoCrm).toBe(isSoloTrainingRecord);
   });
 });

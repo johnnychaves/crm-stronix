@@ -5,7 +5,7 @@
 // do espelho do lead, quando ele é do mesmo agendamento, ou da linha do tempo
 // (effectiveStatus), porque o app ainda não o grava no registro.
 
-import { AULA_STATUS, isAulaRecord, outcomeToAulaStatus } from '../aulas.js';
+import { AULA_STATUS, isAulaRecord, isSoloTrainingRecord, outcomeToAulaStatus } from '../aulas.js';
 import { getSafeDateOrNull } from '../dates.js';
 import { DAILY_GOAL_CATEGORIES } from '../leads.js';
 import { pct, rankCounts } from './stats.js';
@@ -217,9 +217,9 @@ export function cohortMilestoneOf(l, { asOf, cut, recordsByLead, visitOutcomes =
   return { booked, attended };
 }
 
-// Aula de quem treina sozinho: com a marca, ou sem professor. É o "Treina
-// sozinho" do cartão de professores (professorsOf) e da lista dos Relatórios.
-export const isSoloTrainingRecord = (r) => Boolean(r?.soloTraining || !r?.professorId);
+// A regra do treino sozinho mora em aulas.js, porque as contas do perfil do
+// professor (src/lib/professor/) não podem importar este arquivo.
+export { isSoloTrainingRecord };
 
 // Aulas experimentais por professor, da academia inteira (spec §4): registros
 // de aula, sem visitas, marcados em [start, end). Realizadas = attended,

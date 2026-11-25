@@ -16,6 +16,11 @@ export const APPOINTMENT_RECORD_TYPES = { AULA: 'aula', VISITA: 'visita' };
 export const isAulaRecord = (rec) =>
   (rec?.type ?? APPOINTMENT_RECORD_TYPES.AULA) !== APPOINTMENT_RECORD_TYPES.VISITA;
 
+// Aula de quem treina sozinho: com a marca, ou sem professor. É o "Treina
+// sozinho" do cartão de professores (professorsOf), da lista dos Relatórios e
+// da conversão do perfil do professor.
+export const isSoloTrainingRecord = (r) => Boolean(r?.soloTraining || !r?.professorId);
+
 // Desfecho do agendamento (appointmentOutcome) -> status da aula. 'rescheduled'
 // não resolve a aula (o reagendamento move a aula, não a fecha).
 export function outcomeToAulaStatus(outcome) {
