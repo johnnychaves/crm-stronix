@@ -7,23 +7,29 @@ import { isGestor, isProfessor } from '../../lib/acesso.js';
 import { hrefFor } from '../../lib/routes.js';
 import { professorModalityNames } from '../../lib/professores.js';
 import { deleteProfessorPhoto, uploadProfessorPhoto } from '../../lib/professorPhoto.js';
+import { npsLinkDe } from '../../lib/npsLink.js';
+import { gerarNovoLink } from '../../lib/npsWrites.js';
+import { baixarQr } from '../../lib/qrPng.js';
+import { npsDoCiclo } from '../../lib/professor/pesquisas.js';
 import { cicloDe } from '../../lib/professor/ciclo.js';
 import { conversaoDoCiclo, pessoasDasAulas } from '../../lib/professor/conversao.js';
 import { carteiraDoCiclo, renovacaoDoCiclo } from '../../lib/professor/renovacao.js';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 import { useToast } from '../../contexts/ToastContext.jsx';
 import { useProfessoresDados } from '../../hooks/useProfessoresDados.js';
+import { useNpsDados } from '../../hooks/useNpsDados.js';
 import { useScreenParams } from '../../hooks/useScreenParams.js';
 import { AppLink } from '../../components/nav/AppLink.jsx';
 import { PhotoCaptureMenu } from '../../components/profile/PhotoCaptureMenu.jsx';
 import { AulasTab } from './AulasTab.jsx';
 import { CarteiraTab } from './CarteiraTab.jsx';
+import { NpsTab } from './NpsTab.jsx';
 import { PerfilCabecalho } from './PerfilCabecalho.jsx';
 import { PlacarDoCiclo } from './PlacarDoCiclo.jsx';
 import { TAB_CONTAGEM, TAB_TRIGGER } from './ProfessoresComum.jsx';
 
 // O perfil do professor (mockups B de 24/11/2026): cabeçalho, placar do ciclo
-// e as abas Carteira e Aulas experimentais. O gestor abre qualquer perfil e é
+// e as abas Carteira, Aulas experimentais e NPS. O gestor abre qualquer perfil e é
 // o único que troca a foto e o nível; o professor logado só chega ao próprio
 // (a rota garante) e vê tudo só para leitura. O ciclo mora no endereço
 // (`ciclo`) e a aba é a sub-tela, que o App troca com replace.
@@ -40,11 +46,14 @@ export function ProfessorPerfilView({ db, appUser, tenantId, profId, tab, onTab,
 
   const pode = isGestor(appUser);
   const professorLogado = isProfessor(appUser);
+  // O professor só lê os próprios totais: a consulta dele vem filtrada, que é
+  // o que a regra aceita.
+  const nps = useNpsDados({ db, professorId: professorLogado ? appUser?.professorId ?? null : null, listenersActive });
   const prof = useMemo(() => (professores || []).find((p) => p.id === profId) ?? null, [professores, profId]);
   const planosById = useMemo(() => new Map((planos || []).map((p) => [p.id, p])), [planos]);
 
   const contas = useMemo(() => {
-    if (carregando || !metas || !prof) return null;
+    if (carregando || !metas || !prof || nps.carregando) return null;
     const { janelaDias, tolerancia } = metas.conversao;
     const base = { leads: clientes, contratos, planos, professor: prof, ciclo, asOf: agora };
     const daAula = { aulas, contratos, professorId: prof.id, ciclo, asOf: agora, janelaDias };
@@ -53,8 +62,9 @@ export function ProfessorPerfilView({ db, appUser, tenantId, profId, tab, onTab,
       carteira: carteiraDoCiclo(base),
       conversao: conversaoDoCiclo({ ...daAula, tolerancia }),
       pessoas: pessoasDasAulas(daAula),
+      nps: npsDoCiclo({ pesquisas: nps.pesquisas, totais: nps.totais, professorId: prof.id, ciclo, meta: metas.nps.meta }),
     };
-  }, [carregando, metas, prof, clientes, contratos, planos, aulas, ciclo, agora]);
+  }, [carregando, metas, prof, clientes, contratos, planos, aulas, ciclo, agora, nps.carregando, nps.pesquisas, nps.totais]);
 
   const [fotoAberta, setFotoAberta] = useState(false);
   const [fotoOcupada, setFotoOcupada] = useState(false);
@@ -106,6 +116,36 @@ export function ProfessorPerfilView({ db, appUser, tenantId, profId, tab, onTab,
     }
   };
 
+  // O link do NPS: o professor copia e baixa o QR; só o gestor gera.
+  const link = npsLinkDe(window.location.origin, tenantId, prof?.npsCode);
+  const copiarLink = async () => {
+    try {
+      await navigator.clipboard.writeText(link);
+      toast.success('Link copiado.');
+    } catch {
+      toast.error('Não deu para copiar. Selecione o link e copie.');
+    }
+  };
+  const baixarQrCode = async () => {
+    try {
+      const nome = String(prof.nome || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      await baixarQr(link, `qr-nps-${nome || 'professor'}.png`);
+    } catch (e) {
+      console.error('Erro ao gerar o QR code:', e);
+      toast.error('Não deu para gerar o QR code. Tente de novo.');
+    }
+  };
+  const gerarLink = async () => {
+    if (!pode) return;
+    try {
+      await gerarNovoLink(db, prof.id);
+      toast.success('Link novo gerado.');
+    } catch (e) {
+      console.error('Erro ao gerar o link do NPS:', e);
+      toast.error('Não deu para gerar o link. Tente de novo.');
+    }
+  };
+
   const voltar = pode && (
     <AppLink to={hrefFor(tenantId, 'professores')} aria-label="Voltar para Professores" className={`${LINK} mb-3.5 inline-flex items-center gap-1 font-medium text-muted-foreground hover:text-brand-700 dark:hover:text-brand-300`}>
       <ChevronLeft size={16} aria-hidden="true" />Professores
@@ -134,7 +174,7 @@ export function ProfessorPerfilView({ db, appUser, tenantId, profId, tab, onTab,
   const modalidades = professorModalityNames(prof, modalities);
   const modalidadesTexto = modalidades.length ? modalidades.map((m) => m.toLowerCase()).join(', ') : 'sem modalidade';
   const primeiroNome = String(prof.nome || '').trim().split(/\s+/)[0] || 'o professor';
-  const aba = tab === 'aulas' ? 'aulas' : 'carteira';
+  const aba = tab === 'aulas' || tab === 'nps' ? tab : 'carteira';
 
   return (
     <div className="mx-auto max-w-[1240px] animate-fade-in pb-12">
@@ -153,7 +193,12 @@ export function ProfessorPerfilView({ db, appUser, tenantId, profId, tab, onTab,
         fotoOcupada={fotoOcupada}
         onFoto={() => setFotoAberta(true)}
         onSalvarNivel={salvarNivel}
+        link={link}
+        onCopiar={copiarLink}
+        onBaixarQr={baixarQrCode}
+        onGerarLink={gerarLink}
       />
+      {nps.erro && <p role="alert" className="mt-3 text-[13px] font-semibold text-rose-700 dark:text-rose-300">Não deu para ler a pesquisa dos alunos. Recarregue a página.</p>}
 
       {erro && <p role="alert" className="mt-3 text-[13px] font-semibold text-rose-700 dark:text-rose-300">Não deu para carregar tudo. Recarregue a página.</p>}
 
@@ -170,6 +215,7 @@ export function ProfessorPerfilView({ db, appUser, tenantId, profId, tab, onTab,
             metas={metas}
             renovacao={contas.renovacao}
             conversao={contas.conversao}
+            nps={contas.nps}
             modalidadesTexto={modalidadesTexto}
           />
 
@@ -181,6 +227,7 @@ export function ProfessorPerfilView({ db, appUser, tenantId, profId, tab, onTab,
               <TabsTrigger value="aulas" className={TAB_TRIGGER}>
                 Aulas experimentais <span className={TAB_CONTAGEM}>{contas.pessoas.length}</span>
               </TabsTrigger>
+              <TabsTrigger value="nps" className={TAB_TRIGGER}>NPS</TabsTrigger>
             </TabsList>
             <TabsContent value="carteira" tabIndex={-1}>
               <CarteiraTab
@@ -195,6 +242,21 @@ export function ProfessorPerfilView({ db, appUser, tenantId, profId, tab, onTab,
             </TabsContent>
             <TabsContent value="aulas" tabIndex={-1}>
               <AulasTab conversao={contas.conversao} pessoas={contas.pessoas} janelaDias={metas.conversao.janelaDias} nome={professorLogado ? 'você' : primeiroNome} />
+            </TabsContent>
+            <TabsContent value="nps" tabIndex={-1}>
+              <NpsTab
+                nps={contas.nps}
+                metaNps={metas.nps.meta}
+                pode={pode}
+                professorLogado={professorLogado}
+                primeiroNome={primeiroNome}
+                db={db}
+                prof={prof}
+                clientes={clientes}
+                contratos={contratos}
+                planos={planos}
+                listenersActive={listenersActive}
+              />
             </TabsContent>
           </Tabs>
         </>

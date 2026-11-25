@@ -1,12 +1,12 @@
 import { cn } from '@/lib/utils';
 import { NIVEIS, nivelTexto } from '../../lib/professor/metas.js';
 import { CicloControl } from './ProfessoresComum.jsx';
-import { escalaDaRenovacao } from './criterios.js';
+import { escalaDaRenovacao, notaTexto } from './criterios.js';
 
 // O placar escuro do perfil (mockup B): os quatro critérios do plano de
 // carreira, cada um com a régua do resultado contra a referência. Renovação e
-// conversão vêm das contas de src/lib/professor/; NPS e aderência ainda não
-// têm dados (PR 4 e PR 6) e mostram só a meta. O texto claro fica em 58% de
+// conversão vêm das contas de src/lib/professor/ e a nota dos alunos, do
+// npsDoCiclo; a aderência ainda não tem dados (PR 6) e mostra só a meta. O texto claro fica em 58% de
 // branco ou mais, que dá 6:1 ou mais sobre o ink-900.
 const posicao = (v, lo, hi) => Math.min(100, Math.max(0, ((v - lo) / (hi - lo)) * 100));
 
@@ -79,13 +79,17 @@ function Criterio({ titulo, valor, verde = false, linha, children, rodape }) {
   );
 }
 
-export function PlacarDoCiclo({ titulo, ciclo, cicloAtual, onCiclo, prof, metas, renovacao, conversao, modalidadesTexto }) {
+export function PlacarDoCiclo({ titulo, ciclo, cicloAtual, onCiclo, prof, metas, renovacao, conversao, nps, modalidadesTexto }) {
   const medias = NIVEIS.map((n) => ({ v: metas.renovacao[n], texto: nivelTexto(n), minha: n === prof.nivel }));
   const [rlo, rhi] = escalaDaRenovacao([...medias.map((m) => m.v), ...(renovacao.taxa == null ? [] : [renovacao.taxa])]);
   const temNivel = NIVEIS.includes(prof.nivel);
   const p = conversao.professor;
   const a = conversao.academia;
   const { meta: metaNps } = metas.nps;
+  const nota = nps?.nota ?? null;
+  const comPesquisa = Boolean(nps?.itens?.length);
+  // A escala começa um ponto abaixo da meta, ou na nota, se ela ficou mais baixa.
+  const npsLo = Math.max(0, Math.min(metaNps - 1, nota == null ? 10 : Math.floor(nota)));
   const { barra, faixaMin, faixaMax } = metas.aderencia;
 
   return (
@@ -114,8 +118,33 @@ export function PlacarDoCiclo({ titulo, ciclo, cicloAtual, onCiclo, prof, metas,
           />
         </Criterio>
 
-        <Criterio titulo="Nota dos alunos" linha="Sem pesquisa ainda" rodape={`Meta ${metaNps} ou mais. A pesquisa com os alunos ainda não começou.`}>
-          <Regua lo={Math.max(0, metaNps - 1)} hi={10} zona={[metaNps, 10]} zonaTexto={`meta ${metaNps}`} pontas={[String(Math.max(0, metaNps - 1)), '10']} rotulo={`Sem pesquisa ainda. Meta ${metaNps} ou mais.`} />
+        <Criterio
+          titulo="Nota dos alunos"
+          valor={nota == null ? null : notaTexto(nota)}
+          verde={nps?.passa === true}
+          linha={nota != null ? (nps.promotores == null ? null : `${nps.promotores}% deram 9 ou 10`) : comPesquisa ? 'Sem nota válida' : 'Sem pesquisa ainda'}
+          rodape={(
+            <>
+              {nps?.passa === true && <Selo tom="verde">Nota de promotor</Selo>}
+              {nps?.passa === false && <Selo tom="ambar">Abaixo da meta</Selo>}
+              {!comPesquisa
+                ? `Meta ${metaNps} ou mais. A pesquisa com os alunos ainda não começou.`
+                : nota == null
+                  ? `Meta ${metaNps} ou mais. Nenhuma pesquisa do ciclo teve respostas suficientes.`
+                  : `Meta ${metaNps} ou mais. ${nps.pesquisas === 1 ? 'Uma pesquisa válida no ciclo.' : `Média das ${nps.pesquisas} pesquisas válidas do ciclo.`}`}
+            </>
+          )}
+        >
+          <Regua
+            lo={npsLo}
+            hi={10}
+            zona={[metaNps, 10]}
+            zonaTexto={`meta ${metaNps}`}
+            ponto={nota}
+            verde={nps?.passa === true}
+            pontas={[String(npsLo), '10']}
+            rotulo={`${nota == null ? (comPesquisa ? 'Sem nota válida' : 'Sem pesquisa ainda') : `Nota ${notaTexto(nota)}`}. Meta ${metaNps} ou mais.`}
+          />
         </Criterio>
 
         <Criterio
