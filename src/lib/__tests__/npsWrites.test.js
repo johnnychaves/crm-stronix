@@ -38,6 +38,17 @@ describe('abrirPesquisa', () => {
     expect(s.updates).toEqual([{ id: 'r1', dados: { situacao: 'aberta', turmas: { p1: 20 }, abertaEm: 'AGORA' } }]);
   });
 
+  it('gera o link de quem está na turma e ainda não tem, e não troca o que existe', async () => {
+    s.docs.p1 = { nome: 'Ana' };
+    s.docs.p2 = { nome: 'Bia', npsCode: 'k7q2mx9pza' };
+    await abrirPesquisa({}, 'r1', { turmas: { p1: 20, p2: 5 }, conhecidas: [{ id: 'r1' }], agora });
+    const doP1 = s.updates.filter((u) => u.id === 'p1');
+    expect(doP1).toHaveLength(1);
+    expect(doP1[0].dados).toEqual({ npsCode: expect.stringMatching(/^[a-km-np-z2-9]{10}$/), npsCodeEm: 'AGORA' });
+    expect(s.updates.some((u) => u.id === 'p2')).toBe(false);
+    expect(s.updates.find((u) => u.id === 'r1').dados.situacao).toBe('aberta');
+  });
+
   it('recusa sem turma, fora do rascunho e com pesquisa incompleta', async () => {
     await expect(abrirPesquisa({}, 'r1', { turmas: {}, agora })).rejects.toMatchObject({ paraTela: true });
     s.docs.r1 = { ...rascunho, situacao: 'aberta' };

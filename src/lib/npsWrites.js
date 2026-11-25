@@ -10,6 +10,7 @@ import { estadoDaPesquisa, paraGravar, problemaDaPesquisa } from './professor/pe
 
 const colecao = (db) => collection(db, 'artifacts', appId, 'public', 'data', NPS_PESQUISAS_PATH);
 const refDe = (db, id) => doc(colecao(db), id);
+const refProfessor = (db, id) => doc(db, 'artifacts', appId, 'public', 'data', PROFESSORS_PATH, id);
 
 // Erro com texto para a tela (o toast mostra a mensagem).
 const erroDaTela = (texto) => Object.assign(new Error(texto), { paraTela: true });
@@ -37,12 +38,17 @@ export async function abrirPesquisa(db, id, { turmas, conhecidas = [], agora = n
   await runTransaction(db, async (tx) => {
     const alvo = await tx.get(refDe(db, id));
     const snaps = await Promise.all(outras.map((i) => tx.get(refDe(db, i))));
+    const profs = await Promise.all(Object.keys(turmas).map((p) => tx.get(refProfessor(db, p))));
     if (!alvo.exists() || alvo.data().situacao !== 'rascunho') throw erroDaTela('Essa pesquisa não é mais um rascunho.');
     if (problemaDaPesquisa(alvo.data())) throw erroDaTela('Complete a pesquisa antes de abrir.');
     if (snaps.some((s) => s.exists() && estadoDaPesquisa(s.data(), hoje) === 'aberta')) {
       throw erroDaTela('Já tem uma pesquisa aberta. Encerre ela antes de abrir outra.');
     }
     tx.update(alvo.ref, { situacao: 'aberta', turmas, abertaEm: serverTimestamp() });
+    // Quem está na turma sem link ganha um, senão o professor não tem o que
+    // passar aos alunos. O link que já existe fica, porque o QR pode estar impresso.
+    profs.filter((p) => p.exists() && !p.data().npsCode)
+      .forEach((p) => tx.update(p.ref, { npsCode: gerarNpsCode(), npsCodeEm: serverTimestamp() }));
   });
 }
 
@@ -53,6 +59,6 @@ export const excluirRascunho = (db, id) => deleteDoc(refDe(db, id));
 // O link antigo para de funcionar: o servidor acha o professor pelo código.
 export async function gerarNovoLink(db, profId) {
   const npsCode = gerarNpsCode();
-  await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', PROFESSORS_PATH, profId), { npsCode, npsCodeEm: serverTimestamp() });
+  await updateDoc(refProfessor(db, profId), { npsCode, npsCodeEm: serverTimestamp() });
   return npsCode;
 }
