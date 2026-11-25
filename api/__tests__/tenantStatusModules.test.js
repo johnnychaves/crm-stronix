@@ -130,6 +130,14 @@ describe('POST /api/tenant-status: módulos da academia', () => {
   });
 });
 
+describe('POST /api/tenant-status: logo para fundo escuro', () => {
+  it('grava o logo para fundo escuro em settings, junto do logo de sempre', async () => {
+    const res = await enviar({ tenantId: 'stronix-crm-app', settings: { logoUrl: 'https://x/l.png', logoFundoEscuroUrl: ' https://x/e.png ' } });
+    expect(res.statusCode).toBe(200);
+    expect(gravado().settings).toMatchObject({ logoUrl: 'https://x/l.png', logoFundoEscuroUrl: 'https://x/e.png' });
+  });
+});
+
 describe('GET /api/tenant-status: professores e módulos', () => {
   it('leva ao console os professores, fora das vagas, e os módulos', async () => {
     banco.vagas = {

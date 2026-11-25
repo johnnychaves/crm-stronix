@@ -128,7 +128,8 @@ async function info(req, res) {
     return res.status(200).json({
       found: true,
       academia: tenant.displayName || slug,
-      logoUrl: tenant.settings?.logoUrl || null,
+      // A página tem fundo escuro: o logo de sempre é o ícone da indicação, em fundo branco.
+      logoUrl: tenant.settings?.logoFundoEscuroUrl || tenant.settings?.logoUrl || null,
       professor: { nome: primeiroNome(professor.nome), photoUrl: professor.photoUrl || null, modalidades },
       pesquisa: pesquisa ? { perguntas: (pesquisa.perguntas || []).map((q) => ({ id: q.id, texto: q.texto })) } : null,
     });
