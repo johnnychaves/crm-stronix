@@ -65,6 +65,7 @@ export const ROTINAS_TABS = Object.freeze({
 // acrescenta as pesquisas.
 export const PROFESSORES_SUBS = Object.freeze({
   lista: 'lista',
+  pesquisas: 'pesquisas',
   metas: 'metas',
 });
 // Abas do perfil do professor, em /professores/perfil/<id>/<aba>, lido à parte
@@ -72,6 +73,7 @@ export const PROFESSORES_SUBS = Object.freeze({
 export const PERFIL_TABS = Object.freeze({
   carteira: 'carteira',
   aulas: 'aulas',
+  nps: 'nps',
 });
 // Submenus dos Relatórios (spec 2026-10-09). Hoje só o relatório de Leads, com
 // os cinco submenus. O id é também o segmento, e a lista ao lado

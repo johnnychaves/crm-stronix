@@ -23,11 +23,14 @@ describe('endereço das telas de professores', () => {
     expect(parseAppPath(`/${T}/professores/xyz`)).toMatchObject({ screen: 'professores', subUnknown: true });
     expect(hrefFor(T, 'professores', { sub: 'metas' })).toBe(`/${T}/professores/metas`);
     expect(hrefFor(T, 'professores')).toBe(`/${T}/professores`);
+    expect(parseAppPath(`/${T}/professores/pesquisas`)).toMatchObject({ screen: 'professores', sub: 'pesquisas' });
+    expect(hrefFor(T, 'professores', { sub: 'pesquisas' })).toBe(`/${T}/professores/pesquisas`);
   });
 
   it('perfil, com o id e a aba', () => {
     expect(parseAppPath(`/${T}/professores/perfil/P1`)).toMatchObject({ screen: 'professorPerfil', profId: 'P1', sub: null });
     expect(parseAppPath(`/${T}/professores/perfil/P1/aulas`)).toMatchObject({ screen: 'professorPerfil', profId: 'P1', sub: 'aulas' });
+    expect(parseAppPath(`/${T}/professores/perfil/P1/nps`)).toMatchObject({ screen: 'professorPerfil', profId: 'P1', sub: 'nps' });
     expect(parseAppPath(`/${T}/professores/perfil/P1/x`)).toMatchObject({ screen: 'professorPerfil', profId: 'P1', subUnknown: true });
     expect(parseAppPath(`/${T}/professores/perfil`)).toMatchObject({ screen: 'professorPerfil', profId: null });
     expect('profId' in parseAppPath(`/${T}/professores`)).toBe(false);
