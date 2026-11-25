@@ -18,6 +18,7 @@ function TenantManageModal({ t, stats, busy, plans, onClose, onCopy, onPatch, on
     city: t.settings?.city || '',
     state: t.settings?.state || '',
     logoUrl: t.settings?.logoUrl || '',
+    logoFundoEscuroUrl: t.settings?.logoFundoEscuroUrl || '',
     paymentStatus: t.paymentStatus || '',
     nextBillingAt: t.nextBillingAt ? new Date(t.nextBillingAt).toISOString().slice(0, 10) : '',
     notes: t.internalNotes || '',
@@ -55,7 +56,7 @@ function TenantManageModal({ t, stats, busy, plans, onClose, onCopy, onPatch, on
   };
   const saveConfig = () => {
     if (!f.displayName.trim()) return;
-    onPatch({ displayName: f.displayName.trim(), settings: { city: f.city.trim(), state: f.state.trim(), logoUrl: f.logoUrl.trim() } }, 'Configurações salvas.');
+    onPatch({ displayName: f.displayName.trim(), settings: { city: f.city.trim(), state: f.state.trim(), logoUrl: f.logoUrl.trim(), logoFundoEscuroUrl: f.logoFundoEscuroUrl.trim() } }, 'Configurações salvas.');
   };
 
   const statBox = (label, value) => (
@@ -200,6 +201,7 @@ function TenantManageModal({ t, stats, busy, plans, onClose, onCopy, onPatch, on
                 <Field label="Estado"><StyledInput value={f.state} onChange={e => set('state', e.target.value)} placeholder="Ex: RS" /></Field>
               </div>
               <Field label="Logo (URL)" hint="opcional"><StyledInput value={f.logoUrl} onChange={e => set('logoUrl', e.target.value)} placeholder="https://..." /></Field>
+              <Field label="Logo para fundo escuro (URL)" hint="opcional, vai na pesquisa dos alunos"><StyledInput value={f.logoFundoEscuroUrl} onChange={e => set('logoFundoEscuroUrl', e.target.value)} placeholder="https://..." /></Field>
               <div className="flex justify-end"><Btn kind="brand" icon={<Check size={13} />} onClick={saveConfig} disabled={!!busy}>Salvar configurações</Btn></div>
               <p className="text-[11px] text-slate-400">O identificador (slug <span className="num">{t.id}</span>) é imutável.</p>
             </div>

@@ -129,6 +129,11 @@ describe('nps-info', () => {
     });
   });
 
+  it('a página tem fundo escuro: usa o logo para fundo escuro quando a academia tem um', async () => {
+    banco.docs.set(`tenants/${T}`, { displayName: 'Academia Teste', modules: ['faltosos'], settings: { logoUrl: 'https://x/logo.png', logoFundoEscuroUrl: 'https://x/logo-escuro.png' } });
+    expect((await info()).body.logoUrl).toBe('https://x/logo-escuro.png');
+  });
+
   it('link inválido tem uma resposta só: sem módulo, código desconhecido, fora do formato, suspensa, professor inativo', async () => {
     const casos = [
       () => banco.docs.set(`tenants/${T}`, { displayName: 'Academia Teste', modules: [] }),

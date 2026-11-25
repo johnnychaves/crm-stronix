@@ -205,13 +205,14 @@ export default withSentry(async function handler(req, res) {
       if (!name) return res.status(400).json({ error: 'displayName não pode ficar vazio.' });
       update.displayName = name.slice(0, 120);
     }
-    // settings.{city,state,logoUrl} — merge parcial (set merge:true preserva as
+    // settings.{city,state,logoUrl,logoFundoEscuroUrl} — merge parcial (set merge:true preserva as
     // outras chaves de settings).
     if (settings && typeof settings === 'object') {
       const s = {};
       if (settings.city !== undefined) s.city = String(settings.city || '').slice(0, 120);
       if (settings.state !== undefined) s.state = String(settings.state || '').slice(0, 60);
       if (settings.logoUrl !== undefined) s.logoUrl = String(settings.logoUrl || '').slice(0, 500);
+      if (settings.logoFundoEscuroUrl !== undefined) s.logoFundoEscuroUrl = String(settings.logoFundoEscuroUrl || '').trim().slice(0, 500);
       if (Object.keys(s).length) update.settings = s;
     }
     // Perfil da academia (campos de texto; logo adiada) e WhatsApp do
