@@ -187,12 +187,12 @@ export function PesquisaForm({ id, inicial, turmaHoje, outraAberta, onSalvar, on
             </dl>
             <p className="m-0 flex items-start gap-2.5 rounded-xl bg-brand-50 px-3.5 py-3 text-[13px] text-brand-700 dark:bg-brand-500/10 dark:text-brand-300">
               <Info size={16} aria-hidden="true" className="mt-0.5 flex-none" />
-              Ao abrir, a turma de cada professor fica gravada e as perguntas travam.
+              Ao abrir, a turma de cada professor fica gravada, as perguntas travam e quem não tem link ganha um.
             </p>
             {confirmar === 'abrir' && (
               <Confirmacao
                 titulo="Abrir a pesquisa agora?"
-                texto={`A turma de cada professor fica gravada com os alunos de hoje (${turmaHoje ?? 0} ${turmaHoje === 1 ? 'aluno' : 'alunos'}), e as perguntas não mudam mais. Só uma pesquisa fica aberta por vez.`}
+                texto={`A turma de cada professor fica gravada com os alunos de hoje (${turmaHoje ?? 0} ${turmaHoje === 1 ? 'aluno' : 'alunos'}), e as perguntas não mudam mais. Quem ainda não tem link de NPS ganha um agora. Só uma pesquisa fica aberta por vez.`}
                 acao="Abrir pesquisa"
                 ocupado={ocupado}
                 onConfirmar={abrir}
