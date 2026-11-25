@@ -517,6 +517,25 @@ const OPTS = { decision: undefined, scope: SCOPE.PADRAO, now: NOW, windowDays: 1
 const NONE = { kind: 'none', lead: null, homonyms: [] };
 
 describe('buildFillPatch', () => {
+
+  it('preencher o professor de um lead que já teve um acrescenta ao histórico', () => {
+    const since = new Date('2026-10-01T12:00:00Z');
+    const lead = { name: 'Ana', professorId: null, professorHistory: [{ professorId: 'p0', since: null }, { professorId: null, since }] };
+    const patch = buildFillPatch({ ...VALID, professorId: 'p1', professorName: 'Carlos' }, lead);
+    expect(patch.professorId).toBe('p1');
+    expect(patch.professorName).toBe('Carlos');
+    expect(patch.professorHistory).toEqual([
+      { professorId: 'p0', since: null },
+      { professorId: null, since },
+      { professorId: 'p1', since: expect.any(Date) },
+    ]);
+  });
+
+  it('preencher o professor de um lead que nunca teve não cria histórico', () => {
+    const patch = buildFillPatch({ ...VALID, professorId: 'p1', professorName: 'Carlos' }, { name: 'Ana' });
+    expect(patch.professorId).toBe('p1');
+    expect(patch).not.toHaveProperty('professorHistory');
+  });
   it('preenche só o que está vazio e recomputa os campos de busca quando toca telefone ou CPF', () => {
     const lead = { name: 'Ana', whatsapp: '', email: 'ja@tem.com', cpf: null, tags: [] };
     const patch = buildFillPatch({ ...VALID, vip: true, rg: '12', sexo: 'Feminino', dor: 'Emagrecer', address: { street: 'Rua A' }, professorId: 'p1', professorName: 'Carlos' }, lead);

@@ -38,6 +38,20 @@ describe('buildContextPatch', () => {
     expect(buildContextPatch('professorId', null, { professores })).toEqual({ professorId: null, professorName: null });
   });
 
+  it('professor: com o lead, a troca leva o histórico', () => {
+    const at = new Date('2026-12-01T12:00:00Z');
+    expect(buildContextPatch('professorId', 'p1', { professores, lead: { professorId: 'p0' }, now: at })).toEqual({
+      professorId: 'p1',
+      professorName: 'Marcos Vieira',
+      professorHistory: [{ professorId: 'p0', since: null }, { professorId: 'p1', since: at }],
+    });
+  });
+
+  it('professor: escolher o mesmo grava só o professor, sem histórico', () => {
+    expect(buildContextPatch('professorId', 'p1', { professores, lead: { professorId: 'p1' } }))
+      .toEqual({ professorId: 'p1', professorName: 'Marcos Vieira' });
+  });
+
   it('observação grava o texto aparado, e vazio quando limpa', () => {
     expect(buildContextPatch('observation', '  Casamento em dezembro.  ')).toEqual({ observation: 'Casamento em dezembro.' });
     expect(buildContextPatch('observation', '')).toEqual({ observation: '' });

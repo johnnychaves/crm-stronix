@@ -2,6 +2,7 @@
 // das escritas existentes do lead. Consultas por campo único (índice automático).
 import { collection, doc, addDoc, getDoc, getDocs, updateDoc, query, where, serverTimestamp } from 'firebase/firestore';
 import { appId, AULAS_PATH, LEADS_PATH } from './firebase.js';
+import { professorChangePatch } from './professorHistory.js';
 import {
   AULA_STATUS, APPOINTMENT_RECORD_TYPES, isAulaRecord, outcomeToAulaStatus, pickConvertingAula, aulaRecordFields,
   recordPlanFor, recordMatchesAppointment
@@ -186,10 +187,12 @@ export async function markConvertingAula({ db, leadId }) {
   // fechou a venda (a menos que seja treino solo / sem professor). Cobre os três
   // caminhos de conversão (ficha, ContractModal, Kanban) num lugar só.
   if (chosen.professorId && !chosen.soloTraining) {
-    await updateDoc(
-      doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, leadId),
-      { professorId: chosen.professorId, professorName: chosen.professorName || null }
-    );
+    // Lê o lead para a troca entrar no histórico (professorHistory.js). O
+    // mesmo professor não regrava nada.
+    const leadRef = doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, leadId);
+    const leadSnap = await getDoc(leadRef);
+    const patch = professorChangePatch(leadSnap.exists() ? leadSnap.data() : {}, chosen.professorId, chosen.professorName || null);
+    if (patch) await updateDoc(leadRef, patch);
   }
 }
 
