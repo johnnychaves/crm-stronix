@@ -108,6 +108,7 @@ import { AddLeadModal } from './modals/AddLeadModal.jsx';
 import { DailyGoalView } from './views/DailyGoalView.jsx';
 import { ProfessorGoalPlaceholder } from './views/ProfessorGoalPlaceholder.jsx';
 import { RotinasView } from './views/RotinasView.jsx';
+import { ProfessoresView } from './views/professores/ProfessoresView.jsx';
 import { RelatoriosView } from './views/relatorios/RelatoriosView.jsx';
 import { RelatoriosNovo, NOVO_ATE as RELATORIOS_NOVO_ATE } from './views/relatorios/RelatoriosNovo.jsx';
 import { RotinasNovo, NOVO_ATE as ROTINAS_NOVO_ATE } from './components/rotinas/RotinasIntro.jsx';
@@ -1966,6 +1967,16 @@ useEffect(() => {
                   tab={sub}
                   onTab={(subId) => goToSub('rotinas', subId)}
                   tenantId={sessionTenant}
+                  listenersActive={listenersActive}
+                />
+              )}
+              {activeTab === 'professores' && (
+                <ProfessoresView
+                  db={db}
+                  appUser={appUser}
+                  tenantId={sessionTenant}
+                  tab={sub}
+                  onTab={(subId) => goToSub('professores', subId)}
                   listenersActive={listenersActive}
                 />
               )}
