@@ -28,7 +28,7 @@ Decididas pelo Johnny em 24/11/2026, na conversa que gerou esta spec.
 9. **O gestor vê quem respondeu**, com as notas e o comentário. O professor vê só os totais. O link é divulgado só entre os alunos ativos, na sala e no WhatsApp.
 10. **Aderência:** a conta é por aluno-semana (de segunda a sexta), sem os trancados, pelo relatório de Presenças da Next Fit. A semana é aderente com 2 ou mais presenças na aula de funcional. A barra fica configurável, com o valor 2 decidido. A meta é a faixa de 60% a 70%, igual para os três níveis. A aderência é medida por semestre, e a nota do ano é a média dos dois semestres (decisões do Johnny, 24/11/2026). A divisão proposta é de dezembro a maio e de junho a novembro, ainda a confirmar.
 11. **Conversão:** freepass e aula experimental contam juntos. A taxa é matrículas ÷ pessoas que vieram (decisão do Johnny, 24/11/2026). Só contrato pago conta como matrícula. O padrão é a conversão do professor ficar acima da conversão geral da academia, calculada pelo total da academia, sem folga: a tolerância fica na configuração com valor 0, para o Johnny abrir uma folga depois. Vale igual para os três níveis, e não há mínimo de pessoas no ano.
-12. **Só a renovação tem meta por nível** (45, 55 e 65%). A nota dos alunos, a conversão e a aderência valem igual para Júnior, Pleno e Sênior. Descer de nível e o plano de reciclagem existem no plano de carreira, mas não têm regra nem desenho, e não entram no sistema agora. A ocupação da turma fica fora do perfil.
+12. **Só a renovação tem meta por nível** (45, 55 e 65%). A nota dos alunos, a conversão e a aderência valem igual para Júnior, Pleno e Sênior. O plano de reciclagem, para o professor voltar à performance desejada, ainda vai ser desenhado e não entra neste trabalho. A ocupação da turma fica fora do perfil.
 
 ## O que já existe no código
 
@@ -59,7 +59,7 @@ O histórico fica no próprio lead porque as contas rodam sobre os leads que o a
 ### Pesquisa de NPS
 
 - `stronix_nps_pesquisas/{id}`: nome ("Junho de 2027"), início, fim, o ciclo a que pertence (`ciclo`, ver "As contas"), situação (`rascunho`, `aberta` ou `encerrada`), as perguntas (`{ id, texto, principal }`, de 1 a 5, com exatamente uma principal) e a turma de cada professor (`turmas: { [professorId]: número }`), gravada quando a pesquisa abre. As perguntas só mudam em rascunho. Só uma pesquisa fica aberta por vez. O gestor grava.
-- `stronix_nps_respostas/{pesquisaId}_{leadId}`: pesquisa, professor, `leadId`, nome do aluno, as notas (`{ [perguntaId]: 0 a 10 }`), o comentário (até 500 caracteres) e a data. O id faz o próprio banco recusar a segunda resposta. O CPF não é guardado. As respostas não expiram e ninguém as apaga. Só o servidor grava, e só o gestor lê.
+- `stronix_nps_respostas/{pesquisaId}_{leadId}`: pesquisa, professor, `leadId`, nome do aluno, as notas (`{ [perguntaId]: 0 a 10 }`), o comentário (até 500 caracteres) e a data. O id faz o próprio banco recusar a segunda resposta. O CPF não é guardado. As respostas, com o nome e o comentário, ficam guardadas sem prazo: não há política de retenção nem expiração (decisão do Johnny, que já guarda dados de clientes na Next Fit). Só o servidor grava, e só o gestor lê.
 - `stronix_nps_totais/{pesquisaId}_{professorId}`: a turma, o número de respostas e, por pergunta, a soma das notas (para a média), promotores, neutros e detratores. O servidor soma na mesma transação que grava a resposta. O gestor lê todos, e o professor lê só o dele.
 
 ### Aderência
@@ -183,7 +183,7 @@ Os PRs 1 a 5 cabem até março de 2027. Abril e maio ficam para testar com a Hel
 - Ranking entre professores na tela do professor.
 - O professor ver nomes ou comentários.
 - O documento do plano de carreira.
-- Descer de nível e o plano de reciclagem, que ainda não têm regra nem desenho.
+- O plano de reciclagem, que ainda vai ser desenhado.
 - A ocupação da turma, que o Johnny tirou do plano (a confirmar com ele).
 
 ## Em aberto
