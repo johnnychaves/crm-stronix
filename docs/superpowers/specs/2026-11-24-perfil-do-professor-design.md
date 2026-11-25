@@ -77,7 +77,7 @@ Funções puras em `src/lib/professor/`, sem import de tela nem de pacote, com t
 
 ## Telas
 
-Todas só com o módulo ligado. Sem ele, os endereços caem em "Não achamos essa tela". O desenho visual sai da skill `frontend-design`, com 2 ou 3 mockups do perfil e da página pública mostrados ao Johnny antes do PR de tela.
+Todas só com o módulo ligado. Sem ele, os endereços caem em "Não achamos essa tela". O desenho do perfil é a opção B, escolhida pelo Johnny em 24/11/2026: cabeçalho branco com o nome, o nível, a modalidade e o link do NPS numa linha, e embaixo um placar escuro com os quatro critérios em números grandes, cada um com a sua régua (renovação com as marcas dos três níveis, NPS de 8 a 10 com a faixa da meta, conversão com o traço da academia e aderência com a faixa de 60% a 70%). Os mockups estão em `docs/superpowers/specs/mockups/2026-11-24-perfil-professor-b.html` e `-b-professor.html` (a visão do professor logado), na branch `claude/mockup-perfil-professor-1d3637`. A lista de professores, as pesquisas, as metas e a página pública `/avaliar` ainda não têm mockup e seguem a skill `frontend-design`, com 2 ou 3 opções mostradas ao Johnny antes do PR de cada uma.
 
 ### Menu e endereços
 
@@ -106,7 +106,7 @@ Todas só com o módulo ligado. Sem ele, os endereços caem em "Não achamos ess
 - **Aulas experimentais:** as pessoas que vieram no ciclo, por aula experimental ou freepass, com a data, se se matricularam e quais ainda estão nos 30 dias.
 - **NPS:** escolha da pesquisa, a nota da principal, respostas, porcentagem da turma e se vale, e as outras perguntas embaixo. Só o gestor vê a lista de quem respondeu (nome, notas e comentário) e a de quem ainda não respondeu.
 - **Aderência:** a taxa de cada semana importada, da mais nova para a mais antiga, com quantos alunos ficaram com 1 presença e quantos com nenhuma, para o professor saber quem chamar. Antes da primeira importação, "Sem dados ainda".
-- O professor logado vê o mesmo perfil sem botões, e a aba NPS mostra só os totais.
+- O professor logado vê o mesmo perfil só para leitura, sem Trocar nível e sem Gerar novo link. O "Copiar link" e o "Baixar QR code" ficam, para ele divulgar a pesquisa (decisão do Johnny, 24/11/2026). A aba NPS mostra só os totais, sem a lista de quem respondeu e sem os comentários.
 
 ### Página pública
 

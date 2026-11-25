@@ -53,7 +53,7 @@ Os arquivos não importam pacote nem tela, porque a `api/` do PR 5 lê a carteir
 - Menu: "Professores" para o gestor e "Meu perfil" para o professor, pelo `sidebarNav`, e o `canOpenScreen` deixa o professor abrir só o próprio perfil.
 - `stronix_professores` ganha `nivel`, `nivelDesde` e `npsCode`. `stronix_config/carreira` guarda as metas de renovação por nível, a barra (2) e a faixa (60% a 70%) da aderência e, da conversão, a janela (30 dias), a tolerância (0) e o mínimo de pessoas (vazio até a decisão). A aderência não tem meta por nível.
 - A lista, as metas e o perfil com as abas Carteira e Aulas experimentais. O ciclo vai no endereço pela tabela do `screenParams.js`.
-- Mockups escolhidos pelo Johnny antes de escrever tela (sessão "Mockups do perfil do professor", arquivos em `docs/superpowers/specs/mockups/2026-11-24-perfil-professor-*.html`).
+- O perfil segue o mockup B (`docs/superpowers/specs/mockups/2026-11-24-perfil-professor-b.html` e `-b-professor.html`, na branch `claude/mockup-perfil-professor-1d3637`, que precisa entrar neste PR). A lista de professores e as metas ainda pedem mockup antes.
 
 **Fecha quando:** a tela abre no preview com dados de teste, as varreduras (link de ficha, filtros no endereço, `acessoSweep`, anel de foco) passam e o professor sem módulo não vê nada.
 
