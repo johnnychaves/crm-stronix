@@ -42,7 +42,7 @@ vi.mock('firebase/firestore', () => ({
   serverTimestamp: () => 'TS',
 }));
 
-const { upsertScheduledAppointment, closeOpenAppointment, recordNewAppointment } = await import('../aulasWrites.js');
+const { upsertScheduledAppointment, closeOpenAppointment, recordNewAppointment, markConvertingAula } = await import('../aulasWrites.js');
 
 const DIA_VELHO = new Date('2026-10-01T21:00:00.000Z');
 const DIA_NOVO = new Date('2026-10-06T21:00:00.000Z');
@@ -265,5 +265,31 @@ describe('recordNewAppointment: o registro do agendamento novo do assistente', (
     const noMes = (start, end) => appointmentsOf(registros, { start, end, leadOf: () => depois, inScope: () => true });
     expect(noMes(new Date(2026, 8, 1), new Date(2026, 9, 1))).toMatchObject({ total: 1, pending: 0, ...setembro });
     expect(noMes(new Date(2026, 9, 1), new Date(2026, 10, 1))).toMatchObject({ total: 1, missed: 0, came: 0, pending: 1 });
+  });
+});
+
+describe('markConvertingAula grava o professor do lead pelo histórico', () => {
+  it('troca de professor grava o histórico no lead', async () => {
+    m.docs.set('lead-1', { name: 'Ana', professorId: 'p0', professorName: 'Bruno' });
+    m.docs.set('aula-1', { leadId: 'lead-1', type: 'aula', status: 'attended', professorId: 'p1', professorName: 'Heloísa', scheduledFor: new Date('2026-12-01T18:00:00Z') });
+
+    await markConvertingAula({ db: {}, leadId: 'lead-1' });
+
+    const doLead = m.updates.find((u) => u.id === 'lead-1');
+    expect(doLead.patch).toEqual({
+      professorId: 'p1',
+      professorName: 'Heloísa',
+      professorHistory: [{ professorId: 'p0', since: null }, { professorId: 'p1', since: expect.any(Date) }],
+    });
+  });
+
+  it('o mesmo professor não regrava o lead', async () => {
+    m.docs.set('lead-1', { name: 'Ana', professorId: 'p1', professorName: 'Heloísa' });
+    m.docs.set('aula-1', { leadId: 'lead-1', type: 'aula', status: 'attended', professorId: 'p1', professorName: 'Heloísa', scheduledFor: new Date('2026-12-01T18:00:00Z') });
+
+    await markConvertingAula({ db: {}, leadId: 'lead-1' });
+
+    expect(m.updates.find((u) => u.id === 'lead-1')).toBeUndefined();
+    expect(m.updates.find((u) => u.id === 'aula-1').patch).toMatchObject({ converted: true });
   });
 });
