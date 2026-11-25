@@ -8,6 +8,7 @@
 // aparar: há catálogo gravado com espaço no fim, e Todos os leads e as
 // Configurações comparam o nome exato. Só o valor em branco vira vazio.
 import { professorNameById } from './professores.js';
+import { professorChangePatch } from './professorHistory.js';
 
 const str = (v) => String(v ?? '').trim();
 const filled = (v) => (str(v) ? String(v) : null);
@@ -15,7 +16,7 @@ const tagList = (v) => [...new Set((Array.isArray(v) ? v : []).filter((t) => str
 
 export const CONTEXT_FIELDS = Object.freeze(['dor', 'modalidade', 'source', 'consultantId', 'professorId', 'tags', 'observation']);
 
-export function buildContextPatch(field, value, { usersList = [], professores = [] } = {}) {
+export function buildContextPatch(field, value, { usersList = [], professores = [], lead = null, now = new Date() } = {}) {
   switch (field) {
     case 'dor':
     case 'modalidade':
@@ -24,10 +25,13 @@ export function buildContextPatch(field, value, { usersList = [], professores = 
       return { source: filled(value) ?? '' };
     case 'observation':
       return { observation: str(value) };
-    case 'professorId':
-      return value
-        ? { professorId: value, professorName: professorNameById(professores, value) }
-        : { professorId: null, professorName: null };
+    case 'professorId': {
+      // A troca passa pelo montador do histórico. Escolher o mesmo professor
+      // regrava os dois campos como antes, sem histórico.
+      const id = value || null;
+      const name = id ? professorNameById(professores, id) : null;
+      return professorChangePatch(lead, id, name, now) || { professorId: id, professorName: name };
+    }
     case 'tags':
       return { tags: tagList(value) };
     case 'consultantId': {

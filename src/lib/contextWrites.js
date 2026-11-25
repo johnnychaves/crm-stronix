@@ -13,7 +13,7 @@ import { buildContextPatch, tagsDiff } from './contextPatch.js';
 import { ownerChangeFor, ownerChangeNote } from './clientRegistration.js';
 
 export async function saveContextField({ db, lead, appUser, field, value, from, usersList = [], professores = [] }) {
-  const patch = buildContextPatch(field, value, { usersList, professores });
+  const patch = buildContextPatch(field, value, { usersList, professores, lead });
   if (!patch) return { ok: false, change: null };
   const ref = doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id);
 
