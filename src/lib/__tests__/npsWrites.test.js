@@ -21,7 +21,7 @@ vi.mock('firebase/firestore', () => ({
   }),
 }));
 
-const { abrirPesquisa, gerarNovoLink } = await import('../npsWrites.js');
+const { abrirPesquisa, gerarLinksQueFaltam, gerarNovoLink } = await import('../npsWrites.js');
 
 const PERGUNTAS = [{ id: 'p1', texto: 'Recomendaria?', principal: true }];
 const rascunho = { nome: 'Junho', inicio: '2027-06-01', fim: '2027-06-20', ciclo: 2027, situacao: 'rascunho', perguntas: PERGUNTAS };
@@ -74,5 +74,15 @@ describe('gerarNovoLink', () => {
     const code = await gerarNovoLink({}, 'p1');
     expect(code).toMatch(/^[a-km-np-z2-9]{10}$/);
     expect(s.updates).toEqual([{ id: 'p1', dados: { npsCode: code, npsCodeEm: 'AGORA' } }]);
+  });
+});
+
+describe('gerarLinksQueFaltam', () => {
+  it('gera só o link de quem não tem e diz quantos gerou', async () => {
+    s.docs.p1 = { nome: 'Ana' };
+    s.docs.p2 = { nome: 'Bia', npsCode: 'k7q2mx9pza' };
+    const n = await gerarLinksQueFaltam({}, ['p1', 'p2', 'sumiu']);
+    expect(n).toBe(1);
+    expect(s.updates).toEqual([{ id: 'p1', dados: { npsCode: expect.stringMatching(/^[a-km-np-z2-9]{10}$/), npsCodeEm: 'AGORA' } }]);
   });
 });

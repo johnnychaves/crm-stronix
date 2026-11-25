@@ -13,6 +13,7 @@ const w = vi.hoisted(() => ({
   abrirPesquisa: vi.fn(async () => {}),
   encerrarPesquisa: vi.fn(async () => {}),
   excluirRascunho: vi.fn(async () => {}),
+  gerarLinksQueFaltam: vi.fn(async (_db, ids) => ids.length),
 }));
 vi.mock('../npsWrites.js', () => w);
 vi.mock('../firebase.js', () => ({ appId: 'acad', db: {}, auth: {} }));
@@ -53,6 +54,25 @@ const digitar = (el, valor) => act(() => {
   const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set;
   set.call(el, valor);
   el.dispatchEvent(new Event('input', { bubbles: true }));
+});
+
+describe('o link de cada professor', () => {
+  it('avisa quem da turma aberta está sem link e gera os que faltam', async () => {
+    render({ professores: [{ id: 'b', nome: 'Bruno Carvalho' }, { id: 'c', nome: 'Camila Rocha', npsCode: 'k7q2mx9pza' }] });
+    const destaque = container.querySelector('[aria-labelledby="pesq-destaque"]');
+    expect(destaque.textContent).toContain('Bruno ainda está sem o link da pesquisa');
+    await clicar(botao('Gerar o link'));
+    expect(w.gerarLinksQueFaltam).toHaveBeenCalledWith({}, ['b']);
+    expect(toast.success).toHaveBeenCalledWith('Link gerado. Ele fica no perfil do professor.');
+    expect(document.activeElement?.id).toBe('pesq-destaque');
+  });
+
+  it('com todos os links, não avisa nada', () => {
+    render({ professores: PROFS.map((p) => ({ ...p, npsCode: 'k7q2mx9pza' })) });
+    expect(container.textContent).not.toContain('sem o link');
+    expect(botao('Gerar o link')).toBeUndefined();
+    expect(botao('Gerar os links')).toBeUndefined();
+  });
 });
 
 describe('a lista das pesquisas', () => {

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ClipboardList, Plus } from 'lucide-react';
+import { ClipboardList, Plus, TriangleAlert } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Avatar } from '../../components/ui/Avatar.jsx';
 import { useToast } from '../../contexts/ToastContext.jsx';
-import { abrirPesquisa, encerrarPesquisa, excluirRascunho, salvarRascunho } from '../../lib/npsWrites.js';
+import { abrirPesquisa, encerrarPesquisa, excluirRascunho, gerarLinksQueFaltam, salvarRascunho } from '../../lib/npsWrites.js';
 import { estadoDaPesquisa, novaPesquisa, pesquisaEmCurso, progressoDaTurma } from '../../lib/professor/pesquisas.js';
 import { BOTAO, BOTAO_PRI, Confirmacao } from './Confirmacao.jsx';
 import { PesquisaForm } from './PesquisaForm.jsx';
@@ -23,6 +23,7 @@ const SITUACAO_TEXTO = { aberta: 'Aberta', rascunho: 'Rascunho', encerrada: 'Enc
 const BOTAO_ESCURO = 'inline-flex h-[34px] items-center whitespace-nowrap rounded-[10px] border border-white/20 bg-white/[0.08] px-3 text-[13px] font-semibold text-white outline-none hover:bg-white/[0.14] focus-visible:anel-foco';
 const LINK = 'rounded text-[13px] font-semibold text-brand-700 outline-none hover:underline focus-visible:anel-foco dark:text-brand-300';
 
+const listaDeNomes = (nomes) => (nomes.length < 2 ? nomes[0] : `${nomes.slice(0, -1).join(', ')} e ${nomes.at(-1)}`);
 const somaDe = (obj) => Object.values(obj || {}).reduce((a, n) => a + (Number(n) || 0), 0);
 const doForm = (p) => ({ nome: p.nome || '', inicio: p.inicio || '', fim: p.fim || '', ciclo: p.ciclo ?? null, perguntas: (p.perguntas || []).map((q) => ({ texto: q.texto || '', principal: Boolean(q.principal) })) });
 
@@ -59,10 +60,38 @@ function LinhaDoProfessor({ prof, turma, respostas }) {
   );
 }
 
-function Destaque({ pesquisa, totaisPorId, profsPorId, hoje, onEncerrar }) {
+// Professor da turma sem link: os alunos dele não têm onde responder. A
+// abertura já gera os links; o aviso cobre a pesquisa aberta antes disso.
+function SemLink({ profs, onGerar, onGerou }) {
+  const [ocupado, setOcupado] = useState(false);
+  const um = profs.length === 1;
+  const gerar = async () => {
+    setOcupado(true);
+    try {
+      if (await onGerar(profs.map((p) => p.id))) onGerou();
+    } finally {
+      setOcupado(false);
+    }
+  };
+  return (
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300/40 bg-amber-400/10 px-4 py-3">
+      <p className="m-0 flex min-w-0 items-start gap-2.5 text-[13px] text-amber-100">
+        <TriangleAlert size={16} aria-hidden="true" className="mt-0.5 flex-none text-amber-300" />
+        <span>
+          {listaDeNomes(profs.map((p) => String(p.nome || '').trim().split(/\s+/)[0]))} {um ? 'ainda está' : 'ainda estão'} sem o link da pesquisa.
+          {' '}Sem o link, os alunos não têm onde responder.
+        </span>
+      </p>
+      <button type="button" disabled={ocupado} onClick={gerar} className={BOTAO_ESCURO}>{ocupado ? 'Gerando…' : um ? 'Gerar o link' : 'Gerar os links'}</button>
+    </div>
+  );
+}
+
+function Destaque({ pesquisa, totaisPorId, profsPorId, hoje, onEncerrar, onGerarLinks }) {
   const [confirmar, setConfirmar] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const botao = useRef(null);
+  const titulo = useRef(null);
   if (!pesquisa) {
     return (
       <section aria-labelledby="pesq-destaque" className="mb-[18px] rounded-[22px] bg-ink-900 bg-[radial-gradient(900px_340px_at_88%_-30%,#22357a_0,transparent_60%)] px-[18px] py-6 text-white md:px-7">
@@ -74,6 +103,7 @@ function Destaque({ pesquisa, totaisPorId, profsPorId, hoje, onEncerrar }) {
   const linhas = Object.entries(pesquisa.turmas || {})
     .map(([id, turma]) => ({ id, prof: profsPorId.get(id), turma: Number(turma) || 0, respostas: Number(totaisPorId.get(`${pesquisa.id}_${id}`)?.respostas) || 0 }))
     .sort((a, b) => String(a.prof?.nome || '').localeCompare(String(b.prof?.nome || ''), 'pt-BR'));
+  const semLink = linhas.filter((l) => l.prof && !l.prof.npsCode).map((l) => l.prof);
   const turmaTotal = somaDe(pesquisa.turmas);
   const respondidas = linhas.reduce((a, l) => a + l.respostas, 0);
   const fechar = () => { setConfirmar(false); requestAnimationFrame(() => botao.current?.focus()); };
@@ -89,7 +119,7 @@ function Destaque({ pesquisa, totaisPorId, profsPorId, hoje, onEncerrar }) {
     <section aria-labelledby="pesq-destaque" className="mb-[18px] rounded-[22px] bg-ink-900 bg-[radial-gradient(900px_340px_at_88%_-30%,#22357a_0,transparent_60%)] px-[18px] pb-2 pt-5 text-white md:px-7 md:pt-6">
       <div className="flex flex-wrap items-start justify-between gap-3.5">
         <div>
-          <h2 id="pesq-destaque" className="m-0 flex flex-wrap items-center gap-2.5 font-display text-[20px] font-bold">{pesquisa.nome} <Selo estado="aberta" escuro /></h2>
+          <h2 ref={titulo} tabIndex={-1} id="pesq-destaque" className="m-0 flex flex-wrap items-center gap-2.5 font-display text-[20px] font-bold outline-none">{pesquisa.nome} <Selo estado="aberta" escuro /></h2>
           <p className="mt-1 text-[13px] text-white/70">De {periodoTexto(pesquisa.inicio, pesquisa.fim)}, {prazoTexto(pesquisa, hoje)}. A nota vale com metade da turma e 10 respostas.</p>
         </div>
         {!confirmar && <button ref={botao} type="button" onClick={() => setConfirmar(true)} className={BOTAO_ESCURO}>Encerrar agora</button>}
@@ -106,6 +136,7 @@ function Destaque({ pesquisa, totaisPorId, profsPorId, hoje, onEncerrar }) {
           onVoltar={fechar}
         />
       )}
+      {semLink.length > 0 && <SemLink profs={semLink} onGerar={onGerarLinks} onGerou={() => titulo.current?.focus()} />}
       <div className="mt-4 flex items-baseline gap-2.5">
         <b className="num font-display text-[56px] font-bold leading-none tracking-[-0.04em]">{respondidas}</b>
         <span className="text-white/75">de {turmaTotal} alunos já responderam</span>
@@ -144,7 +175,7 @@ function Proxima({ pesquisa, emCurso, turmaHoje, onEditar, onAbrir }) {
       {confirmar ? (
         <Confirmacao
           titulo="Abrir a pesquisa agora?"
-          texto={`A turma de cada professor fica gravada com os alunos de hoje (${turmaHoje} ${turmaHoje === 1 ? 'aluno' : 'alunos'}), e as perguntas não mudam mais. Só uma pesquisa fica aberta por vez.`}
+          texto={`A turma de cada professor fica gravada com os alunos de hoje (${turmaHoje} ${turmaHoje === 1 ? 'aluno' : 'alunos'}), e as perguntas não mudam mais. Quem ainda não tem link de NPS ganha um agora. Só uma pesquisa fica aberta por vez.`}
           acao="Abrir pesquisa"
           ocupado={ocupado}
           onConfirmar={abrir}
@@ -232,6 +263,16 @@ export function PesquisasTab({ db, appUser, pesquisas, totais, professores, turm
     await abrirPesquisa(db, id, { turmas: turmasHoje, conhecidas: pesquisas, agora });
     toast.success('Pesquisa aberta.');
   };
+  const gerarLinks = async (ids) => {
+    try {
+      const n = await gerarLinksQueFaltam(db, ids);
+      toast.success(n === 1 ? 'Link gerado. Ele fica no perfil do professor.' : 'Links gerados. Eles ficam no perfil de cada professor.');
+      return true;
+    } catch (e) {
+      falhou(e, 'Não deu para gerar os links. Tente de novo.');
+      return false;
+    }
+  };
   const abrirDaLista = async (p) => {
     try { await abrir(p.id); } catch (e) { falhou(e, 'Não deu para abrir a pesquisa. Tente de novo.'); }
   };
@@ -272,7 +313,7 @@ export function PesquisasTab({ db, appUser, pesquisas, totais, professores, turm
 
   return (
     <div>
-      <Destaque pesquisa={emCurso} totaisPorId={totaisPorId} profsPorId={profsPorId} hoje={hoje} onEncerrar={encerrar} />
+      <Destaque pesquisa={emCurso} totaisPorId={totaisPorId} profsPorId={profsPorId} hoje={hoje} onEncerrar={encerrar} onGerarLinks={gerarLinks} />
       <div className={cn('grid grid-cols-1 items-start gap-4', proxima && 'lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]')}>
         {proxima && <Proxima pesquisa={proxima} emCurso={emCurso} turmaHoje={turmaHoje} onEditar={(p) => setEditando({ id: p.id, form: doForm(p) })} onAbrir={abrirDaLista} />}
         <Historico pesquisas={ordenadas} totaisPorPesquisa={totaisPorPesquisa} hoje={hoje} onEditar={(p) => setEditando({ id: p.id, form: doForm(p) })} />

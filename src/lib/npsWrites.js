@@ -45,12 +45,23 @@ export async function abrirPesquisa(db, id, { turmas, conhecidas = [], agora = n
       throw erroDaTela('Já tem uma pesquisa aberta. Encerre ela antes de abrir outra.');
     }
     tx.update(alvo.ref, { situacao: 'aberta', turmas, abertaEm: serverTimestamp() });
-    // Quem está na turma sem link ganha um, senão o professor não tem o que
-    // passar aos alunos. O link que já existe fica, porque o QR pode estar impresso.
-    profs.filter((p) => p.exists() && !p.data().npsCode)
-      .forEach((p) => tx.update(p.ref, { npsCode: gerarNpsCode(), npsCodeEm: serverTimestamp() }));
+    gravarLinksQueFaltam(tx, profs);
   });
 }
+
+// Quem está na turma sem link ganha um, senão o professor não tem o que
+// passar aos alunos. O link que já existe fica, porque o QR pode estar impresso.
+// Recebe os professores já lidos na transação (as leituras vêm antes das gravações).
+function gravarLinksQueFaltam(tx, profs) {
+  const faltam = profs.filter((p) => p.exists() && !p.data().npsCode);
+  faltam.forEach((p) => tx.update(p.ref, { npsCode: gerarNpsCode(), npsCodeEm: serverTimestamp() }));
+  return faltam.length;
+}
+
+// O aviso da pesquisa aberta: gera os links que faltam e diz quantos gerou.
+export const gerarLinksQueFaltam = (db, ids) => runTransaction(db, async (tx) => (
+  gravarLinksQueFaltam(tx, await Promise.all(ids.map((id) => tx.get(refProfessor(db, id)))))
+));
 
 export const encerrarPesquisa = (db, id) => updateDoc(refDe(db, id), { situacao: 'encerrada', encerradaEm: serverTimestamp() });
 
