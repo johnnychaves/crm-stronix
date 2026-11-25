@@ -249,6 +249,12 @@ button{font:inherit;color:inherit;cursor:pointer}
 .hd{display:flex;justify-content:space-between;align-items:center;gap:16px 24px;flex-wrap:wrap;padding:16px 22px}
 .id{display:flex;gap:14px;align-items:center;min-width:0}
 .id .av{width:48px;height:48px;font-size:16px}
+.av.foto{width:58px;height:58px;padding:2.5px;background:conic-gradient(var(--blue),#7FA0FF,var(--blue))}
+.av.foto{position:relative}
+.foto-btn{position:absolute;right:-4px;bottom:-4px;width:26px;height:26px;border-radius:50%;border:2px solid #fff;background:var(--blue);color:#fff;display:grid;place-items:center;cursor:pointer;padding:0}
+.foto-btn svg{width:14px;height:14px}
+.foto-btn:hover{background:var(--blue700)}
+.av.foto img{width:100%;height:100%;border-radius:50%;object-fit:cover;display:block;border:2px solid #fff}
 .id h1{font-size:24px;font-weight:700;letter-spacing:-.02em;line-height:1.15}
 .meta{display:flex;gap:8px 10px;align-items:center;flex-wrap:wrap;margin-top:6px}
 .lk{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;flex:1 1 100%;padding-top:14px;border-top:1px solid var(--rule)}
@@ -313,7 +319,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 <p class="ro"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><span><b>Meu perfil</b>, só para leitura. O nível e o link da pesquisa são mudados pela gestão.</span></p>
 
 <header class="card hd">
- <div class="id"><span class="av" aria-hidden="true">BC</span>
+ <div class="id"><span class="av foto"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjAgMTIwIj48ZGVmcz4KPGxpbmVhckdyYWRpZW50IGlkPSJmIiB4MT0iMCIgeTE9IjAiIHgyPSIxIiB5Mj0iMSI+PHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjNGEzYTMzIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMTcxMjBmIi8+PC9saW5lYXJHcmFkaWVudD4KPGxpbmVhckdyYWRpZW50IGlkPSJwIiB4MT0iMCIgeTE9IjAiIHgyPSIwIiB5Mj0iMSI+PHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjYzg5MDcwIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjYTg3MDRmIi8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+CjxyZWN0IHdpZHRoPSIxMjAiIGhlaWdodD0iMTIwIiBmaWxsPSJ1cmwoI2YpIi8+CjxjaXJjbGUgY3g9IjkyIiBjeT0iMjIiIHI9IjQwIiBmaWxsPSIjRUE1NjM2IiBvcGFjaXR5PSIuMTgiLz4KPHBhdGggZD0iTTEyIDEyMCBDMTYgOTMgMzggODQgNjAgODQgQzgyIDg0IDEwNCA5MyAxMDggMTIwIFoiIGZpbGw9IiNFQTU2MzYiLz4KPHBhdGggZD0iTTQ3IDg2IEw2MCAxMDEgTDczIDg2IiBmaWxsPSJub25lIiBzdHJva2U9IiNiOTQwMmEiIHN0cm9rZS13aWR0aD0iNCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8cmVjdCB4PSI1MSIgeT0iNjgiIHdpZHRoPSIxOCIgaGVpZ2h0PSIyMCIgcng9IjciIGZpbGw9IiNhODcwNGYiLz4KPGVsbGlwc2UgY3g9IjM5LjUiIGN5PSI1NiIgcng9IjQiIHJ5PSI2IiBmaWxsPSIjYjQ3YzVhIi8+PGVsbGlwc2UgY3g9IjgwLjUiIGN5PSI1NiIgcng9IjQiIHJ5PSI2IiBmaWxsPSIjYjQ3YzVhIi8+CjxlbGxpcHNlIGN4PSI2MCIgY3k9IjUzIiByeD0iMjAuNSIgcnk9IjI0IiBmaWxsPSJ1cmwoI3ApIi8+CjxwYXRoIGQ9Ik0zOSA1MSBDMzcgMzAgNTEgMjQgNjEgMjUgQzc1IDI2IDg0IDM1IDgxIDUxIEM3OCA0MSA3MCAzNiA2MCAzNyBDNTAgMzcgNDMgNDIgMzkgNTEgWiIgZmlsbD0iIzI0MTkxMyIvPgo8cGF0aCBkPSJNNDUgNzAgQzUwIDc5IDcwIDc5IDc1IDcwIEM3MiA3NiA2NiA3OSA2MCA3OSBDNTQgNzkgNDggNzYgNDUgNzAgWiIgZmlsbD0iIzI0MTkxMyIgb3BhY2l0eT0iLjg1Ii8+Cjwvc3ZnPg==" alt="Foto do professor Bruno"></span>
   <div><h1 class="d">Bruno Carvalho</h1>
    <div class="meta"><span class="lvl"><i></i>Júnior desde 01/12/2026</span><span class="mod">Funcional</span></div></div>
  </div>
