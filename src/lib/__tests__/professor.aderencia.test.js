@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { normalizeContracts } from '../operacional/base.js';
-import { aderenciaDoAno, aderenciaDoSemestre, aderenciaPorSemana } from '../professor/aderencia.js';
+import { aderenciaDoAno, aderenciaDoSemestre, aderenciaPorSemana, aderenciaResumo } from '../professor/aderencia.js';
 
 const PROF = { id: 'p1', modalidadeIds: ['func'] };
 const PLANOS = [{ id: 'move', modalityIds: ['func'] }, { id: 'start', modalityIds: ['musc'] }];
@@ -44,9 +44,9 @@ describe('aderenciaPorSemana', () => {
 
   it('conta aluno-semanas da carteira, sem a primeira semana do contrato e sem semana trancada', () => {
     expect(linhas).toEqual([
-      { semana: '2027-03-15', contam: 2, aderentes: 1, umaPresenca: 0, nenhuma: 1, taxa: 50 },
-      { semana: '2027-03-08', contam: 1, aderentes: 0, umaPresenca: 1, nenhuma: 0, taxa: 0 },
-      { semana: '2027-03-01', contam: 2, aderentes: 2, umaPresenca: 0, nenhuma: 0, taxa: 100 },
+      { semana: '2027-03-15', contam: 2, aderentes: 1, umaPresenca: 0, nenhuma: 1, taxa: 50, umaIds: [], nenhumaIds: ['ana'] },
+      { semana: '2027-03-08', contam: 1, aderentes: 0, umaPresenca: 1, nenhuma: 0, taxa: 0, umaIds: ['ana'], nenhumaIds: [] },
+      { semana: '2027-03-01', contam: 2, aderentes: 2, umaPresenca: 0, nenhuma: 0, taxa: 100, umaIds: [], nenhumaIds: [] },
     ]);
   });
 
@@ -73,7 +73,7 @@ describe('aderenciaPorSemana', () => {
       presencas: [{ leadId: 'ana', semana: '2027-03-08', presencas: 2 }],
       leads: [{ id: 'ana', professorId: 'p1' }], contratos: emendada, planos: PLANOS, professor: PROF, asOf: new Date('2027-03-24T12:00:00'),
     });
-    expect(r).toEqual([{ semana: '2027-03-08', contam: 1, aderentes: 1, umaPresenca: 0, nenhuma: 0, taxa: 100 }]);
+    expect(r).toEqual([{ semana: '2027-03-08', contam: 1, aderentes: 1, umaPresenca: 0, nenhuma: 0, taxa: 100, umaIds: [], nenhumaIds: [] }]);
   });
 
   it('sem presença importada não há semana', () => {
@@ -107,5 +107,11 @@ describe('aderenciaDoSemestre e aderenciaDoAno', () => {
   it('com um só semestre fechado, vale ele; sem nenhum, não há nota', () => {
     expect(aderenciaDoAno(linhas, 2027, new Date('2027-08-10T12:00:00')).nota).toBe(60);
     expect(aderenciaDoAno(linhas, 2027, new Date('2027-05-10T12:00:00')).nota).toBeNull();
+  });
+
+  it('o resumo da lista: a nota do ano, ou o semestre em andamento antes do primeiro fechar', () => {
+    expect(aderenciaResumo(linhas, 2027, new Date('2027-12-10T12:00:00'))).toMatchObject({ taxa: 65, emAndamento: false });
+    expect(aderenciaResumo(linhas, 2027, new Date('2027-05-10T12:00:00'))).toMatchObject({ taxa: 60, emAndamento: true, nota: null });
+    expect(aderenciaResumo([], 2027, new Date('2027-05-10T12:00:00'))).toMatchObject({ taxa: null, emAndamento: false });
   });
 });

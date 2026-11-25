@@ -84,6 +84,7 @@ Os arquivos não importam pacote nem tela, porque a `api/` do PR 5 lê a carteir
 
 - O script `scripts/import-presencas.js`: lê o relatório de Presenças da Next Fit (aula de funcional), soma por aluno e semana, casa pelo `cpfDigits` e grava `stronix_presencas`. Sem `--apply`, só mostra. Linha sem CPF casado vai para a lista de pendências.
 - A regra de `stronix_presencas` (o membro lê, ninguém grava pelo navegador) e a aba Aderência.
+- Plano: `2026-11-25-perfil-do-professor-06-aderencia.md`.
 
 **Fecha quando:** o script roda em dry-run sobre um relatório real e a aba mostra o número com dados de teste.
 

@@ -72,7 +72,7 @@ function Screen({ appUser }) {
     nav.type = type;
   });
   const [, , , , profId, seg] = location.pathname.split('/');
-  const tab = seg === 'aulas' || seg === 'nps' ? seg : 'carteira';
+  const tab = ['aulas', 'nps', 'aderencia'].includes(seg) ? seg : 'carteira';
   // O mesmo que o goToSub do App faz com a tela já aberta, levando o ciclo.
   const onTab = (subId) => navigate(hrefFor('acad', 'professorPerfil', { sub: subId, profId }) + location.search, { replace: true, state: location.state });
   return h(ProfessorPerfilView, { db: {}, appUser, tenantId: 'acad', profId, tab, onTab, listenersActive: true });
@@ -312,5 +312,33 @@ describe('a pesquisa dos alunos no perfil', () => {
     expect(gerarNovoLink).toHaveBeenCalledWith({}, 'p2');
     await render('/acad/professores/perfil/p2', PROFESSOR);
     expect(document.body.textContent).toContain('O gestor ainda não gerou o link.');
+  });
+});
+
+describe('a aderência no perfil', () => {
+  it('o placar mostra o semestre em andamento e a aba, as semanas com quem chamar', async () => {
+    const { normalizeContracts } = await import('../operacional/base.js');
+    s.dados.clientes = [{ id: 'l9', name: 'Rita Souza', professorId: 'p2' }, { id: 'l8', name: 'Duda Lima', professorId: 'p2' }];
+    const c = (leadId) => ({ id: `c-${leadId}`, leadId, planId: 'move', status: 'ativo', value: 2388, startsAt: new Date(2026, 11, 1), endsAt: new Date(2027, 11, 1), createdAt: new Date(2026, 11, 1) });
+    s.dados.contratos = normalizeContracts([c('l9'), c('l8')]);
+    s.dados.presencas = [
+      { leadId: 'l9', semana: '2027-01-11', presencas: 2 }, { leadId: 'l8', semana: '2027-01-11', presencas: 3 },
+      { leadId: 'l9', semana: '2027-01-18', presencas: 1 }, { leadId: 'l8', semana: '2027-01-18', presencas: 2 },
+      { leadId: 'l8', semana: '2027-01-25', presencas: 2 },
+    ];
+    await render('/acad/professores/perfil/p2/aderencia');
+    const placar = byLabel('Critérios do plano de carreira');
+    expect(placar.textContent).toContain('67%');
+    expect(placar.textContent).toContain('Semestre em andamento');
+    expect(document.body.textContent).toContain('25/01 a 29/01');
+    expect(document.body.textContent).toContain('1º semestre, janeiro a junho');
+    await click(button('Ver quem chamar'));
+    expect(document.body.textContent).toContain('Não vieram');
+    expect(document.body.textContent).toContain('Rita Souza');
+  });
+
+  it('antes da primeira importação, sem dados', async () => {
+    await render('/acad/professores/perfil/p2/aderencia');
+    expect(document.body.textContent).toContain('Sem dados ainda.');
   });
 });

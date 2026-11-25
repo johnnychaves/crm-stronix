@@ -14,6 +14,7 @@ import { npsDoCiclo } from '../../lib/professor/pesquisas.js';
 import { cicloDe } from '../../lib/professor/ciclo.js';
 import { conversaoDoCiclo, pessoasDasAulas } from '../../lib/professor/conversao.js';
 import { carteiraDoCiclo, renovacaoDoCiclo } from '../../lib/professor/renovacao.js';
+import { aderenciaPorSemana, aderenciaResumo } from '../../lib/professor/aderencia.js';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 import { useToast } from '../../contexts/ToastContext.jsx';
 import { useProfessoresDados } from '../../hooks/useProfessoresDados.js';
@@ -21,6 +22,7 @@ import { useNpsDados } from '../../hooks/useNpsDados.js';
 import { useScreenParams } from '../../hooks/useScreenParams.js';
 import { AppLink } from '../../components/nav/AppLink.jsx';
 import { PhotoCaptureMenu } from '../../components/profile/PhotoCaptureMenu.jsx';
+import { AderenciaTab } from './AderenciaTab.jsx';
 import { AulasTab } from './AulasTab.jsx';
 import { CarteiraTab } from './CarteiraTab.jsx';
 import { NpsTab } from './NpsTab.jsx';
@@ -29,7 +31,7 @@ import { PlacarDoCiclo } from './PlacarDoCiclo.jsx';
 import { TAB_CONTAGEM, TAB_TRIGGER } from './ProfessoresComum.jsx';
 
 // O perfil do professor (mockups B de 24/11/2026): cabeçalho, placar do ciclo
-// e as abas Carteira, Aulas experimentais e NPS. O gestor abre qualquer perfil e é
+// e as abas Carteira, Aulas experimentais, NPS e Aderência. O gestor abre qualquer perfil e é
 // o único que troca a foto e o nível; o professor logado só chega ao próprio
 // (a rota garante) e vê tudo só para leitura. O ciclo mora no endereço
 // (`ciclo`) e a aba é a sub-tela, que o App troca com replace.
@@ -41,7 +43,7 @@ export function ProfessorPerfilView({ db, appUser, tenantId, profId, tab, onTab,
   const [agora] = useState(() => new Date());
   const ctx = useMemo(() => ({ cicloAtual: cicloDe(agora) }), [agora]);
   const [{ ciclo }, setParams] = useScreenParams('professorPerfil', ctx);
-  const { carregando, erro, professores, planos, contratos, clientes, aulas, metas } = useProfessoresDados({ db, ciclo, listenersActive });
+  const { carregando, erro, professores, planos, contratos, clientes, aulas, presencas, metas } = useProfessoresDados({ db, ciclo, listenersActive });
   const { modalities } = useGeneralConfig();
 
   const pode = isGestor(appUser);
@@ -51,20 +53,24 @@ export function ProfessorPerfilView({ db, appUser, tenantId, profId, tab, onTab,
   const nps = useNpsDados({ db, professorId: professorLogado ? appUser?.professorId ?? null : null, listenersActive });
   const prof = useMemo(() => (professores || []).find((p) => p.id === profId) ?? null, [professores, profId]);
   const planosById = useMemo(() => new Map((planos || []).map((p) => [p.id, p])), [planos]);
+  const clientesPorId = useMemo(() => new Map((clientes || []).map((l) => [l.id, l])), [clientes]);
 
   const contas = useMemo(() => {
     if (carregando || !metas || !prof || nps.carregando) return null;
     const { janelaDias, tolerancia } = metas.conversao;
     const base = { leads: clientes, contratos, planos, professor: prof, ciclo, asOf: agora };
     const daAula = { aulas, contratos, professorId: prof.id, ciclo, asOf: agora, janelaDias };
+    const semanas = aderenciaPorSemana({ presencas, leads: clientes, contratos, planos, professor: prof, asOf: agora, barra: metas.aderencia.barra });
     return {
       renovacao: renovacaoDoCiclo(base),
       carteira: carteiraDoCiclo(base),
       conversao: conversaoDoCiclo({ ...daAula, tolerancia }),
       pessoas: pessoasDasAulas(daAula),
+      semanas,
+      aderencia: aderenciaResumo(semanas, ciclo, agora),
       nps: npsDoCiclo({ pesquisas: nps.pesquisas, totais: nps.totais, professorId: prof.id, ciclo, meta: metas.nps.meta }),
     };
-  }, [carregando, metas, prof, clientes, contratos, planos, aulas, ciclo, agora, nps.carregando, nps.pesquisas, nps.totais]);
+  }, [carregando, metas, prof, clientes, contratos, planos, aulas, presencas, ciclo, agora, nps.carregando, nps.pesquisas, nps.totais]);
 
   const [fotoAberta, setFotoAberta] = useState(false);
   const [fotoOcupada, setFotoOcupada] = useState(false);
@@ -174,7 +180,7 @@ export function ProfessorPerfilView({ db, appUser, tenantId, profId, tab, onTab,
   const modalidades = professorModalityNames(prof, modalities);
   const modalidadesTexto = modalidades.length ? modalidades.map((m) => m.toLowerCase()).join(', ') : 'sem modalidade';
   const primeiroNome = String(prof.nome || '').trim().split(/\s+/)[0] || 'o professor';
-  const aba = tab === 'aulas' || tab === 'nps' ? tab : 'carteira';
+  const aba = ['aulas', 'nps', 'aderencia'].includes(tab) ? tab : 'carteira';
 
   return (
     <div className="mx-auto max-w-[1240px] animate-fade-in pb-12">
@@ -216,6 +222,7 @@ export function ProfessorPerfilView({ db, appUser, tenantId, profId, tab, onTab,
             renovacao={contas.renovacao}
             conversao={contas.conversao}
             nps={contas.nps}
+            aderencia={contas.aderencia}
             modalidadesTexto={modalidadesTexto}
           />
 
@@ -228,6 +235,7 @@ export function ProfessorPerfilView({ db, appUser, tenantId, profId, tab, onTab,
                 Aulas experimentais <span className={TAB_CONTAGEM}>{contas.pessoas.length}</span>
               </TabsTrigger>
               <TabsTrigger value="nps" className={TAB_TRIGGER}>NPS</TabsTrigger>
+              <TabsTrigger value="aderencia" className={TAB_TRIGGER}>Aderência</TabsTrigger>
             </TabsList>
             <TabsContent value="carteira" tabIndex={-1}>
               <CarteiraTab
@@ -256,6 +264,16 @@ export function ProfessorPerfilView({ db, appUser, tenantId, profId, tab, onTab,
                 contratos={contratos}
                 planos={planos}
                 listenersActive={listenersActive}
+              />
+            </TabsContent>
+            <TabsContent value="aderencia" tabIndex={-1}>
+              <AderenciaTab
+                linhas={contas.semanas}
+                resumo={contas.aderencia}
+                metas={metas}
+                leadsById={clientesPorId}
+                professorLogado={professorLogado}
+                primeiroNome={primeiroNome}
               />
             </TabsContent>
           </Tabs>

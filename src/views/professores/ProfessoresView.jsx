@@ -11,7 +11,8 @@ import { estadoDaPesquisa, npsDoCiclo, resumoDaPesquisa, turmasDoDia } from '../
 import { conversaoDoCiclo } from '../../lib/professor/conversao.js';
 import { renovacaoDoCiclo } from '../../lib/professor/renovacao.js';
 import { FilterBar } from '../dashboard/DashFilterBar.jsx';
-import { CRITERIO_ADERENCIA, criterioConversao, criterioNps, criterioRenovacao } from './criterios.js';
+import { criterioAderencia, criterioConversao, criterioNps, criterioRenovacao } from './criterios.js';
+import { aderenciaPorSemana, aderenciaResumo } from '../../lib/professor/aderencia.js';
 import { LegendaDosEstados, ProfessoresTabela } from './ProfessoresTabela.jsx';
 import { MetasForm } from './MetasForm.jsx';
 import { PesquisasTab } from './PesquisasTab.jsx';
@@ -30,7 +31,7 @@ export function ProfessoresView({ db, appUser, tenantId, tab, onTab, listenersAc
   const ctx = useMemo(() => ({ cicloAtual: cicloDe(agora) }), [agora]);
   const [{ ciclo }, setParams] = useScreenParams('professores', ctx);
   const dados = useProfessoresDados({ db, ciclo, listenersActive });
-  const { carregando, erro, professores, planos, contratos, clientes, aulas, metas, salvarMetas } = dados;
+  const { carregando, erro, professores, planos, contratos, clientes, aulas, presencas, metas, salvarMetas } = dados;
   const nps = useNpsDados({ db, listenersActive });
   const hoje = dayKeyOf(agora);
 
@@ -48,14 +49,14 @@ export function ProfessoresView({ db, appUser, tenantId, tab, onTab, listenersAc
           renovacao: criterioRenovacao(renovacao, metas, prof.nivel),
           nps: criterioNps(npsDoCiclo({ pesquisas: nps.pesquisas, totais: nps.totais, professorId: prof.id, ciclo, meta: metas.nps.meta }), metas),
           conversao: criterioConversao(conversao),
-          aderencia: CRITERIO_ADERENCIA,
+          aderencia: criterioAderencia(aderenciaResumo(aderenciaPorSemana({ presencas, leads: clientes, contratos, planos, professor: prof, asOf: agora, barra: metas.aderencia.barra }), ciclo, agora), metas),
         },
       };
     });
     // A academia é a mesma para todos; sai da conta sem filtro de professor.
     const academia = conversaoDoCiclo({ aulas, contratos, professorId: null, ciclo, asOf: agora, janelaDias, tolerancia });
     return { linhas, academia };
-  }, [carregando, metas, nps.carregando, nps.pesquisas, nps.totais, ativos, clientes, contratos, planos, aulas, ciclo, agora]);
+  }, [carregando, metas, nps.carregando, nps.pesquisas, nps.totais, ativos, clientes, contratos, planos, aulas, presencas, ciclo, agora]);
 
   // A turma de cada professor se a pesquisa abrisse agora (o formulário e o
   // Abrir mostram o total). Null enquanto os clientes não chegaram.

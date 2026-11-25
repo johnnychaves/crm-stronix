@@ -6,7 +6,7 @@ import { escalaDaRenovacao, notaTexto } from './criterios.js';
 // O placar escuro do perfil (mockup B): os quatro critérios do plano de
 // carreira, cada um com a régua do resultado contra a referência. Renovação e
 // conversão vêm das contas de src/lib/professor/ e a nota dos alunos, do
-// npsDoCiclo; a aderência ainda não tem dados (PR 6) e mostra só a meta. O texto claro fica em 58% de
+// npsDoCiclo, e a aderência, do aderenciaResumo. O texto claro fica em 58% de
 // branco ou mais, que dá 6:1 ou mais sobre o ink-900.
 const posicao = (v, lo, hi) => Math.min(100, Math.max(0, ((v - lo) / (hi - lo)) * 100));
 
@@ -79,7 +79,7 @@ function Criterio({ titulo, valor, verde = false, linha, children, rodape }) {
   );
 }
 
-export function PlacarDoCiclo({ titulo, ciclo, cicloAtual, onCiclo, prof, metas, renovacao, conversao, nps, modalidadesTexto }) {
+export function PlacarDoCiclo({ titulo, ciclo, cicloAtual, onCiclo, prof, metas, renovacao, conversao, nps, aderencia, modalidadesTexto }) {
   const medias = NIVEIS.map((n) => ({ v: metas.renovacao[n], texto: nivelTexto(n), minha: n === prof.nivel }));
   const [rlo, rhi] = escalaDaRenovacao([...medias.map((m) => m.v), ...(renovacao.taxa == null ? [] : [renovacao.taxa])]);
   const temNivel = NIVEIS.includes(prof.nivel);
@@ -91,6 +91,9 @@ export function PlacarDoCiclo({ titulo, ciclo, cicloAtual, onCiclo, prof, metas,
   // A escala começa um ponto abaixo da meta, ou na nota, se ela ficou mais baixa.
   const npsLo = Math.max(0, Math.min(metaNps - 1, nota == null ? 10 : Math.floor(nota)));
   const { barra, faixaMin, faixaMax } = metas.aderencia;
+  const ader = aderencia?.taxa ?? null;
+  const aLo = Math.max(0, Math.min(faixaMin - 20, ader == null ? 100 : Math.floor(ader / 10) * 10));
+  const aHi = Math.min(100, faixaMax + 10);
 
   return (
     <section aria-label="Critérios do plano de carreira" className="@container mt-3.5 rounded-[22px] bg-ink-900 bg-[radial-gradient(900px_340px_at_88%_-30%,#22357a_0,transparent_60%)] px-6 pb-7 pt-6 text-white md:px-[30px]">
@@ -172,14 +175,28 @@ export function PlacarDoCiclo({ titulo, ciclo, cicloAtual, onCiclo, prof, metas,
           />
         </Criterio>
 
-        <Criterio titulo="Aderência às aulas" linha="Sem dados ainda" rodape={`Semanas com ${barra} ou mais aulas, de segunda a sexta. Dezembro fica fora.`}>
+        <Criterio
+          titulo="Aderência às aulas"
+          valor={ader == null ? null : `${ader}%`}
+          verde={ader != null && ader >= faixaMin}
+          linha={ader == null ? 'Sem dados ainda' : aderencia.emAndamento ? 'Semestre em andamento' : 'Média dos semestres do ciclo'}
+          rodape={(
+            <>
+              {ader != null && ader >= faixaMin && <Selo tom="verde">{ader > faixaMax ? 'Acima da meta' : 'Dentro da meta'}</Selo>}
+              {ader != null && ader < faixaMin && <Selo tom="ambar">Abaixo da meta</Selo>}
+              {`Semanas com ${barra} ou mais aulas, de segunda a sexta. Dezembro fica fora.`}
+            </>
+          )}
+        >
           <Regua
-            lo={Math.max(0, faixaMin - 20)}
-            hi={Math.min(100, faixaMax + 10)}
+            lo={aLo}
+            hi={aHi}
             zona={[faixaMin, faixaMax]}
             zonaTexto={`meta ${faixaMin}% a ${faixaMax}%`}
-            pontas={[`${Math.max(0, faixaMin - 20)}%`, `${Math.min(100, faixaMax + 10)}%`]}
-            rotulo={`Sem dados ainda. Meta de ${faixaMin}% a ${faixaMax}%.`}
+            ponto={ader}
+            verde={ader != null && ader >= faixaMin}
+            pontas={[`${aLo}%`, `${aHi}%`]}
+            rotulo={`${ader == null ? 'Sem dados ainda' : `${ader}%`}. Meta de ${faixaMin}% a ${faixaMax}%.`}
           />
         </Criterio>
       </div>
