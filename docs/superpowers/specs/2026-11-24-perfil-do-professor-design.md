@@ -28,7 +28,7 @@ Decididas pelo Johnny em 24/11/2026, na conversa que gerou esta spec.
 9. **O gestor vê quem respondeu**, com as notas e o comentário. O professor vê só os totais. O link é divulgado só entre os alunos ativos, na sala e no WhatsApp.
 10. **Aderência:** a conta é por aluno-semana (de segunda a sexta), sem os trancados, pelo relatório de Presenças da Next Fit. A semana é aderente com 2 ou mais presenças na aula de funcional. A barra fica configurável, com o valor 2 decidido. A meta é a faixa de 60% a 70%, igual para os três níveis. A aderência é medida por semestre, e a nota do ano é a média dos dois semestres (decisões do Johnny, 24/11/2026). Os semestres são de janeiro a junho e de julho a dezembro (decisão do Johnny, 25/11/2026). Como a avaliação é em dezembro, antes de o segundo semestre fechar, nela o segundo semestre conta até 30 de novembro, o fim do ciclo, e os quatro critérios saem juntos.
 11. **Conversão:** freepass e aula experimental contam juntos. A taxa é matrículas ÷ pessoas que vieram (decisão do Johnny, 24/11/2026). Só contrato pago conta como matrícula. O padrão é a conversão do professor ficar acima da conversão geral da academia, calculada pelo total da academia, sem folga: a tolerância fica na configuração com valor 0, para o Johnny abrir uma folga depois. Vale igual para os três níveis, e não há mínimo de pessoas no ano.
-12. **Só a renovação tem meta por nível** (45, 55 e 65%). A nota dos alunos, a conversão e a aderência valem igual para Júnior, Pleno e Sênior. O plano de reciclagem, para o professor voltar à performance desejada, ainda vai ser desenhado e não entra neste trabalho. A ocupação da turma fica fora do perfil.
+12. **Só a renovação tem meta por nível** (45, 55 e 65%). A nota dos alunos, a conversão e a aderência valem igual para Júnior, Pleno e Sênior. O plano de reciclagem fica só no documento do plano de carreira e não entra no Stronilead (confirmação do Johnny, 25/11/2026). A ocupação da turma fica fora do perfil.
 
 ## O que já existe no código
 
@@ -183,7 +183,7 @@ Os PRs 1 a 5 cabem até março de 2027. Abril e maio ficam para testar com a Hel
 - Ranking entre professores na tela do professor.
 - O professor ver nomes ou comentários.
 - O documento do plano de carreira.
-- O plano de reciclagem, que ainda vai ser desenhado.
+- O plano de reciclagem, que fica só no documento do plano de carreira, sem tela, campo ou regra no Stronilead.
 - A ocupação da turma, que o Johnny tirou do plano (a confirmar com ele).
 
 ## Em aberto
