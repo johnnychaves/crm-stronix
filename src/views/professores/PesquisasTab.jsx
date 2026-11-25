@@ -163,8 +163,8 @@ function Proxima({ pesquisa, emCurso, turmaHoje, onEditar, onAbrir }) {
 function Historico({ pesquisas, totaisPorPesquisa, hoje, onEditar }) {
   return (
     <section aria-label="Todas as pesquisas" className="overflow-hidden rounded-[18px] border border-border bg-card shadow-card">
-      <div aria-hidden="true" className="hidden h-[42px] grid-cols-[minmax(140px,1.2fr)_minmax(130px,1fr)_110px_110px_90px] items-center gap-3.5 px-[22px] text-[12.5px] font-medium text-muted-foreground lg:grid">
-        <span>Pesquisa</span><span>Período</span><span>Ciclo</span><span>Situação</span><span>Respostas</span>
+      <div aria-hidden="true" className="hidden h-[42px] grid-cols-[minmax(140px,1.2fr)_minmax(130px,1fr)_110px_110px] items-center gap-3.5 px-[22px] text-[12.5px] font-medium text-muted-foreground lg:grid 2xl:grid-cols-[minmax(140px,1.2fr)_minmax(130px,1fr)_110px_110px_110px]">
+        <span>Pesquisa</span><span>Período</span><span className="hidden 2xl:inline">Ciclo</span><span>Situação</span><span>Respostas</span>
       </div>
       {pesquisas.length === 0 ? (
         <p className="m-0 border-t border-border px-[22px] py-4 text-[13px] text-muted-foreground">Nenhuma pesquisa criada ainda.</p>
@@ -174,13 +174,13 @@ function Historico({ pesquisas, totaisPorPesquisa, hoje, onEditar }) {
             const estado = estadoDaPesquisa(p, hoje);
             const resp = totaisPorPesquisa.get(p.id) ?? 0;
             return (
-              <li key={p.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-t border-border px-4 py-3 lg:min-h-14 lg:grid-cols-[minmax(140px,1.2fr)_minmax(130px,1fr)_110px_110px_90px] lg:gap-3.5 lg:px-[22px] lg:py-0">
+              <li key={p.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-t border-border px-4 py-3 lg:min-h-14 lg:grid-cols-[minmax(140px,1.2fr)_minmax(130px,1fr)_110px_110px] lg:gap-3.5 lg:px-[22px] lg:py-0 2xl:grid-cols-[minmax(140px,1.2fr)_minmax(130px,1fr)_110px_110px_110px]">
                 <span className="min-w-0">
                   <b className="font-semibold">{p.nome}</b>
                   {estado === 'rascunho' && <button type="button" onClick={() => onEditar(p)} className={cn(LINK, 'ml-2')}>Editar<span className="sr-only"> {p.nome}</span></button>}
                 </span>
                 <span className="num text-[12.5px] text-muted-foreground lg:col-start-2 lg:row-start-1 lg:text-[13px]">{periodoTexto(p.inicio, p.fim)}</span>
-                <span className="hidden text-[13px] text-muted-foreground lg:inline">{p.ciclo ? cicloCurto(p.ciclo) : ''}</span>
+                <span className="hidden text-[13px] text-muted-foreground 2xl:inline">{p.ciclo ? cicloCurto(p.ciclo) : ''}</span>
                 <span><Selo estado={estado} /></span>
                 <span className="num text-[13px] text-muted-foreground">{estado === 'rascunho' ? 'ainda não abriu' : `${resp} de ${somaDe(p.turmas)}`}</span>
               </li>

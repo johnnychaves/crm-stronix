@@ -65,7 +65,8 @@ export function PesquisaForm({ id, inicial, turmaHoje, outraAberta, onSalvar, on
 
   const travaPasso = problemaDoPasso(form, passo);
   const travaTudo = problemaDaPesquisa(form);
-  const invalido = (campo) => travaPasso?.campo === campo || undefined;
+  // Só o campo preenchido errado fica vermelho; o que falta, o rodapé diz.
+  const invalido = (campo) => (travaPasso?.campo === campo && String(form[campo] ?? '').trim() !== '') || undefined;
 
   const executar = async (acao, disparo) => {
     if (ocupado) return;
@@ -143,7 +144,6 @@ export function PesquisaForm({ id, inicial, turmaHoje, outraAberta, onSalvar, on
                     ref={i === form.perguntas.length - 1 ? ultimaPergunta : undefined}
                     rows={2}
                     aria-label={`Pergunta ${i + 1}`}
-                    aria-invalid={travaPasso?.campo === `pergunta-${i}` || undefined}
                     placeholder="De 0 a 10, ..."
                     value={q.texto}
                     onChange={(e) => mudarPergunta(i, { texto: e.target.value })}
