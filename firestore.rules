@@ -501,6 +501,14 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Presenças na aula de funcional, por aluno e semana, para a aderência do
+    // perfil do professor (PR 6). Quem é da academia lê, com o módulo. Só o
+    // script scripts/import-presencas.js grava, pelo Admin SDK.
+    match /artifacts/{appId}/public/data/stronix_presencas/{id} {
+      allow read: if inTenant(appId) && tenantActive(appId) && hasModule(appId, 'faltosos');
+      allow write: if false;
+    }
+
     // O dia da rotina (date, 'AAAA-MM-DD') tem de ser o dia de agora em algum
     // fuso entre UTC-12 e UTC+14. Duas regras usam esta conta: a do check
     // (stronix_rotina_marcas) e a da versão do dia do modelo

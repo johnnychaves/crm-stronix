@@ -178,3 +178,6 @@ export const ROUTINE_MARKS_PATH = 'stronix_rotina_marcas';
 export const NPS_PESQUISAS_PATH = 'stronix_nps_pesquisas';
 export const NPS_RESPOSTAS_PATH = 'stronix_nps_respostas';
 export const NPS_TOTAIS_PATH = 'stronix_nps_totais';
+// Presenças na aula de funcional, por aluno e semana (aderência, PR 6). Só o
+// script de importação grava.
+export const PRESENCAS_PATH = 'stronix_presencas';
