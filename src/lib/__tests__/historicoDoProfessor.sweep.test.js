@@ -47,6 +47,7 @@ const REVISADOS = {
   'src/modals/RescheduleModal.jsx': 'id do campo no JSX',
   'src/lib/dashboardMetrics.js': 'contagem por professor',
   'src/lib/professor/conversao.js': 'conversão do perfil do professor, só conta',
+  'src/views/professores/ProfessoresView.jsx': 'lista de professores, só conta',
   // Cadastro da equipe (stronix_users), não o lead.
   'src/lib/teamRoles.js': 'papel da equipe',
   'src/views/settings/TeamAccessSection.jsx': 'papel da equipe',
