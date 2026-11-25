@@ -47,6 +47,11 @@ button,input,textarea{font:inherit;color:inherit}
 .btn svg{width:22px;height:22px}
 .btn:active{transform:scale(.98)}
 .btn[aria-disabled=true]{background:#2c2420;color:#8a7a74;box-shadow:none;cursor:not-allowed}
+.botoes{display:flex;gap:10px}
+.botoes .btn{flex:1;width:auto;font-size:19px;gap:8px;padding:0 12px}
+.volta2{flex:none;width:96px;height:60px;border-radius:16px;border:1.5px solid var(--linha);background:rgba(255,255,255,.04);font-family:var(--display);font-stretch:85%;font-weight:700;font-size:18px;letter-spacing:.06em;text-transform:uppercase;cursor:pointer}
+.volta2:hover{border-color:#6b6c66}
+.volta2[hidden]{display:none}
 .status{min-height:20px;margin-bottom:8px;font-size:14px;color:var(--nevoa);text-align:center}
 
 /* abertura */
@@ -125,7 +130,11 @@ h1 em{color:var(--brasa);font-style:normal}
 
 /* comentário */
 .mini{display:flex;gap:10px;margin-top:18px}
-.mini span{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 4px;border-radius:14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);font-size:12px;color:var(--nevoa)}
+.mini button{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 4px 8px;border-radius:14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);font-size:12px;color:var(--nevoa);cursor:pointer;transition:border-color .15s,transform .12s}
+.mini button:hover{border-color:var(--brasa)}
+.mini button:active{transform:scale(.97)}
+.mini .muda{font-size:11.5px;font-weight:700;color:var(--brasa);text-transform:uppercase;letter-spacing:.06em}
+.dica-muda{margin-top:8px;font-size:13.5px;color:var(--nevoa)}
 .mini svg{width:34px;height:34px}
 .mini b{font-family:var(--display);font-size:19px;line-height:1;color:var(--papel)}
 .com{margin-top:22px}
@@ -206,7 +215,7 @@ h1 em{color:var(--brasa);font-style:normal}
    <p class="oi" id="oi">Oi, <b>Ana</b>! Uma pergunta de cada vez.</p>
    <div class="etapa" id="etapa"></div>
   </div>
-  <div class="acao"><p class="status" id="status" role="status"></p><button type="button" class="btn" id="prox"></button></div>
+  <div class="acao"><p class="status" id="status" role="status"></p><div class="botoes"><button type="button" class="volta2" id="voltar2">Voltar</button><button type="button" class="btn" id="prox"></button></div></div>
  </section>
 
  <!-- obrigado -->
@@ -326,15 +335,16 @@ $('#t-cpf').addEventListener('submit', e => {
 });
 
 /* ---------- etapas: uma pergunta por vez, depois o comentário */
-let passo = 0, comentario = '';
+let passo = 0, comentario = '', editando = false;
 const notas = PERGUNTAS.map(() => null);
 const N = PERGUNTAS.length;
-function comecar(){ passo = 0; notas.fill(null); comentario = ''; marcarEstado('perguntas'); mostrar('perguntas'); render(true); }
+function comecar(){ passo = 0; editando = false; notas.fill(null); comentario = ''; marcarEstado('perguntas'); mostrar('perguntas'); render(true); }
 function render(focar){
   document.querySelectorAll('.segs i').forEach((b, i) => b.classList.toggle('on', i <= passo));
   $('#conta').textContent = passo < N ? `${passo + 1}/${N}` : '';
   $('#oi').hidden = passo !== 0;
-  $('#voltar').setAttribute('aria-label', passo === 0 ? 'Voltar para o CPF' : 'Voltar para a pergunta anterior');
+  $('#voltar').setAttribute('aria-label', editando ? 'Voltar para o resumo' : passo === 0 ? 'Voltar para o CPF' : 'Voltar para a pergunta anterior');
+  $('#voltar2').hidden = passo === 0 || editando;
   const et = $('#etapa'), prox = $('#prox');
   if (passo < N) {
     const v = notas[passo];
@@ -352,7 +362,7 @@ function render(focar){
           aria-valuetext="${v === null ? 'Sem nota ainda. Use as setas para escolher de 0 a 10.' : v + ', ' + palavra(v)}">
         <div class="pontas" aria-hidden="true"><span><b>0</b>pior nota</span><span><b>10</b>melhor nota</span></div>
       </div>`;
-    prox.innerHTML = (passo === N - 1 ? 'Continuar' : 'Próxima') + ' <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
+    prox.innerHTML = (editando ? 'Salvar nota' : passo === N - 1 ? 'Continuar' : 'Próxima') + ' <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
     prox.setAttribute('aria-disabled', v === null);
     $('#status').textContent = v === null ? 'Arraste a régua para dar a nota.' : '';
     ambiente(v); ligarRegua(); posBalao();
@@ -361,7 +371,8 @@ function render(focar){
       <p class="np">Última etapa</p>
       <h2 class="pt" id="pt" tabindex="-1">Quer contar mais alguma coisa?</h2>
       <p class="sub">É opcional. Só a gestão da academia lê o comentário.</p>
-      <div class="mini" aria-label="Suas notas">${notas.map((n, i) => `<span style="color:${corDe(n)}">${rosto(n, '')}<b class="num">${n}</b>Pergunta ${i + 1}</span>`).join('')}</div>
+      <div class="mini" role="group" aria-label="Suas notas">${notas.map((n, i) => `<button type="button" data-editar="${i}" style="color:${corDe(n)}" aria-label="Pergunta ${i + 1}, nota ${n}. Mudar a nota">${rosto(n, '')}<b class="num">${n}</b><span class="muda">Mudar</span></button>`).join('')}</div>
+      <p class="dica-muda">Toque numa nota para mudar.</p>
       <div class="com"><label for="comentario">Seu comentário</label>
         <textarea id="comentario" maxlength="500" placeholder="Escreva aqui, se quiser" aria-describedby="com-cont">${comentario.replace(/</g, '&lt;')}</textarea>
         <p class="cont num" id="com-cont">${comentario.length} de 500</p></div>`;
@@ -409,10 +420,18 @@ function ligarRegua(){
 function avancar(){
   if (passo < N && notas[passo] === null) { $('#status').textContent = 'Arraste a régua para dar a nota.'; $('#slider').focus(); return; }
   if (passo === N) { marcarEstado('obrigado'); mostrar('obrigado', true); const fim = $('#t-obrigado'); fim.classList.remove('entra'); void fim.offsetWidth; fim.classList.add('entra'); confete($('#t-obrigado .selo'), 60); return; }
+  if (editando) { editando = false; passo = N; return render(true); }
   passo++; render(true);
 }
 $('#prox').addEventListener('click', avancar);
-$('#voltar').addEventListener('click', () => { if (passo === 0) { marcarEstado('cpf'); mostrar('cpf'); cpf.focus(); return; } passo--; render(true); });
+function voltar(){
+  if (editando) { editando = false; passo = N; return render(true); }
+  if (passo === 0) { marcarEstado('cpf'); mostrar('cpf'); cpf.focus(); return; }
+  passo--; render(true);
+}
+$('#voltar').addEventListener('click', voltar);
+$('#voltar2').addEventListener('click', voltar);
+document.addEventListener('click', e => { const b = e.target.closest('[data-editar]'); if (b) { editando = true; passo = +b.dataset.editar; render(true); } });
 addEventListener('resize', posBalao);
 
 /* ---------- barra do mockup */
@@ -423,7 +442,7 @@ document.querySelector('.estados').addEventListener('click', e => {
   if (t === 'naoachou') { cpf.value = '111.444.777-35'; mostrar('cpf'); recusa('nao'); return; }
   if (t === 'jarespondeu') { cpf.value = '123.456.789-09'; mostrar('cpf'); recusa('ja'); return; }
   if (t === 'perguntas') return comecar();
-  if (t === 'comentario') { comecar(); [10, 8, 9, 10].forEach((n, i) => notas[i] = n); passo = N; marcarEstado('comentario'); return render(); }
+  if (t === 'comentario') { comecar(); editando = false; [10, 8, 9, 10].forEach((n, i) => notas[i] = n); passo = N; marcarEstado('comentario'); return render(); }
   if (t === 'obrigado') { mostrar('obrigado'); confete($('#t-obrigado .selo'), 60); return; }
   if (t === 'cpf') cpf.value = '';
   mostrar(t);
