@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { doc, onSnapshot, setDoc } from 'firebase/firestore';
-import { appId, CONFIG_PATH, LEADS_PATH } from '../lib/firebase.js';
+import { collection, doc, getDocs, onSnapshot, query, setDoc, where } from 'firebase/firestore';
+import { appId, CONFIG_PATH, LEADS_PATH, PRESENCAS_PATH } from '../lib/firebase.js';
 import { clientsAllQuerySpec } from '../lib/leadQueries.js';
 import { normalizeContracts } from '../lib/operacional/base.js';
 import { limitesDoCiclo } from '../lib/professor/ciclo.js';
@@ -45,6 +45,28 @@ export function useProfessoresDados({ db, ciclo, listenersActive }) {
     db, startMs: inicio.getTime(), endMs: fim.getTime() - 1, enabled: ler,
   });
 
+  // As presenças do ano do ciclo (aderência, PR 6): uma leitura só, pela
+  // segunda-feira da semana ('AAAA-MM-DD'), num campo só e sem índice novo.
+  // As semanas de janeiro a novembro contam; a de dezembro só aparece na aba.
+  const [presencas, setPresencas] = useState(null); // { ciclo, lista, erro }
+  useEffect(() => {
+    if (!ler) return undefined;
+    let vivo = true;
+    const q = query(
+      collection(db, 'artifacts', appId, 'public', 'data', PRESENCAS_PATH),
+      where('semana', '>=', `${ciclo}-01-01`),
+      where('semana', '<=', `${ciclo}-12-31`),
+    );
+    getDocs(q)
+      .then((snap) => { if (vivo) setPresencas({ ciclo, lista: snap.docs.map((d) => d.data()), erro: null }); })
+      .catch((err) => {
+        console.error('useProfessoresDados presencas', err);
+        if (vivo) setPresencas({ ciclo, lista: [], erro: err });
+      });
+    return () => { vivo = false; };
+  }, [db, ler, ciclo]);
+  const presencasDoCiclo = presencas?.ciclo === ciclo ? presencas : null;
+
   // { doc, erro } da última resposta, ou null antes da primeira.
   const [carreira, setCarreira] = useState(null);
   useEffect(() => {
@@ -68,13 +90,14 @@ export function useProfessoresDados({ db, ciclo, listenersActive }) {
   );
 
   return {
-    carregando: !clientesProntos || aulasCarregando || carreira === null,
-    erro: clientesErro || aulasErro || carreira?.erro || null,
+    carregando: !clientesProntos || aulasCarregando || carreira === null || !presencasDoCiclo,
+    erro: clientesErro || aulasErro || carreira?.erro || presencasDoCiclo?.erro || null,
     professores,
     planos,
     contratos,
     clientes,
     aulas,
+    presencas: presencasDoCiclo?.lista ?? [],
     metas,
     salvarMetas,
   };

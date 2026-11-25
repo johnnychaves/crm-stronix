@@ -74,6 +74,7 @@ export const PERFIL_TABS = Object.freeze({
   carteira: 'carteira',
   aulas: 'aulas',
   nps: 'nps',
+  aderencia: 'aderencia',
 });
 // Submenus dos Relatórios (spec 2026-10-09). Hoje só o relatório de Leads, com
 // os cinco submenus. O id é também o segmento, e a lista ao lado
