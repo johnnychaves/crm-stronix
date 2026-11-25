@@ -41,7 +41,7 @@ Decididas pelo Johnny em 24/11/2026, na conversa que gerou esta spec.
 
 ### Histórico de troca de professor, no lead
 
-`professorHistory`: lista de `{ professorId, since }`, na ordem. Todo caminho que grava `professorId` no lead acrescenta uma entrada quando o valor muda, na mesma gravação. Um teste de varredura reprova quem gravar `professorId` sem passar pelo montador do histórico (no molde do `donoDaEpoca.sweep.test.js`). O `professorId` da aula, em `stronix_aulas`, é outra coisa e não entra.
+`professorHistory`: lista de `{ professorId, since }`, na ordem, com `since` null na primeira entrada (o professor de antes do histórico). Todo caminho que grava `professorId` no lead acrescenta uma entrada quando o valor muda, na mesma gravação. O primeiro professor de um lead que não tinha nenhum não grava histórico, para a matrícula e a importação não parecerem troca. Um teste de varredura reprova quem gravar `professorId` sem passar pelo montador do histórico (no molde do `donoDaEpoca.sweep.test.js`). O `professorId` da aula, em `stronix_aulas`, é outra coisa e não entra.
 
 `professorAt(lead, data)` diz quem era o professor numa data. Lead sem histórico vale o professor atual para qualquer data. Por isso a regra dos 90 dias só pega trocas feitas depois do deploy, e o ciclo de dezembro de 2025 a novembro de 2026 usa o professor atual para todos os contratos. A tela avisa isso no ciclo em que o histórico começa.
 
@@ -141,7 +141,7 @@ Todas as coleções novas exigem `hasModule(appId, 'faltosos')` além das regras
 - `stronix_nps_totais`: o gestor lê todos, o professor lê os do próprio `professorId`. Ninguém grava pelo navegador.
 - `stronix_presencas`: o membro lê. Ninguém grava pelo navegador.
 - `stronix_config/carreira`: segue a regra de `stronix_config`.
-- `professorHistory` no lead: grava quem já pode gravar `professorId`. Continua fora da `professorLeadFields()`, então o professor não troca o próprio aluno.
+- `professorHistory` no lead: não muda regra. O consultor e o gestor já gravam qualquer campo do lead, e o campo fica fora da `professorLeadFields()`, então o professor não troca o próprio aluno.
 
 As regras são publicadas à mão no console, com o OK do Johnny, antes do merge do PR que as usa.
 
@@ -153,9 +153,9 @@ A fonte é o relatório de Presenças da Next Fit, filtrado pela aula de funcion
 
 ## Entrega em PRs
 
-Cada PR fica atrás do módulo. Ordem:
+Cada PR com tela ou rota fica atrás do módulo. O histórico do PR 1 é a exceção: ele grava em toda academia, porque não tem tela, não muda nada que outro cliente veja e evita condição no caminho que grava o professor. Ordem:
 
-1. **Histórico de troca de professor.** O `professorHistory`, o montador, a varredura e a regra do campo. Vem primeiro porque o histórico só começa a contar no deploy.
+1. **Histórico de troca de professor.** O `professorHistory`, o montador, a leitura (`professorAt`) e a varredura, sem mudar regra do Firestore. Vem primeiro porque o histórico só começa a contar no deploy.
 2. **As contas.** As funções de `src/lib/professor/` e os testes, sem tela.
 3. **Lista e perfil.** O rótulo "Stronix 2.0", o menu, as rotas, a lista, as metas, o nível, o perfil com Carteira e Aulas experimentais. Mockups antes.
 4. **Pesquisa por dentro.** As coleções e as regras, a sub-tela de pesquisas, o link e o QR code no perfil e a aba NPS.
