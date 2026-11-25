@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useToast } from '../../contexts/ToastContext.jsx';
 import { METAS_PADRAO, problemaDasMetas } from '../../lib/professor/metas.js';
+import { escalaDaRenovacao } from './criterios.js';
 
 // As metas do plano de carreira (mockup A): quatro cartões, cada um com os
 // campos e uma régua que mostra a meta enquanto se digita. O rascunho só
@@ -78,10 +79,12 @@ const virgula = (n) => String(n).replace('.', ',');
 
 function Previa({ grupo, v, academia }) {
   if (grupo === 'renovacao') {
+    const niveis = [['Júnior', v.junior], ['Pleno', v.pleno], ['Sênior', v.senior]].filter(([, n]) => ok(n));
+    const [de, ate] = niveis.length ? escalaDaRenovacao(niveis.map(([, n]) => n)) : [0, 100];
     return (
-      <Regua de="0%" ate="100%">
-        {[['Júnior', v.junior], ['Pleno', v.pleno], ['Sênior', v.senior]].filter(([, n]) => ok(n)).map(([nome, n]) => (
-          <span key={nome}><Marca at={pos(n, 0, 100)} azul /><Texto at={pos(n, 0, 100)} azul>{nome}<br />{n}%</Texto></span>
+      <Regua de={`${de}%`} ate={`${ate}%`}>
+        {niveis.map(([nome, n]) => (
+          <span key={nome}><Marca at={pos(n, de, ate)} azul /><Texto at={pos(n, de, ate)} azul>{nome}<br />{n}%</Texto></span>
         ))}
       </Regua>
     );

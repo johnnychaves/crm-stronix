@@ -27,3 +27,13 @@ export function criterioConversao(conversao) {
 
 export const CRITERIO_NPS = Object.freeze({ valor: null, ref: 'sem pesquisa ainda', estado: 'sem' });
 export const CRITERIO_ADERENCIA = Object.freeze({ valor: null, ref: 'sem dados ainda', estado: 'sem' });
+
+// Escala da régua da renovação, no placar do perfil e na prévia das metas: as
+// três médias (e o resultado, no perfil) com folga dos dois lados, em dezenas,
+// dentro de 0 a 100. Com 0 a 100 fixo, Júnior, Pleno e Sênior ficavam um em
+// cima do outro no celular.
+export function escalaDaRenovacao(valores) {
+  const lo = Math.max(0, Math.floor((Math.min(...valores) - 15) / 10) * 10);
+  const hi = Math.min(100, Math.ceil((Math.max(...valores) + 15) / 10) * 10);
+  return [lo, hi];
+}

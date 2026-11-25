@@ -61,7 +61,7 @@ export function ProfessoresView({ db, tenantId, tab, onTab, listenersActive }) {
 
       <div className="px-4 pb-8 pt-2 md:px-8">
         <Tabs value={aba} onValueChange={(id) => onTab?.(id === 'lista' ? null : id)} className="gap-4">
-          <TabsList variant="line" className="w-full justify-start gap-1 overflow-x-auto overscroll-x-contain rounded-none border-b border-border p-0 group-data-[orientation=horizontal]/tabs:h-10">
+          <TabsList variant="line" className="w-full justify-start gap-1 overflow-x-auto overflow-y-hidden overscroll-x-contain rounded-none border-b border-border p-0 group-data-[orientation=horizontal]/tabs:h-10">
             <TabsTrigger value="lista" className={TAB_TRIGGER}>
               Professores
               <span className={TAB_CONTAGEM}>{ativos.length}</span>

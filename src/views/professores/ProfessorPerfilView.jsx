@@ -174,7 +174,7 @@ export function ProfessorPerfilView({ db, appUser, tenantId, profId, tab, onTab,
           />
 
           <Tabs value={aba} onValueChange={(id) => onTab?.(id === 'carteira' ? null : id)} className="mt-7 gap-4">
-            <TabsList variant="line" className="w-full justify-start gap-1 overflow-x-auto overscroll-x-contain rounded-none border-b border-border p-0 group-data-[orientation=horizontal]/tabs:h-10">
+            <TabsList variant="line" className="w-full justify-start gap-1 overflow-x-auto overflow-y-hidden overscroll-x-contain rounded-none border-b border-border p-0 group-data-[orientation=horizontal]/tabs:h-10">
               <TabsTrigger value="carteira" className={TAB_TRIGGER}>
                 Carteira <span className={TAB_CONTAGEM}>{contas.carteira.length}</span>
               </TabsTrigger>

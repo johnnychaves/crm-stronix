@@ -1,6 +1,7 @@
 import { cn } from '@/lib/utils';
 import { NIVEIS, nivelTexto } from '../../lib/professor/metas.js';
 import { CicloControl } from './ProfessoresComum.jsx';
+import { escalaDaRenovacao } from './criterios.js';
 
 // O placar escuro do perfil (mockup B): os quatro critérios do plano de
 // carreira, cada um com a régua do resultado contra a referência. Renovação e
@@ -76,14 +77,6 @@ function Criterio({ titulo, valor, verde = false, linha, children, rodape }) {
       {rodape && <div className="mt-2.5 text-[12.5px] text-white/60">{rodape}</div>}
     </div>
   );
-}
-
-// Escala da renovação: as três médias e o resultado com folga dos dois lados,
-// em dezenas, dentro de 0 a 100.
-function escalaDaRenovacao(valores) {
-  const lo = Math.max(0, Math.floor((Math.min(...valores) - 15) / 10) * 10);
-  const hi = Math.min(100, Math.ceil((Math.max(...valores) + 15) / 10) * 10);
-  return [lo, hi];
 }
 
 export function PlacarDoCiclo({ titulo, ciclo, cicloAtual, onCiclo, prof, metas, renovacao, conversao, modalidadesTexto }) {
