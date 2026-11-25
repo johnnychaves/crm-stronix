@@ -54,6 +54,7 @@ const REVISADOS = {
   'src/lib/teamRoles.js': 'papel da equipe',
   'src/views/settings/TeamAccessSection.jsx': 'papel da equipe',
   'api/_professorLink.js': 'vínculo do login com o professor',
+  'api/_npsPublico.js': 'resposta e totais da pesquisa de NPS, não grava lead',
   'api/admin-users.js': 'papel da equipe',
   'api/invite-accept.js': 'convite de professor',
   'api/invite-create.js': 'convite de professor',

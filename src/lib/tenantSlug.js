@@ -16,14 +16,14 @@ export const TENANT_SLUG_CREATE_RE = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
 // - as palavras de tela do primeiro nível (pipeline, clientes, ficha...): é o
 //   que deixa o app ler /pipeline como tela sem academia. Tela nova com
 //   primeiro segmento novo entra aqui, e o tenantSlug.test.js quebra se faltar;
-// - i, convite e invite: indicação pública e convite;
+// - i, convite e invite: indicação pública e convite; avaliar: a pesquisa de NPS;
 // - console e super-admin: endereços do super-admin;
 // - o resto é precaução.
 // Antes de acrescentar uma palavra, confira que nenhuma academia usa esse id,
 // senão o link dela passa a abrir outra coisa.
 export const RESERVED_TENANT_SLUGS = Object.freeze([
   'api', 'assets', 'static', 'public', 'index', 'favicon', 'robots', 'sitemap', 'manifest', 'service-worker',
-  'i', 'convite', 'invite', 'indicacao', 'login', 'entrar', 'sair', 'logout', 'cadastro', 'ativar', 'recuperar-senha',
+  'i', 'avaliar', 'convite', 'invite', 'indicacao', 'login', 'entrar', 'sair', 'logout', 'cadastro', 'ativar', 'recuperar-senha',
   'visao-geral', 'pipeline', 'clientes', 'meta-diaria', 'rotinas', 'leads', 'relatorios', 'configuracoes', 'perfil-da-academia', 'plano-e-faturas', 'ficha', 'super-admin', 'professores',
   'console', 'admin', 'superadmin', 'painel', 'app', 'www', 'suporte', 'ajuda', 'status', 'stronilead',
 ]);

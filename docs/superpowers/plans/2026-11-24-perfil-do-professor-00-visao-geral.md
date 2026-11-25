@@ -73,6 +73,7 @@ Os arquivos não importam pacote nem tela, porque a `api/` do PR 5 lê a carteir
 ### PR 5: página pública
 
 - Antes de começar, com o OK do Johnny: uma contagem só de leitura de quantos clientes do funcional têm CPF no cadastro, sem listar CPF.
+- Plano: `2026-11-25-perfil-do-professor-05-pagina-publica.md`.
 - As ações `nps-info` (com a foto e o primeiro nome do professor; o link inválido não devolve nenhum dos dois), `nps-check` e `nps-answer` na `api/tenant-resolve.js`, com limite largo por IP e limite por link, piso de tempo e erro sem CPF no Sentry. O `verificar:sentry` ganha o CPF entre os valores plantados.
 - A página `/avaliar/<academia>/<código>` decidida no `App()`, fora do roteador, com `ScreenErrorBoundary`. `avaliar` entra em `RESERVED_TENANT_SLUGS`.
 - Testes da rota com o banco falso que imita o SDK de servidor e testes de comportamento da página em jsdom.

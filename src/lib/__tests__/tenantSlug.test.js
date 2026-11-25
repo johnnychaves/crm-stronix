@@ -41,7 +41,7 @@ describe('RESERVED_TENANT_SLUGS', () => {
   });
 
   it('traz as obrigatórias: o que a Vercel serve antes do app, o console e a indicação', () => {
-    for (const w of ['api', 'assets', 'console', 'super-admin', 'ficha', 'i', 'invite']) {
+    for (const w of ['api', 'assets', 'console', 'super-admin', 'ficha', 'i', 'invite', 'avaliar']) {
       expect(RESERVED_TENANT_SLUGS, w).toContain(w);
     }
   });
