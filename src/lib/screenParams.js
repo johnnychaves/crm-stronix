@@ -372,6 +372,20 @@ const ordemDosLeads = param(
 );
 
 // Tabela por tela. A ordem aqui é a ordem no endereço.
+// Ciclo de avaliação do plano de carreira (dezembro a novembro, com o nome do
+// ano em que termina; src/lib/professor/ciclo.js). O primeiro é o de 2026, o
+// primeiro com contratos no sistema; o último é o de agora, que vem no
+// ctx.cicloAtual e não se escreve.
+export const PRIMEIRO_CICLO = 2026;
+const cicloValido = (raw, ctx) => {
+  if (raw === null || raw === undefined || raw === '') return null;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= PRIMEIRO_CICLO && n <= ctx.cicloAtual ? n : null;
+};
+const ciclo = param('ciclo',
+  (raw, ctx) => cicloValido(raw, ctx) ?? ctx.cicloAtual,
+  (v, ctx) => (cicloValido(v, ctx) !== null && v !== ctx.cicloAtual ? String(v) : null));
+
 const TABELA = {
   dashOperacional: { mes, comparar, 'comparar-com': compararCom, pessoa },
   dashCrm: { mes, comparar, 'comparar-com': compararCom, pessoa, funil: funilRecorte },
@@ -382,6 +396,8 @@ const TABELA = {
   aulas: { dia, de: dataDoPeriodo('de'), ate: dataDoPeriodo('ate'), resp, prof },
   visitas: { dia, de: dataDoPeriodo('de'), ate: dataDoPeriodo('ate'), resp },
   dailyGoal: { cat },
+  professores: { ciclo },
+  professorPerfil: { ciclo },
   relatorios: {
     mes: soNoModoMes(mes),
     periodo: periodoDoPainel,

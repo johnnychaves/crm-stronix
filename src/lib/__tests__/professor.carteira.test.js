@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { normalizeContracts } from '../operacional/base.js';
 import { carteiraAt, contratosDaModalidade, estadoEm } from '../professor/carteira.js';
+import { carteiraDoCiclo } from '../professor/renovacao.js';
 
 const ts = (iso) => ({ toDate: () => new Date(iso) });
 const PROF = { id: 'p1', modalidadeIds: ['func'] };
@@ -60,5 +61,38 @@ describe('carteiraAt', () => {
   it('lê o professor da data pelo histórico, deixa de fora outra modalidade e contrato vencido, e marca o trancado', () => {
     expect(ids(new Date('2027-02-15T12:00:00'))).toEqual(['ana:vigente', 'dani:trancado']);
     expect(ids(new Date('2027-03-15T12:00:00'))).toEqual(['ana:vigente', 'bia:vigente', 'dani:trancado']);
+  });
+});
+
+describe('carteiraDoCiclo', () => {
+  const ASOF = new Date('2027-06-15T12:00:00');
+  const base = { planId: 'move', status: 'ativo', value: 2388 };
+  const raw = [
+    // ana venceu em março e renovou
+    { id: 'a1', leadId: 'ana', ...base, startsAt: new Date('2026-03-10T12:00:00'), endsAt: new Date('2027-03-10T12:00:00'), createdAt: new Date('2026-03-10T12:00:00') },
+    { id: 'a2', leadId: 'ana', ...base, renewedFromId: 'a1', startsAt: new Date('2027-03-10T12:00:00'), endsAt: new Date('2028-03-10T12:00:00'), createdAt: new Date('2027-03-01T12:00:00') },
+    // bia venceu em abril sem renovar
+    { id: 'b1', leadId: 'bia', ...base, startsAt: new Date('2026-04-10T12:00:00'), endsAt: new Date('2027-04-10T12:00:00'), createdAt: new Date('2026-04-10T12:00:00') },
+    // caio vence em setembro
+    { id: 'c1', leadId: 'caio', ...base, startsAt: new Date('2026-09-10T12:00:00'), endsAt: new Date('2027-09-10T12:00:00'), createdAt: new Date('2026-09-10T12:00:00') },
+  ];
+  const leads = [
+    { id: 'ana', professorId: 'p1', name: 'Ana', cpfDigits: '52998224725' },
+    { id: 'bia', professorId: 'p1', name: 'Bia' },
+    { id: 'caio', professorId: 'p1', name: 'Caio', cpfDigits: '11144477735' },
+  ];
+  const linhas = carteiraDoCiclo({ leads, contratos: normalizeContracts(raw), planos: PLANOS, professor: PROF, ciclo: 2027, asOf: ASOF });
+
+  it('uma linha por aluno, com a situação: a vencer primeiro, depois os que venceram', () => {
+    expect(linhas.map((l) => [l.lead.id, l.situacao])).toEqual([['caio', 'vencer'], ['ana', 'renovou'], ['bia', 'nao']]);
+  });
+
+  it('diz o vencimento, o contrato e se falta CPF', () => {
+    const bia = linhas.find((l) => l.lead.id === 'bia');
+    expect(bia.vence).toEqual(new Date('2027-04-10T12:00:00'));
+    expect(bia.contrato.id).toBe('b1');
+    expect(bia.semCpf).toBe(true);
+    expect(linhas.find((l) => l.lead.id === 'ana').semCpf).toBe(false);
+    expect(linhas.find((l) => l.lead.id === 'caio')).toMatchObject({ estado: 'vigente', vence: new Date('2027-09-10T12:00:00') });
   });
 });

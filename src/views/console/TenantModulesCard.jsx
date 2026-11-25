@@ -12,8 +12,8 @@ import { MODULES, hasModule, normalizeModules } from '../../lib/modules.js';
 const MODULE_ROWS = [
   {
     key: MODULES.FALTOSOS,
-    title: 'Professor e faltosos',
-    hint: 'Libera o papel Professor em Equipe & acessos. Vale no próximo login ou F5 de cada pessoa.',
+    title: 'Stronix 2.0',
+    hint: 'Libera o papel Professor em Equipe & acessos e as telas de Professores. Vale no próximo login ou F5 de cada pessoa.',
   },
 ];
 
@@ -21,8 +21,8 @@ const MODULE_ROWS = [
 // de acesso desligado (o professor continua com o papel, sem tela nenhuma).
 function confirmText(professores) {
   return professores === 1
-    ? 'Desligar Professor e faltosos? O professor com login passa a ver só o aviso de acesso desligado, a partir do próximo login ou F5.'
-    : `Desligar Professor e faltosos? Os ${professores} professores com login passam a ver só o aviso de acesso desligado, a partir do próximo login ou F5.`;
+    ? 'Desligar Stronix 2.0? O professor com login passa a ver só o aviso de acesso desligado, a partir do próximo login ou F5.'
+    : `Desligar Stronix 2.0? Os ${professores} professores com login passam a ver só o aviso de acesso desligado, a partir do próximo login ou F5.`;
 }
 
 function TenantModulesCard({ tenant, save, professores = 0 }) {

@@ -14,7 +14,8 @@
 //   (src/lib/tenantSlug.js). O tenantSlug.test.js quebra se faltar.
 
 import { TENANT_SLUG_READ_RE, isReservedTenantSlug } from './tenantSlug.js';
-import { canOpenScreen, isGestor } from './acesso.js';
+import { canOpenScreen, isGestor, isProfessor } from './acesso.js';
+import { MODULES, hasModule } from './modules.js';
 
 const own = (obj, key) => typeof key === 'string' && Object.prototype.hasOwnProperty.call(obj, key);
 
@@ -59,6 +60,19 @@ export const ROTINAS_TABS = Object.freeze({
   modelos: 'modelos',
   hoje: 'hoje',
 });
+// Sub-telas de Professores (spec 2026-11-24-perfil-do-professor, PR 3): a
+// lista e as metas. A lista é o endereço curto /<academia>/professores. O PR 4
+// acrescenta as pesquisas.
+export const PROFESSORES_SUBS = Object.freeze({
+  lista: 'lista',
+  metas: 'metas',
+});
+// Abas do perfil do professor, em /professores/perfil/<id>/<aba>, lido à parte
+// em readScreen. O PR 4 acrescenta a NPS e o PR 6 a Aderência.
+export const PERFIL_TABS = Object.freeze({
+  carteira: 'carteira',
+  aulas: 'aulas',
+});
 // Submenus dos Relatórios (spec 2026-10-09). Hoje só o relatório de Leads, com
 // os cinco submenus. O id é também o segmento, e a lista ao lado
 // (src/lib/relatoriosRail.js) usa os mesmos ids.
@@ -82,6 +96,11 @@ export const SCREENS = Object.freeze({
   clientes: tela(['clientes'], 'Clientes'),
   dailyGoal: tela(['meta-diaria'], 'Meta diária'),
   rotinas: tela(['rotinas'], 'Rotinas', { gestor: true, subs: ROTINAS_TABS, subPadrao: 'modelos' }),
+  // As telas de Professores só existem com o módulo da STRONIX (modulo, lido
+  // no canAccess). O perfil não tem a trava de gestor porque o professor abre
+  // o dele: quem não é professor precisa ser gestor (canAccess).
+  professores: tela(['professores'], 'Professores', { gestor: true, modulo: MODULES.FALTOSOS, subs: PROFESSORES_SUBS, subPadrao: 'lista' }),
+  professorPerfil: tela(['professores', 'perfil'], 'Perfil do professor', { modulo: MODULES.FALTOSOS, subs: PERFIL_TABS, subPadrao: 'carteira' }),
   leads: tela(['leads'], 'Leads'),
   aulas: tela(['leads', 'aulas'], 'Aulas'),
   visitas: tela(['leads', 'visitas'], 'Visitas'),
@@ -125,11 +144,11 @@ export const FIRST_LEVEL_SEGMENTS = Object.freeze([
 // a vaga da entrega 2: /configuracoes/equipe, /ficha/<id>/contratos).
 // GROUPS: o segundo segmento escolhe a tela, e filho desconhecido é endereço
 // desconhecido, para erro de digitação não cair calado na tela-mãe.
-const SPECIAL = new Set(['ficha', 'superadmin', 'rotinas']);
+const SPECIAL = new Set(['ficha', 'superadmin', 'rotinas', 'professores', 'professorPerfil']);
 const LEAVES = {};
 const GROUPS = {};
 for (const [id, def] of Object.entries(SCREENS)) {
-  if (def.segs.length !== 2) continue;
+  if (def.segs.length !== 2 || SPECIAL.has(id)) continue;
   if (!own(GROUPS, def.segs[0])) GROUPS[def.segs[0]] = { alone: null, children: {} };
   GROUPS[def.segs[0]].children[def.segs[1]] = id;
 }
@@ -176,6 +195,20 @@ function readScreen(segs, out) {
     out.leadId = isValidLeadId(segs[1]) ? segs[1] : null;
     out.rest = segs.slice(2);
     readSub('ficha', out.rest, out);
+    return;
+  }
+  if (head === 'professores') {
+    // O perfil leva o id do professor (cru, como o da ficha) e a aba.
+    if (lower(segs[1]) === 'perfil') {
+      out.screen = 'professorPerfil';
+      out.profId = isValidLeadId(segs[2]) ? segs[2] : null;
+      out.rest = segs.slice(3);
+      readSub('professorPerfil', out.rest, out);
+      return;
+    }
+    out.screen = 'professores';
+    out.rest = segs.slice(1);
+    readSub('professores', out.rest, out);
     return;
   }
   if (head === 'rotinas') {
@@ -273,7 +306,7 @@ const encode = (s) => {
 // montar (sem academia, ficha sem id válido): quem chama não navega. Tela
 // desconhecida vira a inicial.
 export function hrefFor(tenantId, screen, opts = {}) {
-  const { leadId, superTab, sub, modelId } = opts || {};
+  const { leadId, superTab, sub, modelId, profId } = opts || {};
   if (typeof tenantId !== 'string' || tenantId === '') return null;
   const t = encode(tenantId);
   if (t === null) return null;
@@ -289,6 +322,10 @@ export function hrefFor(tenantId, screen, opts = {}) {
   }
   if (screen === 'superadmin') {
     return `${base}/super-admin/${own(SUPER_TABS, superTab) ? SUPER_TABS[superTab] : SUPER_TABS.overview}`;
+  }
+  if (screen === 'professorPerfil') {
+    const id = isValidLeadId(profId) ? encode(profId) : null;
+    return id === null ? null : `${base}/professores/perfil/${id}${trecho}`;
   }
   if (screen === 'rotinas') {
     // Como na ficha: id aceito pelo isValidLeadId que o encode recusa (metade de
@@ -318,6 +355,8 @@ export function canAccess(screen, appUser) {
   if (!own(SCREENS, screen)) return true;
   if (!canOpenScreen(appUser, screen)) return false;
   const def = SCREENS[screen];
+  if (def.modulo && !hasModule(appUser?.tenantModules, def.modulo)) return false;
+  if (screen === 'professorPerfil' && !isProfessor(appUser)) return isGestor(appUser);
   if (def.gestor) return isGestor(appUser);
   if (def.superAdmin) return appUser?.superAdmin === true;
   return true;
@@ -347,7 +386,7 @@ function redirectTo(path, { search = '', notice = null } = {}) {
   const r = parseAppPath(path);
   // O `sub` vai no alvo junto com a tela: sem ele, a correção de academia
   // desenharia a seção padrão por um render antes de saltar para a certa.
-  return { kind: 'redirect', to: path + search, target: { screen: r.screen, leadId: r.leadId, superTab: r.superTab, sub: r.sub, ...(r.modelId ? { modelId: r.modelId } : {}) }, notice };
+  return { kind: 'redirect', to: path + search, target: { screen: r.screen, leadId: r.leadId, superTab: r.superTab, sub: r.sub, ...(r.modelId ? { modelId: r.modelId } : {}), ...(r.profId ? { profId: r.profId } : {}) }, notice };
 }
 
 const joinPath = (base, raw) => (raw.length ? `${base}/${raw.join('/')}` : base);
@@ -359,7 +398,12 @@ function blockedNotice(screen, appUser) {
   const def = SCREENS[screen];
   if (def.superAdmin) return null;
   if (!canOpenScreen(appUser, screen)) return 'nao-liberada';
-  return def.gestor ? 'so-gestor' : null;
+  // Sem o módulo, a tela não existe para a academia (spec 2026-11-24): o aviso é
+  // o de endereço desconhecido.
+  if (def.modulo && !hasModule(appUser?.tenantModules, def.modulo)) {
+    return homeScreenFor(appUser) === HOME_SCREEN ? 'nao-encontrada' : 'nao-encontrada-meta';
+  }
+  return def.gestor || screen === 'professorPerfil' ? 'so-gestor' : null;
 }
 
 // Regras 6, 7 e 8, sobre um endereço que já é da academia da sessão. A trava de
@@ -371,6 +415,14 @@ function accessRedirect(route, appUser, home, { tenantId = null, search = '' } =
     // caem. Quem não abre a Visão geral vai para a tela inicial dele sem aviso.
     if (route.screen === HOME_SCREEN) return redirectTo(home);
     return redirectTo(home, { notice: blockedNotice(route.screen, appUser) });
+  }
+  // O professor abre só o próprio perfil: o de outro leva ao dele, na mesma
+  // aba, com o aviso de tela não liberada (spec 2026-11-24); sem cadastro de
+  // professor ligado, não há perfil para abrir.
+  if (route.screen === 'professorPerfil' && isProfessor(appUser)) {
+    const dele = hrefFor(tenantId, 'professorPerfil', { profId: appUser.professorId, sub: route.sub });
+    if (!dele) return redirectTo(home, { notice: 'nao-liberada' });
+    if (route.profId !== appUser.professorId) return redirectTo(dele, { search, notice: 'nao-liberada' });
   }
   if (route.unknown) {
     return redirectTo(home, { notice: homeScreenFor(appUser) === HOME_SCREEN ? 'nao-encontrada' : 'nao-encontrada-meta' });
@@ -418,6 +470,8 @@ function sessionPathFor(route, tenantId, base, home) {
   const keepsScreen = route.screen && route.screen !== 'ficha' && route.screen !== 'superadmin';
   if (!keepsScreen) return home;
   if (route.modelId) return joinPath(base, SCREENS[route.screen].segs);
+  // O perfil é de um professor da outra academia: cai na lista da sessão.
+  if (route.screen === 'professorPerfil') return joinPath(base, SCREENS.professores.segs);
   return joinPath(base, raw.slice(1));
 }
 
@@ -495,6 +549,7 @@ export function screenKey(route) {
   const screen = route?.screen;
   if (screen === 'ficha') return `ficha:${route.leadId}`;
   if (screen === 'rotinas' && route.modelId) return `rotinas:${route.modelId}`;
+  if (screen === 'professorPerfil') return `professorPerfil:${route.profId ?? ''}`;
   if (screen === HOME_SCREEN || screen === 'dashOperacional') return 'dashOperacional';
   return screen || 'dashboard';
 }

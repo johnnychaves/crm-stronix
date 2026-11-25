@@ -25,10 +25,15 @@ export function sidebarNav(appUser) {
     leads: tela('leads') && tela('aulas') && tela('visitas'),
     relatorios: tela('relatorios'),
     suporte: can(appUser, ACTIONS.SUPORTE_ABRIR),
+    // Professores (lista e metas) é do gestor com o módulo. O Meu perfil é o
+    // perfil de professor de quem está logado, e só existe com o cadastro de
+    // professor ligado (appUser.professorId).
+    professores: tela('professores'),
+    meuPerfil: isProfessor(appUser) && Boolean(appUser?.professorId) && tela('professorPerfil'),
   });
 }
 
-// Professor numa academia com o módulo "Professor e faltosos" desligado. O
+// Professor numa academia com o módulo Stronix 2.0 (antes "Professor e faltosos") desligado. O
 // login continua valendo, mas nenhuma tela é dele: o App mostra só o aviso,
 // com o Sair, e as regras do Firestore recusam as gravações dele no lead e nas
 // interações (no registro da aula, não: ver stronix_aulas). A lista vem

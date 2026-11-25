@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   readScreenParams, screenParamsQuery, funnelFromSearch, SCREEN_PARAM_NAMES, FASE_VENDA, FASE_PERDA,
-  diaAoLimparPeriodo, DIAS_PARADOS,
+  diaAoLimparPeriodo, DIAS_PARADOS, PRIMEIRO_CICLO,
 } from '../screenParams.js';
 import { CONTRACT_STATUS } from '../contracts.js';
 import { SOLO_TRAINING } from '../professores.js';
@@ -724,5 +724,30 @@ describe('categoria da Meta (Foco em)', () => {
     expect(ler('dailyGoal', '?meta=nova&cat=atrasado', {})).toEqual({ cat: 'atrasado' });
     expect(volta('dailyGoal', '?meta=nova&cat=atrasado', {})).toBe('?cat=atrasado');
     expect(volta('dailyGoal', '?meta=nova', {})).toBe('');
+  });
+});
+
+describe('ciclo do plano de carreira (Professores e perfil)', () => {
+  const ctx = { cicloAtual: 2027 };
+  it('as duas telas têm só o ciclo', () => {
+    expect(SCREEN_PARAM_NAMES.professores).toEqual(['ciclo']);
+    expect(SCREEN_PARAM_NAMES.professorPerfil).toEqual(['ciclo']);
+    expect(PRIMEIRO_CICLO).toBe(2026);
+  });
+  it('sem ciclo, vale o atual; um ciclo da janela vale ele', () => {
+    for (const tela of ['professores', 'professorPerfil']) {
+      expect(readScreenParams(tela, '', ctx)).toEqual({ ciclo: 2027 });
+      expect(readScreenParams(tela, '?ciclo=2026', ctx)).toEqual({ ciclo: 2026 });
+    }
+  });
+  it('antes do primeiro ciclo, depois do atual ou fora do formato vale o atual', () => {
+    for (const raw of ['2025', '2030', 'abc', '2026.5', '']) {
+      expect(readScreenParams('professores', `?ciclo=${raw}`, ctx), raw).toEqual({ ciclo: 2027 });
+    }
+  });
+  it('o atual não se escreve', () => {
+    expect(screenParamsQuery('professores', { ciclo: 2027 }, ctx)).toBe('');
+    expect(screenParamsQuery('professorPerfil', { ciclo: 2026 }, ctx)).toBe('?ciclo=2026');
+    expect(screenParamsQuery('professores', { ciclo: 2025 }, ctx)).toBe('');
   });
 });

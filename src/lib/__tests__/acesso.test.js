@@ -174,8 +174,8 @@ describe('canOpenScreen', () => {
     for (const id of PROFESSOR_SCREENS) expect(telas).toContain(id);
   });
 
-  it('professor abre só a Meta diária, Clientes e a ficha', () => {
-    expect(telas.filter((id) => canOpenScreen(professor, id)).sort()).toEqual(['clientes', 'dailyGoal', 'ficha']);
+  it('professor abre só a Meta diária, Clientes, a ficha e o perfil de professor', () => {
+    expect(telas.filter((id) => canOpenScreen(professor, id)).sort()).toEqual(['clientes', 'dailyGoal', 'ficha', 'professorPerfil']);
   });
 
   it('a tela inicial, os painéis, o Pipeline, Leads e as telas do gestor ficam fora para o professor', () => {

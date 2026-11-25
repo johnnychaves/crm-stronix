@@ -116,10 +116,12 @@ const LEAD_PATH_RE = /(\/ficha\/)[^/?#\s"'<>]+/gi;
 // O id do modelo de rotina também sai do endereço, como pede o CLAUDE.md para
 // todo segmento novo com id.
 const MODEL_PATH_RE = /(\/rotinas\/modelos\/)[^/?#\s"'<>]+/gi;
+// E o id do professor do perfil (/professores/perfil/<id>).
+const PROF_PATH_RE = /(\/professores\/perfil\/)[^/?#\s"'<>]+/gi;
 
 export function scrubLeadPath(text) {
   if (typeof text !== 'string' || !text) return text;
-  return text.replace(LEAD_PATH_RE, '$1:leadId').replace(MODEL_PATH_RE, '$1:modelId');
+  return text.replace(LEAD_PATH_RE, '$1:leadId').replace(MODEL_PATH_RE, '$1:modelId').replace(PROF_PATH_RE, '$1:profId');
 }
 
 // Rede final: troca o id da ficha e o do modelo de rotina em qualquer texto do

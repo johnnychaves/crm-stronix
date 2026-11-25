@@ -34,21 +34,48 @@ function contaPessoas(registros, comContratoPago) {
   return { vieram: porLead.size, matricularam, taxa: pct(matricularam, porLead.size) };
 }
 
+// Os registros de aula com "Compareceu" do ciclo, sem visita e sem treino
+// sozinho, ainda com as aulas da janela.
+function vieramNoCiclo(aulas, ciclo) {
+  const { inicio, fim } = limitesDoCiclo(ciclo);
+  return (aulas || []).filter((r) => {
+    const at = getSafeDateOrNull(r?.scheduledFor);
+    return Boolean(r?.leadId) && isAulaRecord(r) && r.status === AULA_STATUS.ATTENDED && !isSoloTrainingRecord(r)
+      && Boolean(at) && at >= inicio && at < fim;
+  });
+}
+
 // { professor, academia, passa, incompleto }. `passa` é null sem pessoas de
 // um dos lados. A comparação usa as porcentagens inteiras que a tela mostra.
 // `incompleto` diz que o ciclo pega o trecho antes de setembro de 2026, com
 // os agendamentos incompletos.
 export function conversaoDoCiclo({ aulas, contratos, professorId, ciclo, asOf = new Date(), janelaDias = 30, tolerancia = 0 }) {
-  const { inicio, fim } = limitesDoCiclo(ciclo);
+  const { inicio } = limitesDoCiclo(ciclo);
   const corte = asOf.getTime() - janelaDias * DAY_MS;
-  const vieram = (aulas || []).filter((r) => {
-    const at = getSafeDateOrNull(r?.scheduledFor);
-    return Boolean(r?.leadId) && isAulaRecord(r) && r.status === AULA_STATUS.ATTENDED && !isSoloTrainingRecord(r)
-      && Boolean(at) && at >= inicio && at < fim && at.getTime() < corte;
-  });
+  const vieram = vieramNoCiclo(aulas, ciclo).filter((r) => getSafeDateOrNull(r.scheduledFor).getTime() < corte);
   const comContratoPago = new Set((contratos || []).filter(contratoPago).map((c) => c.leadId));
   const professor = contaPessoas(vieram.filter((r) => r.professorId === professorId), comContratoPago);
   const academia = contaPessoas(vieram, comContratoPago);
   const passa = professor.taxa == null || academia.taxa == null ? null : professor.taxa > academia.taxa - tolerancia;
   return { professor, academia, passa, incompleto: monthKeyOf(inicio) < APPTS_COMPLETE_MONTH };
+}
+
+// A aba Aulas experimentais do perfil: uma linha por pessoa que veio com o
+// professor no ciclo, com a última aula, a modalidade, se matriculou (a mesma
+// regra da conversão) e se a última aula está nos últimos `janelaDias`, que
+// ainda não contam na conversão. Da aula mais recente para a mais antiga.
+export function pessoasDasAulas({ aulas, contratos, professorId, ciclo, asOf = new Date(), janelaDias = 30 }) {
+  const corte = asOf.getTime() - janelaDias * DAY_MS;
+  const comContratoPago = new Set((contratos || []).filter(contratoPago).map((c) => c.leadId));
+  const porLead = new Map();
+  vieramNoCiclo(aulas, ciclo).filter((r) => r.professorId === professorId).forEach((r) => {
+    const at = getSafeDateOrNull(r.scheduledFor);
+    const p = porLead.get(r.leadId) || { leadId: r.leadId, nome: r.leadName || null, ultima: at, modalidade: r.modality || null, matriculou: false };
+    if (at > p.ultima) Object.assign(p, { ultima: at, modalidade: r.modality || p.modalidade, nome: r.leadName || p.nome });
+    if (r.converted === true && comContratoPago.has(r.leadId)) p.matriculou = true;
+    porLead.set(r.leadId, p);
+  });
+  return [...porLead.values()]
+    .map((p) => ({ ...p, naJanela: p.ultima.getTime() >= corte }))
+    .sort((a, b) => b.ultima - a.ultima);
 }

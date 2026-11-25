@@ -14,7 +14,7 @@ import { pct } from '../crm/stats.js';
 import { getSafeDateOrNull } from '../dates.js';
 import { hasOpenPause } from '../operacional/base.js';
 import { professorAt } from '../professorHistory.js';
-import { contratosDaModalidade } from './carteira.js';
+import { carteiraAt, contratosDaModalidade, estadoEm } from './carteira.js';
 import { limitesDoCiclo } from './ciclo.js';
 
 const DAY_MS = 86400000;
@@ -51,4 +51,37 @@ export function renovacaoDoCiclo({ leads, contratos, planos, professor, ciclo, a
   });
   const renovados = linhas.filter((l) => l.renovou).length;
   return { venceram: linhas.length, renovados, taxa: pct(renovados, linhas.length), linhas };
+}
+
+const ORDEM_SITUACAO = { vencer: 0, renovou: 1, nao: 2 };
+
+// A aba Carteira do perfil: uma linha por aluno, com a situação no ciclo.
+// Renovou ou não renovou: o aluno tem linha na renovação do ciclo, e vale a do
+// vencimento mais recente. A vencer: sem linha de renovação, mas na carteira
+// agora (carteiraAt em asOf), com o contrato em vigor de fim previsto mais
+// distante. Mora aqui, e não em carteira.js, porque usa a renovação, e este
+// arquivo já importa carteira.js.
+// [{ lead, contrato, situacao: 'vencer' | 'renovou' | 'nao', vence, estado, semCpf }],
+// a vencer primeiro (do vencimento mais perto), depois os que venceram (do
+// mais recente).
+export function carteiraDoCiclo({ leads, contratos, planos, professor, ciclo, asOf = new Date() }) {
+  const porLead = new Map();
+  renovacaoDoCiclo({ leads, contratos, planos, professor, ciclo, asOf }).linhas.forEach((l) => {
+    const atual = porLead.get(l.lead.id);
+    if (!atual || l.contrato.plannedEndsAt > atual.vence) {
+      porLead.set(l.lead.id, { lead: l.lead, contrato: l.contrato, situacao: l.renovou ? 'renovou' : 'nao', vence: l.contrato.plannedEndsAt, estado: null });
+    }
+  });
+  const daModalidade = contratosDaModalidade(contratos, professor, planos);
+  carteiraAt({ leads, contratos, planos, professor, data: asOf }).forEach(({ lead, estado }) => {
+    if (porLead.has(lead.id)) return;
+    const contrato = (daModalidade.get(lead.id) || [])
+      .filter((c) => estadoEm([c], asOf))
+      .reduce((a, c) => (!a || c.plannedEndsAt > a.plannedEndsAt ? c : a), null);
+    porLead.set(lead.id, { lead, contrato, situacao: 'vencer', vence: contrato?.plannedEndsAt ?? null, estado });
+  });
+  return [...porLead.values()]
+    .map((l) => ({ ...l, semCpf: !String(l.lead.cpfDigits || '').trim() }))
+    .sort((a, b) => ORDEM_SITUACAO[a.situacao] - ORDEM_SITUACAO[b.situacao]
+      || (a.situacao === 'vencer' ? a.vence - b.vence : b.vence - a.vence));
 }

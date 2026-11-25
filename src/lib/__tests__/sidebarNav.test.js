@@ -16,9 +16,9 @@ const semPapel = { id: 'u3', tenantId: T };
 const professor = { id: 'u4', role: 'professor', professorId: 'p1', tenantId: T, tenantModules: COM_MODULO };
 const semLigacao = { id: 'u5', role: 'professor', tenantId: T, tenantModules: COM_MODULO };
 
-const DO_GESTOR = { overview: true, kanban: true, clientes: true, dailyGoal: true, rotinas: true, leads: true, relatorios: true, suporte: true };
+const DO_GESTOR = { overview: true, kanban: true, clientes: true, dailyGoal: true, rotinas: true, leads: true, relatorios: true, suporte: true, professores: false, meuPerfil: false };
 const DO_CONSULTOR = { ...DO_GESTOR, rotinas: false };
-const DO_PROFESSOR = { overview: false, kanban: false, clientes: true, dailyGoal: true, rotinas: false, leads: false, relatorios: false, suporte: false };
+const DO_PROFESSOR = { overview: false, kanban: false, clientes: true, dailyGoal: true, rotinas: false, leads: false, relatorios: false, suporte: false, professores: false, meuPerfil: true };
 
 // As telas que cada item do menu abre (App.jsx, bloco Workspace).
 const TELAS = {
@@ -29,6 +29,7 @@ const TELAS = {
   rotinas: ['rotinas'],
   leads: ['leads', 'aulas', 'visitas'],
   relatorios: ['relatorios'],
+  professores: ['professores'],
 };
 
 describe('sidebarNav', () => {
@@ -40,8 +41,15 @@ describe('sidebarNav', () => {
     for (const u of [consultor, semPapel]) expect(sidebarNav(u), u.id).toEqual(DO_CONSULTOR);
   });
 
-  it('o professor vê só a Meta diária e Clientes, com ou sem professor ligado', () => {
-    for (const u of [professor, semLigacao]) expect(sidebarNav(u), u.id).toEqual(DO_PROFESSOR);
+  it('o professor vê a Meta diária, Clientes e o Meu perfil; sem professor ligado, sem o perfil', () => {
+    expect(sidebarNav(professor)).toEqual(DO_PROFESSOR);
+    expect(sidebarNav(semLigacao)).toEqual({ ...DO_PROFESSOR, meuPerfil: false });
+  });
+
+  it('Professores é do gestor com o módulo, e o Meu perfil do professor com o módulo', () => {
+    expect(sidebarNav({ ...gestor, tenantModules: COM_MODULO })).toEqual({ ...DO_GESTOR, professores: true });
+    expect(sidebarNav({ ...consultor, tenantModules: COM_MODULO })).toEqual(DO_CONSULTOR);
+    expect(sidebarNav({ ...professor, tenantModules: [] }).meuPerfil).toBe(false);
   });
 
   it('todo item aceso abre de primeira, sem aviso de rota', () => {
