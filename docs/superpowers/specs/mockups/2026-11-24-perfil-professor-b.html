@@ -249,6 +249,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .sc .s{color:rgba(255,255,255,.78);font-size:13px}
 .sc .x{color:rgba(255,255,255,.58);font-size:12.5px;margin-top:10px}
 .sc .flag.amber{background:rgba(245,158,11,.18);color:#FCD34D}
+.sc .flag.green{background:rgba(52,211,153,.16);color:#6EE7B7}
 /* régua da carreira */
 .ruler{position:relative;height:50px;margin-top:22px}
 .ruler .trk{position:absolute;left:0;right:0;top:15px;height:4px;border-radius:2px;background:rgba(255,255,255,.14)}
@@ -334,7 +335,7 @@ button{font:inherit;color:inherit;cursor:pointer}
     <div class="dot g" style="left:53%"></div>
     <div class="tl l" style="left:0">0%</div><div class="tl r" style="left:100%">100%</div>
    </div>
-   <div class="x">Aula experimental e freepass, cada pessoa uma vez.</div>
+   <div class="x"><span class="flag green">Acima da academia</span>Aula experimental e freepass, cada pessoa uma vez.</div>
   </div>
   <div class="sc">
    <div class="l">Aderência às aulas</div>
@@ -443,6 +444,7 @@ function renderAulas(){
       <div><div class="mut">Pessoas na conta</div><div class="k d num">${conta.length}</div></div>
       <div><div class="mut">Matricularam</div><div class="k d num g">${mat.length} <span style="font-size:16px">(${Math.round(mat.length/conta.length*100)}%)</span></div></div>
       <div><div class="mut">Academia toda</div><div class="k d num">${Math.round(A.mat/A.veio*100)}% <span class="mut" style="font-size:14px;font-weight:500">${A.mat} de ${A.veio}</span></div></div>
+      <span class="flag green" style="align-self:center">${mat.length/conta.length > A.mat/A.veio ? 'Acima da academia' : 'Abaixo da academia'}</span>
       <p class="mut">Cada pessoa conta uma vez, com aula experimental e freepass juntos. Só contrato pago conta como matrícula. Quem veio nos últimos 30 dias fica fora até ter tempo de decidir.</p></div>
     <div class="ta" role="row"><span>Pessoa</span><span>Como veio</span><span>Última vez</span><span>Matrícula</span></div>` +
     D.aulas.map(a => `<div class="ra" role="row">

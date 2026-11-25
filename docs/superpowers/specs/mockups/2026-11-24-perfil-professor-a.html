@@ -307,7 +307,7 @@ button{font:inherit;color:inherit;cursor:pointer}
     <div class="cv d num g">53%</div>
     <div class="cs num">8 de 15 pessoas se matricularam</div>
     <div class="meter" role="img" aria-label="53%, academia 45%"><i class="g" style="width:53%"></i><b style="left:45%"></b></div>
-    <div class="ce">Academia: <strong class="num">45%</strong></div>
+    <div class="ce">Academia: <strong class="num">45%</strong> <span class="flag green">Acima da academia</span></div>
     <div class="cx">Aula experimental e freepass, cada pessoa uma vez.</div>
    </div>
    <div class="crit">
@@ -414,6 +414,7 @@ function renderAulas(){
       <div><div class="mut">Pessoas na conta</div><div class="k d num">${conta.length}</div></div>
       <div><div class="mut">Matricularam</div><div class="k d num g">${mat.length} <span style="font-size:16px">(${Math.round(mat.length/conta.length*100)}%)</span></div></div>
       <div><div class="mut">Academia toda</div><div class="k d num">${Math.round(A.mat/A.veio*100)}% <span class="mut" style="font-size:14px;font-weight:500">${A.mat} de ${A.veio}</span></div></div>
+      <span class="flag green" style="align-self:center">${mat.length/conta.length > A.mat/A.veio ? 'Acima da academia' : 'Abaixo da academia'}</span>
       <p class="mut">Cada pessoa conta uma vez, com aula experimental e freepass juntos. Só contrato pago conta como matrícula. Quem veio nos últimos 30 dias fica fora até ter tempo de decidir.</p></div>
     <div class="ta" role="row"><span>Pessoa</span><span>Como veio</span><span>Última vez</span><span>Matrícula</span></div>` +
     D.aulas.map(a => `<div class="ra" role="row">
