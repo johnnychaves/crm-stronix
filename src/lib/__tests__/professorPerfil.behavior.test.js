@@ -65,7 +65,7 @@ function Screen({ appUser }) {
     nav.type = type;
   });
   const [, , , , profId, seg] = location.pathname.split('/');
-  const tab = seg === 'aulas-experimentais' ? 'aulas' : 'carteira';
+  const tab = seg === 'aulas' ? 'aulas' : 'carteira';
   // O mesmo que o goToSub do App faz com a tela já aberta, levando o ciclo.
   const onTab = (subId) => navigate(hrefFor('acad', 'professorPerfil', { sub: subId, profId }) + location.search, { replace: true, state: location.state });
   return h(ProfessorPerfilView, { db: {}, appUser, tenantId: 'acad', profId, tab, onTab, listenersActive: true });
@@ -162,7 +162,7 @@ describe('as abas', () => {
     await render('/acad/professores/perfil/p2?ciclo=2026');
     expect(aba('Carteira').getAttribute('aria-selected')).toBe('true');
     await mousedown(aba('Aulas experimentais'));
-    expect(nav.location.pathname).toBe('/acad/professores/perfil/p2/aulas-experimentais');
+    expect(nav.location.pathname).toBe('/acad/professores/perfil/p2/aulas');
     expect(nav.location.search).toBe('?ciclo=2026');
     expect(nav.type).toBe('REPLACE');
     expect(aba('Aulas experimentais').getAttribute('aria-selected')).toBe('true');

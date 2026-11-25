@@ -71,7 +71,7 @@ export const PROFESSORES_SUBS = Object.freeze({
 // em readScreen. O PR 4 acrescenta a NPS e o PR 6 a Aderência.
 export const PERFIL_TABS = Object.freeze({
   carteira: 'carteira',
-  aulas: 'aulas-experimentais',
+  aulas: 'aulas',
 });
 // Submenus dos Relatórios (spec 2026-10-09). Hoje só o relatório de Leads, com
 // os cinco submenus. O id é também o segmento, e a lista ao lado
@@ -398,7 +398,11 @@ function blockedNotice(screen, appUser) {
   const def = SCREENS[screen];
   if (def.superAdmin) return null;
   if (!canOpenScreen(appUser, screen)) return 'nao-liberada';
-  if (def.modulo && !hasModule(appUser?.tenantModules, def.modulo)) return 'nao-liberada';
+  // Sem o módulo, a tela não existe para a academia (spec 2026-11-24): o aviso é
+  // o de endereço desconhecido.
+  if (def.modulo && !hasModule(appUser?.tenantModules, def.modulo)) {
+    return homeScreenFor(appUser) === HOME_SCREEN ? 'nao-encontrada' : 'nao-encontrada-meta';
+  }
   return def.gestor || screen === 'professorPerfil' ? 'so-gestor' : null;
 }
 
@@ -413,11 +417,12 @@ function accessRedirect(route, appUser, home, { tenantId = null, search = '' } =
     return redirectTo(home, { notice: blockedNotice(route.screen, appUser) });
   }
   // O professor abre só o próprio perfil: o de outro leva ao dele, na mesma
-  // aba, sem aviso; sem cadastro de professor ligado, não há perfil para abrir.
+  // aba, com o aviso de tela não liberada (spec 2026-11-24); sem cadastro de
+  // professor ligado, não há perfil para abrir.
   if (route.screen === 'professorPerfil' && isProfessor(appUser)) {
     const dele = hrefFor(tenantId, 'professorPerfil', { profId: appUser.professorId, sub: route.sub });
     if (!dele) return redirectTo(home, { notice: 'nao-liberada' });
-    if (route.profId !== appUser.professorId) return redirectTo(dele, { search });
+    if (route.profId !== appUser.professorId) return redirectTo(dele, { search, notice: 'nao-liberada' });
   }
   if (route.unknown) {
     return redirectTo(home, { notice: homeScreenFor(appUser) === HOME_SCREEN ? 'nao-encontrada' : 'nao-encontrada-meta' });

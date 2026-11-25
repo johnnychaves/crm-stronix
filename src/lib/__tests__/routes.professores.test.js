@@ -27,11 +27,11 @@ describe('endereço das telas de professores', () => {
 
   it('perfil, com o id e a aba', () => {
     expect(parseAppPath(`/${T}/professores/perfil/P1`)).toMatchObject({ screen: 'professorPerfil', profId: 'P1', sub: null });
-    expect(parseAppPath(`/${T}/professores/perfil/P1/aulas-experimentais`)).toMatchObject({ screen: 'professorPerfil', profId: 'P1', sub: 'aulas' });
+    expect(parseAppPath(`/${T}/professores/perfil/P1/aulas`)).toMatchObject({ screen: 'professorPerfil', profId: 'P1', sub: 'aulas' });
     expect(parseAppPath(`/${T}/professores/perfil/P1/x`)).toMatchObject({ screen: 'professorPerfil', profId: 'P1', subUnknown: true });
     expect(parseAppPath(`/${T}/professores/perfil`)).toMatchObject({ screen: 'professorPerfil', profId: null });
     expect('profId' in parseAppPath(`/${T}/professores`)).toBe(false);
-    expect(hrefFor(T, 'professorPerfil', { profId: 'P1', sub: 'aulas' })).toBe(`/${T}/professores/perfil/P1/aulas-experimentais`);
+    expect(hrefFor(T, 'professorPerfil', { profId: 'P1', sub: 'aulas' })).toBe(`/${T}/professores/perfil/P1/aulas`);
     expect(hrefFor(T, 'professorPerfil', { profId: 'P1' })).toBe(`/${T}/professores/perfil/P1`);
     expect(hrefFor(T, 'professorPerfil', { profId: 'a/b' })).toBeNull();
     expect(hrefFor(T, 'professorPerfil', {})).toBeNull();
@@ -39,7 +39,7 @@ describe('endereço das telas de professores', () => {
 
   it('a chave da tela é por professor e não muda com a aba', () => {
     expect(screenKey(parseAppPath(`/${T}/professores/perfil/P1`))).toBe('professorPerfil:P1');
-    expect(screenKey(parseAppPath(`/${T}/professores/perfil/P1/aulas-experimentais`))).toBe('professorPerfil:P1');
+    expect(screenKey(parseAppPath(`/${T}/professores/perfil/P1/aulas`))).toBe('professorPerfil:P1');
     expect(screenKey(parseAppPath(`/${T}/professores/metas`))).toBe('professores');
   });
 
@@ -71,9 +71,9 @@ describe('quem abre', () => {
 });
 
 describe('decisão de rota', () => {
-  it('o professor no perfil de outro vai para o dele, sem aviso', () => {
-    expect(decide(`/${T}/professores/perfil/P2`, professor)).toMatchObject({ kind: 'redirect', to: `/${T}/professores/perfil/P1`, notice: null });
-    expect(decide(`/${T}/professores/perfil/P2/aulas-experimentais`, professor)).toMatchObject({ to: `/${T}/professores/perfil/P1/aulas-experimentais` });
+  it('o professor no perfil de outro vai para o dele, com o aviso de tela não liberada', () => {
+    expect(decide(`/${T}/professores/perfil/P2`, professor)).toMatchObject({ kind: 'redirect', to: `/${T}/professores/perfil/P1`, notice: 'nao-liberada' });
+    expect(decide(`/${T}/professores/perfil/P2/aulas`, professor)).toMatchObject({ to: `/${T}/professores/perfil/P1/aulas` });
     expect(decide(`/${T}/professores/perfil/P1`, professor)).toEqual({ kind: 'ok' });
   });
 
@@ -83,7 +83,8 @@ describe('decisão de rota', () => {
 
   it('o gestor abre qualquer perfil, e sem o módulo não abre nada', () => {
     expect(decide(`/${T}/professores/perfil/P2`, gestor)).toEqual({ kind: 'ok' });
-    expect(decide(`/${T}/professores`, gestorSemModulo)).toMatchObject({ kind: 'redirect', to: `/${T}`, notice: 'nao-liberada' });
+    expect(decide(`/${T}/professores`, gestorSemModulo)).toMatchObject({ kind: 'redirect', to: `/${T}`, notice: 'nao-encontrada' });
+    expect(decide(`/${T}/professores/perfil/P1`, { ...professor, tenantModules: [] })).toMatchObject({ kind: 'redirect', to: `/${T}/meta-diaria`, notice: 'nao-encontrada-meta' });
     expect(decide(`/${T}/professores`, consultor)).toMatchObject({ kind: 'redirect', notice: 'so-gestor' });
   });
 
