@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { npsDe, npsDoAno } from '../professor/nps.js';
+import { npsDe, npsDoAno, somarResposta } from '../professor/nps.js';
 
 // Totais de uma pergunta a partir das notas.
 const pergunta = (notas) => ({
@@ -73,5 +73,38 @@ describe('npsDoAno', () => {
   it('sem pesquisa válida não há nota', () => {
     expect(npsDoAno([invalida])).toEqual({ nota: null, pesquisas: 0, passa: null });
     expect(npsDoAno([])).toEqual({ nota: null, pesquisas: 0, passa: null });
+  });
+});
+
+describe('somarResposta', () => {
+  it('soma a nota, separa promotor, neutro e detrator nas bordas e conta cada nota', () => {
+    let t = somarResposta(null, { q1: 9, q2: 6 });
+    t = somarResposta(t, { q1: 7, q2: 10 });
+    expect(t.respostas).toBe(2);
+    expect(t.porPergunta.q1).toMatchObject({ soma: 16, promotores: 1, neutros: 1, detratores: 0 });
+    expect(t.porPergunta.q2).toMatchObject({ soma: 16, promotores: 1, neutros: 0, detratores: 1 });
+    expect(t.porPergunta.q1.porNota).toEqual([0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0]);
+  });
+
+  it('não mexe nos totais de entrada e guarda os outros campos', () => {
+    const antes = { pesquisaId: 'n1', professorId: 'p1', turma: 20, respostas: 1, porPergunta: { q1: { soma: 10, promotores: 1, neutros: 0, detratores: 0 } } };
+    const depois = somarResposta(antes, { q1: 8 });
+    expect(antes.respostas).toBe(1);
+    expect(antes.porPergunta.q1.soma).toBe(10);
+    expect(depois).toMatchObject({ pesquisaId: 'n1', professorId: 'p1', turma: 20, respostas: 2 });
+    expect(depois.porPergunta.q1.porNota[8]).toBe(1);
+  });
+
+  it('o que sai dele passa pelo npsDe como os totais escritos à mão', () => {
+    let t = { turma: 12 };
+    [10, 10, 10, 10, 10, 10, 9, 9, 9, 9, 8, 8].forEach((n) => { t = somarResposta(t, { q1: n }); });
+    expect(npsDe(t, { principalId: 'q1' })).toMatchObject({ valida: true, nota: 9.33, passa: true });
+  });
+
+  it('recusa nota fora de 0 a 10 ou quebrada', () => {
+    expect(() => somarResposta(null, { q1: 11 })).toThrow();
+    expect(() => somarResposta(null, { q1: -1 })).toThrow();
+    expect(() => somarResposta(null, { q1: 8.5 })).toThrow();
+    expect(() => somarResposta(null, { q1: '9' })).toThrow();
   });
 });
