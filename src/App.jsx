@@ -93,6 +93,8 @@ import { TrialActivationScreen } from './views/auth/TrialActivationScreen.jsx';
 import { ProfessorAccessOffScreen } from './views/auth/ProfessorAccessOffScreen.jsx';
 import { AcceptInviteScreen } from './views/auth/AcceptInviteScreen.jsx';
 import { ReferralLandingScreen } from './views/public/ReferralLandingScreen.jsx';
+import { AvaliarScreen } from './views/public/AvaliarScreen.jsx';
+import { avaliarRouteOf } from './lib/avaliarRoute.js';
 import { LoginScreen } from './views/auth/LoginScreen.jsx';
 import { ForgotPasswordScreen } from './views/auth/ForgotPasswordScreen.jsx';
 import { isPasswordResetPath, clearResetMemory } from './lib/passwordReset.js';
@@ -161,11 +163,16 @@ export default function App() {
       return null;
     }
   });
-  // As duas telas públicas são desenhadas antes de qualquer outra proteção de
-  // erro, então cada uma leva a sua ScreenErrorBoundary.
+  // /avaliar/<academia>/<código> abre a pesquisa de NPS dos alunos (perfil do
+  // professor, PR 5). "avaliar" também é palavra reservada.
+  const [avaliarRoute] = useState(() => avaliarRouteOf(window.location.pathname));
+  // As telas públicas são desenhadas antes de qualquer outra proteção de erro,
+  // então cada uma leva a sua ScreenErrorBoundary.
   return (
     <ToastProvider>
-      {referralRoute
+      {avaliarRoute
+        ? <ScreenErrorBoundary><AvaliarScreen slug={avaliarRoute.slug} code={avaliarRoute.code} /></ScreenErrorBoundary>
+        : referralRoute
         ? <ScreenErrorBoundary><ReferralLandingScreen slug={referralRoute.slug} refId={referralRoute.refId} /></ScreenErrorBoundary>
         : invite.token && invite.tenantId
           ? <ScreenErrorBoundary><AcceptInviteScreen token={invite.token} tenantId={invite.tenantId} /></ScreenErrorBoundary>

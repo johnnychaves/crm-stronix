@@ -1,5 +1,5 @@
 // Confere, com o SDK do Sentry de verdade (não com um beforeSend espião),
-// que a chave do Zap, a chave do Resend e o telefone do lead não saem das
+// que a chave do Zap, a chave do Resend, o telefone do lead e o CPF da pesquisa de NPS não saem das
 // funções da api/, e prova que a própria verificação enxergaria se saíssem.
 //
 //   node scripts/verificar-vazamento-sentry.js
@@ -69,6 +69,7 @@ const RECUSA_RESEND = `O Resend recusou a chave ${CHAVE_RESEND}`;
 const TENANT = 'academia-verificacao';
 const TEL_BODY = '5511987654321'; // telefone do lote, no corpo do POST match
 const TEL_QUERY = '5521912345678'; // telefone do GET, na query
+const CPF_AVALIACAO = '52998224725'; // CPF da página /avaliar (pesquisa de NPS), no corpo do POST
 const CORPO_MARCA = 'CORPO_RECONHECIVEL_9f8e7d6c';
 const QUERY_GET = `?tenant=${TENANT}&phone=${TEL_QUERY}`;
 
@@ -77,6 +78,7 @@ const MARCAS = {
   'chave do resend': CHAVE_RESEND,
   'telefone do lote (corpo)': TEL_BODY,
   'telefone da query (GET)': TEL_QUERY,
+  'CPF da avaliação (corpo)': CPF_AVALIACAO,
   'query inteira do GET': QUERY_GET,
   'corpo reconhecivel': CORPO_MARCA,
 };
@@ -256,7 +258,7 @@ async function rodarRodada(variante) {
   });
   const esperar = (ms) => new Promise((ok) => setTimeout(ok, ms));
 
-  const corpoMatch = { action: 'match', tenant: TENANT, phones: [TEL_BODY], marca: CORPO_MARCA };
+  const corpoMatch = { action: 'match', tenant: TENANT, phones: [TEL_BODY], cpf: CPF_AVALIACAO, marca: CORPO_MARCA };
   const headersPadrao = { 'x-stronizap-key': CHAVE, 'content-type': 'application/json', 'user-agent': 'verificar-vazamento-sentry' };
   // R2 a R4 lançam direto no handler (formato "handler"): é o único jeito de
   // telefone(s) e chave estarem na pilha para a variável local vazar. R1
@@ -371,7 +373,7 @@ async function orquestrar() {
 
   const tudoOk = normal.ok && sabotagem.ok;
   console.log(tudoOk
-    ? 'Sentry não recebe a chave do Zap, a chave do Resend nem telefone, e a sabotagem prova que esta verificação enxergaria se recebesse.'
+    ? 'Sentry não recebe a chave do Zap, a chave do Resend, telefone nem CPF, e a sabotagem prova que esta verificação enxergaria se recebesse.'
     : 'FALHOU — ver o motivo de cada rodada acima.');
   process.exit(tudoOk ? 0 : 1);
 }
