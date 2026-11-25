@@ -17,7 +17,7 @@ const superMembro = { id: 'u3', authUid: 'uid-3', role: 'admin', tenantId: T, su
 describe('screenState', () => {
   it('tela comum: o menu acende a tela do endereço e não há ficha', () => {
     const s = screenState(parseAppPath(`/${T}/pipeline`), null, consultor);
-    expect(s).toEqual({ fichaOpen: false, profileLeadId: null, activeTab: 'kanban', resolvedTab: 'kanban', superTab: 'overview', sub: null, modelId: null });
+    expect(s).toEqual({ fichaOpen: false, profileLeadId: null, activeTab: 'kanban', resolvedTab: 'kanban', superTab: 'overview', sub: null, modelId: null, profId: null });
   });
 
   it('endereço curto da academia abre o Operacional', () => {

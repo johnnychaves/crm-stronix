@@ -45,6 +45,7 @@ export function screenState(shown, locationState, appUser) {
     superTab: shown?.superTab ?? 'overview',
     sub: def?.subs ? (shown.sub ?? def.subPadrao) : null,
     modelId: shown?.screen === 'rotinas' ? (shown.modelId ?? null) : null,
+    profId: shown?.screen === 'professorPerfil' ? (shown.profId ?? null) : null,
   };
 }
 

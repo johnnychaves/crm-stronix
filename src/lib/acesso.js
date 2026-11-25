@@ -98,8 +98,9 @@ export function can(user, action) {
 
 // Telas que o professor abre (ids de SCREENS, em src/lib/routes.js). As
 // outras mostram "Essa tela não está liberada para o seu acesso." e levam à
-// Meta diária.
-export const PROFESSOR_SCREENS = Object.freeze(['dailyGoal', 'clientes', 'ficha']);
+// Meta diária. O perfil de professor ele abre só no dele, com o módulo
+// (canAccess e a decisão de rota, em routes.js).
+export const PROFESSOR_SCREENS = Object.freeze(['dailyGoal', 'clientes', 'ficha', 'professorPerfil']);
 
 // Gestor e consultor passam aqui em toda tela: as travas de gestor e de
 // super-admin da tabela SCREENS continuam valendo no canAccess, como hoje.
