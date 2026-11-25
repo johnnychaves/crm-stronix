@@ -12,6 +12,7 @@ import { formatCPF, formatPhone } from './masks.js';
 import { parseValorBRL } from './format.js';
 import { buildLeadSearchFields, deriveLeadBucket } from './leadDerived.js';
 import { isClientLead } from './leads.js';
+import { professorChangePatch } from './professorHistory.js';
 import { CLEAR_IN_USE_BLOCK, CONTRACT_STATUS, deriveContractStatus } from './contracts.js';
 import { DEFAULT_EXPIRED_WINDOW_DAYS } from './expiredGoal.js';
 
@@ -417,8 +418,7 @@ export const buildFillPatch = (c, lead) => {
     if (Object.keys(adds).length) patch.address = { ...cur, ...adds };
   }
   if (blank(lead.professorId) && c.professorId) {
-    patch.professorId = c.professorId;
-    patch.professorName = c.professorName;
+    Object.assign(patch, professorChangePatch(lead, c.professorId, c.professorName));
   }
   if (c.vip && !(lead.tags || []).includes('VIP')) patch.tags = [...(lead.tags || []), 'VIP'];
   if (patch.whatsapp || patch.cpf) {
