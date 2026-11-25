@@ -30,8 +30,9 @@ function contaNaSemana(contratos, segunda) {
   return true;
 }
 
-// [{ semana, contam, aderentes, umaPresenca, nenhuma, taxa }], da semana mais
-// nova para a mais antiga.
+// [{ semana, contam, aderentes, umaPresenca, nenhuma, taxa, umaIds, nenhumaIds }],
+// da semana mais nova para a mais antiga. umaIds e nenhumaIds são os leads que
+// vieram uma vez e os que não vieram: o "Ver quem chamar" da aba.
 export function aderenciaPorSemana({ presencas, leads, contratos, planos, professor, asOf = new Date(), barra = BARRA_PADRAO }) {
   const porChave = new Map();
   const semanas = new Set();
@@ -46,15 +47,14 @@ export function aderenciaPorSemana({ presencas, leads, contratos, planos, profes
   [...semanas].sort().reverse().forEach((semana) => {
     const segunda = fromDateInputValue(semana);
     if (!segunda || dia(segunda, 5) > asOf) return;
-    const linha = { semana, contam: 0, aderentes: 0, umaPresenca: 0, nenhuma: 0 };
+    const linha = { semana, contam: 0, aderentes: 0, umaPresenca: 0, nenhuma: 0, umaIds: [], nenhumaIds: [] };
     daModalidade.forEach((lista, leadId) => {
       const lead = leadsById.get(leadId);
       if (!lead || professorAt(lead, segunda) !== professor?.id || !contaNaSemana(lista, segunda)) return;
       const n = porChave.get(`${leadId}_${semana}`) || 0;
       linha.contam += 1;
       if (n >= barra) linha.aderentes += 1;
-      else if (n === 1) linha.umaPresenca += 1;
-      else if (n === 0) linha.nenhuma += 1;
+      else if (n === 1) { linha.umaPresenca += 1; linha.umaIds.push(leadId); } else if (n === 0) { linha.nenhuma += 1; linha.nenhumaIds.push(leadId); }
     });
     linhas.push({ ...linha, taxa: pct(linha.aderentes, linha.contam) });
   });
@@ -81,4 +81,13 @@ export function aderenciaDoAno(linhas, ciclo, asOf = new Date()) {
   const semestres = semestresDoCiclo(ciclo).map((s) => ({ ...s, fechado: s.fim <= asOf, ...aderenciaDoSemestre(linhas, s) }));
   const taxas = semestres.filter((s) => s.fechado && s.taxa != null).map((s) => s.taxa);
   return { semestres, nota: taxas.length ? Math.round(taxas.reduce((a, b) => a + b, 0) / taxas.length) : null };
+}
+
+// O número da lista e do placar: a nota do ano quando já há semestre fechado;
+// antes disso, a taxa do semestre em andamento (emAndamento). Null sem semana.
+export function aderenciaResumo(linhas, ciclo, asOf = new Date()) {
+  const ano = aderenciaDoAno(linhas, ciclo, asOf);
+  if (ano.nota != null) return { ...ano, taxa: ano.nota, emAndamento: false };
+  const atual = [...ano.semestres].reverse().find((sm) => sm.inicio <= asOf && sm.taxa != null) ?? null;
+  return { ...ano, taxa: atual?.taxa ?? null, emAndamento: atual != null };
 }
