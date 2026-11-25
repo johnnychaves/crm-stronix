@@ -10,7 +10,7 @@
 
 ## Decisões deste plano
 
-1. **O relatório real ainda não chegou.** Os nomes das colunas são procurados por apelido (CPF, data, situação, modalidade), e o script para e lista o cabeçalho quando não acha a coluna. Com o primeiro relatório de verdade, os apelidos são conferidos e a simulação roda (é o que fecha o PR).
+1. **Colunas conferidas com o relatório real** ("Presenças por contrato", 25/11/2026): Cliente/Oportunidade, Grade, Tipo, Contrato, Instrutor, Local, Data inicial, Data final e Situação. O relatório não traz CPF, então o script recebe a lista de clientes da Next Fit (`--clientes`) e pega o CPF pelo nome cadastrado lá. Só "Presente" conta.
 2. **Período explícito.** O script pede `--de` e `--ate`, o período do relatório, e só grava as semanas inteiras dentro dele, para um relatório que corta a semana no meio não gravar uma contagem pela metade. Regravar a mesma semana troca o número (o id é `{leadId}_{segunda}`).
 3. **Só de segunda a sexta, só funcional, só presença.** Linha de sábado ou domingo, de outra modalidade ou com a situação de falta fica fora e entra no resumo.
 4. **Casamento pelo CPF.** O CPF da linha procura `cpfDigits` nos leads da academia. Com mais de um lead, vale o cliente; se ainda sobrar mais de um, a linha vai para as pendências. Linha sem CPF ou sem lead também. Nada é casado pelo nome.

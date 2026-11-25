@@ -5,17 +5,19 @@
 // soma as presenças de cada CPF por semana (a segunda-feira, 'AAAA-MM-DD').
 import { fromDateInputValue, toDateInputValue } from '../dates.js';
 
-// shortcut: os apelidos das colunas foram escritos sem um relatório de verdade
-// na mão; quando o primeiro chegar, confira e acrescente o nome que faltar.
+// Conferidos com o relatório "Presenças por contrato" de 25/11/2026 (colunas
+// Cliente/Oportunidade, Grade, Tipo, Contrato, Instrutor, Local, Data inicial,
+// Data final, Situação). Esse relatório não traz o CPF: ele vem da lista de
+// clientes da Next Fit, pelo nome cadastrado lá (cpfPorNome).
 export const APELIDOS = Object.freeze({
   cpf: ['cpf', 'cpf do cliente', 'documento'],
-  data: ['data', 'data da aula', 'data/hora', 'data e hora', 'dia', 'data da presença'],
+  data: ['data', 'data inicial', 'data da aula', 'data/hora', 'data e hora', 'dia', 'data da presença'],
   situacao: ['situação', 'situacao', 'status', 'presença', 'presenca'],
-  modalidade: ['modalidade', 'atividade', 'aula', 'serviço', 'servico', 'agenda'],
-  nome: ['cliente', 'nome', 'nome do cliente', 'aluno'],
+  modalidade: ['modalidade', 'atividade', 'aula', 'serviço', 'servico', 'agenda', 'grade'],
+  nome: ['cliente/oportunidade', 'cliente', 'nome', 'nome do cliente', 'aluno'],
 });
-const PRESENTE_RE = /presen|compareceu|check|realizad|confirmad|sim/i;
-const FALTA_RE = /falt|ausen|não|nao|cancel/i;
+// Só "Presente" conta. Falta, Falta justificada, Desistente e Bloqueado, não.
+const PRESENTE_RE = /^\s*presen/i;
 
 const normal = (s) => String(s ?? '').trim().toLowerCase();
 
@@ -66,11 +68,30 @@ export function semanasInteiras(de, ate) {
 
 const soDigitos = (v) => String(v ?? '').replace(/\D/g, '');
 
+// O nome como chave: sem espaço nas pontas, espaços repetidos viram um e sem
+// caixa. Os acentos ficam, para dois nomes diferentes não virarem um.
+export const chaveDoNome = (v) => String(v ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+
+// Nome → CPF pela lista de clientes da Next Fit (colunas Nome e CPF). O nome
+// que aparece com dois CPFs diferentes fica null: vai para as pendências.
+export function cpfPorNome(clientes, { nome = 'Nome', cpf = 'CPF' } = {}) {
+  const mapa = new Map();
+  (clientes || []).forEach((c) => {
+    const k = chaveDoNome(c[nome]);
+    const d = soDigitos(c[cpf]);
+    if (!k || d.length !== 11) return;
+    if (mapa.has(k) && mapa.get(k) !== d) mapa.set(k, null);
+    else if (!mapa.has(k)) mapa.set(k, d);
+  });
+  return mapa;
+}
+
 // Soma as presenças de cada CPF por semana. `linhas` são objetos com as chaves
 // do cabeçalho. Devolve { contagem: Map('cpf_semana' → n), resumo, semCpf },
 // em que semCpf são as linhas de presença sem CPF de 11 dígitos (para as
 // pendências) e o resumo conta o que ficou fora e por quê.
-export function presencasDoRelatorio(linhas, colunas, { de, ate, modalidade = /funcional/i } = {}) {
+// Sem coluna de CPF no relatório, o CPF vem de `cpfPorNome` (o mapa acima).
+export function presencasDoRelatorio(linhas, colunas, { de, ate, modalidade = /funcional/i, cpfPorNome: porNome = null } = {}) {
   const semanas = new Set(semanasInteiras(de, ate));
   const contagem = new Map();
   const semCpf = [];
@@ -80,14 +101,14 @@ export function presencasDoRelatorio(linhas, colunas, { de, ate, modalidade = /f
     if (colunas.modalidade && !modalidade.test(String(l[colunas.modalidade] ?? ''))) { resumo.outraModalidade += 1; return; }
     if (colunas.situacao) {
       const s = String(l[colunas.situacao] ?? '');
-      if (FALTA_RE.test(s) || !PRESENTE_RE.test(s)) { resumo.falta += 1; return; }
+      if (!PRESENTE_RE.test(s)) { resumo.falta += 1; return; }
     }
     const dia = diaDaAula(l[colunas.data]);
     if (!dia) { resumo.semData += 1; return; }
     if (dia.getDay() === 0 || dia.getDay() === 6) { resumo.fimDeSemana += 1; return; }
     const semana = semanaDe(dia);
     if (!semanas.has(semana)) { resumo.foraDoPeriodo += 1; return; }
-    const cpf = soDigitos(l[colunas.cpf]);
+    const cpf = colunas.cpf ? soDigitos(l[colunas.cpf]) : (porNome?.get(chaveDoNome(l[colunas.nome])) ?? '');
     if (cpf.length !== 11) { resumo.semCpf += 1; semCpf.push(l); return; }
     resumo.presencas += 1;
     const k = `${cpf}_${semana}`;

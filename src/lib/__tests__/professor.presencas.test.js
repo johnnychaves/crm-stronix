@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  casarComLeads, colunasDoRelatorio, diaDaAula, presencasDoRelatorio, semanaDe, semanasInteiras,
+  casarComLeads, colunasDoRelatorio, cpfPorNome, diaDaAula, presencasDoRelatorio, semanaDe, semanasInteiras,
 } from '../professor/presencas.js';
 
 const CPF_A = '52998224725';
@@ -72,5 +72,34 @@ describe('casarComLeads', () => {
       semLead: ['12345678909'],
       duplicados: [CPF_B],
     });
+  });
+});
+
+describe('o relatório Presenças por contrato, sem CPF', () => {
+  const CAB = ['Cliente/Oportunidade', 'Grade', 'Tipo', 'Contrato', 'Motivo: {{motivo}}', 'Instrutor', 'Instrutor auxiliar', 'Local', 'Data inicial', 'Data final', 'Situação'];
+  const linha = (nome, data, situacao = 'Presente') => ({ 'Cliente/Oportunidade': nome, Grade: 'Treinamento Funcional I Heloisa', 'Data inicial': data, Situação: situacao });
+
+  it('acha as colunas do relatório real, sem a de CPF', () => {
+    expect(colunasDoRelatorio(CAB)).toEqual({ cpf: null, data: 'Data inicial', situacao: 'Situação', modalidade: 'Grade', nome: 'Cliente/Oportunidade' });
+  });
+
+  it('o CPF vem da lista de clientes pelo nome cadastrado; nome repetido com dois CPFs fica de fora', () => {
+    const porNome = cpfPorNome([
+      { Nome: 'Ana  Lima ', CPF: '529.982.247-25' },
+      { Nome: 'Caio Prates', CPF: CPF_B },
+      { Nome: 'Caio Prates', CPF: '12345678909' },
+      { Nome: 'Sem Cpf', CPF: '' },
+    ]);
+    expect(porNome.get('ana lima')).toBe(CPF_A);
+    expect(porNome.get('caio prates')).toBeNull();
+    expect(porNome.has('sem cpf')).toBe(false);
+    const col = colunasDoRelatorio(CAB);
+    const r = presencasDoRelatorio([
+      linha('Ana Lima', '03/11/2026 18:00'), linha('ANA LIMA', '05/11/2026 07:00'),
+      linha('Ana Lima', '04/11/2026 18:00', 'Falta justificada'), linha('Ana Lima', '04/11/2026 18:00', 'Desistente'),
+      linha('Caio Prates', '04/11/2026 18:00'), linha('Fora da Lista', '04/11/2026 18:00'),
+    ], col, { de: '2026-11-02', ate: '2026-11-06', cpfPorNome: porNome });
+    expect([...r.contagem.entries()]).toEqual([[`${CPF_A}_2026-11-02`, 2]]);
+    expect(r.resumo).toMatchObject({ presencas: 2, falta: 2, semCpf: 2 });
   });
 });

@@ -9,6 +9,11 @@
 // período do relatório, para um relatório que corta a semana não gravar uma
 // contagem pela metade.
 //
+// O relatório "Presenças por contrato" não traz o CPF. Ele vem da lista de
+// clientes da Next Fit (--clientes=<exportação com as colunas Nome e CPF>), pelo
+// nome exatamente como está cadastrado lá. Nome repetido com dois CPFs vai para
+// as pendências.
+//
 // SEM --apply NÃO GRAVA NADA: mostra o que gravaria. A saída só traz
 // contagens. A lista de pendências (linha sem CPF, CPF sem lead, CPF com mais
 // de um cadastro), com nome e CPF para a recepção acertar, só sai num arquivo,
@@ -17,13 +22,13 @@
 // Uso (mesmas credenciais Admin das funções api/):
 //   node --env-file=.env.local scripts/import-presencas.js <relatorio.xlsx|csv> \
 //     --tenant=stronix-crm-app --de=2026-11-01 --ate=2026-11-30 \
-//     [--pendencias=/caminho/pendencias.csv] [--apply]
+//     --clientes=<clientes.xlsx> [--pendencias=/caminho/pendencias.csv] [--apply]
 import { readFileSync, writeFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import process from 'node:process';
 import admin from 'firebase-admin';
 import * as XLSX from 'xlsx';
-import { casarComLeads, colunasDoRelatorio, presencasDoRelatorio } from '../src/lib/professor/presencas.js';
+import { casarComLeads, colunasDoRelatorio, cpfPorNome, presencasDoRelatorio } from '../src/lib/professor/presencas.js';
 
 const args = process.argv.slice(2);
 const arquivo = args.find((a) => !a.startsWith('--'));
@@ -33,6 +38,7 @@ const tenant = opt('tenant');
 const de = opt('de');
 const ate = opt('ate');
 const pendencias = opt('pendencias');
+const clientes = opt('clientes');
 const DIA_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 if (!arquivo || !tenant || !DIA_RE.test(de || '') || !DIA_RE.test(ate || '')) {
@@ -40,19 +46,27 @@ if (!arquivo || !tenant || !DIA_RE.test(de || '') || !DIA_RE.test(ate || '')) {
   process.exit(1);
 }
 
-const livro = XLSX.read(readFileSync(arquivo), { cellDates: true });
-const folha = livro.Sheets[livro.SheetNames[0]];
-const linhas = XLSX.utils.sheet_to_json(folha, { defval: '' });
+const lerPlanilha = (f) => {
+  const livro = XLSX.read(readFileSync(f), { cellDates: true });
+  return XLSX.utils.sheet_to_json(livro.Sheets[livro.SheetNames[0]], { defval: '' });
+};
+const linhas = lerPlanilha(arquivo);
 const cabecalho = linhas.length ? Object.keys(linhas[0]) : [];
 const colunas = colunasDoRelatorio(cabecalho);
-if (!colunas.cpf || !colunas.data) {
-  console.error(`Não achei a coluna de ${!colunas.cpf ? 'CPF' : 'data'} no relatório. Colunas: ${cabecalho.join(' | ')}`);
+if (!colunas.data || (!colunas.cpf && !colunas.nome)) {
+  console.error(`Não achei a coluna de ${!colunas.data ? 'data' : 'CPF nem a de nome'} no relatório. Colunas: ${cabecalho.join(' | ')}`);
   console.error('Acrescente o nome em APELIDOS, em src/lib/professor/presencas.js.');
   process.exit(1);
 }
 console.log('Colunas usadas:', colunas);
+if (!colunas.cpf && !clientes) {
+  console.error('O relatório não tem CPF: passe a lista de clientes da Next Fit com --clientes=<arquivo> (colunas Nome e CPF).');
+  process.exit(1);
+}
+const porNome = colunas.cpf ? null : cpfPorNome(lerPlanilha(clientes));
+if (porNome) console.log(`Lista de clientes: ${porNome.size} nomes com CPF.`);
 
-const { contagem, resumo, semCpf, semanas } = presencasDoRelatorio(linhas, colunas, { de, ate });
+const { contagem, resumo, semCpf, semanas } = presencasDoRelatorio(linhas, colunas, { de, ate, cpfPorNome: porNome });
 console.log('Semanas inteiras no período:', semanas.join(', ') || 'nenhuma');
 console.log('Linhas do relatório:', resumo);
 
@@ -74,7 +88,7 @@ for (let i = 0; i < cpfs.length; i += 30) {
 }
 const { registros, semLead, duplicados } = casarComLeads(contagem, leads);
 const alunos = new Set(registros.map((r) => r.leadId)).size;
-console.log(`Casados: ${registros.length} registros de ${alunos} alunos. CPF sem cadastro: ${semLead.length}. CPF com mais de um cadastro: ${duplicados.length}. Linhas sem CPF: ${semCpf.length}.`);
+console.log(`Casados: ${registros.length} registros de ${alunos} alunos. CPF sem cadastro no Stronilead: ${semLead.length}. CPF com mais de um cadastro: ${duplicados.length}. Presenças sem CPF: ${semCpf.length} (${new Set(semCpf.map((l) => String(l[colunas.nome] ?? ''))).size} pessoas).`);
 
 if (pendencias) {
   const nome = (l) => String(l[colunas.nome] ?? '').replace(/[;\n]/g, ' ');
@@ -86,7 +100,8 @@ if (pendencias) {
   const saida = ['motivo;nome;cpf'];
   semLead.forEach((c) => saida.push(`CPF sem cadastro no Stronilead;${porCpf.get(c) ?? ''};${c}`));
   duplicados.forEach((c) => saida.push(`CPF em mais de um cadastro;${porCpf.get(c) ?? ''};${c}`));
-  semCpf.forEach((l) => saida.push(`Linha sem CPF;${nome(l)};`));
+  const motivoSemCpf = porNome ? 'Nome sem CPF na lista de clientes da Next Fit (ou repetido)' : 'Linha sem CPF';
+  [...new Set(semCpf.map(nome))].forEach((n) => saida.push(`${motivoSemCpf};${n};`));
   writeFileSync(pendencias, `${saida.join('\n')}\n`);
   console.log(`Pendências gravadas em ${pendencias} (${saida.length - 1} linhas).`);
 }
