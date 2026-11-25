@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { APPTS_COMPLETE_MONTH as DO_CRM } from '../crm/scope.js';
-import { APPTS_COMPLETE_MONTH, conversaoDoCiclo } from '../professor/conversao.js';
+import { APPTS_COMPLETE_MONTH, conversaoDoCiclo, pessoasDasAulas } from '../professor/conversao.js';
 
 const ASOF = new Date('2027-06-15T12:00:00');
 let seq = 0;
@@ -96,5 +96,27 @@ describe('conversaoDoCiclo', () => {
     expect(conversaoDoCiclo({ aulas: [], contratos: [], professorId: 'p1', ciclo: 2026, asOf: ASOF }).incompleto).toBe(true);
     expect(conta([], []).incompleto).toBe(false);
     expect(APPTS_COMPLETE_MONTH).toBe(DO_CRM);
+  });
+});
+
+describe('pessoasDasAulas', () => {
+  it('uma linha por pessoa do professor, com a última aula e a janela marcada', () => {
+    const r = pessoasDasAulas({
+      aulas: [
+        aula('ana', { scheduledFor: new Date('2027-03-03T18:00:00'), leadName: 'Ana', modality: 'Funcional' }),
+        aula('ana', { converted: true, leadName: 'Ana', modality: 'Funcional' }),
+        aula('bia', { scheduledFor: new Date('2027-06-01T18:00:00'), leadName: 'Bia' }),
+        aula('caio', { professorId: 'p2' }),
+        aula('dani', { status: 'no_show' }),
+      ],
+      contratos: [pago('ana')], professorId: 'p1', ciclo: 2027, asOf: ASOF,
+    });
+    expect(r.map((p) => [p.leadId, p.matriculou, p.naJanela])).toEqual([['bia', false, true], ['ana', true, false]]);
+    expect(r[1]).toMatchObject({ nome: 'Ana', modalidade: 'Funcional', ultima: new Date('2027-03-10T18:00:00') });
+  });
+
+  it('a janela é parâmetro', () => {
+    const r = pessoasDasAulas({ aulas: [aula('bia', { scheduledFor: new Date('2027-06-01T18:00:00') })], contratos: [], professorId: 'p1', ciclo: 2027, asOf: ASOF, janelaDias: 10 });
+    expect(r[0].naJanela).toBe(false);
   });
 });
