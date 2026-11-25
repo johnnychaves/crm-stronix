@@ -51,7 +51,7 @@ Os arquivos não importam pacote nem tela, porque a `api/` do PR 5 lê a carteir
 - O rótulo "Stronix 2.0" no `TenantModulesCard.jsx`.
 - `SCREENS.professores` em `src/lib/routes.js`, com as sub-telas `pesquisas` e `metas` e o perfil em `perfil/<id>/<aba>`, lido à parte como o modelo de rotina. `professores` entra em `RESERVED_TENANT_SLUGS`. O id do professor ganha expressão no `sentryScrub.js`.
 - Menu: "Professores" para o gestor e "Meu perfil" para o professor, pelo `sidebarNav`, e o `canOpenScreen` deixa o professor abrir só o próprio perfil.
-- `stronix_professores` ganha `nivel`, `nivelDesde` e `npsCode`. `stronix_config/carreira` guarda as metas de renovação por nível, a barra (2) e a faixa (60% a 70%) da aderência e, da conversão, a janela (30 dias) e a tolerância (0), a meta do NPS (9). Só a renovação tem meta por nível.
+- `stronix_professores` ganha `nivel`, `nivelDesde`, `npsCode` e a foto (`photoUrl` e `photoPath`, pelo processamento do `leadPhoto.js` e o `PhotoCaptureMenu`, em `tenants/<academia>/professores/<id>/avatar.jpg`). A regra nova do Storage para esse caminho é publicada no console antes do merge. `stronix_config/carreira` guarda as metas de renovação por nível, a barra (2) e a faixa (60% a 70%) da aderência e, da conversão, a janela (30 dias) e a tolerância (0), a meta do NPS (9). Só a renovação tem meta por nível.
 - A lista, as metas e o perfil com as abas Carteira e Aulas experimentais. O ciclo vai no endereço pela tabela do `screenParams.js`.
 - O perfil segue o mockup B (`docs/superpowers/specs/mockups/2026-11-24-perfil-professor-b.html` e `-b-professor.html`, na branch `claude/mockup-perfil-professor-1d3637`, que precisa entrar neste PR). A lista de professores e as metas ainda pedem mockup antes.
 
@@ -68,7 +68,7 @@ Os arquivos não importam pacote nem tela, porque a `api/` do PR 5 lê a carteir
 ### PR 5: página pública
 
 - Antes de começar, com o OK do Johnny: uma contagem só de leitura de quantos clientes do funcional têm CPF no cadastro, sem listar CPF.
-- As ações `nps-info`, `nps-check` e `nps-answer` na `api/tenant-resolve.js`, com limite largo por IP e limite por link, piso de tempo e erro sem CPF no Sentry. O `verificar:sentry` ganha o CPF entre os valores plantados.
+- As ações `nps-info` (com a foto e o primeiro nome do professor; o link inválido não devolve nenhum dos dois), `nps-check` e `nps-answer` na `api/tenant-resolve.js`, com limite largo por IP e limite por link, piso de tempo e erro sem CPF no Sentry. O `verificar:sentry` ganha o CPF entre os valores plantados.
 - A página `/avaliar/<academia>/<código>` decidida no `App()`, fora do roteador, com `ScreenErrorBoundary`. `avaliar` entra em `RESERVED_TENANT_SLUGS`.
 - Testes da rota com o banco falso que imita o SDK de servidor e testes de comportamento da página em jsdom.
 

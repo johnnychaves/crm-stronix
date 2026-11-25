@@ -53,7 +53,7 @@ O histórico fica no próprio lead porque as contas rodam sobre os leads que o a
 
 ### Nível e metas
 
-- `stronix_professores/{id}`: ganha `nivel` (`junior`, `pleno` ou `senior`), `nivelDesde` (data) e `npsCode` (o código do link público, 10 caracteres aleatórios de letras e números).
+- `stronix_professores/{id}`: ganha `nivel` (`junior`, `pleno` ou `senior`), `nivelDesde` (data), `npsCode` (o código do link público, 10 caracteres aleatórios de letras e números) e a foto, em `photoUrl` e `photoPath`, como a do cliente. A foto passa pelo mesmo processamento do `src/lib/leadPhoto.js` (recorte quadrado de até 512 px em JPEG) e sobe para `tenants/<academia>/professores/<id>/avatar.jpg`, com o menu de foto da ficha (`PhotoCaptureMenu`).
 - `stronix_config/carreira`: as médias esperadas por nível da renovação, editadas pelo gestor, a barra e a faixa da aderência e a janela da conversão. Começa com renovação em 45, 55 e 65% (a confirmar), a barra em 2 aulas por semana, a faixa da aderência em 60% a 70% e a janela da conversão em 30 dias (proposta). A conversão tem mais um parâmetro: a tolerância abaixo da academia, em pontos, com valor 0. A meta do NPS também fica ali, com valor 9. O NPS, a conversão e a aderência não têm meta por nível.
 
 ### Pesquisa de NPS
@@ -91,7 +91,7 @@ Todas só com o módulo ligado. Sem ele, os endereços caem em "Não achamos ess
 
 ### Lista de professores
 
-- Uma linha por professor ativo: nome, nível e os quatro critérios resumidos, cada um contra a média esperada do nível ("Renovação 60%, esperado 45%").
+- Uma linha por professor ativo: foto (ou iniciais), nome, nível e os quatro critérios resumidos, cada um contra a média esperada do nível ("Renovação 60%, esperado 45%").
 - No topo, o cartão da pesquisa: "Aberta até 20/06" ou "Nenhuma pesquisa aberta", com o botão que leva às pesquisas.
 
 ### Pesquisas
@@ -101,7 +101,7 @@ Todas só com o módulo ligado. Sem ele, os endereços caem em "Não achamos ess
 
 ### Perfil
 
-- **Cabeçalho:** nome, nível e desde quando, modalidades e o link do NPS, com "Copiar link", "Baixar QR code" e "Gerar novo link". O gestor troca o nível ali.
+- **Cabeçalho:** a foto (ou as iniciais), nome, nível e desde quando, modalidades e o link do NPS, com "Copiar link", "Baixar QR code" e "Gerar novo link". O gestor troca o nível ali e a foto pelo botão de câmera sobre ela.
 - **Faixa dos critérios:** renovação, NPS, conversão e aderência. A renovação mostra a média esperada do nível embaixo, a conversão mostra "8 de 15" com a conversão da academia ao lado ("academia 45%") e se ficou acima ou abaixo dela, e o NPS mostra a média (por exemplo 9,33) com "meta 9" e, menor, a porcentagem de promotores. A aderência mostra a nota do ano (a média dos semestres), a taxa do semestre em andamento, a barra ("2 ou mais aulas por semana") e a faixa de 60% a 70% ao lado. Nenhum critério além da renovação mostra meta por nível. O período é o ciclo de dezembro a novembro, com seta para o ciclo anterior. O ciclo vai no endereço (`ciclo=2026`), na tabela do `screenParams.js`.
 - **Carteira:** os alunos com plano, vencimento e situação (a vencer, renovou, não renovou), com filtro em pílulas, no padrão das outras telas. O nome abre a ficha (`LeadLink`). Quem não tem CPF no cadastro leva um aviso, porque não consegue responder o NPS, e o topo da aba diz quantos são.
 - **Aulas experimentais:** as pessoas que vieram no ciclo, por aula experimental ou freepass, com a data, se se matricularam e quais ainda estão nos 30 dias.
@@ -113,9 +113,9 @@ Todas só com o módulo ligado. Sem ele, os endereços caem em "Não achamos ess
 
 `/avaliar/<academia>/<código>`, pensada para o celular. `avaliar` entra em `RESERVED_TENANT_SLUGS`, e o `App()` decide a página antes do roteador, como a indicação pública.
 
-1. A logo da academia e "Avalie as aulas do professor Bruno". Sem pesquisa aberta: "Nenhuma pesquisa aberta agora.".
+1. A logo da academia, a foto grande do professor (ou as iniciais) e "Professor Bruno, Studio Funcional". Sem pesquisa aberta, a foto continua e a página diz "Nenhuma pesquisa aberta agora.". O link inválido não mostra foto nem nome, porque a resposta dele é igual para todos.
 2. O CPF, conferido no formato e nos dígitos verificadores antes de enviar. Embaixo, o texto: "Usamos o seu CPF só para confirmar que você é aluno e para que cada pessoa responda uma vez. A gestão da academia vê a sua resposta. O professor vê só o resultado da turma, sem nomes."
-3. "Oi, Ana!", as perguntas com 11 botões de 0 a 10 e o comentário opcional.
+3. "Oi, Ana!", as perguntas com 11 botões de 0 a 10 e o comentário opcional. Em cada pergunta, a foto pequena com "Avaliando o professor Bruno".
 4. "Obrigado! Sua resposta foi registrada."
 
 Mensagens de recusa: "Não encontramos esse CPF na turma deste professor. Confira com a recepção." (a mesma para CPF que não existe, para quem não é cliente e para quem é de outra carteira) e "Você já respondeu esta pesquisa.".
@@ -124,7 +124,7 @@ Mensagens de recusa: "Não encontramos esse CPF na turma deste professor. Confir
 
 Três ações novas na `api/tenant-resolve.js`, sem função nova:
 
-- `nps-info` `{ slug, code }`: marca da academia, primeiro nome do professor, se há pesquisa aberta e as perguntas.
+- `nps-info` `{ slug, code }`: marca da academia, primeiro nome do professor, a modalidade, a `photoUrl` (link de download do Storage, que abre sem login), se há pesquisa aberta e as perguntas. Com link inválido, nada disso volta.
 - `nps-check` `{ slug, code, cpf }`: confere e devolve o primeiro nome do aluno, ou o motivo da recusa.
 - `nps-answer` `{ slug, code, cpf, notas, comentario, website }`: confere tudo de novo e grava a resposta e os totais numa transação.
 
@@ -145,6 +145,7 @@ Todas as coleções novas exigem `hasModule(appId, 'faltosos')` além das regras
 - `stronix_nps_totais`: o gestor lê todos, o professor lê os do próprio `professorId`. Ninguém grava pelo navegador.
 - `stronix_presencas`: o membro lê. Ninguém grava pelo navegador.
 - `stronix_config/carreira`: segue a regra de `stronix_config`.
+- Foto do professor: o documento `stronix_professores` já é gravado só pelo gestor. No Storage, o caminho `tenants/<academia>/professores/<id>/avatar.jpg` precisa de regra nova (gravar e apagar só o gestor, até 2 MB, só imagem), publicada no console junto com as de Firestore, porque as regras do Storage não estão no repositório.
 - `professorHistory` no lead: não muda regra. O consultor e o gestor já gravam qualquer campo do lead, e o campo fica fora da `professorLeadFields()`, então o professor não troca o próprio aluno.
 
 As regras são publicadas à mão no console, com o OK do Johnny, antes do merge do PR que as usa.
@@ -193,3 +194,4 @@ Os PRs 1 a 5 cabem até março de 2027. Abril e maio ficam para testar com a Hel
 - No NPS: a qual ciclo a pesquisa de dezembro pertence. A proposta é o ciclo que terminou em novembro daquele ano, o que vai ser avaliado naquele dezembro.
 - Conferir se a cláusula de LGPD do contrato do aluno cobre pesquisa de satisfação. Se não cobrir, uma linha a mais no contrato resolve.
 - Quantos clientes do funcional têm CPF no cadastro (contagem antes do PR 5).
+- Autorização de imagem: a foto aparece num link aberto, então vale ter a autorização por escrito de cada professor antes de subir a foto. Sem ela, ficam as iniciais.
