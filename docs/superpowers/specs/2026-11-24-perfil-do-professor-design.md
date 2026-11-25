@@ -29,7 +29,7 @@ Decididas pelo Johnny em 24/11/2026, na conversa que gerou esta spec.
 10. **Aderência:** a conta é por aluno-semana (de segunda a sexta), sem os trancados, pelo relatório de Presenças da Next Fit. A semana é aderente com 2 ou mais presenças na aula de funcional. A barra fica configurável, com o valor 2 decidido. A meta é a faixa de 60% a 70%, igual para os três níveis. A aderência é medida por semestre, e a nota do ano é a média dos dois semestres (decisões do Johnny, 24/11/2026). Os semestres são de janeiro a junho e de julho a dezembro (decisão do Johnny, 25/11/2026). Como a avaliação é em dezembro, antes de o segundo semestre fechar, nela o segundo semestre conta até 30 de novembro, o fim do ciclo, e os quatro critérios saem juntos.
 11. **Conversão:** freepass e aula experimental contam juntos. A taxa é matrículas ÷ pessoas que vieram (decisão do Johnny, 24/11/2026). Só contrato pago conta como matrícula. O padrão é a conversão do professor ficar acima da conversão geral da academia, calculada pelo total da academia, sem folga: a tolerância fica na configuração com valor 0, para o Johnny abrir uma folga depois. Vale igual para os três níveis, e não há mínimo de pessoas no ano.
 12. **Só a renovação tem meta por nível** (45, 55 e 65%). A nota dos alunos, a conversão e a aderência valem igual para Júnior, Pleno e Sênior. O plano de reciclagem fica só no documento do plano de carreira e não entra no Stronilead (confirmação do Johnny, 25/11/2026). A ocupação da turma fica fora do perfil.
-13. **Foto do professor** (pedido do Johnny depois de ver os mockups, 25/11/2026). Aparece no cabeçalho do perfil, na lista de professores e na página pública do NPS. Só o gestor troca. Sem foto, ficam as iniciais.
+13. **Foto do professor** (pedido do Johnny depois de ver os mockups, 25/11/2026). Aparece no cabeçalho do perfil, na lista de professores e na página pública do NPS. Só o gestor troca. Sem foto, ficam as iniciais. Não precisa de autorização de imagem por escrito (Johnny, 25/11/2026).
 
 ## O que já existe no código
 
@@ -194,4 +194,3 @@ Os PRs 1 a 5 cabem até março de 2027. Abril e maio ficam para testar com a Hel
 - Na conversão: a janela de 30 dias.
 - Conferir se a cláusula de LGPD do contrato do aluno cobre pesquisa de satisfação. Se não cobrir, uma linha a mais no contrato resolve.
 - Quantos clientes do funcional têm CPF no cadastro (contagem antes do PR 5).
-- Autorização de imagem: a foto aparece num link aberto, então vale ter a autorização por escrito de cada professor antes de subir a foto. Sem ela, ficam as iniciais.
