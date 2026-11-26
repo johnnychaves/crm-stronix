@@ -11,7 +11,7 @@ import { npsLinkDe } from '../../lib/npsLink.js';
 import { gerarNovoLink } from '../../lib/npsWrites.js';
 import { baixarQr } from '../../lib/qrPng.js';
 import { npsDoCiclo } from '../../lib/professor/pesquisas.js';
-import { cicloDe } from '../../lib/professor/ciclo.js';
+import { cicloDe, limitesDoCiclo, semestresDoCiclo } from '../../lib/professor/ciclo.js';
 import { conversaoDoCiclo, pessoasDasAulas } from '../../lib/professor/conversao.js';
 import { carteiraDoCiclo, renovacaoDoCiclo } from '../../lib/professor/renovacao.js';
 import { aderenciaPorSemana, aderenciaResumo } from '../../lib/professor/aderencia.js';
@@ -43,7 +43,7 @@ export function ProfessorPerfilView({ db, appUser, tenantId, profId, tab, onTab,
   const [agora] = useState(() => new Date());
   const ctx = useMemo(() => ({ cicloAtual: cicloDe(agora) }), [agora]);
   const [{ ciclo }, setParams] = useScreenParams('professorPerfil', ctx);
-  const { carregando, erro, professores, planos, contratos, clientes, aulas, presencas, metas } = useProfessoresDados({ db, ciclo, listenersActive });
+  const { carregando, erro, professores, planos, contratos, clientes, aulas, presencas, metas, trilhaProfessor } = useProfessoresDados({ db, ciclo, listenersActive });
   const { modalities } = useGeneralConfig();
 
   const pode = isGestor(appUser);
@@ -58,8 +58,9 @@ export function ProfessorPerfilView({ db, appUser, tenantId, profId, tab, onTab,
   const contas = useMemo(() => {
     if (carregando || !metas || !prof || nps.carregando) return null;
     const { janelaDias, tolerancia } = metas.conversao;
-    const base = { leads: clientes, contratos, planos, professor: prof, ciclo, asOf: agora };
-    const daAula = { aulas, contratos, professorId: prof.id, ciclo, asOf: agora, janelaDias };
+    const periodo = limitesDoCiclo(ciclo);
+    const base = { leads: clientes, contratos, planos, professor: prof, periodo, asOf: agora };
+    const daAula = { aulas, contratos, professorId: prof.id, periodo, asOf: agora, janelaDias };
     const semanas = aderenciaPorSemana({ presencas, leads: clientes, contratos, planos, professor: prof, asOf: agora, barra: metas.aderencia.barra });
     return {
       renovacao: renovacaoDoCiclo(base),
@@ -67,10 +68,10 @@ export function ProfessorPerfilView({ db, appUser, tenantId, profId, tab, onTab,
       conversao: conversaoDoCiclo({ ...daAula, tolerancia }),
       pessoas: pessoasDasAulas(daAula),
       semanas,
-      aderencia: aderenciaResumo(semanas, ciclo, agora),
-      nps: npsDoCiclo({ pesquisas: nps.pesquisas, totais: nps.totais, professorId: prof.id, ciclo, meta: metas.nps.meta }),
+      aderencia: aderenciaResumo(semanas, semestresDoCiclo(ciclo), agora),
+      nps: npsDoCiclo({ pesquisas: nps.pesquisas, totais: nps.totais, professorId: prof.id, trilha: trilhaProfessor, chave: String(ciclo), meta: metas.nps.meta }),
     };
-  }, [carregando, metas, prof, clientes, contratos, planos, aulas, presencas, ciclo, agora, nps.carregando, nps.pesquisas, nps.totais]);
+  }, [carregando, metas, prof, clientes, contratos, planos, aulas, presencas, ciclo, agora, nps.carregando, nps.pesquisas, nps.totais, trilhaProfessor]);
 
   const [fotoAberta, setFotoAberta] = useState(false);
   const [fotoOcupada, setFotoOcupada] = useState(false);

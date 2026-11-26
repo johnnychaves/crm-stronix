@@ -6,6 +6,7 @@ import { normalizeContracts } from '../lib/operacional/base.js';
 import { planosDoProfessor } from '../lib/professor/carteira.js';
 import { limitesDoCiclo } from '../lib/professor/ciclo.js';
 import { metasDe } from '../lib/professor/metas.js';
+import { TRILHA_PROFESSOR, trilhasDe } from '../lib/carreira/trilhas.js';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { useAulasInWindow } from './useAulasInWindow.js';
 import { usePagedLeads } from './usePagedLeads.js';
@@ -87,6 +88,10 @@ export function useProfessoresDados({ db, ciclo, listenersActive }) {
     );
   }, [db, listenersActive]);
   const metas = useMemo(() => (carreira ? metasDe(carreira.doc) : null), [carreira]);
+  // As trilhas do plano de carreira, do mesmo documento. A Professor, enquanto
+  // não foi gravada, sai das metas de hoje (trilhasDe).
+  const trilhas = useMemo(() => (carreira ? trilhasDe(carreira.doc) : null), [carreira]);
+  const trilhaProfessor = useMemo(() => trilhas?.find((t) => t.id === TRILHA_PROFESSOR) ?? null, [trilhas]);
 
   // O documento inteiro: o formulário das metas tem todas elas.
   const salvarMetas = useCallback(
@@ -104,6 +109,8 @@ export function useProfessoresDados({ db, ciclo, listenersActive }) {
     aulas,
     presencas: presencasDoCiclo?.lista ?? [],
     metas,
+    trilhas,
+    trilhaProfessor,
     salvarMetas,
   };
 }
