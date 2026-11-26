@@ -17,7 +17,9 @@ import { TrilhaRegras } from './TrilhaRegras.jsx';
 // A trilha aberta (mockup A refinado): o cabeçalho com o nome editável, as
 // etiquetas e o Arquivar, as duas abas e a barra de salvar presa embaixo. O
 // rascunho é da trilha, e não da aba: trocar de aba (o `aba` vem do endereço)
-// não perde o que foi digitado. `gravada` é a trilha como está no banco (null
+// não perde o que foi digitado. As duas abas ficam montadas (forceMount com
+// hidden, como a aba Cadastro da ficha), para o texto que não é número ("4o")
+// continuar no campo e o aviso da barra apontar para ele. `gravada` é a trilha como está no banco (null
 // na trilha nova), e `pessoas` conta quem está em cada nível dela. Quem grava é
 // o `onSalvar`, que devolve a promessa do salvarTrilha.
 function Fato({ icone: Icone, children }) {
@@ -113,10 +115,10 @@ export function TrilhaEditor({ inicial, gravada, outras, pessoas, aba, onAba, vo
         </TabsList>
       </header>
 
-      <TabsContent value="metas" tabIndex={-1}>
+      <TabsContent value="metas" forceMount hidden={aba !== 'metas'} tabIndex={-1}>
         <TrilhaGrade trilha={rascunho} pessoas={pessoas} onMudar={setRascunho} onRegras={() => onAba('regras')} avisar={(m) => toast.warning(m)} />
       </TabsContent>
-      <TabsContent value="regras" tabIndex={-1}>
+      <TabsContent value="regras" forceMount hidden={aba !== 'regras'} tabIndex={-1}>
         <TrilhaRegras
           trilha={rascunho}
           onMudar={setRascunho}

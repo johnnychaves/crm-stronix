@@ -144,10 +144,24 @@ describe('o rascunho e a barra de salvar', () => {
     await mousedown(aba('Regras da trilha'));
     expect(ed.aba).toBe('regras');
     expect(document.body.textContent).toContain('Como cada número conta');
-    expect(campo('Renovação da carteira, Júnior')).toBeNull();
+    expect(campo('Renovação da carteira, Júnior').closest('[role="tabpanel"]').hidden).toBe(true);
     await mousedown(aba('Níveis e metas'));
     expect(campo('Renovação da carteira, Júnior').value).toBe('50');
+    expect(campo('Renovação da carteira, Júnior').closest('[role="tabpanel"]').hidden).toBe(false);
+    expect(campo('Aulas na semana para contar').closest('[role="tabpanel"]').hidden).toBe(true);
     expect(botao('Salvar trilha').disabled).toBe(false);
+  });
+
+  it('o valor inválido continua no campo ao trocar de aba, e a barra diz qual é', async () => {
+    await render({ inicial: PROFESSOR, gravada: PROFESSOR, pessoas: GENTE });
+    await digitar(campo('Renovação da carteira, Pleno'), '4o');
+    expect(status()).toBe('Renovação da carteira, Pleno: use um número de 0 a 100.');
+    await mousedown(aba('Regras da trilha'));
+    expect(status()).toBe('Renovação da carteira, Pleno: use um número de 0 a 100.');
+    await mousedown(aba('Níveis e metas'));
+    expect(campo('Renovação da carteira, Pleno').value).toBe('4o');
+    expect(campo('Renovação da carteira, Pleno').getAttribute('aria-invalid')).toBe('true');
+    expect(botao('Salvar trilha').disabled).toBe(true);
   });
 
   it('Descartar volta ao que está gravado', async () => {
