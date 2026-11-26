@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import {
   VINCULOS, vinculoSelo, vinculoTexto, MOV, novaMovimentacao, admissaoDe, comAdmissao,
   faltasDaFicha, formDoBloco, patchDoBloco, tempoDeCasa, dataBR, hojeIso, isDia,
+  naEquipeTexto, periodoNaEquipe, desligadoEmTexto,
 } from '../equipe/ficha.js';
 
 const AGORA = new Date(2026, 10, 26, 10, 0); // 26/11/2026, 10h local
@@ -193,5 +194,24 @@ describe('correções da revisão', () => {
   it('tempoDeCasa: data futura é vazia e dia 31 vira o mês certo', () => {
     expect(tempoDeCasa('2026-11-27', AGORA)).toBe('');
     expect(tempoDeCasa('2026-10-31', AGORA)).toBe('26 dias');
+  });
+});
+
+describe('datas da ficha desligada e de hoje', () => {
+  const mov = (tipo, data) => ({ tipo, data });
+  it('naEquipeTexto: hoje diz "Na equipe desde hoje", sem "há"', () => {
+    expect(naEquipeTexto('2026-11-26', AGORA)).toBe('Na equipe desde hoje');
+    expect(naEquipeTexto('2024-03-12', AGORA)).toBe('Na equipe desde 12/03/2024, há 2 anos e 8 meses');
+    expect(naEquipeTexto(null, AGORA)).toBe('');
+  });
+  it('periodoNaEquipe: última admissão e último desligamento', () => {
+    const ficha = { movimentacoes: [mov('admissao', '2024-03-12'), mov('desligamento', '2025-01-10'), mov('readmissao', '2025-06-01'), mov('desligamento', '2026-11-10')] };
+    expect(periodoNaEquipe(ficha)).toEqual({ de: '2025-06-01', ate: '2026-11-10' });
+    expect(periodoNaEquipe({ movimentacoes: [mov('admissao', '2024-03-12')] })).toBeNull();
+  });
+  it('desligadoEmTexto', () => {
+    const ficha = { movimentacoes: [mov('admissao', '2024-03-12'), mov('desligamento', '2026-11-10')] };
+    expect(desligadoEmTexto(ficha)).toBe('Desligado em 10/11/2026');
+    expect(desligadoEmTexto({})).toBe('Desligado');
   });
 });

@@ -43,8 +43,9 @@ const ACESSO = {
   sem: ['Sem acesso', 'bg-slate-300 dark:bg-slate-600', 'text-muted-foreground'],
   desligado: ['Desligado', 'bg-rose-500', 'text-rose-700 dark:text-rose-400'],
 };
-export function AcessoSelo({ acesso }) {
-  const [texto, ponto, cor] = ACESSO[acesso] || ACESSO.sem;
+export function AcessoSelo({ acesso, textoDesligado = null }) {
+  const [padrao, ponto, cor] = ACESSO[acesso] || ACESSO.sem;
+  const texto = acesso === 'desligado' && textoDesligado ? textoDesligado : padrao;
   return (
     <span className={cn('inline-flex items-center gap-[7px] whitespace-nowrap text-[12.5px] font-semibold', cor)}>
       <span aria-hidden="true" className={cn('size-[7px] flex-none rounded-full', ponto)} />{texto}

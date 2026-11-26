@@ -15,7 +15,7 @@ export function FichaMovimentacoes({ pessoa, acoes = null }) {
       ) : (
         <ol className="mt-4 flex flex-col">
           {movs.map((m, i) => (
-            <li key={`${m.tipo}-${m.data}-${i}`} className="grid grid-cols-[88px_18px_1fr] gap-3 pb-4 last:pb-0">
+            <li key={m.registradoEm ?? i} className="grid grid-cols-[88px_18px_1fr] gap-3 pb-4 last:pb-0">
               <span className="pt-0.5 text-right text-[12.5px] tabular-nums text-muted-foreground">{dataBR(m.data)}</span>
               <span aria-hidden="true" className={`mt-1 size-3.5 rounded-full border-[3px] border-card ring-1 ring-border ${PONTO[m.tipo] || 'bg-slate-400'}`} />
               <div>
@@ -23,7 +23,7 @@ export function FichaMovimentacoes({ pessoa, acoes = null }) {
                 <p className="text-[13px] text-muted-foreground">
                   {m.tipo === 'desligamento'
                     ? [tipoDesligamentoTexto(m.tipoDesligamento), m.motivo].filter(Boolean).join('. ')
-                    : `Vínculo ${vinculoTexto(m.vinculo)}`}
+                    : (m.vinculo ? `Vínculo ${vinculoTexto(m.vinculo)}` : 'Sem vínculo informado')}
                 </p>
               </div>
             </li>

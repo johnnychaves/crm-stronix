@@ -111,6 +111,29 @@ export function comAdmissao(movs, data, { vinculo = null, autor = null, agora = 
   return [novaMovimentacao({ tipo: MOV.ADMISSAO, data, vinculo, autor, agora }), ...lista];
 }
 
+// "Na equipe desde 12/03/2024, há 2 anos e 8 meses" ou "Na equipe desde hoje".
+export function naEquipeTexto(iso, agora = new Date()) {
+  const tempo = tempoDeCasa(iso, agora);
+  if (!tempo) return '';
+  return tempo === 'desde hoje' ? 'Na equipe desde hoje' : `Na equipe desde ${dataBR(iso)}, há ${tempo}`;
+}
+
+function ultimoDesligamento(ficha) {
+  const lista = listaDe(ficha?.movimentacoes);
+  for (let i = lista.length - 1; i >= 0; i -= 1) if (lista[i]?.tipo === MOV.DESLIGAMENTO) return lista[i];
+  return null;
+}
+// { de, ate } da última passagem pela equipe: a última admissão e o último
+// desligamento. Null sem desligamento.
+export function periodoNaEquipe(ficha) {
+  const saiu = ultimoDesligamento(ficha);
+  return saiu ? { de: admissaoDe(ficha), ate: saiu.data } : null;
+}
+export function desligadoEmTexto(ficha) {
+  const saiu = ultimoDesligamento(ficha);
+  return saiu && dataBR(saiu.data) ? `Desligado em ${dataBR(saiu.data)}` : 'Desligado';
+}
+
 const tem = (v) => (typeof v === 'string' ? v.trim() !== '' : !!v);
 const formadoProfessor = (pessoa) => pessoa?.funcao === 'professor' && pessoa?.ficha?.vinculo !== 'estagio';
 // A foto do professor mora no cadastro do professor; a dos outros, na ficha.

@@ -5,7 +5,7 @@ import { AppLink } from '../../../components/nav/AppLink.jsx';
 import { FilterChip } from '../../dashboard/DashFilterBar.jsx';
 import { isClientLead } from '../../../lib/leads.js';
 import { professorModalityNames } from '../../../lib/professores.js';
-import { FUNCAO_TEXTO, VINCULOS, admissaoDe, dataBR, faltasDaFicha, tempoDeCasa } from '../../../lib/equipe/ficha.js';
+import { FUNCAO_TEXTO, VINCULOS, admissaoDe, dataBR, desligadoEmTexto, faltasDaFicha, tempoDeCasa } from '../../../lib/equipe/ficha.js';
 import { filtrarEquipe } from '../../../lib/equipe/equipe.js';
 import { AcessoSelo, FichaAnel, FuncaoSelo, PessoaAvatar, VinculoSelo } from './equipeVisual.jsx';
 
@@ -87,6 +87,8 @@ export function EquipeLista({ pessoas, filtros, setFiltros, busca, setBusca, hre
             <div key={p.id} className={cn('relative grid items-center gap-3 px-5 py-3 transition hover:bg-muted/50', i < visiveis.length - 1 && 'border-b border-border')}
               style={{ gridTemplateColumns: GRADE }}>
               <div className="flex min-w-0 items-center gap-2.5">
+                <AppLink to={hrefDe(p.id)} stretched draggable={false} aria-label={`Abrir a ficha de ${p.nome}`}
+                  className="outline-none focus-visible:after:anel-foco focus-visible:after:ring-inset" />
                 <PessoaAvatar pessoa={p} />
                 <div className="min-w-0">
                   <div className="truncate text-[13.5px] font-semibold">{p.nome}</div>
@@ -95,15 +97,13 @@ export function EquipeLista({ pessoas, filtros, setFiltros, busca, setBusca, hre
               </div>
               <div className="min-w-0"><FuncaoSelo funcao={p.funcao} />{sub && <div className="mt-1 truncate text-[11.5px] text-muted-foreground">{sub}</div>}</div>
               <div><VinculoSelo vinculo={p.ficha?.vinculo} /></div>
-              <div><AcessoSelo acesso={p.acesso} /></div>
+              <div><AcessoSelo acesso={p.acesso} textoDesligado={p.desligada ? desligadoEmTexto(p.ficha) : null} /></div>
               <div className="text-[12.5px]">
-                {admissao
-                  ? (<><div className="font-semibold">{tempoDeCasa(admissao, agora)}</div><div className="text-[11.5px] text-muted-foreground">desde {dataBR(admissao).slice(3)}</div></>)
-                  : <span className="text-muted-foreground">Sem admissão</span>}
+                {!admissao ? <span className="text-muted-foreground">Sem admissão</span>
+                  : tempoDeCasa(admissao, agora) === 'desde hoje' ? <div className="font-semibold">Na equipe desde hoje</div>
+                    : (<><div className="font-semibold">{tempoDeCasa(admissao, agora)}</div><div className="text-[11.5px] text-muted-foreground">desde {dataBR(admissao).slice(3)}</div></>)}
               </div>
               <FichaAnel ok={total - faltam.length} total={total} />
-              <AppLink to={hrefDe(p.id)} stretched draggable={false} aria-label={`Abrir a ficha de ${p.nome}`}
-                className="outline-none focus-visible:after:anel-foco focus-visible:after:ring-inset" />
             </div>
           );
         })}

@@ -48,6 +48,35 @@ describe('lista da equipe', () => {
     expect(texto).toContain('9 meses');
     expect(texto).toContain('Sem acesso');
   });
+  it('o link da linha fica na célula do nome, e a linha tem as seis células da grade', async () => {
+    await montar();
+    for (const a of document.querySelectorAll('a')) {
+      const linha = a.closest('.relative');
+      expect(linha.children.length).toBe(6);
+      expect(a.parentElement).toBe(linha.children[0]);
+      expect(a.getAttribute('draggable')).toBe('false');
+      expect(a.className).toContain('after:absolute');
+    }
+  });
+  it('admissão de hoje diz "Na equipe desde hoje", uma vez só', async () => {
+    const hoje = montarEquipe({
+      fichas: [{ id: 'u-novo', nome: 'Novo Colega', funcao: 'consultor', movimentacoes: [{ tipo: 'admissao', data: '2026-11-26' }] }],
+      users: [], professores: [], agora: new Date(2026, 10, 26),
+    });
+    await montar({ pessoas: hoje });
+    const t = document.body.textContent;
+    expect(t).toContain('Na equipe desde hoje');
+    expect(t).not.toContain('há desde hoje');
+    expect(t.match(/desde hoje/g).length).toBe(1);
+  });
+  it('desligado mostra a data do desligamento no selo de acesso', async () => {
+    const fora = montarEquipe({
+      fichas: [{ id: 'u-ex', nome: 'Ex Colega', funcao: 'consultor', status: 'desligado', movimentacoes: [{ tipo: 'admissao', data: '2025-01-02' }, { tipo: 'desligamento', data: '2026-11-10' }] }],
+      users: [], professores: [], agora: new Date(2026, 10, 26),
+    });
+    await montar({ pessoas: fora, filtros: { situacao: 'desligados', funcao: null, vinculo: null, acesso: null } });
+    expect(document.body.textContent).toContain('Desligado em 10/11/2026');
+  });
   it('lista vazia diz isso', async () => {
     await montar({ pessoas: [] });
     expect(document.body.textContent).toContain('Ninguém neste filtro.');
