@@ -1,0 +1,130 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Equipe C · Crachás</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="2026-11-26-equipe-base.css">
+<style>
+.band-h{display:flex;align-items:center;gap:10px;margin-top:4px}
+.band-h h2{font:700 17px 'Space Grotesk';letter-spacing:-.01em}
+.band-h>span{color:var(--muted);font-size:13px}
+.badges-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(188px,1fr));gap:14px}
+.cracha{position:relative;background:#fff;border:1px solid var(--line);border-radius:18px;overflow:hidden;display:flex;flex-direction:column;align-items:center;text-align:center;padding:0 14px 14px;min-height:258px;transition:transform .12s,box-shadow .12s}
+.cracha:hover{transform:translateY(-2px);box-shadow:0 14px 28px -18px rgba(14,26,64,.45)}
+.cracha a.stretch{position:absolute;inset:0;border-radius:18px;z-index:2}
+.cracha .faixa{align-self:stretch;margin:0 -14px;height:58px;position:relative}
+.cracha .faixa::after{content:"";position:absolute;left:50%;top:12px;width:40px;height:8px;border-radius:999px;background:rgba(255,255,255,.85);transform:translateX(-50%)}
+.cracha.gestor .faixa{background:linear-gradient(135deg,#FF6A2B,#FF9A6B)}
+.cracha.consultor .faixa{background:linear-gradient(135deg,#0E1A40,#33467F)}
+.cracha.professor .faixa{background:linear-gradient(135deg,#6D28D9,#A78BFA)}
+.cracha.estag .faixa{background:repeating-linear-gradient(135deg,#6D28D9 0 14px,#8B5CF6 14px 28px)}
+.cracha .foto{margin-top:-32px;border:4px solid #fff;border-radius:50%;position:relative;z-index:1}
+.cracha b{display:block;font:700 15.5px 'Space Grotesk';margin-top:8px;letter-spacing:-.01em}
+.cracha .fun{font-size:12.5px;color:var(--ink2);margin-top:2px}
+.cracha .chips2{display:flex;gap:5px;justify-content:center;flex-wrap:wrap;margin-top:8px}
+.cracha .desde{font-size:12px;color:var(--muted);margin-top:8px}
+.cracha .pe{margin-top:auto;align-self:stretch;display:flex;align-items:center;justify-content:space-between;border-top:1px dashed var(--line);padding-top:10px;min-height:41px}
+.cracha.off{filter:grayscale(1);opacity:.75}
+.cracha.novo{border:2px dashed var(--blue200);color:var(--blue700);justify-content:center;gap:8px;background:#fbfcff;width:100%}
+.cracha.novo svg{width:26px;height:26px}
+.cracha.novo b{font:600 14px Geist;margin:0}
+.toggle{border:0;background:none;display:inline-flex;align-items:center;gap:6px;color:var(--ink);padding:0;border-radius:6px}
+.toggle svg{width:16px;height:16px;transition:transform .12s}
+.toggle[aria-expanded=false] svg{transform:rotate(-90deg)}
+/* gaveta larga da ficha */
+.dh{display:flex;gap:16px;align-items:center;flex:1;flex-wrap:wrap}
+.dh .grow{flex:1;min-width:200px}
+.drawer>header .dh h2{font:700 22px 'Space Grotesk'}
+.dh .badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center}
+.dcols{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding-top:14px;align-items:start}
+.dcols .wide{grid-column:1/-1}
+.dcols>div{display:grid;gap:14px}
+/* cadastro com o crachá se montando */
+.cad-split{display:grid;grid-template-columns:220px 1fr;gap:22px;padding-top:16px;align-items:start}
+.preview{position:sticky;top:0}
+.preview>p{font-size:12px;color:var(--muted);text-align:center;margin-top:8px}
+.vin.vazio{border-style:dashed;color:var(--faint)}
+@media (max-width:760px){.dcols,.cad-split{grid-template-columns:1fr}.preview{position:static}}
+</style></head><body>
+<div id="root"></div>
+<span class="tag">Mockup C: crachás por função, ficha numa gaveta larga, cadastro com o crachá se montando</span>
+<script src="2026-11-26-equipe-comum.js"></script>
+<script>
+let subst = '';
+let mostraDesligados = false;
+
+function cracha(p, { link = true } = {}) {
+  const estag = p.vinculo === 'Estágio';
+  const fun = p.funcao === 'professor' ? `${FUNCAO[p.funcao]} de ${(p.mods || []).length ? p.mods.join(' e ') : 'qual modalidade?'}` : FUNCAO[p.funcao];
+  const desde = p.acesso === 'off' ? `Saiu em ${p.desligada}` : p.admissao ? `Desde ${dataBR(p.admissao).slice(3)}, ${tempo(p.admissao)}` : 'Admissão a definir';
+  return `<article class="cracha ${p.funcao} ${estag ? 'estag' : ''} ${p.acesso === 'off' ? 'off' : ''}">
+    <span class="faixa" aria-hidden="true"></span>
+    <span class="foto">${avatar(p, 64)}</span>
+    <b>${p.nome}</b><span class="fun">${fun}</span>
+    <span class="chips2">${p.vinculo ? vinBadge(p) : '<span class="vin vazio">Vínculo</span>'}</span>
+    <span class="desde">${desde}</span>
+    <span class="pe">${p.preview ? `<span class="acc none"><i></i>${p.acessoTexto}</span>` : accBadge(p)}${p.preview ? '' : ring(p)}</span>
+    ${link ? `<a class="stretch" href="#${p.acesso === 'off' ? 'ficha-desligada' : p.id === 'camila' ? 'ficha-camila' : 'ficha'}" aria-label="Abrir a ficha de ${p.nome}"></a>` : ''}
+  </article>`;
+}
+function grade() {
+  const grupos = [['gestor', 'Gestão'], ['consultor', 'Consultores'], ['professor', 'Professores']];
+  return `<div class="shead"><div class="grow"><h1>Equipe & acessos</h1><p>Quem trabalha na academia: a ficha, o vínculo e o acesso ao app de cada pessoa.</p></div>
+      <button class="btn pri" type="button" onclick="location.hash='cadastro'">${ic('plus')}Cadastrar pessoa</button></div>
+    ${VAGAS}
+    <div class="filters">
+      <button class="fp" type="button">Função <small>Todas</small>${ic('down')}</button>
+      <button class="fp" type="button">Vínculo <small>Todos</small>${ic('down')}</button>
+      <button class="fp" type="button">Acesso <small>Todos</small>${ic('down')}</button>
+      <button class="fp" type="button">Ficha incompleta <small>${ativos().filter((p) => faltas(p).length).length}</small></button>
+      <span class="search">${ic('search')}Buscar pelo nome</span>
+    </div>
+    ${grupos.map(([f, rot]) => { const g = ativos().filter((p) => p.funcao === f); return `<div class="band-h"><h2>${rot}</h2><span>${g.length}</span></div><div class="badges-grid">${g.map((p) => cracha(p)).join('')}${f === 'professor' ? `<button class="cracha novo" type="button" onclick="location.hash='cadastro'">${ic('plus')}<b>Cadastrar pessoa</b></button>` : ''}</div>`; }).join('')}
+    <div class="band-h"><button class="toggle" type="button" aria-expanded="${mostraDesligados}" data-desl>${ic('down')}<h2>Desligados</h2></button><span>${desligados().length}</span></div>
+    ${mostraDesligados ? `<div class="badges-grid">${desligados().map((p) => cracha(p)).join('')}</div>` : ''}`;
+}
+function gavetaFicha(p) {
+  const desligada = p.acesso === 'off';
+  return `<div class="scrim"></div><aside class="drawer wide" role="dialog" aria-modal="true" aria-labelledby="f-t">
+    <header><div class="dh">${avatar(p, 64)}<div class="grow"><h2 id="f-t">${p.nome}</h2>
+      <div class="badges">${roleBadge(p)}${vinBadge(p)}<span style="margin-left:4px">${accBadge(p)}</span></div>
+      <p>${desligada ? `Esteve na equipe de ${dataBR(p.admissao)} a ${p.desligada}` : `Na equipe desde ${dataBR(p.admissao)}, ${tempo(p.admissao)}`}</p></div>
+      ${desligada ? `<button class="btn" type="button">${ic('back2')}Readmitir</button>` : `<button class="btn danger" type="button" data-desligar="${p.id}">${ic('off')}Desligar</button>`}</div>
+      <button class="x" type="button" aria-label="Fechar" onclick="location.hash='equipe'">${ic('x')}</button></header>
+    <div class="scroll"><div style="padding-top:14px">${faltaLinha(p)}</div>
+      <div class="dcols"><div>${secIdentidade(p)}${secContato(p)}</div><div>${secTrabalho(p)}${secAcesso(p)}</div><div class="wide">${movimentacoes(p)}</div></div></div>
+  </aside>`;
+}
+function gavetaCadastro() {
+  const vis = passosVisiveis();
+  const passou = (s) => vis.indexOf(s) > -1 && CAD.passo > vis.indexOf(s);
+  const prev = {
+    preview: true, nome: passou('quem') ? CAD.nome : 'Pessoa nova', cor: '#DB2777', funcao: CAD.funcao,
+    vinculo: passou('vinculo') ? CAD.vinculo : '', admissao: passou('vinculo') ? CAD.admissao.split('/').reverse().join('-') : '',
+    mods: passou('mods') ? CAD.mods : [], acesso: 'sem', foto: false, mov: [],
+    acessoTexto: passou('acesso') ? resumoPasso('acesso') : 'Acesso a definir',
+  };
+  return `<div class="scrim"></div><aside class="drawer wide" role="dialog" aria-modal="true" aria-labelledby="cad-t">
+    <header><div><h2 id="cad-t">Cadastrar pessoa</h2><p>O resto da ficha (CPF, endereço, foto) fica para depois.</p></div><button class="x" type="button" aria-label="Fechar" onclick="location.hash='equipe'">${ic('x')}</button></header>
+    <div class="scroll"><div class="cad-split"><div class="preview" aria-hidden="true">${cracha(prev, { link: false })}<p>O crachá se monta conforme você preenche.</p></div><div id="cad">${cadastroPassos()}</div></div></div>
+    <footer id="cad-f">${cadastroRodape()}</footer></aside>`;
+}
+function render(estado) {
+  const root = document.getElementById('root');
+  if (estado === 'equipe') root.innerHTML = CASCA(grade());
+  else if (estado === 'ficha') root.innerHTML = CASCA(grade()) + gavetaFicha(byId('marina'));
+  else if (estado === 'ficha-camila') root.innerHTML = CASCA(grade()) + gavetaFicha(byId('camila'));
+  else if (estado === 'ficha-desligada') { mostraDesligados = true; root.innerHTML = CASCA(grade()) + gavetaFicha(byId('carla')); }
+  else if (estado === 'cadastro') root.innerHTML = CASCA(grade()) + gavetaCadastro();
+  else if (estado === 'desligar') root.innerHTML = CASCA(grade()) + desligarDialogo(byId('marina'), { substituto: subst });
+  else if (estado === 'bloqueado') root.innerHTML = CASCA(grade()) + desligarDialogo(byId('camila'));
+}
+document.addEventListener('click', (e) => {
+  if (e.target.closest('[data-desl]')) { mostraDesligados = !mostraDesligados; render(location.hash.slice(1) || 'equipe'); return; }
+  const d = e.target.closest('[data-desligar]'); if (d) location.hash = d.dataset.desligar === 'camila' ? 'bloqueado' : 'desligar';
+});
+document.addEventListener('change', (e) => { if (e.target.matches('[data-subst]')) { subst = e.target.value; render('desligar'); } });
+ligarCadastro(document, () => render('cadastro'));
+barraDeEstados([
+  ['equipe', 'Crachás'], ['ficha', 'Ficha'], ['cadastro', 'Cadastrar pessoa'], ['desligar', 'Desligar professor'],
+  ['bloqueado', 'Desligar consultor com leads'], ['ficha-desligada', 'Ficha desligada'],
+], render);
+</script></body></html>
