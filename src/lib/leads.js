@@ -221,6 +221,12 @@ export const ZAP_SIGNUP_TYPE = 'zap_signup';
 // quem agendou.
 export const ZAP_VIA = 'stronizap';
 
+// Tipo da interação que a importação das planilhas da Next Fit grava quando
+// um aluno faltando volta a treinar (src/lib/faltosos/lotesImportacao.js): a
+// linha "Voltou a treinar em 03/10" da linha do tempo, no filtro Marcos. É
+// registro da presença, e não contato com a pessoa.
+export const PRESENCE_RETURN_TYPE = 'presence_return';
+
 // Tipo da interação que a ponte grava quando o lead escreve ou a equipe envia
 // mensagem pelo Stronizap (api/zap.js, ação conversation-signal): no máximo
 // uma por tipo de sinal, por lead e por dia de Brasília.
