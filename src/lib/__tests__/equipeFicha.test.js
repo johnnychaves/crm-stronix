@@ -91,8 +91,8 @@ describe('patch de cada bloco', () => {
   const ctx = { pessoa, autor: AUTOR, agora: AGORA, professores: [prof(), { id: 'p2', nome: 'Tiago' }] };
 
   it('identidade: grava só as chaves dela, CPF em dígitos', () => {
-    const r = patchDoBloco('identidade', { nome: ' Marina Prado ', cpf: '914.302.118-70', rg: ' 5093 ', nascimento: '1996-07-19' }, ctx);
-    expect(r).toEqual({ ficha: { nome: 'Marina Prado', cpf: '91430211870', rg: '5093', nascimento: '1996-07-19' } });
+    const r = patchDoBloco('identidade', { nome: ' Marina Prado ', cpf: '529.982.247-25', rg: ' 5093 ', nascimento: '1996-07-19' }, ctx);
+    expect(r).toEqual({ ficha: { nome: 'Marina Prado', cpf: '52998224725', rg: '5093', nascimento: '1996-07-19' } });
   });
   it('identidade: CPF inválido aponta o campo', () => {
     expect(patchDoBloco('identidade', { nome: 'Marina', cpf: '111.111.111-11', rg: '', nascimento: '' }, ctx))
