@@ -46,7 +46,12 @@ Lead em Perda não recebe freepass: primeiro o "Reativar lead".
 - **Marcar perda** encerra o freepass.
 - **Matrícula** encerra o freepass como "virou matrícula".
 
-O fim natural (o último dia passou, ou a última aula passou) não é gravado por ninguém. Ele sai da conta na hora da leitura, como a regra dos 18 anos do menor.
+Só o "Encerrar freepass" grava o fim. O fim natural (o último dia passou, ou a última aula passou), a perda e a matrícula saem da conta na hora da leitura, como a regra dos 18 anos do menor:
+
+- lead em Perda não é Visitante;
+- o resumo do freepass guarda o contrato atual da pessoa no lançamento (`freepassContractAtStart`, null no lead). Se o contrato atual mudou depois, houve matrícula ou renovação, e a pessoa não é mais Visitante.
+
+Assim todo caminho que grava matrícula (Marcar venda, Nova matrícula, arrastar o card para Venda, Mudar fase para Venda) e todo caminho que marca perda encerram o freepass sem precisar mexer em nenhum deles. Limite aceito: o lead reativado da Perda dentro do prazo do freepass volta a aparecer como Visitante.
 
 ### Etiquetas e cor
 
@@ -60,7 +65,7 @@ O Visitante não é um estado novo do `deriveLeadState`: é uma etiqueta a mais,
 
 Só pelo "Marcar venda" do cabeçalho da ficha, que encerra o freepass como "virou matrícula". O ex-aluno não tem "Marcar venda" (já é cliente), então a matrícula dele continua pelo "Nova matrícula" da aba Contratos, que abre a mesma janela.
 
-Quem encerra o freepass é a gravação da matrícula (`commitMatricula`), e não o botão. Assim os outros caminhos que já gravam matrícula (arrastar o card para Venda no Pipeline, Mudar fase para Venda) também encerram, e nenhum freepass fica correndo num cliente novo.
+O fim pela matrícula sai da leitura (ver "Quando termina"), então nenhum freepass fica correndo num cliente novo, qualquer que seja o caminho da matrícula.
 
 ### Um por modalidade
 
@@ -116,14 +121,14 @@ Cada freepass é um documento em `stronix_freepass` (constante `FREEPASS_PATH` e
 | `total` | a quantidade de dias ou de aulas |
 | `startsAt` | o início |
 | `endsAt` | por dias, o fim; por aulas, o dia da última aula quando as N estão agendadas, senão `null` |
-| `status` | `'correndo'`, `'encerrado'` ou `'matricula'` |
-| `endedAt`, `endReason` | só no encerramento gravado (à mão, perda ou matrícula) |
-| `contractId` | o contrato da matrícula, quando virou matrícula |
+| `status` | `'correndo'` ou `'encerrado'` (só o "Encerrar freepass" grava) |
+| `endedAt`, `endedBy*` | só no "Encerrar freepass" |
+| `contractAtStart` | o contrato atual da pessoa no lançamento, null no lead |
 | `consultantId`, `consultantName` | o dono do lead no lançamento |
 | `createdBy*`, `createdAt` | quem lançou e quando |
 | `via` | `'contratos'`, `'agendar'` ou `'stronizap'` |
 
-O lead ganha um resumo do freepass que está correndo (`freepassId`, `freepassKind`, `freepassTotal`, `freepassTypeName`, `freepassModalidadeName`, `freepassStartsAt`, `freepassEndsAt`, `freepassAulas` (as aulas agendadas que já contam), `freepassStatus`), no molde do `currentContract*`. Com mais de um freepass correndo, o resumo é o que termina primeiro, e o por aulas ainda sem fim definido fica por último. A ficha lê os documentos, e as listas leem o resumo.
+O lead ganha um resumo do freepass que está correndo (`freepassId`, `freepassKind`, `freepassTotal`, `freepassTypeName`, `freepassModalidadeName`, `freepassStartsAt`, `freepassEndsAt`, `freepassAulas` (as aulas agendadas que já contam), `freepassStatus`, `freepassContractAtStart`), no molde do `currentContract*`. Com mais de um freepass correndo, o resumo é o que termina primeiro, e o por aulas ainda sem fim definido fica por último. A ficha lê os documentos, e as listas leem o resumo.
 
 Cada aula experimental agendada dentro de um freepass grava `freepassId` no registro de `stronix_aulas`, e as aulas usadas saem desses registros (os que não foram cancelados).
 
@@ -153,7 +158,7 @@ Nada é migrado. As aulas experimentais agendadas antes da mudança mostram o pa
 
 Cada entrega com tela nova começa por 2 ou 3 mockups para o Johnny escolher.
 
-1. **A base.** Tipos de freepass em Configurações → Agendamento, com o padrão de cada modalidade. "Lançar freepass" na aba Contratos e a janela de lançamento. A etiqueta Visitante e a cor na ficha, e o cartão do freepass na aba Contratos com o andamento e o "Encerrar freepass". Marcar venda, Nova matrícula e Marcar perda encerrando o freepass. Linha do tempo com o lançamento e o encerramento. Regras do Firestore da coleção nova. Mockups da cor, da aba Contratos e da janela.
+1. **A base.** Tipos de freepass em Configurações → Agendamento, com o padrão de cada modalidade (o painel de quantidades antigo fica até a entrega 2, porque o Agendar ainda o usa). "Lançar freepass" na aba Contratos e a janela de lançamento. A etiqueta Visitante e a cor na ficha, e o cartão do freepass na aba Contratos com o andamento e o "Encerrar freepass". O fim pela matrícula e pela perda, lido na hora. Linha do tempo com o lançamento e o encerramento. Regras do Firestore da coleção nova. Mockups da cor, da aba Contratos e da janela.
 2. **O Agendar.** O passo "Freepass" no Agendar da ficha e no Remarcar da Meta, a contagem das aulas e a trava de N aulas. A ponte do Stronizap e da IA com o tipo padrão, e a faixa do cartão do Stronizap lendo o freepass.
 3. **A tela Visitantes e o selo.** A lista nova e o selo no Pipeline, em Todos os leads, em Clientes e na busca. A aba "Em andamento" de Aulas sai.
 4. **A Meta Diária.** A categoria "Fim do freepass" e a entrada em Atrasados no dia seguinte.
