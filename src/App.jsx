@@ -47,6 +47,7 @@ import {
   CONTRACTS_PATH,
   CONFIG_PATH,
   CONFIG_GENERAL_ID,
+  CONFIG_FALTOSOS_ID,
   DAILY_GOAL_HISTORY_PATH
 } from './lib/firebase.js';
 // Pure utilities — see src/lib/{constants,dates,auth,leads,funnels}.js
@@ -70,7 +71,8 @@ import { planReferralSetupOps } from './lib/referrals.js';
 import { planDefaultFunnel, planNegociacaoStages } from './lib/funnelSetup.js';
 import { tenantCol, tenantDoc, writeSetupWrites, writeSetupPlan } from './lib/funnelSetupWrites.js';
 import { IDLE_RUN, runStatusFor, settleRun, EMPTY_SETUP_FLAGS, setupFlagsFromConfig, setupFlagFor } from './lib/setupRun.js';
-import { normalizeModules } from './lib/modules.js';
+import { normalizeModules, hasModule, MODULES } from './lib/modules.js';
+import { CONFIG_FALTOSOS_PADRAO, normalizarConfigFaltosos } from './lib/faltosos/configFaltosos.js';
 import { parseAppPath, routeDecision, hrefFor, screenKey, documentTitle } from './lib/routes.js';
 import { funnelFromSearch } from './lib/screenParams.js';
 import {
@@ -377,11 +379,24 @@ function AppInner() {
   // Default [90, 60, 30] — ver src/lib/renewalGoal.js.
   const [renewalCheckpoints, setRenewalCheckpoints] = useState([90, 60, 30]);
   const [renewalGraceDays, setRenewalGraceDays] = useState(15);
+  // Configuração dos faltosos (stronix_config/faltosos), com a academia de
+  // onde ela veio. Só é assinada com o módulo ligado. A academia vai junto
+  // pelo mesmo motivo das marcas de configuração (setupFlags): o "Acessar
+  // como" troca de academia sem recarregar, e a configuração da anterior não
+  // pode valer na nova. Antes da primeira leitura vale o padrão, com
+  // `pronta: false`. Leitura que falhou fica com o padrão e `erro: true`.
+  const [faltososLido, setFaltososLido] = useState({ tenant: null, config: CONFIG_FALTOSOS_PADRAO, erro: false });
+  const faltososTenant = appUser?.tenantId || null;
+  const faltosos = useMemo(() => (
+    faltososLido.tenant !== null && faltososLido.tenant === faltososTenant
+      ? { ...faltososLido.config, pronta: true, erro: faltososLido.erro }
+      : { ...CONFIG_FALTOSOS_PADRAO, pronta: false, erro: false }
+  ), [faltososLido, faltososTenant]);
   // Valor do GeneralConfigContext (declarado aqui, antes de qualquer early return,
   // para respeitar as regras dos hooks).
   const generalConfigValue = useMemo(
-    () => ({ modalities, trialClassOptions, freepassTypes, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget, planos, contratos, contractThresholdDays, renewalCheckpoints, renewalGraceDays, professores, dores }),
-    [modalities, trialClassOptions, freepassTypes, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget, planos, contratos, contractThresholdDays, renewalCheckpoints, renewalGraceDays, professores, dores]
+    () => ({ modalities, trialClassOptions, freepassTypes, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget, planos, contratos, contractThresholdDays, renewalCheckpoints, renewalGraceDays, professores, dores, faltosos }),
+    [modalities, trialClassOptions, freepassTypes, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget, planos, contratos, contractThresholdDays, renewalCheckpoints, renewalGraceDays, professores, dores, faltosos]
   );
   // Seleção de funil persistida POR ACADEMIA (savedFunnelKey). Começa vazia: a
   // academia só é conhecida no login, e é lá que o funil salvo é lido
@@ -897,6 +912,24 @@ useEffect(() => {
     () => { setTrialClassOptions([1, 2, 3]); setFreepassTypes([]); setMetaWeekdays([1, 2, 3, 4, 5]); setSlaOverdueDays(3); setDailyVolumeTarget(0); setContractThresholdDays(30); setRenewalCheckpoints([90, 60, 30]); }
   );
 
+  // Configuração dos faltosos: marcos, janela do urgente, professores da Next
+  // Fit e a última importação. Só com o módulo ligado, porque sem ele nenhuma
+  // tela a lê. Doc único e ao vivo: a importação e o bloco de Metas & ritmo
+  // aparecem sem F5. Falha aqui não acende o aviso de carga: fica o padrão,
+  // marcado com `erro`, e o bloco Faltosos de Configurações diz que não deu
+  // para ler.
+  let unsubFaltosos = () => {};
+  if (hasModule(appUser.tenantModules, MODULES.FALTOSOS)) {
+    unsubFaltosos = onSnapshot(
+      doc(db, 'artifacts', appId, 'public', 'data', CONFIG_PATH, CONFIG_FALTOSOS_ID),
+      (snap) => setFaltososLido({ tenant: configTenant, config: normalizarConfigFaltosos(snap.exists() ? snap.data() : null), erro: false }),
+      (err) => {
+        console.error('onSnapshot faltosos falhou', err);
+        setFaltososLido({ tenant: configTenant, config: CONFIG_FALTOSOS_PADRAO, erro: true });
+      }
+    );
+  }
+
   let unsubUsers = () => {};
   if (isGestor(appUser)) {
     unsubUsers = onSnapshot(usersRef, (snapshot) => {
@@ -929,6 +962,7 @@ useEffect(() => {
     unsubContratos();
     unsubUnits();
     unsubConfig();
+    unsubFaltosos();
     unsubUsers();
   };
 }, [firebaseUser, appUser, tenantBlock, listenersActive]);
