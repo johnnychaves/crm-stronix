@@ -13,7 +13,11 @@ describe('regra de stronix_freepass', () => {
   it('lê quem é da academia e o professor não grava', () => {
     expect(bloco).toMatch(/allow read: if inTenant\(appId\) && tenantActive\(appId\);/);
     expect(bloco).toMatch(/allow create: if inTenant\(appId\) && tenantActive\(appId\)\s*&& !isProfessor\(appId\);/);
-    expect(bloco).toMatch(/allow update: if inTenant\(appId\) && tenantActive\(appId\)\s*&& !isProfessor\(appId\);/);
+    expect(bloco).toMatch(/allow update: if inTenant\(appId\) && tenantActive\(appId\)\s*&& !isProfessor\(appId\)/);
     expect(bloco).toMatch(/allow delete: if false;/);
+  });
+  it('na atualização, o lead e quem lançou não mudam', () => {
+    expect(bloco).toContain('request.resource.data.leadId == resource.data.leadId');
+    expect(bloco).toContain("request.resource.data.get('createdByAuthUid', null) == resource.data.get('createdByAuthUid', null)");
   });
 });
