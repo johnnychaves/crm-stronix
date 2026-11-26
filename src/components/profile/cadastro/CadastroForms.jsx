@@ -184,7 +184,7 @@ function IdentityForm({ form, set, lead, db }) {
   );
 }
 
-function AddressForm({ form, set, setForm }) {
+export function AddressForm({ form, set, setForm }) {
   const toast = useToast();
   const [cepBusy, setCepBusy] = useState(false);
   const onCepBlur = async () => {
