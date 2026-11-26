@@ -1,23 +1,26 @@
-// O ciclo da avaliação do plano de carreira: de 1º de dezembro a 30 de
-// novembro, no fuso local, com o nome do ano em que termina (o ciclo 2027 vai
-// de 01/12/2026 a 30/11/2027 e é avaliado em dezembro de 2027). Os semestres
-// da aderência são de janeiro a junho e de julho a novembro: dezembro fica
-// fora de qualquer ciclo na aderência (spec 2026-11-24-perfil-do-professor).
-import { getSafeDateOrNull } from '../dates.js';
+// O ciclo da avaliação do professor: a trilha anual em dezembro
+// (src/lib/carreira/periodo.js), com a chave como número. As contas recebem o
+// período; este arquivo fica só para as telas, que ainda leem o ciclo do
+// endereço como ano, e sai no PR 3 do plano de carreira (menu Carreira).
+// O teste deste arquivo é o de equivalência: a trilha anual de dezembro dá
+// exatamente o ciclo de 1º de dezembro a 30 de novembro de antes.
+import { pecasDaAderencia, periodoDe, periodoPorChave } from '../carreira/periodo.js';
+
+const ANUAL_DEZEMBRO = Object.freeze({ frequencia: 'anual', mes: 12 });
 
 // O ciclo de uma data, ou null com data inválida.
 export function cicloDe(data) {
-  const d = getSafeDateOrNull(data);
-  if (!d) return null;
-  return d.getMonth() === 11 ? d.getFullYear() + 1 : d.getFullYear();
+  const p = periodoDe(ANUAL_DEZEMBRO, data);
+  return p ? Number(p.chave) : null;
 }
 
-// [inicio, fim): fim é 1º de dezembro às 00:00, fora do ciclo.
-export const limitesDoCiclo = (ciclo) => ({ inicio: new Date(ciclo - 1, 11, 1), fim: new Date(ciclo, 11, 1) });
+// [inicio, fim): fim é 1º de dezembro às 00:00, fora do ciclo. Ciclo que não
+// é ano dá datas inválidas, como antes.
+export function limitesDoCiclo(ciclo) {
+  const p = periodoPorChave(ANUAL_DEZEMBRO, String(ciclo));
+  return p ? { inicio: p.inicio, fim: p.fim } : { inicio: new Date(NaN), fim: new Date(NaN) };
+}
 
-// Os dois semestres da aderência na avaliação de dezembro. O segundo para em
-// 30 de novembro, o fim do ciclo.
-export const semestresDoCiclo = (ciclo) => [
-  { inicio: new Date(ciclo, 0, 1), fim: new Date(ciclo, 6, 1) },
-  { inicio: new Date(ciclo, 6, 1), fim: new Date(ciclo, 11, 1) },
-];
+// Os dois semestres da aderência na avaliação de dezembro: janeiro a junho e
+// julho a novembro.
+export const semestresDoCiclo = (ciclo) => pecasDaAderencia(limitesDoCiclo(ciclo));
