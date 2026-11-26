@@ -226,7 +226,7 @@ function AppInner() {
   // `sub` é a seção das Configurações ou a aba da ficha, já com o padrão da
   // tela quando o endereço não traz segmento. Ela NÃO entra na screenKey: o
   // AppErrorBoundary e a rolagem não podem remontar a cada troca de seção.
-  const { fichaOpen, profileLeadId, activeTab, resolvedTab, superTab, sub, modelId, profId } = screenState(shown, location.state, appUser);
+  const { fichaOpen, profileLeadId, activeTab, resolvedTab, superTab, sub, modelId, profId, trilhaId, trilhaAba } = screenState(shown, location.state, appUser);
   // As três abas da Visão geral. O grupo do menu fica aberto enquanto uma
   // delas está ativa; fora delas, vale o toggle do usuário.
   const isDashTab = resolvedTab === 'dashOperacional' || resolvedTab === 'dashCrm' || resolvedTab === 'dashGerencial';
@@ -1965,7 +1965,7 @@ useEffect(() => {
               {/* Relatórios (spec 2026-10-09): o submenu vem do endereço (sub), e
                   trocar de submenu leva o período e os filtros junto. */}
               {activeTab === 'relatorios' && <RelatoriosView db={db} appUser={appUser} tenantName={tenantDisplayName} usersList={usersList} funnels={funnels} sources={sources} liveLeads={metaLeads} interactions={interactions} listenersActive={listenersActive} section={sub} onSection={(id, query) => goToSub('relatorios', id, undefined, query)} />}
-              {activeTab === 'settings' && isGestor(appUser) && <SettingsView section={sub} onSection={(id) => goToSub('settings', id)} sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} dores={dores} funnels={funnels} modalities={modalities} planos={planos} trialClassOptions={trialClassOptions} units={units} metaWeekdays={metaWeekdays} />}
+              {activeTab === 'settings' && isGestor(appUser) && <SettingsView section={sub} onSection={(id) => goToSub('settings', id)} trilhaId={trilhaId} trilhaAba={trilhaAba} onCarreiraAba={(id, aba) => goToSub('settings', 'carreira', { trilhaId: id, trilhaAba: aba })} listenersActive={listenersActive} sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} dores={dores} funnels={funnels} modalities={modalities} planos={planos} trialClassOptions={trialClassOptions} units={units} metaWeekdays={metaWeekdays} />}
               {activeTab === 'rotinas' && isGestor(appUser) && (
                 <RotinasView
                   db={db}
