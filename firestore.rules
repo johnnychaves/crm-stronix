@@ -460,6 +460,62 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Módulo Professor e faltosos, PR 2 (spec
+    // docs/superpowers/specs/2026-10-02-professor-e-faltosos-design.md, "As
+    // regras do Firestore"). As três coleções abaixo, e a de presenças, mais embaixo, só existem com o
+    // módulo ligado: sem ele, ninguém lê nem grava, e o que já foi gravado
+    // fica onde está até o módulo voltar. Quem grava é o gestor, pela
+    // importação das planilhas da Next Fit, que roda no navegador
+    // (src/lib/faltosos/gravarImportacao.js) em lotes de até 500 gravações.
+    // Em cada gravação as regras leem sempre os mesmos dois documentos (o da
+    // academia e o cadastro do gestor), e o Firestore não conta de novo a
+    // leitura repetida do mesmo documento no mesmo pedido: é assim que a
+    // importação de clientes já grava em lotes de 450. Ninguém apaga pelo
+    // navegador.
+    //
+    // A configuração do módulo mora em stronix_config/faltosos e segue a
+    // regra de stronix_config, acima: todo membro lê (o professor acha ali a
+    // última importação) e só o gestor grava. A linha "Voltou a treinar"
+    // (presence_return) é uma interação e segue o bloco de
+    // stronix_interactions: o gestor cria, regrava e apaga a linha da volta
+    // que não aconteceu, e o professor não cria, porque o tipo não está em
+    // professorInteractionTypes().
+    //
+    // Estado de cada aluno faltando (stronix_faltosos/{leadId}). Todo membro
+    // lê: a aba Faltosos e o selo da ficha leem daqui. No PR 2 só o gestor
+    // grava. O professor marcar a tarefa como feita entra no PR 3, como uma
+    // condição a mais na linha de update, nunca numa segunda linha allow,
+    // porque as regras juntam as linhas com OU.
+    match /artifacts/{appId}/public/data/stronix_faltosos/{leadId} {
+      allow read: if inTenant(appId) && tenantActive(appId) && hasModule(appId, 'faltosos');
+      allow create: if inTenant(appId) && tenantActive(appId) && hasModule(appId, 'faltosos')
+        && isAdmin(appId);
+      allow update: if inTenant(appId) && tenantActive(appId) && hasModule(appId, 'faltosos')
+        && isAdmin(appId);
+      allow delete: if false;
+    }
+
+    // Registro de cada importação (stronix_importacoes_nextfit/{id}, com o id
+    // tirado das datas dos arquivos). Só o gestor lê e grava, porque o
+    // registro traz o nome e o telefone dos alunos que a importação não achou.
+    match /artifacts/{appId}/public/data/stronix_importacoes_nextfit/{id} {
+      allow read: if inTenant(appId) && tenantActive(appId) && hasModule(appId, 'faltosos')
+        && isAdmin(appId);
+      allow create, update: if inTenant(appId) && tenantActive(appId) && hasModule(appId, 'faltosos')
+        && isAdmin(appId);
+      allow delete: if false;
+    }
+
+    // O nome com que cada aluno aparece na Next Fit, ligado ao lead
+    // (stronix_nextfit_alunos/{nomeChave}). A importação guarda o nome para
+    // ligar o Presenças, que não traz telefone. Só o gestor lê e grava.
+    match /artifacts/{appId}/public/data/stronix_nextfit_alunos/{nomeChave} {
+      allow read: if inTenant(appId) && tenantActive(appId) && hasModule(appId, 'faltosos')
+        && isAdmin(appId);
+      allow create, update: if inTenant(appId) && tenantActive(appId) && hasModule(appId, 'faltosos')
+        && isAdmin(appId);
+      allow delete: if false;
+    }
     // Freepass das aulas experimentais (spec
     // docs/superpowers/specs/2026-11-26-visitante-e-freepass-design.md). Só
     // existe com o módulo da STRONIX (Stronix 2.0, chave faltosos). Lê quem é
@@ -523,12 +579,18 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Presenças na aula de funcional, por aluno e semana, para a aderência do
-    // perfil do professor (PR 6). Quem é da academia lê, com o módulo. Só o
-    // script scripts/import-presencas.js grava, pelo Admin SDK.
+    // Presenças da Next Fit, um documento por aluno e mês
+    // (stronix_presencas/{leadId}_{AAAA-MM}), gravadas pela importação das
+    // planilhas (src/lib/faltosos/gravarImportacao.js, Professor e faltosos,
+    // PR 2A). Quem é da academia lê, com o módulo: a aderência do perfil do
+    // professor soma os dias por semana (presencasPorSemana), e a aba
+    // Presenças da ficha (2C) lê os dias. Só o gestor grava. Ninguém apaga
+    // pelo navegador.
     match /artifacts/{appId}/public/data/stronix_presencas/{id} {
       allow read: if inTenant(appId) && tenantActive(appId) && hasModule(appId, 'faltosos');
-      allow write: if false;
+      allow create, update: if inTenant(appId) && tenantActive(appId) && hasModule(appId, 'faltosos')
+        && isAdmin(appId);
+      allow delete: if false;
     }
 
     // O dia da rotina (date, 'AAAA-MM-DD') tem de ser o dia de agora em algum
