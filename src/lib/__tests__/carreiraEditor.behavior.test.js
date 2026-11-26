@@ -251,6 +251,21 @@ describe('arquivar e a trilha nova', () => {
     expect(onArquivar).toHaveBeenCalledTimes(1);
   });
 
+  it('com o rascunho mudado, Arquivar fica desligado até salvar ou descartar', async () => {
+    const onArquivar = vi.fn();
+    await render({ inicial: CONSULTOR, gravada: CONSULTOR, pessoas: NINGUEM, onArquivar });
+    await digitar(campo('Nome da trilha'), 'Consultor II');
+    const arquivar = botao('Arquivar trilha');
+    expect(arquivar.getAttribute('aria-disabled')).toBe('true');
+    expect(document.getElementById(arquivar.getAttribute('aria-describedby')).textContent)
+      .toBe('Salve ou descarte as mudanças antes de arquivar.');
+    await clicar(arquivar);
+    expect(toast.warning).toHaveBeenCalledWith('Salve ou descarte as mudanças antes de arquivar.');
+    expect(onArquivar).not.toHaveBeenCalled();
+    await clicar(botao('Descartar'));
+    expect(botao('Arquivar trilha').getAttribute('aria-disabled')).toBeNull();
+  });
+
   it('a trilha nova não tem Arquivar, e Descartar chama o descarte', async () => {
     const onDescartarNova = vi.fn();
     await render({ inicial: novaTrilha('professor', [], () => 0), gravada: null, pessoas: {}, onDescartarNova });

@@ -6,7 +6,7 @@ import { AppLink } from '../../../components/nav/AppLink.jsx';
 import { useToast } from '../../../contexts/ToastContext.jsx';
 import { TRILHA_PROFESSOR } from '../../../lib/carreira/trilhas.js';
 import { problemaDaTrilha } from '../../../lib/carreira/validacao.js';
-import { com, metasEmBranco, MOTIVO_DO_ARQUIVAR, mudou, totalDePessoas } from '../../../lib/carreira/rascunho.js';
+import { com, metasEmBranco, MOTIVO_DO_ARQUIVAR, MOTIVO_DO_ARQUIVAR_COM_MUDANCA, mudou, totalDePessoas } from '../../../lib/carreira/rascunho.js';
 import { TAB_TRIGGER } from '../../professores/ProfessoresComum.jsx';
 import {
   BASE_UI, BOTAO_PRIMARIO, BOTAO_SECUNDARIO, maiuscula, paraQuemTexto, pessoasTexto, quandoTexto,
@@ -43,7 +43,7 @@ export function TrilhaEditor({ inicial, gravada, outras, pessoas, aba, onAba, vo
   const brancas = metasEmBranco(rascunho);
   const ui = BASE_UI[rascunho.base];
   const Icone = ui.icone;
-  const arquivarTravado = total > 0;
+  const arquivarTravado = total > 0 ? MOTIVO_DO_ARQUIVAR : temMudanca ? MOTIVO_DO_ARQUIVAR_COM_MUDANCA : null;
 
   let status = 'Nenhuma mudança ainda.';
   if (problema) status = problema.texto;
@@ -95,13 +95,13 @@ export function TrilhaEditor({ inicial, gravada, outras, pessoas, aba, onAba, vo
                 type="button"
                 aria-disabled={arquivarTravado ? 'true' : undefined}
                 aria-describedby={arquivarTravado ? motivoId : undefined}
-                title={arquivarTravado ? MOTIVO_DO_ARQUIVAR : undefined}
-                onClick={() => (arquivarTravado ? toast.warning(MOTIVO_DO_ARQUIVAR) : onArquivar())}
+                title={arquivarTravado ?? undefined}
+                onClick={() => (arquivarTravado ? toast.warning(arquivarTravado) : onArquivar())}
                 className="inline-flex h-[34px] items-center rounded-[10px] border border-transparent px-3 text-[13px] font-semibold text-muted-foreground outline-none hover:border-rose-200 hover:text-rose-700 focus-visible:anel-foco aria-disabled:cursor-not-allowed aria-disabled:hover:border-transparent aria-disabled:hover:text-muted-foreground dark:hover:text-rose-300"
               >
                 Arquivar trilha
               </button>
-              {arquivarTravado && <span id={motivoId} className="sr-only">{MOTIVO_DO_ARQUIVAR}</span>}
+              {arquivarTravado && <span id={motivoId} className="sr-only">{arquivarTravado}</span>}
             </>
           )}
         </div>

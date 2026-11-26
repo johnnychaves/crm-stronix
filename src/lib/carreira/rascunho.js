@@ -12,6 +12,8 @@ import { MAX_NIVEIS, nivelDaPessoa, trilhaDaPessoa } from './trilhas.js';
 // A chave de pessoasPorNivel de quem está na trilha sem um nível que exista nela.
 export const SEM_NIVEL = '_semNivel';
 export const MOTIVO_DO_ARQUIVAR = 'Só dá para arquivar a trilha sem ninguém nela.';
+// Arquivar grava a trilha como está no banco, e o rascunho se perderia.
+export const MOTIVO_DO_ARQUIVAR_COM_MUDANCA = 'Salve ou descarte as mudanças antes de arquivar.';
 // O tempo mínimo que o nível ganha quando deixa de ser o último.
 const MESES_DO_NIVEL_NOVO = 12;
 
