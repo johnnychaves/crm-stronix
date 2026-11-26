@@ -7,6 +7,8 @@ function Btn({ kind = 'secondary', icon, children, onClick, type = 'button', dis
     // CTA de matrícula. O laranja da marca (#FF6A2B) dá 2.86:1 com texto
     // branco — não passa. Preenchimento com rótulo usa este tom mais fechado.
     enroll:    'bg-[#C2410C] text-white hover:bg-[#9A3412] shadow-sm',
+    // Visitante (freepass). teal-700: o 600 dá 3,7:1 com texto branco, abaixo dos 4,5:1.
+    visit:     'bg-teal-700 text-white hover:bg-teal-600 shadow-sm',
     soft:      'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-white/[0.06] dark:text-slate-200 dark:hover:bg-white/[0.12]',
     danger:    'bg-white text-rose-600 hover:bg-rose-50 border border-slate-200 dark:bg-white/[0.04] dark:border-white/10 dark:hover:bg-rose-500/10',
     ghost:     'text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/[0.06]'
