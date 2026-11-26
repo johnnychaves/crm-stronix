@@ -38,7 +38,12 @@ export const MOV = Object.freeze({ ADMISSAO: 'admissao', DESLIGAMENTO: 'desligam
 const ENTRADAS = new Set([MOV.ADMISSAO, MOV.READMISSAO]);
 
 const DIA_RE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
-export const isDia = (v) => typeof v === 'string' && DIA_RE.test(v);
+export function isDia(v) {
+  if (typeof v !== 'string' || !DIA_RE.test(v)) return false;
+  const [y, m, d] = v.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+}
 const pad = (n) => String(n).padStart(2, '0');
 // O dia de hoje no fuso do aparelho, em AAAA-MM-DD.
 export const hojeIso = (agora = new Date()) => `${agora.getFullYear()}-${pad(agora.getMonth() + 1)}-${pad(agora.getDate())}`;
@@ -50,9 +55,11 @@ export function tempoDeCasa(iso, agora = new Date()) {
   const [y, m, d] = iso.split('-').map(Number);
   let meses = (agora.getFullYear() - y) * 12 + (agora.getMonth() + 1 - m);
   if (agora.getDate() < d) meses -= 1;
+  if (meses < 0) return '';
   if (meses < 1) {
     const dias = Math.round((new Date(agora.getFullYear(), agora.getMonth(), agora.getDate()) - new Date(y, m - 1, d)) / 864e5);
-    if (dias <= 0) return 'desde hoje';
+    if (dias < 0) return '';
+    if (dias === 0) return 'desde hoje';
     return `${dias} ${dias === 1 ? 'dia' : 'dias'}`;
   }
   const anos = Math.floor(meses / 12);
@@ -100,7 +107,7 @@ export function comAdmissao(movs, data, { vinculo = null, autor = null, agora = 
     lista[i] = { ...lista[i], data };
     return lista;
   }
-  return [...lista, novaMovimentacao({ tipo: MOV.ADMISSAO, data, vinculo, autor, agora })];
+  return [novaMovimentacao({ tipo: MOV.ADMISSAO, data, vinculo, autor, agora }), ...lista];
 }
 
 const tem = (v) => (typeof v === 'string' ? v.trim() !== '' : !!v);
@@ -194,14 +201,19 @@ export function patchDoBloco(bloco, form, ctx = {}) {
 
   if (bloco === 'trabalho') {
     const vinculo = so(form.vinculo);
-    if (!isVinculo(vinculo)) return recusa('Escolha o vínculo.', 'vinculo');
+    if (vinculo && !isVinculo(vinculo)) return recusa('Escolha o vínculo.', 'vinculo');
     const admissao = so(form.admissao);
-    if (!isDia(admissao) || admissao > hoje) return recusa('A admissão precisa ser hoje ou antes.', 'admissao');
+    if (admissao && (!isDia(admissao) || admissao > hoje)) return recusa('A admissão precisa ser hoje ou antes.', 'admissao');
+    // Só regrava a lista quando a data mudou, para não gravar uma cópia velha por cima.
+    const antes = admissaoDe(pessoa?.ficha);
+    const mexeAdmissao = admissao && admissao !== antes;
     const professor = pessoa?.funcao === 'professor';
     const cref = professor && vinculo !== 'estagio' ? so(form.cref).slice(0, 20) || null : null;
+    const ficha = { vinculo: vinculo || null, cref };
+    if (mexeAdmissao) ficha.movimentacoes = comAdmissao(pessoa?.ficha?.movimentacoes, admissao, { vinculo: vinculo || null, autor, agora });
     return {
-      ficha: { vinculo, cref, movimentacoes: comAdmissao(pessoa?.ficha?.movimentacoes, admissao, { vinculo, autor, agora }) },
-      professor: pessoa?.professor ? { modalidadeIds: Array.isArray(form.modalidadeIds) ? [...form.modalidadeIds] : [] } : null,
+      ficha,
+      professor: pessoa?.professor && Array.isArray(form.modalidadeIds) ? { modalidadeIds: [...form.modalidadeIds] } : null,
     };
   }
 

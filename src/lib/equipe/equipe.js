@@ -47,11 +47,14 @@ export function montarEquipe({ fichas = [], users = [], professores = [], agora 
   const out = [];
 
   for (const ficha of validos(fichas)) {
-    const user = (ficha.userId && userPorId.get(ficha.userId))
-      || (ficha.professorId && loginDoProfessor.get(ficha.professorId))
+    const livre = (u) => (u && !usadosU.has(u.id) ? u : null);
+    const user = livre(ficha.userId && userPorId.get(ficha.userId))
+      || livre(ficha.professorId && loginDoProfessor.get(ficha.professorId))
       || null;
-    const profId = ficha.professorId || (user && isProfessor(user) ? user.professorId : null);
-    const professor = (profId && profPorId.get(profId)) || null;
+    // Com login de professor, vale o professor do login: a troca passa pelo set-role, no servidor.
+    const profId = (user && isProfessor(user) && user.professorId) || ficha.professorId || null;
+    const achado = (profId && profPorId.get(profId)) || null;
+    const professor = achado && !usadosP.has(achado.id) ? achado : null;
     if (user) usadosU.add(user.id);
     if (professor) usadosP.add(professor.id);
     out.push(pessoa({ id: ficha.id, ficha, user, professor, agora }));

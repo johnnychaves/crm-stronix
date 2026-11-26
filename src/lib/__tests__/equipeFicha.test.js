@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   VINCULOS, vinculoSelo, vinculoTexto, MOV, novaMovimentacao, admissaoDe, comAdmissao,
-  faltasDaFicha, formDoBloco, patchDoBloco, tempoDeCasa, dataBR, hojeIso,
+  faltasDaFicha, formDoBloco, patchDoBloco, tempoDeCasa, dataBR, hojeIso, isDia,
 } from '../equipe/ficha.js';
 
 const AGORA = new Date(2026, 10, 26, 10, 0); // 26/11/2026, 10h local
@@ -150,5 +150,48 @@ describe('datas', () => {
   it('data em dd/mm/aaaa e o dia de hoje no fuso do aparelho', () => {
     expect(dataBR('2024-03-12')).toBe('12/03/2024');
     expect(hojeIso(AGORA)).toBe('2026-11-26');
+  });
+});
+
+describe('correções da revisão', () => {
+  const pessoa = { id: 'p1', funcao: 'professor', nome: 'Marina', ficha: { movimentacoes: [{ tipo: 'admissao', data: '2024-03-12' }] }, professor: prof() };
+  const ctx = { pessoa, autor: AUTOR, agora: AGORA, professores: [] };
+
+  it('trabalho: vínculo vazio grava null e admissão vazia não mexe nas movimentações', () => {
+    const r = patchDoBloco('trabalho', { vinculo: '', admissao: '', cref: '' }, ctx);
+    expect(r.erro).toBeUndefined();
+    expect(r.ficha.vinculo).toBeNull();
+    expect('movimentacoes' in r.ficha).toBe(false);
+  });
+  it('trabalho: vínculo e admissão preenchidos continuam validados', () => {
+    expect(patchDoBloco('trabalho', { vinculo: 'xyz', admissao: '' }, ctx).campo).toBe('vinculo');
+    expect(patchDoBloco('trabalho', { vinculo: '', admissao: '2026-11-27' }, ctx).campo).toBe('admissao');
+  });
+  it('trabalho: só devolve movimentações quando a admissão mudou ou não existia', () => {
+    const igual = patchDoBloco('trabalho', { vinculo: 'clt', admissao: '2024-03-12' }, ctx);
+    expect('movimentacoes' in igual.ficha).toBe(false);
+    const muda = patchDoBloco('trabalho', { vinculo: 'clt', admissao: '2024-03-13' }, ctx);
+    expect(muda.ficha.movimentacoes[0].data).toBe('2024-03-13');
+    const sem = patchDoBloco('trabalho', { vinculo: 'clt', admissao: '2024-03-13' }, { ...ctx, pessoa: { ...pessoa, ficha: { movimentacoes: [] } } });
+    expect(sem.ficha.movimentacoes).toHaveLength(1);
+  });
+  it('trabalho: sem lista de modalidades, o professor vem null', () => {
+    expect(patchDoBloco('trabalho', { vinculo: 'clt', admissao: '2024-03-12' }, ctx).professor).toBeNull();
+  });
+  it('comAdmissao sem entrada põe a admissão no começo', () => {
+    const movs = [{ tipo: 'desligamento', data: '2023-12-15' }];
+    const novo = comAdmissao(movs, '2022-02-07', { vinculo: 'clt', autor: AUTOR, agora: AGORA });
+    expect(novo).toHaveLength(2);
+    expect(novo[0].tipo).toBe('admissao');
+    expect(admissaoDe({ movimentacoes: novo })).toBe('2022-02-07');
+  });
+  it('isDia confere que a data existe', () => {
+    expect(isDia('2026-02-31')).toBe(false);
+    expect(isDia('2026-02-29')).toBe(false);
+    expect(isDia('2028-02-29')).toBe(true);
+  });
+  it('tempoDeCasa: data futura é vazia e dia 31 vira o mês certo', () => {
+    expect(tempoDeCasa('2026-11-27', AGORA)).toBe('');
+    expect(tempoDeCasa('2026-10-31', AGORA)).toBe('26 dias');
   });
 });
