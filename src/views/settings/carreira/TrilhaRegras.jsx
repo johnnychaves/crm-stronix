@@ -70,7 +70,8 @@ function Ajuste({ id, trilha, onMudar }) {
 }
 
 export function TrilhaRegras({ trilha, onMudar, totalDePessoas, modalities, calendarioTravado }) {
-  const baseTravada = totalDePessoas > 0;
+  // As três que vêm prontas nunca mudam de base (problemaDaTrilha).
+  const baseTravada = totalDePessoas > 0 || Boolean(trilha.padrao);
   const [primeiro] = mesesDaAvaliacao(trilha);
   const semestral = trilha.frequencia === 'semestral';
   const rotuloDoMes = semestral ? 'Meses da avaliação' : 'Mês da avaliação';
@@ -89,7 +90,7 @@ export function TrilhaRegras({ trilha, onMudar, totalDePessoas, modalities, cale
             {baseTravada && (
               <span className="inline-flex h-6 items-center gap-1.5 rounded-full bg-muted px-2.5 text-[12px] font-semibold text-muted-foreground">
                 <Lock size={12} aria-hidden="true" />
-                não muda com gente na trilha
+                {trilha.padrao ? 'não muda nas trilhas que vêm prontas' : 'não muda com gente na trilha'}
               </span>
             )}
           </div>

@@ -11,10 +11,9 @@ import { mesesDaAvaliacao } from '../../../lib/carreira/periodo.js';
 export const MESES = Object.freeze(['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']);
 export const maiuscula = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
-// A trava do PR 2 (visão geral do plano de carreira): o NPS das telas de
-// professores já lê a trilha Professor, e os outros números ainda usam o ciclo
-// fixo de dezembro. O PR 3 tira a trava.
-export const AVISO_CALENDARIO_PROFESSOR = 'O calendário da trilha Professor muda a partir do menu Carreira.';
+// A trava do calendário da trilha Professor mora no validacao.js, que a
+// confere ao gravar. O PR 3 tira a trava.
+export { AVISO_CALENDARIO_PROFESSOR } from '../../../lib/carreira/validacao.js';
 
 // O desenho de cada base: o ícone e os tons do ícone grande, do degrau e do
 // quadrado de cada número.

@@ -195,7 +195,7 @@ describe('o rascunho e a barra de salvar', () => {
   it('meta fora do limite: a barra diz o limite', async () => {
     await render({ inicial: PROFESSOR, gravada: PROFESSOR, pessoas: GENTE });
     await digitar(campo('Nota dos alunos, Júnior'), '11');
-    expect(status()).toBe('Use um número de 0 a 10.');
+    expect(status()).toBe('Nota dos alunos, Júnior: use um número de 0 a 10.');
     expect(botao('Salvar trilha').disabled).toBe(true);
   });
 });
@@ -244,10 +244,18 @@ describe('as regras da trilha', () => {
   });
 
   it('com gente na trilha, "Para quem" não muda', async () => {
-    await render({ inicial: PROFESSOR, gravada: PROFESSOR, pessoas: GENTE, abaInicial: 'regras' });
+    const minha = { ...PROFESSOR, id: 'minha', nome: 'Minha', padrao: false };
+    await render({ inicial: minha, gravada: minha, pessoas: GENTE, abaInicial: 'regras' });
     expect(radio('Professores').disabled).toBe(true);
     expect(radio('Consultores').disabled).toBe(true);
     expect(document.body.textContent).toContain('não muda com gente na trilha');
+  });
+
+  it('a trilha que vem pronta não muda "Para quem", mesmo sem gente', async () => {
+    await render({ inicial: ESTAGIARIO, gravada: ESTAGIARIO, pessoas: NINGUEM, abaInicial: 'regras' });
+    expect(radio('Professores').disabled).toBe(true);
+    expect(radio('Consultores').disabled).toBe(true);
+    expect(document.body.textContent).toContain('não muda nas trilhas que vêm prontas');
   });
 
   it('as outras trilhas mudam o calendário', async () => {
