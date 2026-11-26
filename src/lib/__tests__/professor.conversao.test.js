@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { APPTS_COMPLETE_MONTH as DO_CRM } from '../crm/scope.js';
 import { APPTS_COMPLETE_MONTH, conversaoDoCiclo, pessoasDasAulas } from '../professor/conversao.js';
+import { limitesDoCiclo } from '../professor/ciclo.js';
 
 const ASOF = new Date('2027-06-15T12:00:00');
 let seq = 0;
@@ -13,7 +14,7 @@ const pago = (leadId, over = {}) => ({
   id: `c-${leadId}`, leadId, value: 2388, status: 'ativo',
   startsAt: new Date('2027-03-12T12:00:00'), endsAt: new Date('2028-03-12T12:00:00'), ...over,
 });
-const conta = (aulas, contratos, opts = {}) => conversaoDoCiclo({ aulas, contratos, professorId: 'p1', ciclo: 2027, asOf: ASOF, ...opts });
+const conta = (aulas, contratos, opts = {}) => conversaoDoCiclo({ aulas, contratos, professorId: 'p1', periodo: limitesDoCiclo(2027), asOf: ASOF, ...opts });
 
 describe('conversaoDoCiclo', () => {
   it('conta pessoas: quem veio em dois agendamentos com o mesmo professor entra uma vez', () => {
@@ -93,7 +94,7 @@ describe('conversaoDoCiclo', () => {
   });
 
   it('avisa o ciclo que pega os agendamentos incompletos, antes de setembro de 2026', () => {
-    expect(conversaoDoCiclo({ aulas: [], contratos: [], professorId: 'p1', ciclo: 2026, asOf: ASOF }).incompleto).toBe(true);
+    expect(conversaoDoCiclo({ aulas: [], contratos: [], professorId: 'p1', periodo: limitesDoCiclo(2026), asOf: ASOF }).incompleto).toBe(true);
     expect(conta([], []).incompleto).toBe(false);
     expect(APPTS_COMPLETE_MONTH).toBe(DO_CRM);
   });
@@ -109,14 +110,14 @@ describe('pessoasDasAulas', () => {
         aula('caio', { professorId: 'p2' }),
         aula('dani', { status: 'no_show' }),
       ],
-      contratos: [pago('ana')], professorId: 'p1', ciclo: 2027, asOf: ASOF,
+      contratos: [pago('ana')], professorId: 'p1', periodo: limitesDoCiclo(2027), asOf: ASOF,
     });
     expect(r.map((p) => [p.leadId, p.matriculou, p.naJanela])).toEqual([['bia', false, true], ['ana', true, false]]);
     expect(r[1]).toMatchObject({ nome: 'Ana', modalidade: 'Funcional', ultima: new Date('2027-03-10T18:00:00') });
   });
 
   it('a janela é parâmetro', () => {
-    const r = pessoasDasAulas({ aulas: [aula('bia', { scheduledFor: new Date('2027-06-01T18:00:00') })], contratos: [], professorId: 'p1', ciclo: 2027, asOf: ASOF, janelaDias: 10 });
+    const r = pessoasDasAulas({ aulas: [aula('bia', { scheduledFor: new Date('2027-06-01T18:00:00') })], contratos: [], professorId: 'p1', periodo: limitesDoCiclo(2027), asOf: ASOF, janelaDias: 10 });
     expect(r[0].naJanela).toBe(false);
   });
 });

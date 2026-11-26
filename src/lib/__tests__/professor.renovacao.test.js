@@ -20,7 +20,7 @@ const renovacao = (id, de, over = {}) => contrato(id, {
   createdAt: new Date('2027-03-01T12:00:00'), ...over,
 });
 const conta = ({ raw, leads, ciclo = 2027, asOf = ASOF }) => renovacaoDoCiclo({
-  leads, contratos: normalizeContracts(raw), planos: PLANOS, professor: PROF, ciclo, asOf,
+  leads, contratos: normalizeContracts(raw), planos: PLANOS, professor: PROF, periodo: limitesDoCiclo(ciclo), asOf,
 });
 const lead = (id, over = {}) => ({ id, professorId: 'p1', ...over });
 
