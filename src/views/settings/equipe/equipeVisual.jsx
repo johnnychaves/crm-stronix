@@ -1,5 +1,5 @@
 import { cn } from '../../../lib/utils.js';
-import { fotoDe, vinculoSelo } from '../../../lib/equipe/ficha.js';
+import { FUNCAO_TEXTO, fotoDe, vinculoSelo } from '../../../lib/equipe/ficha.js';
 
 const iniciais = (nome) => String(nome || '?').trim().split(/\s+/)
   .filter((_, i, a) => i === 0 || i === a.length - 1).map((w) => w[0]).join('').toUpperCase();
@@ -16,7 +16,6 @@ export function PessoaAvatar({ pessoa, size = 36 }) {
   );
 }
 
-export const FUNCAO_TEXTO = Object.freeze({ consultor: 'Consultor', gestor: 'Gestor', professor: 'Professor' });
 const FUNCAO_COR = {
   gestor: 'bg-accent-500/[0.14] text-accent-600 dark:text-accent-400',
   consultor: 'bg-muted text-slate-600 dark:text-slate-300',

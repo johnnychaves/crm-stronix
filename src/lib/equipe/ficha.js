@@ -5,6 +5,7 @@
 import { isValidCpf } from '../brazilLookups.js';
 
 export const FUNCOES = Object.freeze(['consultor', 'gestor', 'professor']);
+export const FUNCAO_TEXTO = Object.freeze({ consultor: 'Consultor', gestor: 'Gestor', professor: 'Professor' });
 
 // A lista do Gestão 360, mais Sócio, que a planilha FINANCEIRO_STRONIX já usa.
 export const VINCULOS = Object.freeze([

@@ -8,10 +8,9 @@ import { storage, appId } from '../../../lib/firebase.js';
 import { uploadProfessorPhoto, deleteProfessorPhoto } from '../../../lib/professorPhoto.js';
 import { professorModalityNames } from '../../../lib/professores.js';
 import { nivelTexto } from '../../../lib/professor/metas.js';
-import { VINCULOS, admissaoDe, dataBR, faltasDaFicha, formDoBloco, patchDoBloco, tempoDeCasa, vinculoTexto } from '../../../lib/equipe/ficha.js';
+import { FUNCAO_TEXTO, VINCULOS, admissaoDe, dataBR, faltasDaFicha, formDoBloco, patchDoBloco, tempoDeCasa, vinculoTexto } from '../../../lib/equipe/ficha.js';
 import { apagarFotoDaEquipe, gravarBloco, gravarProfessor, renomearPessoa, subirFotoDaEquipe } from '../../../lib/equipe/equipeWrites.js';
 import { DialogField, FIELD_INPUT, SettingsBtn } from '../settingsBits.jsx';
-import { FUNCAO_TEXTO } from './equipeVisual.jsx';
 
 const TITULOS = { identidade: 'Identidade', contato: 'Contato', trabalho: 'Trabalho' };
 const ITENS = { identidade: ['foto', 'cpf', 'rg', 'nascimento'], contato: ['celular', 'emailPessoal', 'endereco'], trabalho: ['vinculo', 'admissao', 'cref'] };

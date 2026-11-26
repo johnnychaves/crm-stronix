@@ -5,9 +5,9 @@ import { AppLink } from '../../../components/nav/AppLink.jsx';
 import { FilterChip } from '../../dashboard/DashFilterBar.jsx';
 import { isClientLead } from '../../../lib/leads.js';
 import { professorModalityNames } from '../../../lib/professores.js';
-import { VINCULOS, admissaoDe, dataBR, faltasDaFicha, tempoDeCasa } from '../../../lib/equipe/ficha.js';
+import { FUNCAO_TEXTO, VINCULOS, admissaoDe, dataBR, faltasDaFicha, tempoDeCasa } from '../../../lib/equipe/ficha.js';
 import { filtrarEquipe } from '../../../lib/equipe/equipe.js';
-import { AcessoSelo, FichaAnel, FuncaoSelo, FUNCAO_TEXTO, PessoaAvatar, VinculoSelo } from './equipeVisual.jsx';
+import { AcessoSelo, FichaAnel, FuncaoSelo, PessoaAvatar, VinculoSelo } from './equipeVisual.jsx';
 
 const GRADE = 'minmax(220px,2fr) 1.15fr .8fr 1.05fr .95fr 44px';
 const TODOS = '__todos';
