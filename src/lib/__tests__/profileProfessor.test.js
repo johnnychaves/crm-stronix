@@ -20,6 +20,7 @@ vi.mock('../firebase.js', () => ({
   appId: 'acad', LEADS_PATH: 'leads', INTERACTIONS_PATH: 'inter', CONTRACTS_PATH: 'contratos',
   db: {}, auth: {}, storage: {},
 }));
+vi.mock('../../hooks/useLeadFreepasses.js', () => ({ useLeadFreepasses: () => [] }));
 vi.mock('../../hooks/useLeadTimeline.js', () => ({ useLeadTimeline: () => [] }));
 vi.stubGlobal('window', { location: { origin: 'https://stronilead.com.br' } });
 
@@ -28,8 +29,8 @@ const { ReferralsSection } = await import('../../components/profile/ReferralsSec
 
 const D = (y, m, d) => new Date(y, m - 1, d);
 const GESTOR = { id: 'u1', name: 'Bruno', role: 'admin', tenantId: 'acad', authUid: 'auth-1' };
-const CONSULTOR = { id: 'u2', name: 'Ana', role: 'consultant', tenantId: 'acad', authUid: 'auth-2' };
-const PROFESSOR = { id: 'u3', name: 'Rafa', role: 'professor', professorId: 'prof1', tenantId: 'acad', authUid: 'auth-3' };
+const CONSULTOR = { id: 'u2', name: 'Ana', role: 'consultant', tenantId: 'acad', authUid: 'auth-2', tenantModules: ['faltosos'] };
+const PROFESSOR = { id: 'u3', name: 'Rafa', role: 'professor', professorId: 'prof1', tenantId: 'acad', authUid: 'auth-3', tenantModules: ['faltosos'] };
 
 const CONFIG = {
   modalities: [], trialClassOptions: [1, 2, 3], units: [], metaWeekdays: [1, 2, 3, 4, 5], slaOverdueDays: 3,
@@ -183,7 +184,8 @@ describe('ficha do professor: Contratos só para leitura', () => {
     const casos = [
       [cliente(start), [start], 'Renovar contrato'],
       [cliente(vencido), [vencido], 'Nova matrícula'],
-      [LEAD, [], 'Matricular agora'],
+      [{ ...cliente(vencido), currentContractId: null, currentPlanName: null }, [], 'Matricular agora'],
+      [LEAD, [], 'Lançar freepass'],
     ];
     casos.forEach(([lead, contratos, botao]) => {
       expect(ficha({ lead, tab: 'contratos', appUser: CONSULTOR, contratos })).toContain(botao);

@@ -106,6 +106,7 @@ describe('tabelas', () => {
       CADASTRO_EDITAR: 'cadastro.editar',
       FICHA_MUDAR_FASE: 'ficha.mudarFase',
       CONTRATO_EDITAR: 'contrato.editar',
+      FREEPASS_LANCAR: 'freepass.lancar',
       INDICACAO_CADASTRAR: 'indicacao.cadastrar',
       CLIENTES_EXPORTAR: 'clientes.exportar',
       LEADS_VER: 'leads.ver',
