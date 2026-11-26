@@ -48,4 +48,31 @@ describe('aba Contratos com freepass', () => {
     expect(botao('Lançar freepass')).toBeUndefined();
     expect(botao('Encerrar freepass')).toBeUndefined();
   });
+  it('o lead em Perda não lança freepass e é mandado reativar', async () => {
+    await montar({ lead: { id: 'L', status: 'Perda' }, isClient: false, freepasses: [], canFreepass: true });
+    expect(botao('Lançar freepass')).toBeUndefined();
+    expect(texto()).toContain('Rafa está em Perda. Reative o lead no alto da ficha para lançar o freepass.');
+  });
+  it('com freepass correndo, a vazia diz que a matrícula é pelo Marcar venda e oferece outro freepass', async () => {
+    await montar({ lead: { id: 'L', status: 'Novo' }, isClient: false, freepasses: [fp], canFreepass: true });
+    expect(texto()).toContain('Rafa está experimentando a academia. A matrícula é pelo Marcar venda, no alto da ficha.');
+    await act(async () => { botao('Lançar outro freepass').click(); });
+    expect(props.onLaunchFreepass).toHaveBeenCalled();
+  });
+  it('o Lançar freepass fica desligado até os freepass chegarem', async () => {
+    await montar({ lead: { id: 'L', status: 'Novo' }, isClient: false, freepasses: [], canFreepass: true, freepassesLoading: true });
+    expect(botao('Lançar freepass').disabled).toBe(true);
+  });
+  it('o ex-aluno com contrato vencido tem Lançar freepass ao lado de Nova matrícula', async () => {
+    const c1 = { id: 'c1', leadId: 'L', planName: 'Start', value: 1200, durationMonths: 12, status: 'ativo', startsAt: new Date(2024, 0, 1), endsAt: new Date(2024, 11, 31), createdAt: new Date(2024, 0, 1) };
+    await montar({ lead: { id: 'L', lifecycleStage: 'cliente', status: 'Venda', currentContractId: 'c1' }, leadContracts: [c1], isClient: true, freepasses: [], canFreepass: true });
+    expect(botao('Nova matrícula')).toBeTruthy();
+    expect(botao('Lançar freepass')).toBeTruthy();
+  });
+  it('o card por dias mostra a data do fim embaixo e o por aulas, nenhuma ainda', async () => {
+    const fd = { ...fp, id: 'f2', kind: 'dias', total: 7, startsAt: new Date(), endsAt: new Date(Date.now() + 6 * 86400000) };
+    await montar({ lead: { id: 'L', status: 'Novo' }, isClient: false, freepasses: [fp, fd], canFreepass: true });
+    expect(texto()).toContain('nenhuma ainda');
+    expect(texto()).toMatch(/até \d{2}\/\d{2}/);
+  });
 });

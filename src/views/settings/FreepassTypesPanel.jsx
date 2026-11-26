@@ -8,6 +8,7 @@ import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { appId, CONFIG_PATH, CONFIG_GENERAL_ID } from '../../lib/firebase.js';
 import { freepassQuantityText, freepassTypeProblem, saveFreepassType, FREEPASS_KINDS } from '../../lib/visitante.js';
 import { cn } from '../../lib/utils.js';
+import { RadioGroup, RadioGroupOption } from '@/components/ui/radio-group';
 import { useToast } from '../../contexts/ToastContext.jsx';
 import { SettingsPanel } from '../../components/ui/SettingsCard.jsx';
 import { DialogField, EmptyState, FIELD_INPUT, FormDialog, RowAction, SettingsAddBtn } from './settingsBits.jsx';
@@ -91,18 +92,18 @@ export function FreepassTypesPanel({ db, modalities, freepassTypes }) {
                 {(modalities || []).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
               </select>
             </DialogField>
-            <DialogField label="Vale por">
-              <div className="flex gap-2" role="radiogroup" aria-label="Vale por">
+            <div className="flex flex-col gap-1.5">
+              <span id="fp-vale-por" className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Vale por</span>
+              <RadioGroup value={draft.kind} onValueChange={(k) => set('kind', k)} aria-labelledby="fp-vale-por" className="flex gap-2">
                 {[[FREEPASS_KINDS.DIAS, 'Dias'], [FREEPASS_KINDS.AULAS, 'Aulas']].map(([k, label]) => (
-                  <button
-                    key={k} type="button" role="radio" aria-checked={draft.kind === k}
-                    onClick={() => set('kind', k)}
-                    className={cn('h-9 flex-1 rounded-lg border text-[13px] font-semibold focus-visible:outline-none focus-visible:anel-foco',
+                  <RadioGroupOption
+                    key={k} value={k}
+                    className={cn('h-9 flex-1 rounded-lg border text-[13px] font-semibold',
                       draft.kind === k ? 'border-teal-700 bg-teal-50 text-teal-800 dark:bg-teal-500/10 dark:text-teal-200' : 'border-border text-muted-foreground')}
-                  >{label}</button>
+                  >{label}</RadioGroupOption>
                 ))}
-              </div>
-            </DialogField>
+              </RadioGroup>
+            </div>
             <DialogField label={draft.kind === FREEPASS_KINDS.AULAS ? 'Quantas aulas' : 'Quantos dias'} hint="De 1 a 99.">
               <input className={cn(FIELD_INPUT, 'num')} type="number" min={1} max={99} value={draft.quantity} onChange={e => set('quantity', e.target.value)} aria-invalid={problem?.field === 'quantity'} />
             </DialogField>
