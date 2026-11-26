@@ -36,7 +36,7 @@ Escolhas que a spec e as decisões do Johnny não fecharam. Cada uma está no c�
 
 ## Dúvidas para o Johnny
 
-- **Metas da Professor entre o PR 2 e o PR 3.** Com a aba Metas fora, a lista e o perfil dos professores seguem com as metas gravadas antes (renovação 45, 55 e 65, nota 9, aderência 60 a 70). O que o gestor mudar na trilha Professor só aparece nessas telas quando o PR 3 entrar. A outra saída é uma ponte que leia a trilha Professor nas telas de hoje já no PR 2, com perda (as telas de hoje têm uma nota e uma faixa para todos os níveis e só conhecem Júnior, Pleno e Sênior). O plano segue a primeira, por ser a que a visão geral descreve.
+- **Metas da Professor entre o PR 2 e o PR 3.** Com a aba Metas fora, a lista e o perfil dos professores seguem com as metas gravadas antes (renovação 45, 55 e 65, nota 9, aderência 60 a 70). O que o gestor mudar na trilha Professor só aparece nessas telas quando o PR 3 entrar. A outra saída é uma ponte que leia a trilha Professor nas telas de hoje já no PR 2, com perda (as telas de hoje têm uma nota e uma faixa para todos os níveis e só conhecem Júnior, Pleno e Sênior). O plano segue a primeira, por ser a que a visão geral descreve (confirmado pelo Johnny em 26/11/2026).
 - **Trava da Professor.** O plano trava só a frequência e o mês, como pedido. Acrescentar, apagar e renomear níveis da Professor fica livre; as telas de hoje continuam lendo Júnior, Pleno e Sênior até o PR 3.
 
 ---
