@@ -42,7 +42,7 @@ import { leadFunnelsOf } from '../../lib/crm/scope.js';
 
 function SettingsView({
   section, onSection, db, statuses, sources, usersList, appUser, tags, lossReasons,
-  dores, funnels, modalities, planos, trialClassOptions, units, metaWeekdays
+  dores, funnels, modalities, planos, trialClassOptions, units, metaWeekdays, listenersActive, pessoaId, pessoaAba
 }) {
   // Fonte de leads das Configurações (G1-flip): TODOS os buckets por query
   // própria em vez do prop global (que virou só 'ativo' no flip). As seções
@@ -168,6 +168,7 @@ function SettingsView({
           <TeamAccessSection
             db={db} appUser={appUser} usersList={usersList} leads={leads}
             focusId={focus} onFocusHandled={clearFocus} onLeadsChanged={reloadLeads}
+            listenersActive={listenersActive} pessoaId={pessoaId} pessoaAba={pessoaAba}
           />
         )}
         {secao === 'transfer' && (

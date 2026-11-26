@@ -1,73 +1,38 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { EditarAcessoDialog } from './equipe/EditarAcessoDialog.jsx';
-import { ProfessorPicker } from './equipe/ProfessorPicker.jsx';
-import { Copy, Dumbbell, Mail, Pencil, Plus, Shield, Trash2 } from 'lucide-react';
-import { collection, doc, addDoc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, appId, LEADS_PATH, PROFESSORS_PATH, USERS_PATH } from '../../lib/firebase.js';
-import { commitOpsInChunks } from '../../lib/funnels.js';
+import { useLocation, useNavigate } from 'react-router';
+import { Copy, Mail, Plus, Shield } from 'lucide-react';
+import { collection, doc, addDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { auth, appId, EQUIPE_PATH, PROFESSORS_PATH } from '../../lib/firebase.js';
 import { leadsWhere } from '../../lib/settingsLeads.js';
-import { isClientLead } from '../../lib/leads.js';
-import { professorModalityNames, professorNameById } from '../../lib/professores.js';
 import { generateTemporaryPassword, passwordPolicyError, PASSWORD_RULE_TEXT } from '../../lib/passwordPolicy.js';
-import { isGestor, isProfessor, roleLabel, roleOf, ROLES } from '../../lib/acesso.js';
+import { isGestor, isProfessor, roleOf, ROLES } from '../../lib/acesso.js';
 import { hasModule, MODULES } from '../../lib/modules.js';
-import {
-  availableProfessors, inviteRoleOptions, linkedProfessorIds, linkedProfessorText,
-  PROFESSOR_LINK_MESSAGES
-} from '../../lib/teamRoles.js';
+import { availableProfessors, inviteRoleOptions, PROFESSOR_LINK_MESSAGES } from '../../lib/teamRoles.js';
+import { montarEquipe } from '../../lib/equipe/equipe.js';
+import { hrefFor } from '../../lib/routes.js';
 import { cn } from '../../lib/utils.js';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 import { useToast } from '../../contexts/ToastContext.jsx';
 import { useSeatLimits } from '../../hooks/useSeatLimits.js';
-import { settingsColorTone } from '../../components/ui/ColorPicker.jsx';
-import { SettingsPanel, SettingsSectionHeader } from '../../components/ui/SettingsCard.jsx';
-import {
-  DialogField, EmptyState, FIELD_INPUT, FormDialog,
-  RowAction, SettingsBtn, TableHeadRow
-} from './settingsBits.jsx';
+import { useEquipeFichas } from '../../hooks/useEquipeFichas.js';
+import { useMinuteClock } from '../../hooks/useMinuteClock.js';
+import { useScreenParams } from '../../hooks/useScreenParams.js';
+import { AppLink } from '../../components/nav/AppLink.jsx';
+import { SettingsSectionHeader } from '../../components/ui/SettingsCard.jsx';
+import { DialogField, FIELD_INPUT, FormDialog, SettingsBtn } from './settingsBits.jsx';
+import { EditarAcessoDialog } from './equipe/EditarAcessoDialog.jsx';
+import { ProfessorPicker } from './equipe/ProfessorPicker.jsx';
+import { EquipeLista } from './equipe/EquipeLista.jsx';
+import { EquipeFicha } from './equipe/EquipeFicha.jsx';
 
-// Equipe & acessos: quem entra no app, com qual papel, turno e piso de
-// prospecção; e, num card à parte, os professores que conduzem aula
-// experimental (catálogo simples). Com o módulo Professor e faltosos ligado
-// (appUser.tenantModules), o professor do cadastro pode ganhar login com o
-// papel Professor (src/lib/teamRoles.js).
+// Equipe & acessos: a lista de pessoas e a ficha de cada uma (endereço
+// /configuracoes/equipe[/<id>[/<aba>]]). Com o módulo Professor e faltosos
+// ligado (appUser.tenantModules), o professor do cadastro pode ganhar login
+// com o papel Professor (src/lib/teamRoles.js).
 //
 // Os caminhos de escrita são os mesmos de antes do redesign (/api/admin-*,
 // /api/invite-create e o doc do usuário): mudou a casca, não a regra. O papel
 // e o professor ligado só mudam pelo servidor (set-role), nunca pelo cliente.
-
-const MEMBERS_GRID = '1.6fr .8fr .9fr .9fr 1fr 84px';
-const MEMBERS_COLUMNS = [
-  { key: 'member', label: 'Membro' },
-  { key: 'role', label: 'Papel' },
-  { key: 'shift', label: 'Turno' },
-  { key: 'target', label: 'Prospecção' },
-  { key: 'access', label: 'Acesso' },
-  { key: 'actions', label: '' }
-];
-
-// Professores usam a MESMA tabela dos membros — as larguras espelham as de
-// MEMBERS_GRID (a coluna da barra ocupa duas) para as duas listas lerem como
-// uma coisa só, mesmo sendo cadastros diferentes.
-const PROFESSORS_GRID = '1.6fr .8fr 1.8fr 1fr 84px';
-const PROFESSORS_COLUMNS = [
-  { key: 'professor', label: 'Professor' },
-  { key: 'aulas', label: 'Aulas' },
-  { key: 'share', label: 'Participação' },
-  { key: 'conversion', label: 'Matrícula' },
-  { key: 'actions', label: '' }
-];
-
-// Selo do papel na lista. O professor tem cor própria para não se confundir
-// com o consultor, que é quem ocupa vaga do plano.
-const ROLE_BADGE = {
-  [ROLES.GESTOR]: 'bg-accent-500/[0.14] text-accent-600 dark:text-accent-400',
-  [ROLES.CONSULTOR]: 'bg-muted text-slate-600 dark:text-slate-300',
-  [ROLES.PROFESSOR]: 'bg-violet-500/[0.12] text-violet-700 dark:text-violet-300'
-};
-
-const initialsOf = (name) => (name || '?')
-  .trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
 
 const emptyForm = {
   name: '', email: '', password: '', shiftStart: '', shiftEnd: '', dailyVolumeTarget: '',
@@ -75,18 +40,6 @@ const emptyForm = {
 };
 
 const normalizeEmail = (v) => String(v || '').trim().toLowerCase();
-const normalizeUid = (v) => String(v || '').trim();
-
-function MemberAvatar({ name, size = 32 }) {
-  return (
-    <span
-      style={{ width: size, height: size, fontSize: Math.round(size * 0.34) }}
-      className="rounded-full grid place-items-center font-bold shrink-0 bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300"
-    >
-      {initialsOf(name)}
-    </span>
-  );
-}
 
 // A faixa das vagas de consultor do plano, mais a linha dos professores com
 // acesso, que não ocupam vaga. As vagas só aparecem com o limite de consultor
@@ -137,65 +90,22 @@ function SeatBand({ seats, consultantCount, professorCount = 0 }) {
   );
 }
 
-function ProfessorRow({ professor, modalities, aulas, share, conversion, last, withLogin = false, onEdit, onDelete }) {
-  const mods = professorModalityNames(professor, modalities);
-  // Cor da primeira modalidade: identifica o professor no avatar e na barra,
-  // como no card do handoff.
-  const modality = (modalities || []).find(m => (professor.modalidadeIds || []).includes(m.id));
-  const tone = settingsColorTone(modality?.color || 'slate');
-
-  return (
-    <div
-      className={cn('grid gap-3 items-center px-5 py-3.5 transition hover:bg-muted/50', !last && 'border-b border-border')}
-      style={{ gridTemplateColumns: PROFESSORS_GRID }}
-    >
-      <div className="flex items-center gap-2.5 min-w-0">
-        <span className={cn(
-          'size-8 rounded-full grid place-items-center text-[11px] font-bold shrink-0',
-          tone.soft, tone.text, tone.darkSoft, tone.darkText
-        )}>
-          {initialsOf(professor.nome)}
-        </span>
-        <div className="min-w-0">
-          <div className="text-[13.5px] font-semibold truncate">{professor.nome}</div>
-          <div className="text-[11.5px] text-muted-foreground truncate">
-            {mods.length ? mods.join(' · ') : 'Sem modalidade'}{withLogin ? ' · com acesso ao app' : ''}
-          </div>
-        </div>
-      </div>
-
-      <div className="text-[12.5px] font-semibold num">{aulas}</div>
-
-      <div className="flex items-center">
-        <div className="w-full h-[5px] rounded-full bg-muted overflow-hidden">
-          <div className={cn('h-full rounded-full', tone.strong)} style={{ width: `${share}%` }} />
-        </div>
-      </div>
-
-      <div className={cn('text-[12.5px] num', conversion == null && 'text-slate-400 dark:text-slate-500')}>
-        {conversion == null ? 'sem aula' : `${conversion}%`}
-      </div>
-
-      <div className="flex items-center justify-end gap-1.5">
-        <RowAction icon={<Pencil size={13} />} title={`Editar ${professor.nome}`} onClick={onEdit} />
-        <RowAction kind="danger" icon={<Trash2 size={13} />} title={`Excluir ${professor.nome}`} onClick={onDelete} />
-      </div>
-    </div>
-  );
-}
-function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHandled, onLeadsChanged }) {
+function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHandled, onLeadsChanged, listenersActive = true, pessoaId = null, pessoaAba = null }) {
   const toast = useToast();
+  const navigate = useNavigate();
+  const location = useLocation();
   const { professores, modalities } = useGeneralConfig();
   const seats = useSeatLimits();
+  const { tenantId } = appUser || {};
   // Módulos da academia, lidos no login e guardados no appUser
   // (src/lib/modules.js). Sem o Professor e faltosos, a tela fica como sempre.
   const tenantModules = appUser?.tenantModules;
   const professorEnabled = hasModule(tenantModules, MODULES.FALTOSOS);
 
   const [memberDialog, setMemberDialog] = useState(null); // null | {mode:'create'}
-  const [editUser, setEditUser] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [editandoAcesso, setEditandoAcesso] = useState(false);
 
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
@@ -204,18 +114,26 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
   const [inviteLink, setInviteLink] = useState('');
   const [inviting, setInviting] = useState(false);
 
-  const [profDialog, setProfDialog] = useState(null); // null | {professor}
+  const [profOpen, setProfOpen] = useState(false);
   const [profName, setProfName] = useState('');
   const [profMods, setProfMods] = useState([]);
-
-  const rowRefs = useRef({});
+  const [busca, setBusca] = useState('');
+  const topoRef = useRef(null);
 
   const users = useMemo(() => usersList || [], [usersList]);
+  const { fichas, pronto, erro } = useEquipeFichas({ db, enabled: listenersActive, tenantId });
+  const agora = useMinuteClock();
+  const pessoas = useMemo(() => montarEquipe({ fichas, users, professores, agora }), [fichas, users, professores, agora]);
+  const ctxFiltros = useMemo(() => ({}), []);
+  const [filtros, setFiltros] = useScreenParams('settings', ctxFiltros);
+  const listaHref = hrefFor(tenantId, 'settings', { sub: 'team' });
+  const hrefDe = (id, aba) => hrefFor(tenantId, 'settings', { sub: 'team', pessoaId: id, pessoaAba: aba });
+  const pessoa = pessoaId ? pessoas.find((p) => p.id === pessoaId) ?? null : null;
+
   // Só consultor ocupa vaga de consultor do plano: o gestor tem a vaga dele e
   // o professor não ocupa nenhuma (a mesma conta do api/_plans.js).
   const consultantCount = users.filter(u => roleOf(u) === ROLES.CONSULTOR).length;
   const professorCount = users.filter(u => isProfessor(u)).length;
-  const professorLogins = linkedProfessorIds(users);
   const createLabel = professorEnabled ? 'Cadastrar pessoa' : 'Cadastrar consultor';
 
   // No cadastro, o papel aparece com o módulo ligado.
@@ -224,19 +142,24 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
   const memberProfessorOptions = availableProfessors(professores, users);
   const inviteProfessorOptions = availableProfessors(professores, users);
 
-  const openCreate = () => { setForm({ ...emptyForm, password: generateTemporaryPassword() }); setMemberDialog({ mode: 'create' }); };
-  const openEdit = (user) => setEditUser(user);
-
-  // Atalho da Visão geral: 'new' abre o cadastro, um id destaca a linha.
+  // Abrir a ficha não remonta a tela (a chave continua `settings`): a rolagem
+  // ficaria onde a lista estava. Só mexe no DOM.
   useEffect(() => {
-    if (!focusId) return;
-    if (focusId === 'new') {
-      setForm({ ...emptyForm, password: generateTemporaryPassword() });
-      setMemberDialog({ mode: 'create' });
-      onFocusHandled?.();
-      return;
-    }
-    rowRefs.current[focusId]?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    if (pessoaId) topoRef.current?.scrollIntoView?.({ block: 'start' });
+  }, [pessoaId]);
+
+  // Abrir o cadastro já preenchido (o "Dar acesso" da ficha).
+  const openCreate = (inicio = {}) => {
+    setForm({ ...emptyForm, ...inicio, password: generateTemporaryPassword() });
+    setMemberDialog({ mode: 'create' });
+  };
+
+  // Atalho da Visão geral: 'new' abre o cadastro.
+  useEffect(() => {
+    if (focusId !== 'new') return;
+    setForm({ ...emptyForm, password: generateTemporaryPassword() });
+    setMemberDialog({ mode: 'create' });
+    onFocusHandled?.();
   }, [focusId, onFocusHandled]);
 
   // Consultor EXTRA é cobrado além da mensalidade — nunca cobra sem avisar.
@@ -248,6 +171,7 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
     'Content-Type': 'application/json',
     Authorization: `Bearer ${await auth.currentUser.getIdToken()}`
   });
+
 
   const createMember = async (allowExtra = false) => {
     if (!form.name.trim() || !form.email.trim() || !form.password.trim()) {
@@ -297,7 +221,8 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
     }
   };
 
-  const deleteMember = async (user) => {
+  const deleteMember = async (pessoa) => {
+    const user = pessoa.user;
     if (isGestor(user)) { toast.warning('O gestor não pode ser excluído por aqui.'); return; }
     if (!window.confirm(`Excluir o acesso de "${user.name}"?\n\nApaga a conta no Auth e o cadastro interno. Essa ação é irreversível.`)) return;
     if (!appUser?.authUid) { toast.error('Sessão sem authUid. Reentre no sistema.'); return; }
@@ -311,6 +236,8 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
       if (!res.ok) { toast.error(data.error || 'Erro ao excluir consultor.'); return; }
       toast.success('Acesso excluído.');
       setMemberDialog(null);
+      // Sem ficha, o id da pessoa era o do login, que deixou de existir.
+      if (!pessoa.ficha) navigate(listaHref);
     } catch (err) {
       console.error(err);
       toast.error('Falha de rede ao excluir consultor.');
@@ -352,66 +279,20 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
     catch { toast.info('Copie o link manualmente.'); }
   };
 
-  // --- Professores ---------------------------------------------------------
-
-  const professorStats = useMemo(() => {
-    const rows = (professores || []).map(p => {
-      const aulas = (leads || []).filter(l => l.appointmentProfessorId === p.id);
-      const matriculas = aulas.filter(isClientLead).length;
-      return {
-        professor: p,
-        aulas: aulas.length,
-        conversion: aulas.length > 0 ? Math.round((matriculas / aulas.length) * 100) : null
-      };
-    });
-    const max = rows.reduce((m, r) => Math.max(m, r.aulas), 0);
-    return rows.map(r => ({ ...r, share: max > 0 ? Math.round((r.aulas / max) * 100) : 0 }));
-  }, [professores, leads]);
-
-  const openProfessor = (professor) => {
-    setProfName(professor?.nome || '');
-    setProfMods(professor?.modalidadeIds || []);
-    setProfDialog({ professor: professor || null });
-  };
-
   const saveProfessor = async () => {
     const trimmed = profName.trim();
     if (!trimmed) { toast.warning('Informe o nome do professor.'); return; }
-    const editingId = profDialog?.professor?.id || null;
-    const dup = (professores || []).some(p => p.id !== editingId && (p.nome || '').trim().toLowerCase() === trimmed.toLowerCase());
+    const dup = (professores || []).some(p => (p.nome || '').trim().toLowerCase() === trimmed.toLowerCase());
     if (dup) { toast.warning(`O professor "${trimmed}" já existe.`); return; }
 
     setSaving(true);
     try {
-      if (editingId) {
-        const old = profDialog.professor;
-        await setDoc(
-          doc(db, 'artifacts', appId, 'public', 'data', PROFESSORS_PATH, editingId),
-          { nome: trimmed, modalidadeIds: profMods, updatedAt: serverTimestamp() },
-          { merge: true }
-        );
-        // Nome do professor é desnormalizado no lead (aparece na agenda e nos
-        // relatórios de aula) — renomear tem que alcançar a base.
-        if (old.nome !== trimmed) {
-          // Lidos na hora: a lista da tela é uma foto da abertura.
-          const affected = await leadsWhere(db, 'appointmentProfessorId', '==', editingId);
-          if (affected.length > 0) {
-            await commitOpsInChunks(db, affected.map(l => ({
-              ref: doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, l.id),
-              data: { appointmentProfessorName: trimmed }
-            })), 400);
-            onLeadsChanged?.();
-          }
-        }
-        toast.success('Professor atualizado.');
-      } else {
-        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', PROFESSORS_PATH), {
-          nome: trimmed, modalidadeIds: profMods, ativo: true,
-          order: (professores || []).length, createdAt: serverTimestamp(), updatedAt: serverTimestamp()
-        });
-        toast.success('Professor cadastrado.');
-      }
-      setProfDialog(null);
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', PROFESSORS_PATH), {
+        nome: trimmed, modalidadeIds: profMods, ativo: true,
+        order: (professores || []).length, createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+      });
+      toast.success('Professor cadastrado.');
+      setProfOpen(false);
     } catch (err) {
       console.error(err);
       toast.error('Não foi possível salvar o professor.');
@@ -420,150 +301,40 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
     }
   };
 
-  const deleteProfessor = async (p) => {
-    // Professor com login não sai do cadastro: o acesso dele aponta para cá.
-    const login = users.find(u => isProfessor(u) && u.professorId === p.id);
-    if (login) {
-      toast.warning(`"${p.nome}" tem acesso ao app (${login.name}). Exclua esse acesso na lista da equipe antes de excluir o professor.`);
-      return;
+  // Para cadastro feito por engano: sem login e com no máximo uma movimentação.
+  const excluirCadastro = async (p) => {
+    if (p.user || (p.ficha?.movimentacoes || []).length > 1) return;
+    if (p.professor) {
+      let emUso;
+      try {
+        const [aulas, alunos] = await Promise.all([
+          leadsWhere(db, 'appointmentProfessorId', '==', p.professor.id),
+          leadsWhere(db, 'professorId', '==', p.professor.id),
+        ]);
+        emUso = aulas.length + alunos.length;
+      } catch (err) {
+        console.error(err);
+        toast.error('Não deu para conferir as aulas e os alunos. Tente de novo.');
+        return;
+      }
+      if (emUso > 0) { toast.warning(`"${p.nome}" tem aulas ou alunos registrados. Use Desligar em vez de excluir.`); return; }
     }
-    let inUse;
+    if (!window.confirm(`Excluir o cadastro de "${p.nome}"? Use só para cadastro feito por engano.`)) return;
     try {
-      inUse = (await leadsWhere(db, 'appointmentProfessorId', '==', p.id)).length;
+      if (p.professor) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', PROFESSORS_PATH, p.professor.id));
+      if (p.ficha) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', EQUIPE_PATH, p.ficha.id));
+      toast.success('Cadastro excluído.');
+      navigate(listaHref);
     } catch (err) {
       console.error(err);
-      toast.error('Não foi possível conferir as aulas do professor. Tente de novo.');
-      return;
+      toast.error('Não deu para excluir o cadastro.');
     }
-    if (inUse > 0) {
-      toast.warning(`"${p.nome}" está em ${inUse} ${inUse === 1 ? 'aula' : 'aulas'} já registradas. Não é possível excluí-lo.`);
-      return;
-    }
-    if (!window.confirm(`Excluir o professor "${p.nome}"?`)) return;
-    try {
-      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', PROFESSORS_PATH, p.id));
-    } catch (err) {
-      console.error(err);
-      toast.error('Não foi possível excluir o professor.');
-      return;
-    }
-    toast.success('Professor excluído.');
   };
 
   const toggleProfMod = (id) => setProfMods(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
-  return (
-    <div className="flex flex-col gap-5">
-      <SettingsSectionHeader
-        title="Equipe & acessos"
-        hint="Quem entra no app, com qual papel, turno e piso de prospecção."
-      >
-        <SettingsBtn size={38} icon={<Mail size={14} />} onClick={() => { setInviteOpen(true); setInviteLink(''); }}>
-          Convidar por e-mail
-        </SettingsBtn>
-        <SettingsBtn kind="primary" size={38} icon={<Plus size={14} />} onClick={openCreate}>
-          {createLabel}
-        </SettingsBtn>
-      </SettingsSectionHeader>
-
-      <SeatBand seats={seats} consultantCount={consultantCount} professorCount={professorCount} />
-
-      <section className="rounded-2xl border border-border bg-card shadow-card overflow-hidden">
-        <TableHeadRow columns={MEMBERS_COLUMNS} template={MEMBERS_GRID} />
-        {users.length === 0 ? (
-          <EmptyState>Nenhum membro cadastrado ainda. Comece pelo botão “Cadastrar consultor”.</EmptyState>
-        ) : users.map((u, i) => {
-          const linked = Boolean(normalizeUid(u.authUid));
-          const target = Number(u.dailyVolumeTarget) > 0 ? u.dailyVolumeTarget : null;
-          const professorRow = isProfessor(u);
-          const linkedName = professorRow ? professorNameById(professores, u.professorId) : null;
-          return (
-            <div
-              key={u.id}
-              ref={el => { rowRefs.current[u.id] = el; }}
-              className={cn(
-                'grid gap-3 items-center px-5 py-3.5 transition hover:bg-muted/50',
-                i < users.length - 1 && 'border-b border-border',
-                focusId === u.id && 'bg-brand-50/60 dark:bg-brand-500/10'
-              )}
-              style={{ gridTemplateColumns: MEMBERS_GRID }}
-            >
-              <div className="flex items-center gap-2.5 min-w-0">
-                <MemberAvatar name={u.name} />
-                <div className="min-w-0">
-                  <div className="text-[13.5px] font-semibold truncate">{u.name}</div>
-                  <div className="text-[11.5px] text-muted-foreground truncate">{u.email}</div>
-                </div>
-              </div>
-
-              <div className="min-w-0">
-                <span className={cn('inline-flex text-[11.5px] font-semibold px-2.5 py-1 rounded-[7px]', ROLE_BADGE[roleOf(u)])}>
-                  {roleLabel(u)}
-                </span>
-                {professorRow && (
-                  <div className={cn('text-[11px] mt-1 truncate', linkedName ? 'text-muted-foreground' : 'text-amber-600 dark:text-amber-400')}>
-                    {linkedProfessorText(u, professores)}
-                  </div>
-                )}
-              </div>
-
-              <div className="text-[12.5px] text-slate-700 dark:text-slate-200 num">
-                {u.shiftStart && u.shiftEnd ? `${u.shiftStart}–${u.shiftEnd}` : '—'}
-              </div>
-
-              <div className={cn('text-[12.5px] num', target && !professorRow ? 'font-semibold' : 'text-slate-400 dark:text-slate-500')}>
-                {professorRow ? '—' : target ? `${target}/dia` : 'sem meta'}
-              </div>
-
-              <div className="flex items-center gap-2">
-                <span className={cn('size-[7px] rounded-full shrink-0', linked ? 'bg-emerald-500' : 'bg-amber-500')} />
-                <span className={cn('text-[12px] font-semibold', linked ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400')}>
-                  {linked ? 'Vinculado' : 'Sem vínculo'}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-end gap-1.5">
-                <RowAction icon={<Pencil size={13} />} title="Editar membro" onClick={() => openEdit(u)} />
-                {!isGestor(u) && (
-                  <RowAction kind="danger" icon={<Trash2 size={13} />} title="Excluir acesso" onClick={() => deleteMember(u)} />
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </section>
-
-      <SettingsPanel
-        icon={<Dumbbell size={16} />}
-        title="Professores"
-        hint={professorEnabled
-          ? 'Quem conduz aulas experimentais. Com o papel Professor, na lista da equipe, ganha acesso ao app.'
-          : 'Quem conduz aulas experimentais. Eles não têm login no app.'}
-        action={
-          <SettingsBtn kind="primary" size={38} icon={<Plus size={14} />} onClick={() => openProfessor(null)}>
-            Cadastrar professor
-          </SettingsBtn>
-        }
-      >
-        <TableHeadRow columns={PROFESSORS_COLUMNS} template={PROFESSORS_GRID} />
-        {professorStats.length === 0 ? (
-          <EmptyState>Nenhum professor cadastrado. Quem conduzir a aula experimental aparece aqui.</EmptyState>
-        ) : professorStats.map(({ professor, aulas, share, conversion }, i) => (
-          <ProfessorRow
-            key={professor.id}
-            professor={professor}
-            modalities={modalities}
-            aulas={aulas}
-            share={share}
-            conversion={conversion}
-            last={i === professorStats.length - 1}
-            withLogin={professorLogins.has(professor.id)}
-            onEdit={() => openProfessor(professor)}
-            onDelete={() => deleteProfessor(professor)}
-          />
-        ))}
-      </SettingsPanel>
-
+  const dialogos = (
+    <>
       {/* Cadastro de membro */}
       <FormDialog
         open={Boolean(memberDialog)}
@@ -629,15 +400,6 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
         </div>
       </FormDialog>
 
-      <EditarAcessoDialog
-        db={db}
-        appUser={appUser}
-        user={editUser}
-        usersList={users}
-        open={Boolean(editUser)}
-        onOpenChange={(v) => !v && setEditUser(null)}
-      />
-
       {/* Convite por e-mail */}
       <FormDialog
         open={inviteOpen}
@@ -667,15 +429,15 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
         )}
       </FormDialog>
 
-      {/* Professor */}
+      {/* Professor novo */}
       <FormDialog
-        open={Boolean(profDialog)}
-        onOpenChange={(v) => !v && setProfDialog(null)}
-        title={profDialog?.professor ? `Editar ${profDialog.professor.nome}` : 'Novo professor'}
+        open={profOpen}
+        onOpenChange={setProfOpen}
+        title="Novo professor"
         description={professorEnabled
           ? 'Professores aparecem na lista ao agendar uma aula experimental. O acesso ao app é dado na lista da equipe, com o papel Professor.'
           : 'Professores aparecem na lista ao agendar uma aula experimental. Não têm login no app.'}
-        submitLabel={profDialog?.professor ? 'Salvar' : 'Cadastrar professor'}
+        submitLabel="Cadastrar professor"
         submitting={saving}
         onSubmit={saveProfessor}
       >
@@ -708,6 +470,82 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
           )}
         </DialogField>
       </FormDialog>
+    </>
+  );
+
+  if (pessoaId) {
+    const voltar = (
+      <AppLink to={listaHref} className="w-fit rounded text-[13px] font-semibold text-muted-foreground outline-none hover:text-brand-700 focus-visible:anel-foco">Equipe & acessos</AppLink>
+    );
+    let corpo;
+    if (erro || !pronto) {
+      // Gravar sem a leitura das fichas poderia criar uma ficha duplicada.
+      corpo = (
+        <div className="flex flex-col gap-4">
+          {voltar}
+          <p role={erro ? 'alert' : 'status'} className="rounded-2xl border border-border bg-card p-6 text-[13px] text-muted-foreground">
+            {erro ? 'Não deu para ler as fichas da equipe.' : 'Abrindo a ficha…'}
+          </p>
+        </div>
+      );
+    } else if (!pessoa) {
+      corpo = (
+        <div className="flex flex-col gap-4">
+          {voltar}
+          <p className="rounded-2xl border border-border bg-card p-6 text-[13px] text-muted-foreground">Não achamos essa pessoa na equipe.</p>
+        </div>
+      );
+    } else {
+      corpo = (
+        <>
+          <EquipeFicha
+            db={db} appUser={appUser} tenantId={tenantId} pessoa={pessoa} aba={pessoaAba || 'dados'}
+            onAba={(aba) => navigate(hrefDe(pessoa.id, aba), { replace: true, state: location.state })}
+            voltarHref={listaHref} modalities={modalities} professores={professores} leads={leads}
+            professorEnabled={professorEnabled} agora={agora}
+            onEditarAcesso={() => setEditandoAcesso(true)}
+            onTirarAcesso={() => deleteMember(pessoa)}
+            onDarAcesso={() => openCreate({
+              name: pessoa.nome, email: pessoa.ficha?.emailPessoal || '',
+              role: pessoa.funcao === 'professor' ? ROLES.PROFESSOR : ROLES.CONSULTOR, professorId: pessoa.professor?.id || '',
+            })}
+            onLeadsChanged={onLeadsChanged}
+            acoesDaFicha={!pessoa.user && (pessoa.ficha?.movimentacoes || []).length <= 1
+              ? <SettingsBtn size={36} onClick={() => excluirCadastro(pessoa)}>Excluir cadastro</SettingsBtn> : null}
+          />
+          {pessoa.user && (
+            <EditarAcessoDialog db={db} appUser={appUser} user={pessoa.user} usersList={users} open={editandoAcesso} onOpenChange={setEditandoAcesso} />
+          )}
+        </>
+      );
+    }
+    return <div ref={topoRef}>{corpo}{dialogos}</div>;
+  }
+
+  return (
+    <div ref={topoRef} className="flex flex-col gap-5">
+      <SettingsSectionHeader
+        title="Equipe & acessos"
+        hint="Quem trabalha na academia: a ficha, o vínculo e o acesso ao app de cada pessoa."
+      >
+        <SettingsBtn size={38} icon={<Mail size={14} />} onClick={() => { setInviteOpen(true); setInviteLink(''); }}>
+          Convidar por e-mail
+        </SettingsBtn>
+        <SettingsBtn size={38} icon={<Plus size={14} />} onClick={() => { setProfName(''); setProfMods([]); setProfOpen(true); }}>
+          Cadastrar professor
+        </SettingsBtn>
+        <SettingsBtn kind="primary" size={38} icon={<Plus size={14} />} onClick={() => openCreate()}>
+          {createLabel}
+        </SettingsBtn>
+      </SettingsSectionHeader>
+
+      <SeatBand seats={seats} consultantCount={consultantCount} professorCount={professorCount} />
+
+      {erro && <p role="alert" className="rounded-xl border border-border bg-card px-4 py-3 text-[13px] text-muted-foreground">Não deu para ler as fichas da equipe.</p>}
+
+      <EquipeLista pessoas={pessoas} filtros={filtros} setFiltros={setFiltros} busca={busca} setBusca={setBusca}
+        hrefDe={(id) => hrefDe(id)} modalities={modalities} leads={leads} agora={agora} />
+      {dialogos}
     </div>
   );
 }

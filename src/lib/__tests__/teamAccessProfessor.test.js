@@ -7,6 +7,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createElement as h, act } from 'react';
 import { createRoot } from 'react-dom/client';
+import { MemoryRouter } from 'react-router';
 import { updateDoc, deleteDoc } from 'firebase/firestore';
 import { TeamAccessSection } from '../../views/settings/TeamAccessSection.jsx';
 import { EditarAcessoDialog } from '../../views/settings/equipe/EditarAcessoDialog.jsx';
@@ -23,7 +24,10 @@ vi.mock('../firebase.js', () => ({
   LEADS_PATH: 'stronix_leads',
   PROFESSORS_PATH: 'stronix_professores',
   USERS_PATH: 'stronix_users',
+  EQUIPE_PATH: 'stronix_equipe',
+  storage: {},
 }));
+vi.mock('../../hooks/useEquipeFichas.js', () => ({ useEquipeFichas: () => ({ fichas: [], pronto: true, erro: null }) }));
 vi.mock('firebase/firestore', () => ({
   collection: (_db, ...caminho) => ({ caminho: caminho.join('/') }),
   doc: (_db, ...caminho) => ({ caminho: caminho.join('/') }),
@@ -90,9 +94,12 @@ async function montar({ modules = [MODULES.FALTOSOS], equipe = EQUIPE } = {}) {
   root = createRoot(container);
   await act(async () => {
     root.render(h(
-      GeneralConfigContext.Provider,
-      { value: { modalities: [], professores: PROFESSORES } },
-      h(TeamAccessSection, { db: {}, appUser: { ...GESTOR, tenantModules: modules }, usersList: equipe, leads: [] })
+      MemoryRouter, null,
+      h(
+        GeneralConfigContext.Provider,
+        { value: { modalities: [], professores: PROFESSORES } },
+        h(TeamAccessSection, { db: {}, appUser: { ...GESTOR, tenantModules: modules }, usersList: equipe, leads: [] })
+      )
     ));
   });
 }

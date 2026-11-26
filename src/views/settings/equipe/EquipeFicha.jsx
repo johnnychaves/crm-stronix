@@ -84,7 +84,7 @@ export function EquipeFicha({
             <span className="ml-1.5"><AcessoSelo acesso={pessoa.acesso} textoDesligado={pessoa.desligada ? desligadoEmTexto(pessoa.ficha) : null} /></span>
           </div>
           <p className="mt-2 text-[13px]">
-            {periodo ? `Esteve na equipe de ${dataBR(periodo.de)} a ${dataBR(periodo.ate)}`
+            {periodo ? (periodo.de ? `Esteve na equipe de ${dataBR(periodo.de)} a ${dataBR(periodo.ate)}` : `Saiu da equipe em ${dataBR(periodo.ate)}`)
               : admissao ? naEquipeTexto(admissao, agora) : <span className="text-muted-foreground">Sem data de admissão</span>}
           </p>
         </div>

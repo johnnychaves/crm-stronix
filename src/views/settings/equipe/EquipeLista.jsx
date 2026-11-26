@@ -87,11 +87,10 @@ export function EquipeLista({ pessoas, filtros, setFiltros, busca, setBusca, hre
             <div key={p.id} className={cn('relative grid items-center gap-3 px-5 py-3 transition hover:bg-muted/50', i < visiveis.length - 1 && 'border-b border-border')}
               style={{ gridTemplateColumns: GRADE }}>
               <div className="flex min-w-0 items-center gap-2.5">
-                <AppLink to={hrefDe(p.id)} stretched draggable={false} aria-label={`Abrir a ficha de ${p.nome}`}
-                  className="outline-none focus-visible:after:anel-foco focus-visible:after:ring-inset" />
                 <PessoaAvatar pessoa={p} />
                 <div className="min-w-0">
-                  <div className="truncate text-[13.5px] font-semibold">{p.nome}</div>
+                  <AppLink to={hrefDe(p.id)} stretched draggable={false} aria-label={`Abrir a ficha de ${p.nome}`}
+                    className="block truncate text-[13.5px] font-semibold outline-none focus-visible:after:anel-foco focus-visible:after:ring-inset">{p.nome}</AppLink>
                   <div className="truncate text-[11.5px] text-muted-foreground">{p.user?.email || p.ficha?.emailPessoal || p.ficha?.convite?.email || ''}</div>
                 </div>
               </div>

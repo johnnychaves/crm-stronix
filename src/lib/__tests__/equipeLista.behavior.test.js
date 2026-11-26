@@ -53,7 +53,7 @@ describe('lista da equipe', () => {
     for (const a of document.querySelectorAll('a')) {
       const linha = a.closest('.relative');
       expect(linha.children.length).toBe(6);
-      expect(a.parentElement).toBe(linha.children[0]);
+      expect(a.parentElement.parentElement).toBe(linha.children[0]);
       expect(a.getAttribute('draggable')).toBe('false');
       expect(a.className).toContain('after:absolute');
     }
