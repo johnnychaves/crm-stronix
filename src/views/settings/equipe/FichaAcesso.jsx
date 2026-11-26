@@ -19,7 +19,7 @@ export function FichaAcesso({ pessoa, professorEnabled, onEditarAcesso, onTirarA
   const semComoLigar = Boolean(pessoa.ficha) && pessoa.funcao !== 'professor';
   const podeDar = !pessoa.desligada && !u && !convite && !semComoLigar && (pessoa.funcao !== 'professor' || professorEnabled);
   return (
-    <section aria-label="Acesso ao app" className="rounded-2xl border border-border bg-card p-4 shadow-card">
+    <section aria-label="Acesso ao app" tabIndex={-1} className="outline-none rounded-2xl border border-border bg-card p-4 shadow-card">
       <header className="flex flex-wrap items-center gap-2">
         <h3 className="flex-1 font-display text-[15px] font-bold">Acesso ao app</h3>
         {u && <SettingsBtn size={34} icon={<KeyRound size={13} />} onClick={onEditarAcesso}>Editar acesso</SettingsBtn>}

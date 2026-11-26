@@ -43,7 +43,7 @@ export function EquipeLista({ pessoas, filtros, setFiltros, busca, setBusca, hre
       return [mods, n ? `${n} ${n === 1 ? 'aluno' : 'alunos'}` : ''].filter(Boolean).join(', ');
     }
     const n = p.funcao === 'consultor' && p.user ? porConsultor.get(p.user.id) : 0;
-    return n ? `${n} leads` : '';
+    return n ? `${n} ${n === 1 ? 'lead' : 'leads'}` : '';
   };
 
   return (

@@ -66,7 +66,19 @@ describe('ficha da equipe', () => {
     await escrever(document.querySelector('input[name="cpf"]'), '529.982.247-25');
     await clicar(botao('Salvar identidade'));
     expect(gravacoes.blocos).toEqual([{ id: 'p-marina', campos: { nome: 'Marina Prado', cpf: '52998224725', rg: '', nascimento: '' } }]);
-    expect(gravacoes.nomes).toEqual([]);
+    // A troca de nome roda sempre e só grava o que estiver diferente.
+    expect(gravacoes.nomes).toEqual(['Marina Prado']);
+  });
+  it('login e professor com nomes diferentes: salvar a Identidade leva o nome aos dois', async () => {
+    const ana = montarEquipe({
+      fichas: [], agora: new Date(2026, 10, 26),
+      users: [{ id: 'u-ana', authUid: 'u-ana', name: 'Ana Duarte', role: 'professor', professorId: 'p-ana' }],
+      professores: [{ id: 'p-ana', nome: 'Ana', modalidadeIds: [] }],
+    })[0];
+    await montar('dados', {}, ana);
+    await editar('identidade');
+    await clicar(botao('Salvar identidade'));
+    expect(gravacoes.nomes).toEqual(['Ana Duarte']);
   });
   it('CPF inválido não grava e diz o porquê', async () => {
     await montar();

@@ -13,6 +13,7 @@ vi.mock('firebase/firestore', async (orig) => ({
   ...(await orig()),
   doc: (...a) => ({ path: a.slice(1).join('/') }),
   deleteDoc: async (ref) => { estado.apagados.push(ref.path); },
+  writeBatch: () => { const fila = []; return { delete: (ref) => fila.push(ref.path), commit: async () => { estado.apagados.push(...fila); } }; },
 }));
 vi.mock('../firebase.js', () => ({ auth: {}, appId: 'acad', storage: {}, LEADS_PATH: 'l', PROFESSORS_PATH: 'p', USERS_PATH: 'u', EQUIPE_PATH: 'e' }));
 const avisos = vi.hoisted(() => ({ warning: [], error: [] }));
@@ -104,5 +105,17 @@ describe('Equipe & acessos', () => {
     await montar('/acad/configuracoes/equipe', { focusId: 'u2', onFocusHandled: feito });
     expect(feito).toHaveBeenCalled();
     expect(onde.caminho).toBe('/acad/configuracoes/equipe/u2/acesso');
+  });
+  it('abrir a ficha leva o foco ao título, e voltar leva ao link da pessoa', async () => {
+    await montar('/acad/configuracoes/equipe');
+    await act(async () => { root.render(arvore('/acad/configuracoes/equipe/p1', { pessoaId: 'p1', pessoaAba: 'dados' })); });
+    expect(document.activeElement.tagName).toBe('H1');
+    await act(async () => { root.render(arvore('/acad/configuracoes/equipe', {})); });
+    expect(document.activeElement.getAttribute('aria-label')).toBe('Abrir a ficha de Marina');
+  });
+  it('os filtros da lista vão no link da ficha e voltam no link de volta', async () => {
+    await montar('/acad/configuracoes/equipe?funcao=professor');
+    const link = document.querySelector('a[aria-label="Abrir a ficha de Marina"]');
+    expect(link.getAttribute('href')).toBe('/acad/configuracoes/equipe/p1?funcao=professor');
   });
 });

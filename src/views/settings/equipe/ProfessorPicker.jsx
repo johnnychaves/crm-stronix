@@ -7,7 +7,7 @@ export function ProfessorPicker({ value, options, onChange, disabled = false }) 
     <DialogField
       label="Professor do cadastro"
       hint={options.length === 0
-        ? 'Nenhum professor ativo sem acesso. Cadastre o professor no card Professores, mais abaixo.'
+        ? 'Nenhum professor ativo sem acesso. Cadastre o professor pelo botão Cadastrar professor.'
         : 'Cada professor do cadastro tem um login só.'}
     >
       <select className={FIELD_INPUT} value={value} onChange={e => onChange(e.target.value)} disabled={disabled} required>

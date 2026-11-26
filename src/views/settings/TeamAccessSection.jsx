@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { Copy, Mail, Plus, Shield } from 'lucide-react';
-import { collection, doc, addDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, addDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { auth, appId, EQUIPE_PATH, PROFESSORS_PATH } from '../../lib/firebase.js';
 import { leadsWhere } from '../../lib/settingsLeads.js';
 import { generateTemporaryPassword, passwordPolicyError, PASSWORD_RULE_TEXT } from '../../lib/passwordPolicy.js';
@@ -10,6 +10,7 @@ import { hasModule, MODULES } from '../../lib/modules.js';
 import { availableProfessors, inviteRoleOptions, PROFESSOR_LINK_MESSAGES } from '../../lib/teamRoles.js';
 import { montarEquipe } from '../../lib/equipe/equipe.js';
 import { hrefFor } from '../../lib/routes.js';
+import { screenParamsQuery } from '../../lib/screenParams.js';
 import { cn } from '../../lib/utils.js';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 import { useToast } from '../../contexts/ToastContext.jsx';
@@ -102,7 +103,7 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
   const tenantModules = appUser?.tenantModules;
   const professorEnabled = hasModule(tenantModules, MODULES.FALTOSOS);
 
-  const [memberDialog, setMemberDialog] = useState(null); // null | {mode:'create'}
+  const [memberDialog, setMemberDialog] = useState(null); // null | {mode:'create', papelFixo?}
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [editandoAcesso, setEditandoAcesso] = useState(false);
@@ -126,8 +127,10 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
   const pessoas = useMemo(() => montarEquipe({ fichas, users, professores, agora }), [fichas, users, professores, agora]);
   const ctxFiltros = useMemo(() => ({}), []);
   const [filtros, setFiltros] = useScreenParams('settings', ctxFiltros);
-  const listaHref = hrefFor(tenantId, 'settings', { sub: 'team' });
-  const hrefDe = (id, aba) => hrefFor(tenantId, 'settings', { sub: 'team', pessoaId: id, pessoaAba: aba });
+  // Os filtros da lista vão junto para a ficha e voltam com ela.
+  const qFiltros = screenParamsQuery('settings', filtros, ctxFiltros);
+  const listaHref = hrefFor(tenantId, 'settings', { sub: 'team' }) + qFiltros;
+  const hrefDe = (id, aba) => hrefFor(tenantId, 'settings', { sub: 'team', pessoaId: id, pessoaAba: aba }) + qFiltros;
   // O id da pessoa muda quando ela ganha login ou ficha (do professor para o
   // login, do login para a ficha): o endereço antigo continua achando a pessoa.
   const acharPessoa = (id) => pessoas.find((p) => p.id === id)
@@ -152,10 +155,28 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
     if (pessoaId) topoRef.current?.scrollIntoView?.({ block: 'start' });
   }, [pessoaId]);
 
+  // O link clicado some com a troca de tela: o foco vai ao título da ficha e,
+  // na volta, ao link da pessoa de onde veio (ou à busca, se ela saiu da lista).
+  const pessoaAnterior = useRef(pessoaId);
+  useEffect(() => {
+    const de = pessoaAnterior.current;
+    pessoaAnterior.current = pessoaId;
+    const topo = topoRef.current;
+    if (de === pessoaId || !topo) return;
+    if (pessoaId) {
+      (topo.querySelector('h1') || topo.querySelector('a'))?.focus({ preventScroll: true });
+      return;
+    }
+    const link = [...topo.querySelectorAll('a[href]')].find((a) => new URL(a.href, window.location.href).pathname.endsWith(`/equipe/${de}`));
+    (link || topo.querySelector('input'))?.focus({ preventScroll: true });
+  }, [pessoaId]);
+
   // Abrir o cadastro já preenchido (o "Dar acesso" da ficha).
-  const openCreate = (inicio = {}) => {
+  // papelFixo: o "Dar acesso" da ficha não deixa trocar o papel nem o
+  // professor, porque o login novo só se liga à ficha pelo professor dela.
+  const openCreate = (inicio = {}, { papelFixo = false } = {}) => {
     setForm({ ...emptyForm, ...inicio, password: generateTemporaryPassword() });
-    setMemberDialog({ mode: 'create' });
+    setMemberDialog({ mode: 'create', papelFixo });
   };
 
   // Atalho da Visão geral: 'new' abre o cadastro; o id de um login sem acesso
@@ -245,6 +266,8 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
       if (!res.ok) { toast.error(data.error || 'Não deu para tirar o acesso.'); return; }
       toast.success('Acesso removido.');
       setMemberDialog(null);
+      // O botão some com o login: o foco fica no bloco Acesso ao app.
+      if (pessoa.ficha) topoRef.current?.querySelector('section[aria-label="Acesso ao app"]')?.focus();
       // Sem ficha, o id da pessoa era o do login, que deixou de existir: o
       // professor continua na equipe pelo cadastro dele, o consultor sai.
       if (!pessoa.ficha) {
@@ -334,8 +357,11 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
     }
     if (!window.confirm(`Excluir o cadastro de "${p.nome}"? Use só para cadastro feito por engano.`)) return;
     try {
-      if (p.professor) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', PROFESSORS_PATH, p.professor.id));
-      if (p.ficha) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', EQUIPE_PATH, p.ficha.id));
+      // Num lote só: apagar um e falhar no outro deixaria uma pessoa sem cadastro na lista.
+      const lote = writeBatch(db);
+      if (p.professor) lote.delete(doc(db, 'artifacts', appId, 'public', 'data', PROFESSORS_PATH, p.professor.id));
+      if (p.ficha) lote.delete(doc(db, 'artifacts', appId, 'public', 'data', EQUIPE_PATH, p.ficha.id));
+      await lote.commit();
       toast.success('Cadastro excluído.');
       navigate(listaHref, { replace: true, state: location.state });
     } catch (err) {
@@ -370,7 +396,7 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
         {showRoleField && (
           <div className="grid gap-4 sm:grid-cols-2">
             <DialogField label="Papel" hint="Professor não ocupa vaga de consultor do plano.">
-              <select className={FIELD_INPUT} value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
+              <select className={FIELD_INPUT} value={form.role} disabled={Boolean(memberDialog?.papelFixo)} onChange={e => setForm({ ...form, role: e.target.value })}>
                 <option value={ROLES.CONSULTOR}>Consultor</option>
                 <option value={ROLES.PROFESSOR}>Professor</option>
               </select>
@@ -379,7 +405,7 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
               <ProfessorPicker
                 value={form.professorId}
                 options={memberProfessorOptions}
-                disabled={!professorEnabled}
+                disabled={!professorEnabled || Boolean(memberDialog?.papelFixo)}
                 onChange={(id) => setForm({ ...form, professorId: id })}
               />
             )}
@@ -521,7 +547,7 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
             onDarAcesso={() => openCreate({
               name: pessoa.nome, email: pessoa.ficha?.emailPessoal || '',
               role: pessoa.funcao === 'professor' ? ROLES.PROFESSOR : ROLES.CONSULTOR, professorId: pessoa.professor?.id || '',
-            })}
+            }, { papelFixo: true })}
             onLeadsChanged={onLeadsChanged}
             acoesDaFicha={!pessoa.user && (pessoa.ficha?.movimentacoes || []).length <= 1
               ? <SettingsBtn size={36} onClick={() => excluirCadastro(pessoa)}>Excluir cadastro</SettingsBtn> : null}

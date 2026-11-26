@@ -41,6 +41,11 @@ describe('gravarBloco', () => {
       opcoes: { merge: true },
     }]);
   });
+  it('professor inativo sem ficha: a ficha nasce desligada, sem reativar a pessoa', async () => {
+    const pessoa = { id: 'p-velho', ficha: null, user: null, professor: { id: 'p-velho', ativo: false }, funcao: 'professor', nome: 'Velho', desligada: true };
+    await gravarBloco({}, pessoa, { rg: '1' }, { id: 'g1' });
+    expect(chamadas.set[0].dados.status).toBe('desligado');
+  });
   it('depois, grava só o bloco', async () => {
     chamadas.existe = true;
     const pessoa = { id: 'f1', ficha: { id: 'f1' }, user: null, professor: null, funcao: 'consultor', nome: 'Ana' };

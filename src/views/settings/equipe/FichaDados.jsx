@@ -77,9 +77,12 @@ export function FichaDados({ db, appUser, tenantId, pessoa, professores, modalit
     setSalvando(true);
     let renomeando = false;
     try {
-      if (aberto.bloco === 'identidade' && r.ficha.nome !== pessoa.nome) {
-        renomeando = true;
-        if (await renomearPessoa(db, pessoa, r.ficha.nome)) onLeadsChanged?.();
+      if (aberto.bloco === 'identidade') {
+        // Sempre: o renomearPessoa compara cada cópia e acerta o login ou o
+        // professor que ficou com outro nome, inclusive depois de uma falha.
+        const nome = r.ficha.nome;
+        renomeando = Boolean((pessoa.user && pessoa.user.name !== nome) || (pessoa.professor && pessoa.professor.nome !== nome));
+        if (await renomearPessoa(db, pessoa, nome)) onLeadsChanged?.();
       }
       await gravarBloco(db, pessoa, r.ficha, autor);
       if (r.professor && pessoa.professor) await gravarProfessor(db, pessoa.professor.id, r.professor);

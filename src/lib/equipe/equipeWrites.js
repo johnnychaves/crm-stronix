@@ -27,7 +27,8 @@ export async function gravarBloco(db, pessoa, campos, autor) {
         professorId: pessoa.professor?.id ?? null,
         funcao: pessoa.funcao,
         nome: campos.nome ?? pessoa.nome,
-        status: 'ativo',
+        // Professor inativo sem ficha já aparece em Desligados: a ficha nasce assim.
+        status: pessoa.desligada ? 'desligado' : 'ativo',
         createdAt: serverTimestamp(),
       } : {}),
       updatedAt: serverTimestamp(),

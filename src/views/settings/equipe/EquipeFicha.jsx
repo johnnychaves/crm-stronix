@@ -76,7 +76,7 @@ export function EquipeFicha({
           </button>
         </div>
         <div className="min-w-[240px] flex-1">
-          <h1 className="font-display text-[26px] font-bold tracking-tight">{pessoa.nome}</h1>
+          <h1 tabIndex={-1} className="font-display text-[26px] font-bold tracking-tight outline-none">{pessoa.nome}</h1>
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             <FuncaoSelo funcao={pessoa.funcao} />
             <VinculoSelo vinculo={pessoa.ficha?.vinculo} />
@@ -100,7 +100,8 @@ export function EquipeFicha({
           <TabsTrigger value="movimentacoes">Movimentações</TabsTrigger>
           <TabsTrigger value="acesso">Acesso ao app</TabsTrigger>
         </TabsList>
-        <TabsContent value="dados" tabIndex={-1} className="mt-4">
+        {/* Montada mesmo escondida: trocar de aba não perde o bloco aberto. */}
+        <TabsContent value="dados" forceMount hidden={aba !== 'dados'} tabIndex={-1} className="mt-4">
           <FichaDados
             key={fichaId}
             db={db} appUser={appUser} tenantId={tenantId} pessoa={pessoa} professores={professores} modalities={modalities}

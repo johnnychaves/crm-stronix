@@ -1047,3 +1047,8 @@ Com o harness: os três caminhos da gaveta (consultor com senha, consultor por c
 git add CLAUDE.md
 git commit -m "docs: cadastrar pessoa no CLAUDE.md"
 ```
+
+## Herdado do PR 1
+
+- **Ficha fantasma na troca de papel.** Um consultor com ficha que vira professor pelo `set-role`, ligado a um professor que já tem ficha própria, deixa duas fichas apontando para a mesma pessoa: o `montarEquipe` dá o login e o professor à primeira ficha (pela ordem dos ids) e a outra fica sem nada, na lista como uma pessoa a mais. Com o `fichaId` deste PR, decidir qual ficha fica (a do login) e juntar a outra, ou recusar a troca enquanto houver duas fichas.
+- **"Dar acesso" da ficha de quem não é professor.** No PR 1 o botão some quando a pessoa tem ficha e não é professor, porque o login novo não teria como se ligar a ela (`shortcut:` no `FichaAcesso.jsx`). Este PR, com o `fichaId` no `create` e no convite, devolve o botão e tira o comentário.
