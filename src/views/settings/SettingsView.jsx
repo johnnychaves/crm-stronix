@@ -184,7 +184,7 @@ function SettingsView({
           <ImportClientsSection db={db} appUser={appUser} usersList={usersList} funnels={funnels} planos={planos} />
         )}
         {secao === 'pace' && (
-          <PaceSection db={db} usersList={usersList} metaWeekdays={metaWeekdays} />
+          <PaceSection db={db} usersList={usersList} metaWeekdays={metaWeekdays} appUser={appUser} />
         )}
         {secao === 'sched' && (
           <SchedulingSection
