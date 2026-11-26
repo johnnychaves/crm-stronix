@@ -15,9 +15,6 @@ export function periodoTexto(inicio, fim) {
   return ai === af ? `${di}/${mi} a ${df}/${mf}/${af}` : `${di}/${mi}/${ai} a ${df}/${mf}/${af}`;
 }
 
-export const cicloCurto = (c) => `dez/${String(c - 1).slice(2)} a nov/${String(c).slice(2)}`;
-export const cicloLongo = (c) => `dez/${c - 1} a nov/${c}`;
-
 const diasEntre = (a, b) => Math.round((new Date(`${b}T12:00:00`) - new Date(`${a}T12:00:00`)) / 864e5);
 
 // O prazo da pesquisa aberta, em minúscula para entrar no meio da frase.

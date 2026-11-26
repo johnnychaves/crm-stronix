@@ -9,7 +9,7 @@ import { abrirPesquisa, encerrarPesquisa, excluirRascunho, gerarLinksQueFaltam, 
 import { abreAPartirDe, estadoDaPesquisa, fimPassou, novaPesquisa, pesquisaEmCurso, podeAbrir, progressoDaTurma } from '../../lib/professor/pesquisas.js';
 import { BOTAO, BOTAO_PRI, Confirmacao } from './Confirmacao.jsx';
 import { PesquisaForm } from './PesquisaForm.jsx';
-import { cicloCurto, diaTexto, periodoTexto, prazoTexto } from './pesquisasTexto.js';
+import { diaTexto, periodoTexto, prazoTexto } from './pesquisasTexto.js';
 
 // A sub-tela Pesquisas do gestor (mockup B de 25/11/2026, pesquisa em
 // destaque): a pesquisa aberta num cartão escuro, com o andamento de cada
@@ -27,7 +27,7 @@ const LINK = 'rounded text-[13px] font-semibold text-brand-700 outline-none hove
 
 const listaDeNomes = (nomes) => (nomes.length < 2 ? nomes[0] : `${nomes.slice(0, -1).join(', ')} e ${nomes.at(-1)}`);
 const somaDe = (obj) => Object.values(obj || {}).reduce((a, n) => a + (Number(n) || 0), 0);
-const doForm = (p) => ({ nome: p.nome || '', inicio: p.inicio || '', fim: p.fim || '', ciclo: p.ciclo ?? null, perguntas: (p.perguntas || []).map((q) => ({ texto: q.texto || '', principal: Boolean(q.principal) })) });
+const doForm = (p) => ({ nome: p.nome || '', inicio: p.inicio || '', fim: p.fim || '', perguntas: (p.perguntas || []).map((q) => ({ texto: q.texto || '', principal: Boolean(q.principal) })) });
 
 function Selo({ estado, escuro = false }) {
   return (
@@ -206,8 +206,8 @@ function Proxima({ pesquisa, emCurso, turmaHoje, hoje, onEditar, onAbrir }) {
 function Historico({ pesquisas, totaisPorPesquisa, hoje, onEditar }) {
   return (
     <section aria-label="Todas as pesquisas" className="@container overflow-hidden rounded-[18px] border border-border bg-card shadow-card">
-      <div aria-hidden="true" className="hidden h-[42px] grid-cols-[minmax(140px,1.2fr)_minmax(130px,1fr)_110px_110px] items-center gap-3.5 px-[22px] text-[12.5px] font-medium text-muted-foreground @[600px]:grid @[760px]:grid-cols-[minmax(140px,1.2fr)_minmax(130px,1fr)_110px_110px_110px]">
-        <span>Pesquisa</span><span>Período</span><span className="hidden @[760px]:inline">Ciclo</span><span>Situação</span><span>Respostas</span>
+      <div aria-hidden="true" className="hidden h-[42px] grid-cols-[minmax(140px,1.2fr)_minmax(130px,1fr)_110px_110px] items-center gap-3.5 px-[22px] text-[12.5px] font-medium text-muted-foreground @[600px]:grid">
+        <span>Pesquisa</span><span>Período</span><span>Situação</span><span>Respostas</span>
       </div>
       {pesquisas.length === 0 ? (
         <p className="m-0 border-t border-border px-[22px] py-4 text-[13px] text-muted-foreground">Nenhuma pesquisa criada ainda.</p>
@@ -217,13 +217,12 @@ function Historico({ pesquisas, totaisPorPesquisa, hoje, onEditar }) {
             const estado = estadoDaPesquisa(p, hoje);
             const resp = totaisPorPesquisa.get(p.id) ?? 0;
             return (
-              <li key={p.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-t border-border px-4 py-3 @[600px]:min-h-14 @[600px]:grid-cols-[minmax(140px,1.2fr)_minmax(130px,1fr)_110px_110px] @[600px]:gap-3.5 @[600px]:px-[22px] @[600px]:py-0 @[760px]:grid-cols-[minmax(140px,1.2fr)_minmax(130px,1fr)_110px_110px_110px]">
+              <li key={p.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-t border-border px-4 py-3 @[600px]:min-h-14 @[600px]:grid-cols-[minmax(140px,1.2fr)_minmax(130px,1fr)_110px_110px] @[600px]:gap-3.5 @[600px]:px-[22px] @[600px]:py-0">
                 <span className="min-w-0">
                   <b className="font-semibold">{p.nome}</b>
                   {estado === 'rascunho' && <button type="button" onClick={() => onEditar(p)} className={cn(LINK, 'ml-2')}>Editar<span className="sr-only"> {p.nome}</span></button>}
                 </span>
                 <span className="num text-[12.5px] text-muted-foreground @[600px]:col-start-2 @[600px]:row-start-1 @[600px]:text-[13px]">{periodoTexto(p.inicio, p.fim)}</span>
-                <span className="hidden text-[13px] text-muted-foreground @[760px]:inline">{p.ciclo ? cicloCurto(p.ciclo) : ''}</span>
                 <span><Selo estado={estado} /></span>
                 <span className="num text-[13px] text-muted-foreground">{estado === 'rascunho' ? 'ainda não abriu' : `${resp} de ${somaDe(p.turmas)}`}</span>
               </li>

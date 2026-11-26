@@ -176,7 +176,7 @@ describe('o formulário', () => {
     digitar(container.querySelector('#pesq-nome'), 'Dezembro de 2027');
     digitar(container.querySelector('#pesq-inicio'), '2027-12-01');
     digitar(container.querySelector('#pesq-fim'), '2027-12-15');
-    expect([...container.querySelector('#pesq-ciclo').options].map((o) => o.textContent)).toEqual(['dez/2026 a nov/2027', 'dez/2027 a nov/2028']);
+    expect(container.querySelector('#pesq-ciclo')).toBeNull();
     await clicar(botao('Continuar'));
     expect(container.querySelector('textarea').value).toBe(PERGUNTA_PRINCIPAL_PADRAO);
     await clicar(botao('Adicionar pergunta'));
@@ -187,7 +187,7 @@ describe('o formulário', () => {
     await clicar(botao('Abrir pesquisa'));
     const confirma = container.querySelector('[role="alertdialog"]');
     await clicar([...confirma.querySelectorAll('button')].find((b) => b.textContent === 'Abrir pesquisa'));
-    expect(w.salvarRascunho).toHaveBeenCalledWith({}, null, expect.objectContaining({ nome: 'Dezembro de 2027', ciclo: 2027 }), 'g1');
+    expect(w.salvarRascunho).toHaveBeenCalledWith({}, null, expect.objectContaining({ nome: 'Dezembro de 2027' }), 'g1');
     expect(w.abrirPesquisa).toHaveBeenCalledWith({}, 'novo', expect.anything());
     expect(container.textContent).toContain('Nova pesquisa');
   });
