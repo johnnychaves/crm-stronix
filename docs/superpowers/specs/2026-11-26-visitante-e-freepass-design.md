@@ -169,6 +169,53 @@ Cada entrega com tela nova começa por 2 ou 3 mockups para o Johnny escolher.
 
 A entrega 1 já serve sozinha: a equipe lança o freepass e enxerga o Visitante na ficha. As entregas 3, 4 e 5 não dependem uma da outra e andam em qualquer ordem depois da 2.
 
+## Entrega 2 em detalhe (decidida com o Johnny em 26/11/2026)
+
+### O Agendar da ficha
+
+A aula experimental passa a ser Modalidade → Freepass → Professor e dia → confirmação. O passo "Quantas aulas" sai, e com ele o painel "Aulas experimentais" de Configurações. O `trialClassOptions` continua gravado só para a ponte do Stronizap, até a entrega 6.
+
+O passo Freepass mostra uma de quatro situações:
+
+1. **Freepass correndo na modalidade:** a aula entra nele ("Usar o freepass Pilates 2 aulas, 1 de 2 agendadas").
+2. **Nunca teve freepass na modalidade e ela tem tipo cadastrado:** o consultor escolhe o tipo e o freepass nasce com a aula. No por dias, o início é o dia da aula.
+3. **Já teve freepass na modalidade, ou o freepass por aulas já tem todas as aulas agendadas:** aula avulsa, com o aviso "Já teve freepass de Pilates em 10/11" ou "O freepass já tem as 2 aulas". O gestor ainda pode lançar um freepass novo pela aba Contratos.
+4. **Modalidade sem tipo cadastrado:** aula avulsa, como hoje.
+
+### Todas as aulas no lançamento
+
+No freepass por aulas, o lançamento (pela aba Contratos ou pelo Agendar) marca as N aulas de uma vez, cada uma com dia, horário e professor. No por dias, que é acesso livre, marca uma aula só.
+
+- Cada aula é um registro em `stronix_aulas`, com o `freepassId`. A coleção já guarda várias aulas por pessoa.
+- O lead continua com uma **aula da vez**, a próxima que ainda não teve desfecho, no agendamento de sempre (`appointment*` e `currentAulaId`). É ela que a Meta, a Agenda de hoje, o "A seguir", o cartão do Stronizap e Aulas mostram.
+- Quando o desfecho da aula da vez é marcado (Compareceu ou Não compareceu), a aula da vez passa sozinha para a seguinte do freepass, em todo caminho que grava desfecho.
+- O cartão do freepass na aba Contratos lista as aulas, com o dia, a hora, o desfecho e um "Remarcar" em cada uma.
+- **Cancelou** cancela só a aula da vez e passa para a seguinte. A vaga volta ao freepass como "1 aula a agendar", que o cartão mostra e deixa agendar.
+- **Limite aceito:** a aula seguinte só aparece na Agenda de hoje do dia dela se o desfecho da anterior já tiver sido marcado. A Meta já cobra como urgente a aula que passou do horário sem desfecho.
+
+### Como as aulas contam
+
+Cada aula agendada dentro do freepass conta, venha a pessoa ou não. Remarcar a mesma aula não conta de novo, e a aula cancelada devolve a vaga. O fim do freepass por aulas é o dia da última aula agendada, e ele só existe com as N aulas agendadas.
+
+### Remarcar da Meta, Stronizap e IA
+
+Sem escolha na tela:
+- mover a mesma aula para outro dia não muda o freepass;
+- aula nova entra no freepass que corre na modalidade;
+- sem freepass correndo, nasce o freepass do tipo padrão da modalidade;
+- quem já teve freepass na modalidade fica com aula avulsa.
+
+O Remarcar troca o campo "Aulas previstas" por uma linha que diz o que vai acontecer ("Entra no freepass Pilates 2 aulas", "Aula avulsa"). O Stronizap e a IA marcam uma data só: nasce a 1ª aula, e as outras ficam "a agendar" no cartão do freepass, até a entrega 6 ensinar o balão a marcar várias. A ponte deixa de comparar a quantidade no pedido repetido (`hasSameAppointment`), porque ela não é mais gravada no lead.
+
+### Aluno ativo e professor
+
+- **Aluno com contrato valendo** pode ter freepass de outra modalidade. Ele aparece como "Upgrade · Pilates, faltam 3 dias", em violeta, como o funil Upgrade, e não como Visitante nem na lista de Visitantes. Quando fecha, conta como upgrade. O ex-aluno (vencido ou cancelado) continua "Inativo + Visitante".
+- **Professor:** no Agendar dele, a aula só entra num freepass que já corre. Ele não lança freepass, e sem freepass correndo a aula fica avulsa. As regras ganham o que o Agendar dele grava no lead e, no `stronix_freepass`, só as aulas e o fim.
+
+### Leituras que passam a usar o freepass
+
+A faixa do cartão do Stronizap, a coluna "Passe livre" de Aulas, o "A seguir" e o fato "Aula" da Meta leem o freepass. As aulas marcadas antes da mudança continuam com o passe antigo (`trialClassesPlanned`) até acabarem.
+
 ## Fora do escopo
 
 - Prazo em dias para o freepass por aulas.
