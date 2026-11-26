@@ -205,3 +205,115 @@ export function freepassLaunchText(fp) {
 }
 
 export const freepassEndText = (fp) => `Freepass encerrado: ${fp.typeName}.`;
+
+// Status do registro de aula, os mesmos de AULA_STATUS em src/lib/aulas.js
+// (aqui literais, porque este arquivo só pode importar dates.js).
+const AULA_AGENDADA = 'agendada';
+const AULA_CANCELADA = 'cancelled';
+
+const fpModalidadeOf = (fps, modalidadeId) => (fps || []).filter(fp => fp.modalidadeId === modalidadeId);
+
+// O que o Agendar faz com o freepass da modalidade. Ordem de decisão: usa o que
+// corre (ou avulsa se por aulas já está cheio), avulsa se já teve, avulsa se a
+// modalidade não tem tipo, avulsa se quem agenda não lança, senão lança.
+export function freepassChoiceFor({ lead, freepasses, types, modalidadeId, canLaunch, movingFreepassId = null, now = new Date() }) {
+  const runningHere = activeFreepassesOf(lead, fpModalidadeOf(freepasses, modalidadeId), now);
+  // O Agendar de aula move a aula pendente: ela já ocupa uma vaga do freepass e a vaga volta a ser livre.
+  const moving = movingFreepassId && runningHere.find(fp => fp.id === movingFreepassId);
+  if (moving) {
+    const aulasLeft = moving.kind === FREEPASS_KINDS.AULAS ? moving.total - (moving.aulas ?? 0) + 1 : null;
+    return { kind: 'use', freepass: moving, aulasLeft, moving: true };
+  }
+  const running = runningHere[0];
+  if (running) {
+    const aulasLeft = running.kind === FREEPASS_KINDS.AULAS ? running.total - (running.aulas ?? 0) : null;
+    if (aulasLeft !== null && aulasLeft <= 0) return { kind: 'avulsa', reason: 'full', freepass: running };
+    return { kind: 'use', freepass: running, aulasLeft };
+  }
+  const had = fpModalidadeOf(freepasses, modalidadeId);
+  if (had.length) {
+    const ms = (fp) => getSafeDateOrNull(fp.startsAt)?.getTime() ?? 0;
+    const latest = had.slice().sort((a, b) => ms(b) - ms(a))[0];
+    return { kind: 'avulsa', reason: 'repeated', since: getSafeDateOrNull(latest.startsAt) };
+  }
+  const ativos = (types || []).filter(t => t.modalidadeId === modalidadeId && t.ativo !== false);
+  if (!ativos.length) return { kind: 'avulsa', reason: 'noType' };
+  if (!canLaunch) return { kind: 'avulsa', reason: 'noLaunch' };
+  return { kind: 'launch', types: [...ativos.filter(t => t.padrao), ...ativos.filter(t => !t.padrao)] };
+}
+
+// Para quem não escolhe tipo (Remarcar, Stronizap, IA): o lançamento sai com o
+// tipo padrão da modalidade, e sem padrão a aula é avulsa.
+export function autoFreepassFor(args) {
+  const c = freepassChoiceFor(args);
+  if (c.kind !== 'launch') return c;
+  const type = c.types.find(t => t.padrao);
+  return type ? { kind: 'launch', type } : { kind: 'avulsa', reason: 'noType' };
+}
+
+// A linha do Remarcar e o aviso do passo do Agendar.
+export function freepassChoiceText(choice, modalidadeName) {
+  switch (choice.kind) {
+    case 'use': {
+      const { freepass: fp } = choice;
+      if (choice.moving) return `Continua no freepass ${fp.typeName}`;
+      const head = `Entra no freepass ${fp.typeName}`;
+      return fp.kind === FREEPASS_KINDS.AULAS ? `${head} (${(fp.aulas ?? 0) + 1} de ${fp.total})` : head;
+    }
+    case 'launch': return `Nasce o freepass ${(choice.type || choice.types[0]).name}`;
+    case 'avulsa':
+      if (choice.reason === 'repeated') return `Aula avulsa: já teve freepass de ${modalidadeName} em ${ddmm(choice.since)}`;
+      if (choice.reason === 'full') {
+        const n = choice.freepass.total;
+        return `Aula avulsa: o freepass já tem ${n === 1 ? 'a 1 aula' : `as ${n} aulas`}`;
+      }
+      if (choice.reason === 'noType') return `Aula avulsa: ${modalidadeName} não tem freepass cadastrado`;
+      return 'Aula avulsa: só o consultor lança freepass';
+    default: return '';
+  }
+}
+
+// O contador de aulas do freepass e, quando por aulas completa, o fim: o começo
+// do dia da última aula. Por dias não mexe no fim.
+export function freepassAulasPatch({ freepass, records }) {
+  const mine = (records || []).filter(r => r.freepassId === freepass.id && r.status !== AULA_CANCELADA);
+  const aulas = mine.length;
+  if (freepass.kind !== FREEPASS_KINDS.AULAS) return { aulas, endsAt: freepass.endsAt };
+  if (aulas < freepass.total) return { aulas, endsAt: null };
+  const last = Math.max(...mine.map(r => getSafeDateOrNull(r.scheduledFor)?.getTime() ?? -Infinity));
+  return { aulas, endsAt: Number.isFinite(last) ? startOfLocalDay(new Date(last)) : null };
+}
+
+// A aula da vez do lead anda para a aula de freepass de hoje, mas só quando a
+// atual já passou (dia anterior), já tem desfecho ou não existe: a aula de hoje
+// que ainda vai acontecer não se mexe.
+export function currentAulaToAdvance({ lead, records, now = new Date() }) {
+  const appt = getSafeDateOrNull(lead?.appointmentScheduledFor);
+  const done = !appt || Boolean(lead?.appointmentOutcome) || calendarDaysBetween(now, appt) < 0;
+  if (!done) return null;
+  const today = (records || [])
+    .filter(r => r.freepassId && r.status === AULA_AGENDADA && r.id !== lead?.currentAulaId)
+    .map(r => ({ r, at: getSafeDateOrNull(r.scheduledFor) }))
+    .filter(x => x.at && calendarDaysBetween(now, x.at) === 0)
+    .sort((a, b) => a.at - b.at);
+  return today[0]?.r || null;
+}
+
+// A aula que o lead mostra como a da vez depois de uma gravação: a mais cedo
+// do freepass, de hoje em diante.
+export function nextFreepassAula({ records, freepassId, now = new Date() }) {
+  return (records || [])
+    .filter(r => r.freepassId === freepassId && r.status === AULA_AGENDADA)
+    .map(r => ({ r, at: getSafeDateOrNull(r.scheduledFor) }))
+    .filter(x => x.at && calendarDaysBetween(now, x.at) >= 0)
+    .sort((a, b) => a.at - b.at)[0]?.r || null;
+}
+
+// A etiqueta da ficha e das listas: quem já é aluno com contrato ativo e faz
+// freepass de outra modalidade está num upgrade, não visitando.
+export function freepassTagOf({ lead, contractActive, now = new Date() }) {
+  const v = visitorOf(lead, now);
+  if (!v) return null;
+  if (contractActive) return { label: 'Upgrade', text: `${v.modalidadeName}, ${v.shortText}` };
+  return { label: 'Visitante', text: v.shortText };
+}
