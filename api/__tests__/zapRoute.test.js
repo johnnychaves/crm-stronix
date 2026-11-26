@@ -2156,7 +2156,7 @@ describe('POST /api/zap com action schedule', () => {
     expect(rec).toEqual({
       id: expect.any(String), type: 'visita', unit: 'Centro', leadId: 'L1', leadName: 'Mariana Souza',
       professorId: null, professorName: null, soloTraining: false, modality: null, scheduledFor: QUINTA_18H,
-      status: 'agendada', outcomeAt: null, converted: false, convertedAt: null,
+      status: 'agendada', outcomeAt: null, converted: false, convertedAt: null, freepassId: null,
       consultantId: 'u-ana', consultantAuthUid: 'auth-ana', consultantName: 'Ana Souza', createdAt: HORA
     });
     expect(interacoesDaAcademia()).toEqual([{

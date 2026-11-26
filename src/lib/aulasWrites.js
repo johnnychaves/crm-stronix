@@ -26,6 +26,8 @@ export async function upsertScheduledAppointment({ db, lead, type = APPOINTMENT_
         soloTraining: Boolean(fields.soloTraining),
         modality: fields.modality || null,
         scheduledFor: fields.scheduledFor || null,
+        // Sem a chave no pedido (Remarcar da Meta, ponte do Stronizap), o registro mantém o freepass.
+        ...(fields.freepassId !== undefined && { freepassId: fields.freepassId || null }),
       };
 
   const openId = isVisita
@@ -88,9 +90,36 @@ export async function closeOpenAppointment({ db, lead, type, status }) {
 // não derruba o agendamento do lead. Mensagem e ligação não têm registro.
 // Devolve o currentAulaId que o lead passa a guardar: o registro da aula
 // agendada, ou o que ele já tinha.
-export async function recordNewAppointment({ db, lead, appointmentType, fields }) {
+// `fresh` (só aula): o "Agendar" do cartão do freepass abre uma aula nova sem
+// fechar nem mover a pendente, e devolve o id dela.
+export async function recordNewAppointment({ db, lead, appointmentType, fields, fresh = false }) {
   const kept = lead.currentAulaId || null;
   if (appointmentType !== 'visita' && appointmentType !== 'aula_experimental') return kept;
+
+  if (fresh && appointmentType === 'aula_experimental') {
+    try {
+      const record = aulaRecordFields({
+        type: APPOINTMENT_RECORD_TYPES.AULA,
+        leadId: lead.id,
+        leadName: lead.name || lead.nome || null,
+        consultantId: lead.consultantId || null,
+        consultantAuthUid: lead.consultantAuthUid || null,
+        consultantName: lead.consultantName || null,
+        status: AULA_STATUS.AGENDADA,
+        professorId: fields.professorId,
+        professorName: fields.professorName,
+        soloTraining: fields.soloTraining,
+        modality: fields.modality,
+        scheduledFor: fields.scheduledFor,
+        freepassId: fields.freepassId,
+      });
+      const ref = await addDoc(aulasCol(db), { ...record, createdAt: serverTimestamp() });
+      return ref.id;
+    } catch (e) {
+      console.error('recordNewAppointment (fresh) falhou', e);
+      return kept;
+    }
+  }
 
   const plan = recordPlanFor(lead, { type: appointmentType, at: fields.scheduledFor });
   if (plan.close) {
