@@ -55,7 +55,7 @@ Uma diferença da spec: ela põe no PR 1 o placar lendo a trilha Professor. O pl
 
 **Telas:** a lista (`ProfessoresView` vira `CarreiraView`) com a pílula Trilha (`trilha` no endereço) e as colunas do mockup; o "Trilha e nível" no lugar do `NivelPopover`, gravando `trilhaId`, `nivel` e `nivelDesde`; o placar (`PlacarDoCiclo`) lendo os números ligados da trilha, com a meta do nível atual, a do próximo nível e a linha "Para Pleno: 55%"; o tempo no nível no cabeçalho; e "Minha carreira" no menu (`sidebarNav`), no lugar do "Meu perfil".
 
-**Contas novas:** a aderência semestral (soma das semanas do período, sem dezembro) e a renovação pela `janelaDaRenovacao`, que o estagiário usa.
+**Contas novas:** a aderência semestral (soma das semanas do período, sem dezembro) e a renovação pela `janelaDaRenovacao`, que o estagiário usa. O `pecasDaAderencia` do semestral de junho e dezembro devolve o segundo período em dois pedaços (junho, e julho a novembro): a conta semestral soma as semanas de todos os pedaços, e não tira a média deles, senão junho pesa o mesmo que os outros cinco meses juntos (achado da revisão do PR 1). Quando a `api/` passar a ler o `periodo.js`, a data precisa vir no horário de Brasília (`api/_horarioDeBrasilia.js`), porque a Vercel roda em UTC.
 
 **Regra:** `carreiraKept()` no ramo do próprio usuário em `stronix_users`, com teste que lê o `firestore.rules`, publicada no console antes do merge.
 
