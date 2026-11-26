@@ -6,7 +6,7 @@ import { logInteraction } from '../lib/interactions.js';
 import { useLeadTimeline } from '../hooks/useLeadTimeline.js';
 import { useLeadFreepasses } from '../hooks/useLeadFreepasses.js';
 import { FreepassLaunchModal } from '../modals/FreepassLaunchModal.jsx';
-import { activeFreepassesOf, visitorOf } from '../lib/visitante.js';
+import { FREEPASS_INTERACTION_TYPE, activeFreepassesOf, visitorOf } from '../lib/visitante.js';
 import { writeFreepassEnd, writeFreepassLaunch } from '../lib/freepassWrites.js';
 import { useReferrals } from '../hooks/useReferrals.js';
 import { withBucket } from '../lib/leadDerived.js';
@@ -918,6 +918,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
       if (i.appointmentOutcome && lastScheduled) {
         map[i.id] = { at: lastScheduled.createdAt, by: lastScheduled.consultantName, via: lastScheduled.via ?? null, byAi: lastScheduled.byAi === true };
       }
+      if (i.type === FREEPASS_INTERACTION_TYPE) return; // freepass cai em Agendamentos, mas não agenda visita nem aula
       if (isAppointmentReschedule(i) || (!i.appointmentOutcome && i._kind === 'appointment')) lastScheduled = i;
     });
     return map;

@@ -822,3 +822,10 @@ describe('troca de funil na mudança de fase (funnelChangeOf)', () => {
     expect(funnelChangeOf(null, FUNNELS)).toBeNull();
   });
 });
+
+describe('parseAppointment: o texto do freepass não é agendamento', () => {
+  it('lançar e encerrar freepass não viram cartão de agendamento', () => {
+    expect(parseAppointment({ text: 'Freepass lançado: Muscu 7 dias (Musculação), de 26/11 a 02/12.' })).toBeNull();
+    expect(parseAppointment({ text: 'Freepass encerrado: Muscu 7 dias.' })).toBeNull();
+  });
+});
