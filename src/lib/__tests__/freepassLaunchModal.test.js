@@ -60,4 +60,15 @@ describe('FreepassLaunchModal', () => {
     await act(async () => { botao('Lançar mesmo assim').click(); });
     expect(onConfirm).toHaveBeenCalled();
   });
+  it('barra o por dias que terminaria antes de hoje', async () => {
+    await montar({ freepasses: [], gestor: false, onConfirm: vi.fn(), now: new Date('2026-11-26T10:00:00') });
+    await escolher('Muscu 7 dias');
+    const input = document.querySelector('input[type="date"]');
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, '2026-11-19');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(texto()).toContain('Esse freepass terminaria antes de hoje. Escolha um início mais recente.');
+    expect(botao('Lançar freepass').disabled).toBe(true);
+  });
 });

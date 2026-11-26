@@ -27,15 +27,17 @@ export function FreepassLaunchModal({ open, onOpenChange, firstName, types, moda
   const startDate = fromDateInputValue(start);
   const startOk = Boolean(startDate) && startDate >= range.min && startDate <= range.max;
   const porDias = type?.kind === FREEPASS_KINDS.DIAS;
+  const endsBeforeToday = porDias && startOk && addDays(startDate, type.quantity - 1) < startOfLocalDay(now);
 
   let status;
   if (!type) status = 'Escolha o freepass.';
   else if (check?.block) status = check.block;
   else if (porDias && !startOk) status = `O início vai de ${ddmm(range.min)} a ${ddmm(range.max)}.`;
+  else if (endsBeforeToday) status = 'Esse freepass terminaria antes de hoje. Escolha um início mais recente.';
   else if (check?.confirm) status = check.confirm;
   else if (porDias) status = `${firstName} vira Visitante de ${ddmm(startDate)} a ${ddmm(addDays(startDate, type.quantity - 1))}.`;
   else status = `${firstName} vira Visitante agora, com ${freepassQuantityText(type)} para agendar.`;
-  const blocked = !type || Boolean(check?.block) || (porDias && !startOk);
+  const blocked = !type || Boolean(check?.block) || (porDias && !startOk) || endsBeforeToday;
 
   const submit = () => {
     if (blocked || loading) return;
@@ -62,7 +64,8 @@ export function FreepassLaunchModal({ open, onOpenChange, firstName, types, moda
                     <RadioGroupOption
                       key={t.id} value={t.id} aria-label={`${t.name}, ${freepassQuantityText(t)}`}
                       className={cn('flex flex-col items-start rounded-xl border px-3 py-2.5 text-left transition',
-                        typeId === t.id ? 'border-teal-700 bg-teal-50 dark:bg-teal-500/10' : 'border-border hover:bg-muted/50')}
+                        typeId === t.id ? 'border-teal-700 bg-teal-50 dark:bg-teal-500/10' : 'border-border hover:bg-muted/50',
+                        'data-[state=checked]:border-teal-700')}
                     >
                       <span className="text-[13.5px] font-semibold">{t.name}</span>
                       <span className="text-[12px] text-muted-foreground">{freepassQuantityText(t)}</span>
@@ -78,7 +81,7 @@ export function FreepassLaunchModal({ open, onOpenChange, firstName, types, moda
           <label className="flex flex-col gap-1 text-[12.5px] font-semibold">
             Começa em
             <input
-              type="date" className="h-9 rounded-lg border border-border bg-background px-2.5 text-[13px] num"
+              type="date" className="h-9 rounded-lg border border-border bg-background px-2.5 text-[13px] num dark:[color-scheme:dark]"
               value={start} min={toDateInputValue(range.min)} max={toDateInputValue(range.max)}
               onChange={e => setStart(e.target.value)}
             />
