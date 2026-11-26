@@ -12,7 +12,8 @@ import { CampoNumero } from './CampoNumero.jsx';
 // A aba Regras da trilha (mockup A): quem segue, quando avalia e como cada
 // número conta, com o ajuste de cada um. `calendarioTravado` é a trava da
 // trilha Professor até o PR 3 (AVISO_CALENDARIO_PROFESSOR).
-const SEG = 'inline-flex w-max flex-wrap gap-0.5 rounded-xl bg-muted p-[3px]';
+// w-fit com max-w-full: do tamanho das opções, e quebra linha quando não cabe.
+const SEG = 'inline-flex w-fit max-w-full flex-wrap gap-0.5 rounded-xl bg-muted p-[3px]';
 const PILULA = 'inline-flex h-8 items-center rounded-[9px] px-3.5 text-[13px] font-semibold text-muted-foreground data-[state=checked]:bg-card data-[state=checked]:text-foreground data-[state=checked]:shadow-sm';
 // O chip de escolha (vínculo) e o de marcar (modalidades): azul quando escolhido.
 const CHIP = 'inline-flex h-9 items-center rounded-[10px] border border-border bg-card px-3 text-[12.5px] font-semibold text-muted-foreground outline-none hover:bg-muted focus-visible:anel-foco focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[state=checked]:border-brand-600 data-[state=checked]:bg-brand-600 data-[state=checked]:text-white aria-pressed:border-brand-600 aria-pressed:bg-brand-600 aria-pressed:text-white';
@@ -22,7 +23,7 @@ const VINCULOS = [['qualquer', 'Qualquer vínculo'], ['formado', 'Formados'], ['
 function Bloco({ icone: Icone, titulo, children }) {
   const id = useId();
   return (
-    <section aria-labelledby={id} className="overflow-hidden rounded-[18px] border border-border bg-card shadow-card">
+    <section aria-labelledby={id} className="@container overflow-hidden rounded-[18px] border border-border bg-card shadow-card">
       <h3 id={id} className="flex items-center gap-2.5 border-b border-border px-5 py-4 font-display text-[15px] font-bold">
         <Icone size={18} aria-hidden="true" className="text-brand-600 dark:text-brand-300" />
         {titulo}
@@ -34,7 +35,7 @@ function Bloco({ icone: Icone, titulo, children }) {
 
 function Regra({ rotulo, ajuda, children }) {
   return (
-    <div className="grid gap-x-7 gap-y-1.5 border-t border-border px-5 py-4 first-of-type:border-t-0 md:grid-cols-[220px_minmax(0,1fr)]">
+    <div className="grid gap-x-7 gap-y-1.5 border-t border-border px-5 py-4 first-of-type:border-t-0 @xl:grid-cols-[220px_minmax(0,1fr)]">
       <div className="text-[13.5px] font-semibold">
         {rotulo}
         {ajuda && <small className="mt-0.5 block text-[12px] font-medium text-muted-foreground">{ajuda}</small>}

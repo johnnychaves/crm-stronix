@@ -312,6 +312,21 @@ describe('as regras da trilha', () => {
     expect(radio('12 meses até o fim do semestre').getAttribute('aria-checked')).toBe('true');
   });
 
+  // Com o trilho ao lado, a coluna tem uns 632 px numa janela de 1100: a
+  // regra quebra pela largura do bloco, e o seletor quebra linha em vez de
+  // ser cortado.
+  it('a regra quebra pelo bloco, e o seletor de duas opções quebra linha', async () => {
+    await render({ inicial: ESTAGIARIO, gravada: ESTAGIARIO, pessoas: NINGUEM, abaInicial: 'regras' });
+    const seletor = document.body.querySelector('[role="radiogroup"][aria-label="A renovação olha"]');
+    const regra = seletor.parentElement.parentElement;
+    expect(regra.className).toMatch(/@xl:grid-cols-/);
+    expect(regra.className).not.toMatch(/\bmd:/);
+    expect(regra.closest('section').className).toContain('@container');
+    expect(seletor.className).toContain('flex-wrap');
+    expect(seletor.className).toContain('max-w-full');
+    expect(seletor.className).not.toContain('w-max');
+  });
+
   it('cada número ligado diz como conta, com o ajuste', async () => {
     await render({ inicial: PROFESSOR, gravada: PROFESSOR, pessoas: GENTE, abaInicial: 'regras' });
     expect(campo('Dias de aula recente que ainda não contam').value).toBe('30');
