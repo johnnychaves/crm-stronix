@@ -42,7 +42,7 @@ import { leadFunnelsOf } from '../../lib/crm/scope.js';
 
 function SettingsView({
   section, onSection, db, statuses, sources, usersList, appUser, tags, lossReasons,
-  dores, funnels, modalities, planos, trialClassOptions, units, metaWeekdays
+  dores, funnels, modalities, planos, trialClassOptions, freepassTypes, units, metaWeekdays
 }) {
   // Fonte de leads das Configurações (G1-flip): TODOS os buckets por query
   // própria em vez do prop global (que virou só 'ativo' no flip). As seções
@@ -188,7 +188,7 @@ function SettingsView({
         {secao === 'sched' && (
           <SchedulingSection
             db={db} modalities={modalities} units={units}
-            trialClassOptions={trialClassOptions} leads={leads} onLeadsChanged={reloadLeads}
+            trialClassOptions={trialClassOptions} freepassTypes={freepassTypes} leads={leads} onLeadsChanged={reloadLeads}
           />
         )}
         {secao === 'funnels' && (

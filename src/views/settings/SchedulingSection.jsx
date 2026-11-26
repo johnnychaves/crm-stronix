@@ -6,6 +6,7 @@ import { commitOpsInChunks } from '../../lib/funnels.js';
 import { leadsWhere } from '../../lib/settingsLeads.js';
 import { getLeadAppointmentDate } from '../../lib/leads.js';
 import { normalizeTrialClassOptions } from '../../lib/leadStatus.js';
+import { FreepassTypesPanel } from './FreepassTypesPanel.jsx';
 import { cn } from '../../lib/utils.js';
 import { useToast } from '../../contexts/ToastContext.jsx';
 import { ColorDot, SETTINGS_COLOR_OPTIONS, settingsColorTone } from '../../components/ui/ColorPicker.jsx';
@@ -85,7 +86,7 @@ function TrialPackageCard({ pack, onRemove }) {
   );
 }
 
-function SchedulingSection({ db, modalities, units, trialClassOptions, leads, onLeadsChanged }) {
+function SchedulingSection({ db, modalities, units, trialClassOptions, freepassTypes, leads, onLeadsChanged }) {
   const toast = useToast();
   const [saving, setSaving] = useState(false);
 
@@ -379,6 +380,8 @@ function SchedulingSection({ db, modalities, units, trialClassOptions, leads, on
           />
         </div>
       </SettingsPanel>
+
+      <FreepassTypesPanel db={db} modalities={modalities} freepassTypes={freepassTypes} />
 
       <FormDialog
         open={Boolean(modalityDialog)}
