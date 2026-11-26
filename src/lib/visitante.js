@@ -84,7 +84,8 @@ const nul = (v) => (v === undefined ? null : v);
 export function isFreepassRunning(fp, now = new Date()) {
   if (!fp || fp.status !== FREEPASS_STATUS.CORRENDO) return false;
   const end = endDayOf(fp);
-  return !end || calendarDaysBetween(now, end) >= 0;
+  if (!end) return fp.kind !== FREEPASS_KINDS.DIAS;
+  return calendarDaysBetween(now, end) >= 0;
 }
 
 // Os freepass que fazem da pessoa um Visitante agora. A perda e a matrícula
@@ -137,6 +138,7 @@ export function visitorOf(lead, now = new Date()) {
 // O andamento para a etiqueta: "faltam 3 dias", "termina hoje", "1 de 2 aulas".
 export function freepassShortText(fp, now = new Date()) {
   if (fp.kind === FREEPASS_KINDS.AULAS) return `${fp.aulas ?? 0} de ${fp.total} aulas`;
+  if (!endDayOf(fp)) return '';
   const start = startOfLocalDay(fp.startsAt);
   if (start && calendarDaysBetween(now, start) > 0) return `começa em ${ddmm(start)}`;
   const d = calendarDaysBetween(now, endDayOf(fp));
@@ -149,6 +151,7 @@ export function freepassLongText(fp, now = new Date()) {
   if (fp.kind === FREEPASS_KINDS.AULAS) return `${fp.aulas ?? 0} de ${fp.total} aulas agendadas`;
   const start = startOfLocalDay(fp.startsAt);
   const end = endDayOf(fp);
+  if (!end) return '';
   if (start && calendarDaysBetween(now, start) > 0) return `Começa em ${ddmm(start)} e vai até ${ddmm(end)}`;
   const d = calendarDaysBetween(now, end);
   if (d === 0) return `Termina hoje, ${ddmm(end)}`;

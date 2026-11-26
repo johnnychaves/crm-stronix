@@ -98,6 +98,10 @@ describe('isFreepassRunning', () => {
   it('por aulas sem fim marcado continua correndo', () => {
     expect(isFreepassRunning(fpAulas(), dia('2027-03-01'))).toBe(true);
   });
+  it('por dias sem fim válido não corre', () => {
+    expect(isFreepassRunning(fpDias({ endsAt: null }), dia('2026-11-21'))).toBe(false);
+    expect(isFreepassRunning(fpDias({ endsAt: 'lixo' }), dia('2026-11-21'))).toBe(false);
+  });
   it('encerrado à mão não corre', () => {
     expect(isFreepassRunning(fpDias({ status: 'encerrado' }), dia('2026-11-21'))).toBe(false);
   });
@@ -159,6 +163,10 @@ describe('textos do andamento', () => {
   it('por dias, antes de começar', () => {
     expect(freepassShortText(fpDias(), dia('2026-11-18'))).toBe('começa em 20/11');
     expect(freepassLongText(fpDias(), dia('2026-11-18'))).toBe('Começa em 20/11 e vai até 26/11');
+  });
+  it('por dias sem fim válido, texto vazio', () => {
+    expect(freepassShortText(fpDias({ endsAt: null }), dia('2026-11-23'))).toBe('');
+    expect(freepassLongText(fpDias({ endsAt: 'lixo' }), dia('2026-11-23'))).toBe('');
   });
   it('por aulas', () => {
     expect(freepassShortText(fpAulas(), dia('2026-11-23'))).toBe('1 de 2 aulas');
