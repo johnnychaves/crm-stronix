@@ -22,6 +22,7 @@ vi.mock('firebase/firestore', () => {
   };
 });
 
+import { FREEPASS_SUMMARY_EMPTY } from '../visitante.js';
 const { writeFreepassLaunch, writeFreepassEnd } = await import('../freepassWrites.js');
 
 const lead = { id: 'L1', name: 'Rafa', status: 'Novo', consultantId: 'u1', consultantName: 'Ana', consultantAuthUid: 'a1' };
@@ -37,6 +38,7 @@ describe('writeFreepassLaunch', () => {
       startsAt: new Date('2026-11-26T12:00:00'), existing: [], now: new Date('2026-11-26T12:00:00')
     });
     expect(calls.filter(c => c[0] === 'commit')).toHaveLength(1);
+    expect(calls.at(-1)[0]).toBe('commit');
     const fp = calls.find(c => c[1].includes('stronix_freepass'));
     expect(fp[0]).toBe('set');
     expect(fp[2]).toMatchObject({ leadId: 'L1', status: 'correndo', createdAt: 'TS' });
@@ -59,5 +61,17 @@ describe('writeFreepassEnd', () => {
     expect(leadSet[2].freepassId).toBe('f2');
     const inter = calls.find(c => c[1].includes('stronix_interactions'));
     expect(inter[2].text).toBe('Freepass encerrado: Muscu 7 dias.');
+    expect(calls.at(-1)[0]).toBe('commit');
+  });
+
+  it('encerrar o único freepass que corre zera todo o resumo do lead', async () => {
+    const fim = { id: 'f1', typeName: 'Muscu 7 dias' };
+    await writeFreepassEnd({ db: {}, lead, appUser: user, freepass: fim, existing: [fim], now: new Date('2026-11-26T12:00:00') });
+    const leadSet = calls.find(c => c[1].includes('stronix_leads'));
+    const campos = Object.keys(leadSet[2]).filter(k => k.startsWith('freepass'));
+    expect(campos.length).toBeGreaterThan(0);
+    campos.forEach(k => expect(leadSet[2][k]).toBeNull());
+    expect(campos.sort()).toEqual(Object.keys(FREEPASS_SUMMARY_EMPTY).sort());
+    expect(calls.at(-1)[0]).toBe('commit');
   });
 });
