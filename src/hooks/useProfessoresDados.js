@@ -49,17 +49,18 @@ export function useProfessoresDados({ db, ciclo, listenersActive }) {
     db, startMs: inicio.getTime(), endMs: fim.getTime() - 1, enabled: ler,
   });
 
-  // As presenças do ano do ciclo (aderência, PR 6): uma leitura só, pela
-  // segunda-feira da semana ('AAAA-MM-DD'), num campo só e sem índice novo.
-  // As semanas de janeiro a novembro contam; a de dezembro só aparece na aba.
+  // As presenças do ciclo (aderência, PR 6): uma leitura só, pela segunda-feira
+  // da semana ('AAAA-MM-DD'), de 1º de dezembro do ano anterior a 30 de
+  // novembro, num campo só e sem índice novo. As semanas de janeiro a novembro
+  // contam; as de dezembro, que abrem o ciclo, só aparecem na aba.
   const [presencas, setPresencas] = useState(null); // { ciclo, lista, erro }
   useEffect(() => {
     if (!ler) return undefined;
     let vivo = true;
     const q = query(
       collection(db, 'artifacts', appId, 'public', 'data', PRESENCAS_PATH),
-      where('semana', '>=', `${ciclo}-01-01`),
-      where('semana', '<=', `${ciclo}-12-31`),
+      where('semana', '>=', `${ciclo - 1}-12-01`),
+      where('semana', '<=', `${ciclo}-11-30`),
     );
     getDocs(q)
       .then((snap) => { if (vivo) setPresencas({ ciclo, lista: snap.docs.map((d) => d.data()), erro: null }); })

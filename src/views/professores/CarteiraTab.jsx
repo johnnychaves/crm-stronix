@@ -29,6 +29,14 @@ const dataBr = (d) => getSafeDateOrNull(d)?.toLocaleDateString('pt-BR') ?? null;
 function Vencimento({ linha, agora }) {
   const data = dataBr(linha.vence);
   if (!data) return <span className="text-muted-foreground">Sem data</span>;
+  if (linha.situacao === 'vencer' && linha.estado === 'trancado') {
+    return (
+      <>
+        <b className="num block font-medium">Trancado</b>
+        <small className="block text-[12px] text-muted-foreground">Fim previsto em {data}, anda com o trancamento</small>
+      </>
+    );
+  }
   if (linha.situacao === 'vencer') {
     const dias = calendarDaysBetween(agora, linha.vence);
     return (

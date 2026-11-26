@@ -159,6 +159,8 @@ describe('o que cada papel vê', () => {
     await render('/acad/professores/perfil/p2');
     const placar = byLabel('Critérios do plano de carreira');
     expect(placar.textContent).toContain('6 de 9 contratos renovaram');
+    // Júnior com 67% contra a média de 45%: bateu, como na lista.
+    expect(placar.textContent).toContain('Bateu a média do nível');
     expect(placar.textContent).toContain('8 de 15 pessoas se matricularam');
     expect(placar.textContent).toContain('Acima da academia');
     expect(placar.textContent).toContain('Sem pesquisa ainda');
@@ -194,6 +196,15 @@ describe('a carteira', () => {
     await click(pilula('Não renovou'));
     expect(alunos()).toEqual(['Bianca Teles']);
     expect(document.body.textContent).toContain('Clube+ Move');
+  });
+
+  it('o trancado mostra Trancado, e não um vencimento que já passou', async () => {
+    s.carteira = [{ ...linha('t1', 'Tânia Lopes', 'vencer'), estado: 'trancado', vence: new Date(2026, 10, 10) }];
+    await render('/acad/professores/perfil/p2');
+    const li = document.body.querySelector('[aria-label="Carteira do professor"] li');
+    expect(li.textContent).toContain('Trancado');
+    expect(li.textContent).toContain('Fim previsto em 10/11/2026');
+    expect(li.textContent).not.toContain('vence hoje');
   });
 
   it('o aviso conta quem não tem CPF e mostra só essas pessoas', async () => {

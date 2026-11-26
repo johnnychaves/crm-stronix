@@ -5,7 +5,7 @@ import { Avatar } from '../../components/ui/Avatar.jsx';
 import { useToast } from '../../contexts/ToastContext.jsx';
 import { npsLinkDe } from '../../lib/npsLink.js';
 import { abrirPesquisa, encerrarPesquisa, excluirRascunho, gerarLinksQueFaltam, salvarRascunho } from '../../lib/npsWrites.js';
-import { abreAPartirDe, estadoDaPesquisa, novaPesquisa, pesquisaEmCurso, podeAbrir, progressoDaTurma } from '../../lib/professor/pesquisas.js';
+import { abreAPartirDe, estadoDaPesquisa, fimPassou, novaPesquisa, pesquisaEmCurso, podeAbrir, progressoDaTurma } from '../../lib/professor/pesquisas.js';
 import { BOTAO, BOTAO_PRI, Confirmacao } from './Confirmacao.jsx';
 import { PesquisaForm } from './PesquisaForm.jsx';
 import { cicloCurto, diaTexto, periodoTexto, prazoTexto } from './pesquisasTexto.js';
@@ -103,7 +103,7 @@ function Destaque({ pesquisa, totaisPorId, profsPorId, hoje, onEncerrar, onGerar
   if (!pesquisa) {
     return (
       <section aria-labelledby="pesq-destaque" className="mb-[18px] rounded-[22px] bg-ink-900 bg-[radial-gradient(900px_340px_at_88%_-30%,#22357a_0,transparent_60%)] px-[18px] py-6 text-white md:px-7">
-        <h2 id="pesq-destaque" className="m-0 font-display text-[20px] font-bold">Nenhuma pesquisa aberta</h2>
+        <h2 id="pesq-destaque" tabIndex={-1} className="m-0 font-display text-[20px] font-bold outline-none">Nenhuma pesquisa aberta</h2>
         <p className="mt-1 text-[13px] text-white/70">Crie uma pesquisa e abra quando quiser que os alunos respondam. Só uma pesquisa fica aberta por vez.</p>
       </section>
     );
@@ -162,6 +162,7 @@ function Proxima({ pesquisa, emCurso, turmaHoje, hoje, onEditar, onAbrir }) {
   const botao = useRef(null);
   const perguntas = pesquisa.perguntas || [];
   const motivo = emCurso ? `Só abre depois que a ${emCurso.nome} encerrar.`
+    : fimPassou(pesquisa, hoje) ? 'O fim desta pesquisa já passou. Edite as datas para abrir.'
     : !podeAbrir(pesquisa, hoje) ? `Abre a partir de ${diaTexto(abreAPartirDe(pesquisa.inicio)).slice(0, 5)}, uma semana antes do início, para a turma ser a da época da pesquisa.`
       : turmaHoje == null ? 'Contando os alunos de cada professor…' : null;
   const abrir = async () => {
@@ -259,6 +260,9 @@ export function PesquisasTab({ db, appUser, tenantId, pesquisas, totais, profess
   }, [editando]);
   const voltar = () => { voltouRef.current = true; setEditando(null); };
 
+  // Depois de encerrar ou de abrir pela lista, o botão clicado some: o foco vai
+  // para o título do destaque, que existe com e sem pesquisa aberta.
+  const focarDestaque = () => requestAnimationFrame(() => document.getElementById('pesq-destaque')?.focus());
   const falhou = (e, texto) => {
     console.error('pesquisas', e);
     toast.error(e?.paraTela ? e.message : texto);
@@ -267,6 +271,7 @@ export function PesquisasTab({ db, appUser, tenantId, pesquisas, totais, profess
     try {
       await encerrarPesquisa(db, p.id);
       toast.success('Pesquisa encerrada.');
+      focarDestaque();
     } catch (e) { falhou(e, 'Não deu para encerrar a pesquisa. Tente de novo.'); }
   };
   // A turma sai do instante do clique: a tela pode ter ficado aberta por dias.
@@ -296,7 +301,7 @@ export function PesquisasTab({ db, appUser, tenantId, pesquisas, totais, profess
     }
   };
   const abrirDaLista = async (p) => {
-    try { await abrir(p.id); } catch (e) { falhou(e, 'Não deu para abrir a pesquisa. Tente de novo.'); }
+    try { await abrir(p.id); focarDestaque(); } catch (e) { falhou(e, 'Não deu para abrir a pesquisa. Tente de novo.'); }
   };
 
   if (editando) {

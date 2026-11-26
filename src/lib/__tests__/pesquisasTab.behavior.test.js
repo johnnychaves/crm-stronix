@@ -133,6 +133,16 @@ describe('a lista das pesquisas', () => {
     expect(confirma.textContent).toContain('Os alunos param de conseguir responder agora.');
     await clicar([...confirma.querySelectorAll('button')].find((b) => b.textContent === 'Encerrar agora'));
     expect(w.encerrarPesquisa).toHaveBeenCalledWith({}, 'jun');
+    // A pesquisa encerrada sai do destaque: o foco vai para o título dele.
+    render({ pesquisas: [RASCUNHO], totais: [] });
+    await act(async () => { await new Promise((ok) => requestAnimationFrame(ok)); });
+    expect(document.activeElement.id).toBe('pesq-destaque');
+  });
+
+  it('o rascunho com o fim já passado não abre e diz por quê', () => {
+    render({ pesquisas: [RASCUNHO], totais: [], hoje: '2027-12-16' });
+    expect(botao('Abrir pesquisa').disabled).toBe(true);
+    expect(container.textContent).toContain('O fim desta pesquisa já passou. Edite as datas para abrir.');
   });
 });
 

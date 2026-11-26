@@ -82,7 +82,7 @@ function Rosto({ nota, className = 'rosto' }) {
 function Avatar({ prof, mini = false }) {
   return (
     <span className={mini ? 'av av-mini' : 'av'} aria-hidden={mini || undefined}>
-      {prof.photoUrl ? <img src={prof.photoUrl} alt={mini ? '' : `Foto de ${prof.nome}`} /> : <span>{iniciais(prof.nome)}</span>}
+      {prof.photoUrl ? <img src={prof.photoUrl} alt="" /> : <span>{iniciais(prof.nome)}</span>}
     </span>
   );
 }
@@ -177,6 +177,7 @@ export function AvaliarScreen({ slug, code }) {
 
   const conferirCpf = async (e) => {
     e.preventDefault();
+    if (enviando) return;
     setAlerta(null);
     const d = so(cpf);
     if (d.length < 11) { setErroCpf(d.length ? 'Faltam números no CPF.' : 'Digite o seu CPF.'); cpfRef.current?.focus(); return; }

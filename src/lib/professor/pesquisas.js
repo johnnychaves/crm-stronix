@@ -83,9 +83,12 @@ export function abreAPartirDe(inicio) {
   d.setDate(d.getDate() - DIAS_PARA_ABRIR);
   return dayKeyOf(d);
 }
+// O fim que já passou também trava: a pesquisa nasceria encerrada, com as
+// turmas gravadas e os links gerados à toa.
+export const fimPassou = (p, hoje) => Boolean(p?.fim) && hoje > p.fim;
 export const podeAbrir = (p, hoje) => {
   const desde = abreAPartirDe(p?.inicio);
-  return desde != null && hoje >= desde;
+  return desde != null && hoje >= desde && !fimPassou(p, hoje);
 };
 
 // Encerrada antes do dia do início, a pesquisa nunca recebeu resposta e não

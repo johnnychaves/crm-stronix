@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
-import { LayoutDashboard, Users, Plus, AlertTriangle, Activity, X, Menu, Settings, Kanban, Moon, Sun, Target, Globe, LifeBuoy, GraduationCap, ListChecks, ChartColumn, IdCard } from 'lucide-react';
+import { LayoutDashboard, Users, Plus, AlertTriangle, Activity, X, Menu, Settings, Kanban, Moon, Sun, Target, Globe, LifeBuoy, GraduationCap, ListChecks, ChartColumn, IdCard, Award } from 'lucide-react';
 
 import {
   onAuthStateChanged,
@@ -1724,7 +1724,7 @@ useEffect(() => {
               <div className={`px-2.5 mt-6 mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-gray-400 dark:text-neutral-500 whitespace-nowrap ${SIDEBAR_EXPANDED_ONLY}`}>Administração</div>
               <div className="space-y-1">
                 {nav.professores && (
-                  <SidebarItem icon={<GraduationCap className="w-[18px] h-[18px]" />} label="Professores" href={menuHref('professores')} onNavigate={closeDrawer} active={activeTab === 'professores' || activeTab === 'professorPerfil'} />
+                  <SidebarItem icon={<Award className="w-[18px] h-[18px]" />} label="Professores" href={menuHref('professores')} onNavigate={closeDrawer} active={activeTab === 'professores' || activeTab === 'professorPerfil'} />
                 )}
                 {/* O balão "Novo" das Rotinas, em vermelho, fica no item do
                     menu até o ROTINAS_NOVO_ATE (mockup 2026-10-08, opção C).

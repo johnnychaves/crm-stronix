@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils';
-import { NIVEIS, nivelTexto } from '../../lib/professor/metas.js';
+import { NIVEIS, nivelTexto, referenciaDaRenovacao } from '../../lib/professor/metas.js';
 import { CicloControl } from './ProfessoresComum.jsx';
 import { escalaDaRenovacao, notaTexto } from './criterios.js';
 
@@ -83,6 +83,9 @@ export function PlacarDoCiclo({ titulo, ciclo, cicloAtual, onCiclo, prof, metas,
   const medias = NIVEIS.map((n) => ({ v: metas.renovacao[n], texto: nivelTexto(n), minha: n === prof.nivel }));
   const [rlo, rhi] = escalaDaRenovacao([...medias.map((m) => m.v), ...(renovacao.taxa == null ? [] : [renovacao.taxa])]);
   const temNivel = NIVEIS.includes(prof.nivel);
+  // A mesma regra do criterioRenovacao da lista: bate com a média do nível.
+  const esperado = referenciaDaRenovacao(metas, prof.nivel);
+  const renovBateu = esperado == null || renovacao.taxa == null ? null : renovacao.taxa >= esperado;
   const p = conversao.professor;
   const a = conversao.academia;
   const { meta: metaNps } = metas.nps;
@@ -109,14 +112,22 @@ export function PlacarDoCiclo({ titulo, ciclo, cicloAtual, onCiclo, prof, metas,
         <Criterio
           titulo="Renovação da carteira"
           valor={renovacao.taxa == null ? null : `${renovacao.taxa}%`}
+          verde={renovBateu === true}
           linha={renovacao.taxa == null ? 'Nenhum contrato venceu' : `${renovacao.renovados} de ${renovacao.venceram} contratos renovaram`}
-          rodape={temNivel ? `Contratos de ${modalidadesTexto} que venceram no ciclo.` : 'Sem nível: defina o nível para ver a média esperada.'}
+          rodape={(
+            <>
+              {renovBateu === true && <Selo tom="verde">Bateu a média do nível</Selo>}
+              {renovBateu === false && <Selo tom="ambar">Abaixo da média do nível</Selo>}
+              {temNivel ? `Contratos de ${modalidadesTexto} que venceram no ciclo.` : 'Sem nível: defina o nível para ver a média esperada.'}
+            </>
+          )}
         >
           <Regua
             lo={rlo}
             hi={rhi}
             marcas={medias}
             ponto={renovacao.taxa}
+            verde={renovBateu === true}
             rotulo={`${renovacao.taxa == null ? 'Sem resultado' : `${renovacao.taxa}%`}. Médias: ${medias.map((m) => `${m.texto} ${m.v}%`).join(', ')}.`}
           />
         </Criterio>
