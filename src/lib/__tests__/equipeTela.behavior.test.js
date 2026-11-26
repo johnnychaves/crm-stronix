@@ -3,7 +3,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { createElement as h, act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, useLocation } from 'react-router';
 
 const estado = vi.hoisted(() => ({ leitura: { fichas: [], pronto: true, erro: null }, aulas: [], apagados: [] }));
 vi.mock('../../hooks/useEquipeFichas.js', () => ({ useEquipeFichas: () => estado.leitura }));
@@ -34,15 +34,18 @@ const GESTOR = { id: 'g1', authUid: 'g1', name: 'Johnny', role: 'admin', tenantI
 const EQUIPE = [GESTOR, { id: 'u2', authUid: 'u2', name: 'Camila', role: 'consultant', email: 'c@x.com' }];
 const PROFESSORES = [{ id: 'p1', nome: 'Marina', modalidadeIds: [] }];
 
+const onde = { caminho: null };
+function Endereco() { onde.caminho = useLocation().pathname; return null; }
+const arvore = (caminho, props) => h(MemoryRouter, { initialEntries: [caminho] },
+  h(Endereco),
+  h(GeneralConfigContext.Provider, { value: { modalities: [], professores: PROFESSORES } },
+    h(TeamAccessSection, { db: {}, appUser: GESTOR, usersList: EQUIPE, leads: [], listenersActive: true, ...props })));
+
 async function montar(caminho, props = {}) {
   const el = document.createElement('div');
   document.body.appendChild(el);
   root = createRoot(el);
-  await act(async () => {
-    root.render(h(MemoryRouter, { initialEntries: [caminho] },
-      h(GeneralConfigContext.Provider, { value: { modalities: [], professores: PROFESSORES } },
-        h(TeamAccessSection, { db: {}, appUser: GESTOR, usersList: EQUIPE, leads: [], listenersActive: true, ...props }))));
-  });
+  await act(async () => { root.render(arvore(caminho, props)); });
 }
 
 describe('Equipe & acessos', () => {
@@ -86,5 +89,20 @@ describe('Equipe & acessos', () => {
     const botao = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('Excluir cadastro'));
     await act(async () => botao.click());
     expect(estado.apagados).toEqual(['artifacts/acad/public/data/p/p1']);
+  });
+  it('o professor que ganha login continua com a ficha aberta no endereço antigo', async () => {
+    const props = { pessoaId: 'p1', pessoaAba: 'acesso' };
+    await montar('/acad/configuracoes/equipe/p1/acesso', props);
+    expect(document.querySelector('h1').textContent).toBe('Marina');
+    const comLogin = [...EQUIPE, { id: 'u9', authUid: 'u9', name: 'Marina', role: 'professor', professorId: 'p1', email: 'm@x.com' }];
+    await act(async () => { root.render(arvore('/acad/configuracoes/equipe/p1/acesso', { ...props, usersList: comLogin })); });
+    expect(document.querySelector('h1').textContent).toBe('Marina');
+    expect(document.body.textContent).not.toContain('Não achamos essa pessoa na equipe.');
+  });
+  it('o Resolver da Visão geral abre a ficha da pessoa em Acesso ao app', async () => {
+    const feito = vi.fn();
+    await montar('/acad/configuracoes/equipe', { focusId: 'u2', onFocusHandled: feito });
+    expect(feito).toHaveBeenCalled();
+    expect(onde.caminho).toBe('/acad/configuracoes/equipe/u2/acesso');
   });
 });

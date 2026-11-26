@@ -40,9 +40,9 @@ export function EditarAcessoDialog({ db, appUser, user, usersList, open, onOpenC
     keepId: user.professorId ?? null
   });
 
-  // Consultor EXTRA é cobrado além da mensalidade — nunca cobra sem avisar.
+  // Consultor extra é cobrado além da mensalidade: nunca cobra sem avisar.
   const confirmExtra = (price) => window.confirm(
-    `Os consultores inclusos no seu plano já foram usados.\n\nEste consultor entra como EXTRA: +R$ ${Number(price).toLocaleString('pt-BR')}/mês na mensalidade (vale a partir da próxima fatura).\n\nConfirmar?`
+    `Os consultores inclusos no seu plano já foram usados.\n\nEste consultor entra como extra: +R$ ${Number(price).toLocaleString('pt-BR')}/mês na mensalidade (vale a partir da próxima fatura).\n\nConfirmar?`
   );
 
   const authHeader = async () => ({

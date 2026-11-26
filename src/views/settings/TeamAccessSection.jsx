@@ -128,7 +128,11 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
   const [filtros, setFiltros] = useScreenParams('settings', ctxFiltros);
   const listaHref = hrefFor(tenantId, 'settings', { sub: 'team' });
   const hrefDe = (id, aba) => hrefFor(tenantId, 'settings', { sub: 'team', pessoaId: id, pessoaAba: aba });
-  const pessoa = pessoaId ? pessoas.find((p) => p.id === pessoaId) ?? null : null;
+  // O id da pessoa muda quando ela ganha login ou ficha (do professor para o
+  // login, do login para a ficha): o endereço antigo continua achando a pessoa.
+  const acharPessoa = (id) => pessoas.find((p) => p.id === id)
+    ?? pessoas.find((p) => p.professor?.id === id || p.user?.id === id) ?? null;
+  const pessoa = pessoaId ? acharPessoa(pessoaId) : null;
 
   // Só consultor ocupa vaga de consultor do plano: o gestor tem a vaga dele e
   // o professor não ocupa nenhuma (a mesma conta do api/_plans.js).
@@ -154,17 +158,22 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
     setMemberDialog({ mode: 'create' });
   };
 
-  // Atalho da Visão geral: 'new' abre o cadastro.
+  // Atalho da Visão geral: 'new' abre o cadastro; o id de um login sem acesso
+  // vinculado abre a ficha dessa pessoa em Acesso ao app.
   useEffect(() => {
-    if (focusId !== 'new') return;
-    setForm({ ...emptyForm, password: generateTemporaryPassword() });
-    setMemberDialog({ mode: 'create' });
+    if (!focusId) return;
     onFocusHandled?.();
-  }, [focusId, onFocusHandled]);
+    if (focusId === 'new') {
+      setForm({ ...emptyForm, password: generateTemporaryPassword() });
+      setMemberDialog({ mode: 'create' });
+      return;
+    }
+    navigate(hrefFor(tenantId, 'settings', { sub: 'team', pessoaId: focusId, pessoaAba: 'acesso' }), { replace: true, state: location.state });
+  }, [focusId, onFocusHandled, navigate, tenantId, location.state]);
 
-  // Consultor EXTRA é cobrado além da mensalidade — nunca cobra sem avisar.
+  // Consultor extra é cobrado além da mensalidade: nunca cobra sem avisar.
   const confirmExtra = (price) => window.confirm(
-    `Os consultores inclusos no seu plano já foram usados.\n\nEste consultor entra como EXTRA: +R$ ${Number(price).toLocaleString('pt-BR')}/mês na mensalidade (vale a partir da próxima fatura).\n\nConfirmar?`
+    `Os consultores inclusos no seu plano já foram usados.\n\nEste consultor entra como extra: +R$ ${Number(price).toLocaleString('pt-BR')}/mês na mensalidade (vale a partir da próxima fatura).\n\nConfirmar?`
   );
 
   const authHeader = async () => ({
@@ -224,7 +233,7 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
   const deleteMember = async (pessoa) => {
     const user = pessoa.user;
     if (isGestor(user)) { toast.warning('O gestor não pode ser excluído por aqui.'); return; }
-    if (!window.confirm(`Excluir o acesso de "${user.name}"?\n\nApaga a conta no Auth e o cadastro interno. Essa ação é irreversível.`)) return;
+    if (!window.confirm(`Tirar o acesso de "${user.name}"?\n\nA conta de login é apagada e não dá para desfazer.`)) return;
     if (!appUser?.authUid) { toast.error('Sessão sem authUid. Reentre no sistema.'); return; }
     try {
       const res = await fetch('/api/admin-users', {
@@ -233,14 +242,18 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
         body: JSON.stringify({ action: 'delete', userDocId: user.id, targetAuthUid: user.authUid || null })
       });
       const data = await res.json();
-      if (!res.ok) { toast.error(data.error || 'Erro ao excluir consultor.'); return; }
-      toast.success('Acesso excluído.');
+      if (!res.ok) { toast.error(data.error || 'Não deu para tirar o acesso.'); return; }
+      toast.success('Acesso removido.');
       setMemberDialog(null);
-      // Sem ficha, o id da pessoa era o do login, que deixou de existir.
-      if (!pessoa.ficha) navigate(listaHref);
+      // Sem ficha, o id da pessoa era o do login, que deixou de existir: o
+      // professor continua na equipe pelo cadastro dele, o consultor sai.
+      if (!pessoa.ficha) {
+        const destino = pessoa.professor ? hrefDe(pessoa.professor.id, 'acesso') : listaHref;
+        navigate(destino, { replace: true, state: location.state });
+      }
     } catch (err) {
       console.error(err);
-      toast.error('Falha de rede ao excluir consultor.');
+      toast.error('Falha de rede ao tirar o acesso.');
     }
   };
 
@@ -317,14 +330,14 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
         toast.error('Não deu para conferir as aulas e os alunos. Tente de novo.');
         return;
       }
-      if (emUso > 0) { toast.warning(`"${p.nome}" tem aulas ou alunos registrados. Use Desligar em vez de excluir.`); return; }
+      if (emUso > 0) { toast.warning(`"${p.nome}" tem aulas ou alunos registrados, então o cadastro não pode ser excluído.`); return; }
     }
     if (!window.confirm(`Excluir o cadastro de "${p.nome}"? Use só para cadastro feito por engano.`)) return;
     try {
       if (p.professor) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', PROFESSORS_PATH, p.professor.id));
       if (p.ficha) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', EQUIPE_PATH, p.ficha.id));
       toast.success('Cadastro excluído.');
-      navigate(listaHref);
+      navigate(listaHref, { replace: true, state: location.state });
     } catch (err) {
       console.error(err);
       toast.error('Não deu para excluir o cadastro.');
@@ -435,7 +448,7 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
         onOpenChange={setProfOpen}
         title="Novo professor"
         description={professorEnabled
-          ? 'Professores aparecem na lista ao agendar uma aula experimental. O acesso ao app é dado na lista da equipe, com o papel Professor.'
+          ? 'Professores aparecem na lista ao agendar uma aula experimental. O acesso ao app é dado na ficha da pessoa, em Acesso ao app.'
           : 'Professores aparecem na lista ao agendar uma aula experimental. Não têm login no app.'}
         submitLabel="Cadastrar professor"
         submitting={saving}
@@ -519,11 +532,11 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
         </>
       );
     }
-    return <div ref={topoRef}>{corpo}{dialogos}</div>;
+    return <div ref={topoRef} className="scroll-mt-4 md:scroll-mt-8">{corpo}{dialogos}</div>;
   }
 
   return (
-    <div ref={topoRef} className="flex flex-col gap-5">
+    <div ref={topoRef} className="flex scroll-mt-4 flex-col gap-5 md:scroll-mt-8">
       <SettingsSectionHeader
         title="Equipe & acessos"
         hint="Quem trabalha na academia: a ficha, o vínculo e o acesso ao app de cada pessoa."

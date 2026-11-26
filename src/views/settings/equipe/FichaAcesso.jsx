@@ -14,7 +14,10 @@ function Linha({ rotulo, children }) {
 export function FichaAcesso({ pessoa, professorEnabled, onEditarAcesso, onTirarAcesso, onDarAcesso }) {
   const u = pessoa.user;
   const convite = pessoa.acesso === 'convite' ? pessoa.ficha?.convite : null;
-  const podeDar = !pessoa.desligada && !u && !convite && (pessoa.funcao !== 'professor' || professorEnabled);
+  // shortcut: o login novo só se liga à ficha pelo professor; a ficha de quem
+  // não é professor ficaria duplicada na lista até o fichaId do PR 2.
+  const semComoLigar = Boolean(pessoa.ficha) && pessoa.funcao !== 'professor';
+  const podeDar = !pessoa.desligada && !u && !convite && !semComoLigar && (pessoa.funcao !== 'professor' || professorEnabled);
   return (
     <section aria-label="Acesso ao app" className="rounded-2xl border border-border bg-card p-4 shadow-card">
       <header className="flex flex-wrap items-center gap-2">
