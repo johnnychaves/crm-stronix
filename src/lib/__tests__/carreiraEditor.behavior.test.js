@@ -88,6 +88,31 @@ describe('a grade de níveis e metas', () => {
     expect(botao('Salvar trilha').disabled).toBe(true);
   });
 
+  // A conta de largura está no comentário de TrilhaGrade.jsx: o campo mais
+  // largo (em branco, com "% dos dias") cabe na coluna mínima com folga.
+  it('o campo cabe na coluna mínima do nível', async () => {
+    await render({ inicial: CONSULTOR, gravada: CONSULTOR, pessoas: NINGUEM });
+    const linha = campo('Meta diária batida, Júnior').closest('[style]');
+    expect(linha.style.gridTemplateColumns).toContain('minmax(180px,1fr)');
+    const rotulo = campo('Meta diária batida, Júnior').closest('label');
+    expect(rotulo.className).toContain('px-2');
+    expect(rotulo.className).toContain('gap-1');
+    expect(rotulo.className).not.toContain('px-[11px]');
+    expect(campo('Meta diária batida, Júnior').className).toContain('w-[54px]');
+    expect(campo('Meta diária batida, Júnior').className).toContain('placeholder:text-[11.5px]');
+  });
+
+  it('o rodapé acompanha a largura das linhas, com o texto à vista', async () => {
+    await render({ inicial: PROFESSOR, gravada: PROFESSOR, pessoas: GENTE });
+    const grade = document.body.querySelector('section[aria-label="Níveis e metas"]');
+    expect(grade.className).toContain('overscroll-x-contain');
+    expect(grade.className).toContain('@container');
+    const linha = campo('Renovação da carteira, Júnior').closest('[style]');
+    const rodape = grade.querySelector('p');
+    expect(rodape.style.minWidth).toBe(linha.style.minWidth);
+    expect(rodape.firstElementChild.className).toContain('sticky');
+  });
+
   it('desligar o número ocupa a linha com "Não conta nesta trilha" e tira as metas da conta', async () => {
     await render({ inicial: CONSULTOR, gravada: CONSULTOR, pessoas: NINGUEM });
     await clicar(botao('Vendas conta nesta trilha'));

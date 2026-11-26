@@ -15,8 +15,15 @@ import { CampoNumero } from './CampoNumero.jsx';
 // grade rola de lado quando não cabe. `pessoas` conta quem está em cada nível
 // (pessoasPorNivel), `onMudar` recebe a função que muda o rascunho e `avisar`
 // mostra o motivo de um botão desligado.
+//
+// A coluna do nível cabe o campo mais largo com folga (medido em Geist no
+// Chrome): a célula tem 180 − 36 de recuo − 1 de borda = 143 px por dentro, e o
+// campo em branco com "% dos dias" mede 2 de borda + 16 de recuo + 54 do campo
+// ("sem meta" em 11,5 px tem 53) + 4 + 58 da unidade em 12 px = 134 px. Cheio,
+// o mesmo campo mede 120 px, e o das vendas, com "R$" e "mil", 112 px em branco.
+// Com 156 px de coluna, o campo em branco passava por cima da vizinha.
 const COLUNA_NOME = 280;
-const COLUNA_NIVEL = 156;
+const COLUNA_NIVEL = 180;
 const COLUNA_FIM = 120;
 
 function Linha({ colunas, className, children }) {
@@ -56,7 +63,7 @@ export function TrilhaGrade({ trilha, pessoas, onMudar, onRegras, avisar }) {
   const motivoDoCheio = `A trilha tem no máximo ${MAX_NIVEIS} níveis.`;
 
   return (
-    <section aria-label="Níveis e metas" className="overflow-x-auto overscroll-x-contain rounded-[18px] border border-border bg-card shadow-card">
+    <section aria-label="Níveis e metas" className="@container overflow-x-auto overscroll-x-contain rounded-[18px] border border-border bg-card shadow-card">
       <div style={colunas} className="grid border-b border-border bg-muted/40">
         <div className="flex flex-col justify-end gap-0.5 p-[18px]">
           <b className="font-display text-[14px] font-bold">Os níveis</b>
@@ -183,15 +190,18 @@ export function TrilhaGrade({ trilha, pessoas, onMudar, onRegras, avisar }) {
         );
       })}
 
-      <p className="flex items-center gap-2 bg-muted/30 px-[18px] py-3 text-[12.5px] text-muted-foreground">
-        <Info size={15} aria-hidden="true" className="flex-none" />
-        <span>
-          {brancas > 0 && 'Meta em branco: o número aparece no placar sem dizer se bateu. '}
-          Como cada número é contado está em{' '}
-          <button type="button" onClick={onRegras} className="rounded font-semibold text-brand-700 underline-offset-2 outline-none hover:underline focus-visible:anel-foco dark:text-brand-300">
-            Regras da trilha
-          </button>
-          .
+      {/* O fundo vai até o fim das linhas, e o texto fica preso à parte que se vê (100cqw é a largura da grade). */}
+      <p style={{ minWidth: colunas.minWidth }} className="bg-muted/30 px-[18px] py-3 text-[12.5px] text-muted-foreground">
+        <span className="sticky left-[18px] flex max-w-[calc(100cqw-36px)] items-center gap-2">
+          <Info size={15} aria-hidden="true" className="flex-none" />
+          <span>
+            {brancas > 0 && 'Meta em branco: o número aparece no placar sem dizer se bateu. '}
+            Como cada número é contado está em{' '}
+            <button type="button" onClick={onRegras} className="rounded font-semibold text-brand-700 underline-offset-2 outline-none hover:underline focus-visible:anel-foco dark:text-brand-300">
+              Regras da trilha
+            </button>
+            .
+          </span>
         </span>
       </p>
     </section>
