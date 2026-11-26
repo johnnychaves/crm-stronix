@@ -169,7 +169,7 @@ export function PlacarDoCiclo({ titulo, ciclo, cicloAtual, onCiclo, prof, metas,
           rodape={(
             <>
               {conversao.passa === true && <Selo tom="verde">{p.taxa > a.taxa ? 'Acima da academia' : 'Dentro da folga'}</Selo>}
-              {conversao.passa === false && <Selo tom="ambar">Abaixo da academia</Selo>}
+              {conversao.passa === false && <Selo tom="ambar">{p.taxa >= a.taxa ? 'Empatou com a academia' : 'Abaixo da academia'}</Selo>}
               Aula experimental e freepass, cada pessoa uma vez.
               {conversao.incompleto && <span className="mt-1.5 block text-amber-200">As aulas de antes de setembro de 2026 estão incompletas no sistema.</span>}
             </>

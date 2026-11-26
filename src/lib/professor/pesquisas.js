@@ -10,7 +10,9 @@ import { carteiraAt } from './carteira.js';
 import { npsDe, npsDoAno, RESPOSTAS_MINIMAS } from './nps.js';
 import { pct } from '../crm/stats.js';
 
-export const PERGUNTA_PRINCIPAL_PADRAO = 'De 0 a 10, quanto você recomendaria o professor a um amigo?';
+// A página pública diz "Avaliando as aulas de <nome>" e não sabe o gênero de
+// quem dá a aula, então a pergunta padrão fala das aulas.
+export const PERGUNTA_PRINCIPAL_PADRAO = 'De 0 a 10, quanto você recomendaria essas aulas a um amigo?';
 export const MAX_PERGUNTAS = 5;
 
 // Date local do dia 'AAAA-MM-DD', ou null quando o texto não é um dia que existe.

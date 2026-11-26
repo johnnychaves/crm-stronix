@@ -47,7 +47,7 @@ export function AulasTab({ conversao, pessoas, janelaDias, nome }) {
               conversao.passa ? 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300' : 'bg-amber-500/15 text-amber-800 dark:text-amber-300',
             )}
           >
-            {!conversao.passa ? 'Abaixo da academia' : p.taxa > a.taxa ? 'Acima da academia' : 'Dentro da folga'}
+            {!conversao.passa ? (p.taxa >= a.taxa ? 'Empatou com a academia' : 'Abaixo da academia') : p.taxa > a.taxa ? 'Acima da academia' : 'Dentro da folga'}
           </span>
         )}
         <p className="m-0 max-w-[46ch] text-[13px] text-muted-foreground">

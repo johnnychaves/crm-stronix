@@ -59,7 +59,7 @@ function Celula({ titulo, criterio }) {
         </b>
         <MarcaDoEstado estado={criterio.estado} />
       </span>
-      <small className="truncate text-[12px] text-muted-foreground">{criterio.ref}</small>
+      <small className="line-clamp-2 text-[12px] leading-snug text-muted-foreground">{criterio.ref}</small>
     </div>
   );
 }

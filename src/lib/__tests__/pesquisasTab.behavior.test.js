@@ -139,6 +139,12 @@ describe('a lista das pesquisas', () => {
     expect(document.activeElement.id).toBe('pesq-destaque');
   });
 
+  it('a Próxima é o rascunho que ainda pode abrir, e não o que já passou do fim', () => {
+    const velho = { ...RASCUNHO, id: 'out', nome: 'Outubro de 2027', inicio: '2027-10-01', fim: '2027-10-20' };
+    render({ pesquisas: [velho, RASCUNHO], totais: [], hoje: '2027-11-28' });
+    expect(container.textContent).toContain('Próxima: Dezembro de 2027');
+  });
+
   it('o rascunho com o fim já passado não abre e diz por quê', () => {
     render({ pesquisas: [RASCUNHO], totais: [], hoje: '2027-12-16' });
     expect(botao('Abrir pesquisa').disabled).toBe(true);
