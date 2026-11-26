@@ -2191,7 +2191,41 @@ Expected: FAIL (a tela ainda é a de antes).
 O arquivo passa a ser o contêiner da seção.
 
 1. **Fica:** o cabeçalho (`SettingsSectionHeader`, título "Equipe & acessos", dica "Quem trabalha na academia: a ficha, o vínculo e o acesso ao app de cada pessoa.", com "Convidar por e-mail", "Cadastrar professor" e o botão de cadastro), a `SeatBand`, o diálogo de cadastro (só o modo `create`), o de convite, o de cadastrar professor (só o modo novo: a edição do professor agora é o bloco Trabalho), o `deleteMember` (vira o "Tirar acesso") e o `focusId` da Visão geral (`'new'` abre o cadastro, como hoje).
-2. **Sai:** a tabela de membros, o card Professores (`ProfessorRow`, `PROFESSORS_GRID`, `PROFESSORS_COLUMNS`, `professorStats`, `deleteProfessor`, o modo edição do `openProfessor`/`saveProfessor`), `MEMBERS_GRID`, `MEMBERS_COLUMNS`, `ROLE_BADGE`, `MemberAvatar`, `rowRefs` e o diálogo de editar membro (agora é o `EditarAcessoDialog`).
+2. **Sai:** a tabela de membros, o card Professores (`ProfessorRow`, `PROFESSORS_GRID`, `PROFESSORS_COLUMNS`, `professorStats`, o modo edição do `openProfessor`/`saveProfessor`), `MEMBERS_GRID`, `MEMBERS_COLUMNS`, `ROLE_BADGE`, `MemberAvatar`, `rowRefs` e o diálogo de editar membro (agora é o `EditarAcessoDialog`).
+2a. **O `deleteProfessor` vira o "Excluir cadastro" da ficha**, para cadastro feito por engano. Ele aparece em `acoesDaFicha`, como botão discreto, só quando a pessoa não tem login e tem no máximo uma movimentação. Mantém as conferências de hoje (aulas registradas pelo `leadsWhere(db, 'appointmentProfessorId', '==', id)`) e acrescenta os alunos (`leadsWhere(db, 'professorId', '==', id)`), e apaga a ficha junto:
+
+```jsx
+  const excluirCadastro = async (p) => {
+    if (p.user || (p.ficha?.movimentacoes || []).length > 1) return;
+    if (p.professor) {
+      let emUso;
+      try {
+        const [aulas, alunos] = await Promise.all([
+          leadsWhere(db, 'appointmentProfessorId', '==', p.professor.id),
+          leadsWhere(db, 'professorId', '==', p.professor.id),
+        ]);
+        emUso = aulas.length + alunos.length;
+      } catch (err) {
+        console.error(err);
+        toast.error('Não deu para conferir as aulas e os alunos. Tente de novo.');
+        return;
+      }
+      if (emUso > 0) { toast.warning(`"${p.nome}" tem aulas ou alunos registrados. Use Desligar em vez de excluir.`); return; }
+    }
+    if (!window.confirm(`Excluir o cadastro de "${p.nome}"? Use só para cadastro feito por engano.`)) return;
+    try {
+      if (p.professor) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', PROFESSORS_PATH, p.professor.id));
+      if (p.ficha) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', EQUIPE_PATH, p.ficha.id));
+      toast.success('Cadastro excluído.');
+      navigate(listaHref);
+    } catch (err) {
+      console.error(err);
+      toast.error('Não deu para excluir o cadastro.');
+    }
+  };
+```
+
+e, no `EquipeFicha`, `acoesDaFicha={!pessoa.user && (pessoa.ficha?.movimentacoes || []).length <= 1 ? <SettingsBtn size={36} onClick={() => excluirCadastro(pessoa)}>Excluir cadastro</SettingsBtn> : null}` (o PR 3 junta o Desligar e o Readmitir nesse mesmo lugar). Importe `EQUIPE_PATH` de `../../lib/firebase.js`. Um caso no `equipeTela.behavior.test.js`: com `confirm` falso trocado por `() => true` e o `leadsWhere` falso devolvendo uma aula, a exclusão é recusada e nada é apagado.
 3. **Entra:**
 
 ```jsx
