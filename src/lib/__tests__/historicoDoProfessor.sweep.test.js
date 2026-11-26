@@ -61,6 +61,7 @@ const REVISADOS = {
   // Faltosos (Professor e faltosos, PR 2A): o professor do aluno no estado
   // dos faltosos e nas ligações da Next Fit. Nenhum deles grava o lead.
   'src/lib/faltosos/ligacaoProfessores.js': 'ligação dos professores da Next Fit, guardada em stronix_config/faltosos',
+  'src/lib/faltosos/planoImportacao.js': 'estado de cada faltoso (stronix_faltosos), não o lead',
 };
 
 const comChave = [...arquivosDeCodigo(join(RAIZ, 'src')), ...arquivosDeCodigo(join(RAIZ, 'api'))]
