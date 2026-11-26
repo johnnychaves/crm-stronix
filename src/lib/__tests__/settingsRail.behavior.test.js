@@ -37,7 +37,7 @@ const academia = {
 const setup = buildSetupState(academia);
 const counts = railCounts(setup, 10);
 const summaries = railSummaries(setup, { teamSize: 3, funnelCount: 2, catalogTotal: 4, pendingOwners: 10 });
-const groups = settingsRailGroups(true);
+const groups = settingsRailGroups(true, ['faltosos']);
 
 let root = null;
 let container = null;

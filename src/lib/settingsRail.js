@@ -10,10 +10,12 @@
 // os dois é o id.
 
 import { SCREENS } from './routes.js';
+import { MODULES, hasModule } from './modules.js';
 
 // Grupos do trilho, na ordem da tela, no desenho do mockup A (17/10/2026). O
 // `id` do grupo é a chave do resumo (railSummaries) e do ícone. `soAssumida`
-// marca o item que só existe na sessão assumida do super console. `screen`
+// marca o item que só existe na sessão assumida do super console, e `modulo`,
+// o que só existe com o módulo da academia (o Plano de carreira). `screen`
 // marca o item que leva a OUTRA tela do app (Rotinas): ele fica fora de
 // SETTINGS_RAIL_IDS, porque o contrato "todo destino é uma seção da tabela de
 // endereços" não vale para ele.
@@ -27,7 +29,14 @@ export const SETTINGS_RAIL_GROUPS = Object.freeze([
       { id: 'billing', label: 'Plano & faturas' },
     ],
   },
-  { id: 'equipe', label: 'Equipe', items: [{ id: 'team', label: 'Equipe & acessos' }] },
+  {
+    id: 'equipe',
+    label: 'Equipe',
+    items: [
+      { id: 'team', label: 'Equipe & acessos' },
+      { id: 'carreira', label: 'Plano de carreira', modulo: MODULES.FALTOSOS },
+    ],
+  },
   {
     id: 'dia',
     label: 'Dia a dia',
@@ -68,20 +77,26 @@ export const SETTINGS_RAIL_IDS = Object.freeze(
 // junto.
 export const SETTINGS_DEFAULT_SECTION = SCREENS.settings.subPadrao;
 
-// Trilho desta sessão. Importar clientes só existe na sessão assumida do super
-// console (spec 2026-09-03), então sem ela o item some do trilho.
-export function settingsRailGroups(canImport) {
-  if (canImport) return SETTINGS_RAIL_GROUPS;
+// O item vale nesta sessão: Importar clientes só na sessão assumida do super
+// console (spec 2026-09-03), e o Plano de carreira só com o módulo.
+const itemVale = (item, canImport, modules) => (!item.soAssumida || canImport)
+  && (!item.modulo || hasModule(modules, item.modulo));
+
+// Trilho desta sessão, com os itens que valem. `modules` é a lista da academia
+// (appUser.tenantModules).
+export function settingsRailGroups(canImport, modules = []) {
+  if (SETTINGS_RAIL_GROUPS.every((g) => g.items.every((it) => itemVale(it, canImport, modules)))) return SETTINGS_RAIL_GROUPS;
   return SETTINGS_RAIL_GROUPS
-    .map((g) => ({ ...g, items: g.items.filter((it) => !it.soAssumida) }))
+    .map((g) => ({ ...g, items: g.items.filter((it) => itemVale(it, canImport, modules)) }))
     .filter((g) => g.items.length > 0);
 }
 
 // Seção que a tela realmente desenha. O endereço pede uma seção, mas Importar
-// clientes só existe na sessão assumida: sem ela, /configuracoes/importacao
-// deixaria o lado direito em branco. Cai na seção padrão, do mesmo jeito calado
-// que uma sub-tela desconhecida cai na tela-mãe. O endereço não é reescrito:
-// ele se acerta no primeiro clique do trilho.
-export function settingsSection(section, canImport) {
-  return section === 'import' && !canImport ? SETTINGS_DEFAULT_SECTION : section;
+// clientes só existe na sessão assumida e o Plano de carreira só com o módulo:
+// sem isso, o lado direito ficaria em branco. Cai na seção padrão, do mesmo
+// jeito calado que uma sub-tela desconhecida cai na tela-mãe. O endereço não é
+// reescrito: ele se acerta no primeiro clique do trilho.
+export function settingsSection(section, canImport, modules = []) {
+  const item = SETTINGS_RAIL_GROUPS.flatMap((g) => g.items).find((it) => it.id === section);
+  return item && !itemVale(item, canImport, modules) ? SETTINGS_DEFAULT_SECTION : section;
 }
