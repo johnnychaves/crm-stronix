@@ -361,6 +361,16 @@ O perfil do professor, com os critérios do plano de carreira (renovação da ca
   - **Regra:** `stronix_presencas` lê quem é da academia com o módulo; ninguém grava pelo navegador.
   - **Tela:** o `useProfessoresDados` lê as presenças do ciclo uma vez (`semana` de 1º de dezembro do ano anterior a 30 de novembro); o dezembro que abre o ciclo só aparece na aba, fora da conta. A conta é a do PR 2 (`aderenciaPorSemana`), que devolve também quem veio uma vez e quem não veio (`umaIds` e `nenhumaIds`, o "Ver quem chamar" da aba). O número da lista e do placar é o `aderenciaResumo`: a nota do ano quando já há semestre fechado, ou o semestre em andamento. Bate a partir do começo da faixa da meta.
 
+## Plano de carreira
+
+O gestor monta as trilhas de carreira (Consultor, Professor, Estagiário e as que criar), com níveis, tempo mínimo e metas por nível. Spec em `docs/superpowers/specs/2026-11-26-plano-de-carreira-configuravel-design.md` e visão geral dos PRs em `docs/superpowers/plans/2026-11-26-plano-de-carreira-00-visao-geral.md`. O PR 1 trouxe só as contas, sem tela nova.
+
+- **As trilhas moram em `stronix_config/carreira`, no campo `trilhas`**, um mapa por id, e são lidas por `trilhasDe` (`src/lib/carreira/trilhas.js`). As três padrão (`professor`, `estagiario` e `consultor`) moram no código, e a gravada com o mesmo id vence a do código. Enquanto a Professor não foi gravada, ela sai das metas de hoje, no topo do mesmo documento (`professorDasMetas` sobre o `metasDe`). Os ids dos níveis da Professor são `junior`, `pleno` e `senior`, os mesmos do `nivel` já gravado nos professores.
+- **O período é da trilha** (`src/lib/carreira/periodo.js`): anual ou semestral, com o mês da avaliação, e a chave `'2027'` ou `'2027-1'`. As contas do professor recebem o período (`renovacaoDoCiclo`, `carteiraDoCiclo`, `conversaoDoCiclo`, `pessoasDasAulas`), os pedaços da aderência (`aderenciaDoAno`, `aderenciaResumo`) ou a trilha e a chave (`npsDoCiclo`). O `src/lib/professor/ciclo.js` só converte o ciclo do endereço (ano) no período da trilha anual de dezembro, e o teste dele é o de equivalência com o ciclo de antes. Ele sai no PR 3.
+- **A pesquisa de NPS conta pela data em que abre** (`chaveDaPesquisa`): na primeira avaliação da trilha no mês em que ela abre ou depois. O campo `ciclo` saiu do formulário e ninguém o lê, mas continua gravado com o ano do início, porque a regra da pesquisa encerrada no `firestore.rules` compara o ciclo.
+- **A pasta `src/lib/carreira/` não chega a pacote** (`carreiraImports.test.js`), porque a `api/` vai ler as contas.
+- **O que se recusa numa trilha** mora no `problemaDaTrilha` (`src/lib/carreira/validacao.js`): nome, níveis, tempo mínimo, limites das metas e dos ajustes, a base que não muda e o nível que não sai com gente.
+
 ## Responsável do menor de idade
 
 Lead que é criança leva a chave "Menor de idade" e o responsável (nome, telefone, parentesco), no cadastro e na aba Identidade da edição. O responsável vira o contato em todo lugar: é ele que o consultor chama, não o menor. Spec em `docs/superpowers/specs/2026-09-24-responsavel-do-menor-design.md`.
