@@ -105,7 +105,7 @@ describe('freepassScheduleWrites', () => {
     m.docs = [aula('a1', aulas[0].scheduledFor, { freepassId: 'auto1' })];
     const r = await freepassScheduleWrites({ db: {}, lead, freepasses: [], targetId: 'auto1', launch, currentAulaId: 'a1', now });
     expect(r.daVez).toBeNull();
-    expect(r.notes).toEqual([{ type: 'freepass', text: 'Freepass lançado: Pilates 2 aulas (Pilates), 2 aulas para agendar.', freepassId: 'auto1' }]);
+    expect(r.notes).toEqual([{ type: 'freepass', text: 'Freepass lançado: Pilates 2 aulas (Pilates), 2 aulas marcadas.', freepassId: 'auto1' }]);
     expect(r.leadPatch).toMatchObject({ freepassId: 'auto1', freepassKind: 'aulas', freepassAulas: 2, freepassEndsAt: new Date(2026, 11, 4) });
     const b = fakeBatch();
     r.extra(b);
@@ -117,6 +117,24 @@ describe('freepassScheduleWrites', () => {
       leadId: 'L1', typeId: 't1', via: 'agendar', aulas: 2, total: 2, startsAt: new Date(2026, 10, 27), endsAt: new Date(2026, 11, 4), createdAt: 'TS',
     });
     expect(b.calls[0][2]).not.toHaveProperty('id');
+  });
+
+  // O recordNewAppointment engole a falha e devolve o id antigo. Sem a aula
+  // gravada no freepass, o lote não pode seguir: o freepass nasceria com uma
+  // aula a menos e a aula da vez seria a segunda.
+  it('a aula gravada não está no freepass de destino: lança erro e nada vai para o lote', async () => {
+    const tipo = { id: 't1', name: 'Pilates 2 aulas', modalidadeId: 'm1', kind: 'aulas', quantity: 2, padrao: true, ativo: true };
+    const aulas = [
+      { scheduledFor: new Date(2026, 10, 27, 18), modality: 'Pilates' },
+      { scheduledFor: new Date(2026, 11, 4, 18), modality: 'Pilates' },
+    ];
+    const launch = freepassLaunchParts({ db: {}, lead, appUser: null, type: tipo, modalidadeName: 'Pilates', aulas });
+    m.docs = [];
+    await expect(freepassScheduleWrites({ db: {}, lead, freepasses: [], targetId: launch.ref.id, launch, currentAulaId: 'velha', now }))
+      .rejects.toThrow(/aula/);
+    m.docs = [aula('velha', new Date(2026, 10, 20, 18), { freepassId: null })];
+    await expect(freepassScheduleWrites({ db: {}, lead, freepasses: [fpAulas()], targetId: 'f1', currentAulaId: 'velha', now }))
+      .rejects.toThrow(/aula/);
   });
 
   it('launch por dias: começa no dia da aula e conta a aula', async () => {

@@ -61,6 +61,11 @@ export function freepassLaunchParts({ db, lead, appUser, type, modalidadeName, a
 export async function freepassScheduleWrites({ db, lead, freepasses, targetId = null, leftId = null, launch = null, currentAulaId, now = new Date() }) {
   const pending = (launch?.extras || []).map((e) => ({ id: e.ref.id, ...e.data }));
   const records = [...(await readLeadAulas(db, lead.id)), ...pending];
+  // O recordNewAppointment engole a falha e devolve o id antigo: sem a aula
+  // gravada no freepass de destino, nada do lote pode seguir.
+  if (targetId && !records.some((r) => r.id === currentAulaId && r.freepassId === targetId)) {
+    throw new Error('freepassScheduleWrites: a aula não foi gravada no freepass');
+  }
   const ids = new Set([targetId, leftId].filter(Boolean));
   const patches = new Map();
   const after = [...(freepasses || []), ...(launch ? [{ id: launch.ref.id, ...launch.data }] : [])].map((fp) => {

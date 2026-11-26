@@ -235,6 +235,11 @@ describe('textos da linha do tempo', () => {
       .toBe('Freepass lançado: Muscu 7 dias (Musculação), de 20/11 a 26/11.');
     expect(freepassLaunchText({ typeName: 'Pilates 2 aulas', modalidadeName: 'Pilates', kind: 'aulas', total: 2 }))
       .toBe('Freepass lançado: Pilates 2 aulas (Pilates), 2 aulas para agendar.');
+    // Pelo Agendar, as aulas já nascem marcadas.
+    expect(freepassLaunchText({ typeName: 'Pilates 2 aulas', modalidadeName: 'Pilates', kind: 'aulas', total: 2, aulas: 2 }))
+      .toBe('Freepass lançado: Pilates 2 aulas (Pilates), 2 aulas marcadas.');
+    expect(freepassLaunchText({ typeName: 'Pilates 1 aula', modalidadeName: 'Pilates', kind: 'aulas', total: 1, aulas: 1 }))
+      .toBe('Freepass lançado: Pilates 1 aula (Pilates), 1 aula marcada.');
     expect(freepassEndText({ typeName: 'Pilates 2 aulas' })).toBe('Freepass encerrado: Pilates 2 aulas.');
     expect(FREEPASS_INTERACTION_TYPE).toBe('freepass');
   });
@@ -467,7 +472,25 @@ describe('freepassTagOf', () => {
   });
 });
 
-import { freepassAulaDaVez } from '../visitante.js';
+import { freepassAulaDaVez, freepassPickMatches } from '../visitante.js';
+
+describe('freepassPickMatches', () => {
+  const use = { kind: 'use', freepass: { id: 'f1' }, aulasLeft: 1 };
+  const launch = { kind: 'launch', types: [{ id: 't1' }, { id: 't2' }] };
+  it('a escolha feita ainda vale', () => {
+    expect(freepassPickMatches({ kind: 'use', freepassId: 'f1' }, use)).toBe(true);
+    expect(freepassPickMatches({ kind: 'launch', typeId: 't2' }, launch)).toBe(true);
+  });
+  it('a aula avulsa vale em qualquer situação', () => {
+    for (const c of [use, launch, { kind: 'avulsa', reason: 'repeated' }]) expect(freepassPickMatches({ kind: 'avulsa' }, c)).toBe(true);
+  });
+  it('a situação mudou: outro freepass, freepass cheio ou encerrado, tipo que saiu, lançado em outra aba', () => {
+    expect(freepassPickMatches({ kind: 'use', freepassId: 'f1' }, { ...use, freepass: { id: 'f9' } })).toBe(false);
+    expect(freepassPickMatches({ kind: 'use', freepassId: 'f1' }, { kind: 'avulsa', reason: 'full', freepass: { id: 'f1' } })).toBe(false);
+    expect(freepassPickMatches({ kind: 'launch', typeId: 't3' }, launch)).toBe(false);
+    expect(freepassPickMatches({ kind: 'launch', typeId: 't1' }, use)).toBe(false);
+  });
+});
 
 describe('freepassAulaDaVez', () => {
   const now = new Date('2026-11-26T10:00:00');

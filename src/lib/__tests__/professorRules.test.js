@@ -273,10 +273,13 @@ describe('as ações do professor na ficha passam pelo logInteraction', () => {
   // Os campos freepass* ainda não estão na professorLeadFields(): o Agendar do
   // professor que usa um freepass é recusado até a regra acompanhar (Tarefa 9
   // do plano da entrega 2 do Visitante).
+  // O agendamento do lead fica como está (`{}`) quando a aula da vez é a que
+  // ele já tem.
   it('o Agendar manda para o lead só o patch do buildSchedulePatch e o resumo do freepass', () => {
     const corpo = corpoDe(ficha, 'handleWizardConfirm');
     expect(corpo).toContain('const up = buildSchedulePatch({');
-    expect(corpo).toMatch(/\{ \.\.\.up, \.\.\.freepassLead \},\s*fpSide\?\.extra \|\| null\s*\);/);
+    expect(corpo).toContain('const leadAppt = vez && lead.currentAulaId === vez.id ? {} : up;');
+    expect(corpo).toMatch(/\{ \.\.\.leadAppt, \.\.\.freepassLead \},\s*fpSide\?\.extra \|\| null\s*\);/);
     expect(corpo).toContain('const freepassLead = fpSide ? fpSide.leadPatch : {};');
   });
 
@@ -284,7 +287,7 @@ describe('as ações do professor na ficha passam pelo logInteraction', () => {
   // professor recusa. O lançamento só passa com canFreepass, que o professor não tem.
   it('o Agendar só lança freepass com canFreepass', () => {
     const corpo = corpoDe(ficha, 'handleWizardConfirm');
-    expect(corpo).toMatch(/if \(fpPick\?\.kind === 'launch' && \(!canFreepass \|\| lead\.status === 'Perda'\)\) \{ negarAcesso\(\); return; \}/);
+    expect(corpo).toMatch(/if \(fpPick\?\.kind === 'launch' && \(!canFreepass \|\| lead\.status === 'Perda'\)\) \{ negarAcesso\(\); return false; \}/);
     expect(ficha).toContain('const canFreepass = freepassOn && can(appUser, ACTIONS.FREEPASS_LANCAR);');
   });
 });

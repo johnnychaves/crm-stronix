@@ -200,7 +200,12 @@ export function buildFreepassDoc({ lead, type, modalidadeName, startsAt, appUser
 
 export function freepassLaunchText(fp) {
   const head = `Freepass lançado: ${fp.typeName} (${fp.modalidadeName})`;
-  if (fp.kind === FREEPASS_KINDS.AULAS) return `${head}, ${freepassQuantityText({ kind: fp.kind, quantity: fp.total })} para agendar.`;
+  if (fp.kind === FREEPASS_KINDS.AULAS) {
+    const qtd = freepassQuantityText({ kind: fp.kind, quantity: fp.total });
+    // Pelo Agendar, as aulas nascem marcadas; pela aba Contratos, ficam para agendar.
+    if ((fp.aulas ?? 0) >= fp.total) return `${head}, ${qtd} ${fp.total === 1 ? 'marcada' : 'marcadas'}.`;
+    return `${head}, ${qtd} para agendar.`;
+  }
   return `${head}, de ${ddmm(getSafeDateOrNull(fp.startsAt))} a ${ddmm(getSafeDateOrNull(fp.endsAt))}.`;
 }
 
@@ -249,6 +254,16 @@ export function autoFreepassFor(args) {
   if (c.kind !== 'launch') return c;
   const type = c.types.find(t => t.padrao);
   return type ? { kind: 'launch', type } : { kind: 'avulsa', reason: 'noType' };
+}
+
+// A escolha feita no passo Freepass ainda vale com os dados de agora? A aula
+// avulsa vale sempre; usar pede o mesmo freepass correndo e com vaga; lançar
+// pede o mesmo tipo entre os que ainda podem nascer.
+export function freepassPickMatches(pick, choice) {
+  if (pick?.kind === 'avulsa') return true;
+  if (pick?.kind === 'use') return choice?.kind === 'use' && choice.freepass?.id === pick.freepassId;
+  if (pick?.kind === 'launch') return choice?.kind === 'launch' && choice.types.some(t => t.id === pick.typeId);
+  return false;
 }
 
 // A linha do Remarcar e o aviso do passo do Agendar.

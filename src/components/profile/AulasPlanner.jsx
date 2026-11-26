@@ -39,7 +39,7 @@ export function AulasPlanner({ rows, onChange, days, professors, tone, firstName
     <div className="flex max-w-[560px] flex-col gap-3">
       {resolved.map((r, i) => (
         <fieldset key={i} className="rounded-xl border border-border p-4">
-          <legend className="sr-only">Aula {i + 1}</legend>
+          <legend className="sr-only">Aula {i + 1}{r.auto ? `, igual à aula ${i}, uma semana depois` : ''}</legend>
           <div aria-hidden="true" className="mb-3 flex items-center gap-2">
             <span className={cn('grid size-6 place-items-center rounded-full text-[12px] font-bold', tone.soft, tone.darkSoft, tone.text, tone.darkText)}>{i + 1}</span>
             <span className="text-[15px] font-semibold">Aula {i + 1}</span>
@@ -50,7 +50,7 @@ export function AulasPlanner({ rows, onChange, days, professors, tone, firstName
               const sel = Boolean(r.date) && calendarDaysBetween(o.date, r.date) === 0;
               return (
                 <button key={o.date.getTime()} type="button" aria-pressed={sel} onClick={() => setRow(i, { date: startOfLocalDay(o.date) })}
-                  className={cn(CHIP, sel ? cn(tone.soft, tone.darkSoft, tone.text, tone.darkText, 'border-transparent ring-2', tone.ring) : IDLE)}>
+                  className={cn(CHIP, sel ? cn(tone.soft, tone.darkSoft, tone.text, tone.darkText, 'border-transparent ring-2', tone.ring, tone.darkRing) : IDLE)}>
                   {o.label}
                 </button>
               );

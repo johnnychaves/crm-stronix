@@ -98,20 +98,20 @@ describe('com o módulo', () => {
     await clicar(botao('Pilates'));
     expect(escolha).toHaveBeenCalledWith('Pilates');
     expect(titulo()).toBe('A aula entra no freepass de Rafaela');
-    expect(botao('Entra no freepass Pilates 2 aulas (2 de 2)')).not.toBeNull();
+    expect(botao('Usar o freepass Pilates 2 aulas').textContent).toContain('1 de 2 agendadas');
     expect(botao('Aula avulsa').textContent).toContain('Não conta nas 2 aulas');
-    await clicar(botao('Entra no freepass'));
+    await clicar(botao('Usar o freepass'));
     expect(passos()[2]).toBe('FreepassPilates 2 aulas');
     await professorEDia();
     await clicar(botao('Confirmar agendamento'));
     expect(onConfirm.mock.calls[0][0]).toMatchObject({ quantidade: null, freepass: { kind: 'use', freepassId: 'f1', moving: false } });
   });
 
-  it('remarcando a aula do freepass: "Continua no freepass"', async () => {
+  it('remarcando a aula do freepass: "Continuar no freepass"', async () => {
     const onConfirm = await montar({ freepassOn: true, freepassChoice: () => ({ kind: 'use', freepass: { ...FP, aulas: 2 }, aulasLeft: 1, moving: true }) });
     await clicar(botao('Pilates'));
     expect(titulo()).toBe('A aula continua no freepass de Rafaela');
-    await clicar(botao('Continua no freepass Pilates 2 aulas'));
+    await clicar(botao('Continuar no freepass Pilates 2 aulas'));
     await professorEDia();
     await clicar(botao('Confirmar agendamento'));
     expect(onConfirm.mock.calls[0][0].freepass).toEqual({ kind: 'use', freepassId: 'f1', moving: true });
@@ -168,6 +168,41 @@ describe('com o módulo', () => {
         { date: new Date(2026, 9, 23, 18, 0), professorId: 'p1', soloTraining: false },
       ],
     });
+  });
+
+  it('o horário é conferido de novo ao agendar: a aula que passou com a tela aberta é recusada', async () => {
+    const onConfirm = await montar({ freepassOn: true, freepassChoice: () => ({ kind: 'launch', types: [T_AULAS] }) });
+    await clicar(botao('Pilates'));
+    await clicar(botao('Pilates 2 aulas'));
+    const aula1 = document.body.querySelectorAll('fieldset')[0];
+    await clicar([...aula1.querySelectorAll('button')].find((b) => b.textContent === 'Hoje'));
+    await mudarSelect(aula1.querySelector('select'), 'p1');
+    const agendar = botao('Agendar 2 aulas');
+    // A aula 1 é hoje às 18h; o relógio anda até 18h30 com a tela aberta.
+    vi.setSystemTime(new Date(2026, 9, 16, 18, 30));
+    await clicar(agendar);
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain('A aula 1 já passou. Escolha outro dia ou horário.');
+    expect(botao('Complete os passos').disabled).toBe(true);
+  });
+
+  it('a ficha que recusa (false) deixa o assistente como está', async () => {
+    const onConfirm = vi.fn(async () => false);
+    await montar({ onConfirm, freepassOn: true, freepassChoice: () => ({ kind: 'use', freepass: FP, aulasLeft: 1 }) });
+    await clicar(botao('Pilates'));
+    await clicar(botao('Usar o freepass'));
+    await professorEDia();
+    await clicar(botao('Confirmar agendamento'));
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(passos()[2]).toBe('FreepassPilates 2 aulas');
+    expect(botao('Confirmar agendamento')).not.toBeNull();
+  });
+
+  it('o texto "igual à aula 1" chega ao leitor de tela', async () => {
+    await montar({ freepassOn: true, freepassChoice: () => ({ kind: 'launch', types: [T_AULAS] }) });
+    await clicar(botao('Pilates'));
+    await clicar(botao('Pilates 2 aulas'));
+    expect(document.body.querySelectorAll('fieldset')[1].querySelector('legend').textContent).toBe('Aula 2, igual à aula 1, uma semana depois');
   });
 
   it('trocar o freepass escolhido apaga o que vinha depois', async () => {
