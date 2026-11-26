@@ -1,4 +1,4 @@
-// Os textos de data e de ciclo da pesquisa de NPS. Os dias chegam em texto
+// Os textos de data da pesquisa de NPS. Os dias chegam em texto
 // 'AAAA-MM-DD' (plano 2026-11-25-perfil-do-professor-04, decisão 2).
 const partes = (dia) => String(dia || '').split('-');
 

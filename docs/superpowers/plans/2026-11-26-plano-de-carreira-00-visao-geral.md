@@ -47,6 +47,8 @@ Uma diferença da spec: ela põe no PR 1 o placar lendo a trilha Professor. O pl
 
 **O que precisa ficar coberto por teste:** o rascunho (`rascunho.js`) com nível novo, nível apagado, número desligado e trilha nova; a gravação pelo caminho do campo sem mesclar (com o banco falso); a grade em jsdom (ligar e desligar, meta em branco tracejada, apagar nível com gente desligado com o motivo, trocar de aba sem perder o rascunho, "Arquivar trilha" desligado com gente); o endereço no `routes.test.js` e no `sentryScrub`; e o `settingsRail.test.js` com o item novo.
 
+**A trilha Professor não muda de calendário antes do PR 3:** no PR 1, o NPS das telas já lê a trilha Professor, mas renovação, conversão e aderência ainda usam o ciclo fixo de dezembro. Se o gestor trocasse a Professor para semestral ou outro mês, o NPS sumiria e os outros três números ficariam iguais. Por isso, o editor do PR 2 trava a frequência e o mês da trilha Professor (com o aviso "O calendário da trilha Professor muda a partir do menu Carreira."), e o PR 3 tira a trava (achado da revisão final do PR 1).
+
 **Pessoas por nível:** a contagem vem dos professores (`stronix_professores`, pelo `trilhaDaPessoa` com `professor: true`) e dos usuários consultores (`usersList`), pelo `nivelDaPessoa`. As duas listas o app já tem.
 
 ## PR 3: menu Carreira
