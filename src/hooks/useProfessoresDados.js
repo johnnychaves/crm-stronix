@@ -4,6 +4,7 @@ import { appId, CONFIG_PATH, LEADS_PATH, PRESENCAS_PATH } from '../lib/firebase.
 import { clientsAllQuerySpec } from '../lib/leadQueries.js';
 import { normalizeContracts } from '../lib/operacional/base.js';
 import { planosDoProfessor } from '../lib/professor/carteira.js';
+import { presencasPorSemana } from '../lib/professor/aderencia.js';
 import { limitesDoCiclo } from '../lib/professor/ciclo.js';
 import { metasDe } from '../lib/professor/metas.js';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
@@ -49,21 +50,27 @@ export function useProfessoresDados({ db, ciclo, listenersActive }) {
     db, startMs: inicio.getTime(), endMs: fim.getTime() - 1, enabled: ler,
   });
 
-  // As presenças do ciclo (aderência, PR 6): uma leitura só, pela segunda-feira
-  // da semana ('AAAA-MM-DD'), de 1º de dezembro do ano anterior a 30 de
-  // novembro, num campo só e sem índice novo. As semanas de janeiro a novembro
-  // contam; as de dezembro, que abrem o ciclo, só aparecem na aba.
+  // As presenças do ciclo (aderência, PR 6): uma leitura só dos documentos por
+  // mês da importação da Next Fit, pelo campo `mes` ('AAAA-MM'), sem índice
+  // novo. Lê de novembro do ano anterior a dezembro do ciclo, um mês a mais de
+  // cada lado, para a semana que atravessa o mês vir inteira, e fica com as
+  // semanas de 1º de dezembro do ano anterior a 30 de novembro. As semanas de
+  // janeiro a novembro contam; as de dezembro, que abrem o ciclo, só aparecem
+  // na aba. Os documentos semanais do script antigo não têm `mes` e ficam fora.
   const [presencas, setPresencas] = useState(null); // { ciclo, lista, erro }
   useEffect(() => {
     if (!ler) return undefined;
     let vivo = true;
     const q = query(
       collection(db, 'artifacts', appId, 'public', 'data', PRESENCAS_PATH),
-      where('semana', '>=', `${ciclo - 1}-12-01`),
-      where('semana', '<=', `${ciclo}-11-30`),
+      where('mes', '>=', `${ciclo - 1}-11`),
+      where('mes', '<=', `${ciclo}-12`),
     );
+    const naJanela = (p) => p.semana >= `${ciclo - 1}-12-01` && p.semana <= `${ciclo}-11-30`;
     getDocs(q)
-      .then((snap) => { if (vivo) setPresencas({ ciclo, lista: snap.docs.map((d) => d.data()), erro: null }); })
+      .then((snap) => {
+        if (vivo) setPresencas({ ciclo, lista: presencasPorSemana(snap.docs.map((d) => d.data())).filter(naJanela), erro: null });
+      })
       .catch((err) => {
         console.error('useProfessoresDados presencas', err);
         if (vivo) setPresencas({ ciclo, lista: [], erro: err });

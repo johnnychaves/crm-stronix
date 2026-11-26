@@ -1,7 +1,9 @@
-// Aderência da carteira: por aluno-semana, de segunda a sexta, pelas
-// presenças na aula de funcional importadas da Next Fit
-// (stronix_presencas/{leadId}_{segunda}: { leadId, semana: 'AAAA-MM-DD',
-// presencas }). A semana é aderente com presenças iguais ou acima da barra (2).
+// Aderência da carteira: por aluno-semana, de segunda a sexta, pelos dias com
+// presença que a importação das planilhas da Next Fit grava
+// (stronix_presencas/{leadId}_{AAAA-MM}: { leadId, mes, dias }, Professor e
+// faltosos, PR 2A). O presencasPorSemana soma os dias de cada semana e entrega
+// ao aderenciaPorSemana [{ leadId, semana: 'AAAA-MM-DD', presencas }]. A
+// semana é aderente com presenças iguais ou acima da barra (2).
 // O aluno conta na semana quando:
 //   - o professor dele na segunda-feira (professorAt) é o professor;
 //   - ele tem contrato da modalidade vigente na segunda às 00:00;
@@ -14,12 +16,34 @@
 // Sem nenhuma presença de aluno da turma em semana nenhuma, a lista volta
 // vazia: o relatório importado não cobre a modalidade do professor.
 import { pct } from '../crm/stats.js';
-import { fromDateInputValue } from '../dates.js';
+import { fromDateInputValue, toDateInputValue } from '../dates.js';
 import { professorAt } from '../professorHistory.js';
 import { contratosDaModalidade, estadoEm } from './carteira.js';
 import { semestresDoCiclo } from './ciclo.js';
 
 export const BARRA_PADRAO = 2;
+
+// As presenças por aluno e semana, a partir dos documentos por mês da
+// importação. Cada dia de segunda a sexta com presença conta uma vez, pela
+// catraca ou pela agenda, em qualquer modalidade. Sábado e domingo não contam.
+// A semana é a segunda-feira ('AAAA-MM-DD'), e a que atravessa o fim do mês
+// junta os dois documentos.
+export function presencasPorSemana(docs) {
+  const porChave = new Map();
+  (docs || []).forEach((d) => {
+    if (!d?.leadId || !d.dias) return;
+    Object.keys(d.dias).forEach((iso) => {
+      const data = fromDateInputValue(iso);
+      if (!data || data.getDay() === 0 || data.getDay() === 6) return;
+      const semana = toDateInputValue(new Date(data.getFullYear(), data.getMonth(), data.getDate() - ((data.getDay() + 6) % 7)));
+      const chave = `${d.leadId}_${semana}`;
+      const linha = porChave.get(chave) || { leadId: d.leadId, semana, presencas: 0 };
+      linha.presencas += 1;
+      porChave.set(chave, linha);
+    });
+  });
+  return [...porChave.values()];
+}
 
 const dia = (segunda, n, hora = 0) => new Date(segunda.getFullYear(), segunda.getMonth(), segunda.getDate() + n, hora);
 
