@@ -43,7 +43,7 @@ export function professorDasMetas(m) {
     frequencia: 'anual',
     mes: 12,
     janelaRenovacao: '12meses',
-    niveis: NIVEIS_PROFESSOR,
+    niveis: NIVEIS_PROFESSOR.map((n) => ({ ...n })),
     numeros: {
       renovacao: { ligado: true, metas: porNivel(NIVEIS_PROFESSOR, (n) => m.renovacao[n.id]) },
       nps: { ligado: true, metas: porNivel(NIVEIS_PROFESSOR, () => m.nps.meta) },
@@ -176,7 +176,8 @@ export function proximoNivel(trilha, nivelId) {
 // de formado. As de vínculo "qualquer" servem para todos.
 export function trilhaSugerida({ base, vinculo = null, modalidadeIds = [] }, trilhas) {
   const quer = vinculo === 'estagio' ? 'estagio' : 'formado';
+  const mods = Array.isArray(modalidadeIds) ? modalidadeIds : [];
   return (trilhas || []).find((t) => !t.arquivada && t.base === base
     && (t.sugestao.vinculo === 'qualquer' || t.sugestao.vinculo === quer)
-    && (base !== 'professor' || !t.sugestao.modalidadeIds.length || t.sugestao.modalidadeIds.some((m) => modalidadeIds.includes(m)))) ?? null;
+    && (base !== 'professor' || !t.sugestao.modalidadeIds.length || t.sugestao.modalidadeIds.some((m) => mods.includes(m)))) ?? null;
 }

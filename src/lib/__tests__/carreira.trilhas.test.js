@@ -159,4 +159,14 @@ describe('trilhaSugerida', () => {
     const arquivada = trilhasDe({ trilhas: { consultor: { ...porId(trilhas, TRILHA_CONSULTOR), arquivada: true } } });
     expect(trilhaSugerida({ base: 'consultor' }, arquivada)).toBeNull();
   });
+
+  it('modalidades nulas valem como nenhuma', () => {
+    expect(trilhaSugerida({ base: 'professor', modalidadeIds: null }, trilhas).id).toBe(TRILHA_PROFESSOR);
+  });
+
+  it('a Professor das metas não divide a lista de níveis com quem a chamou antes', () => {
+    professorDasMetas(metasDe(null)).niveis[0].nome = 'X';
+    expect(porId(trilhasDe(null), TRILHA_PROFESSOR).niveis[0].nome).toBe('Júnior');
+    expect(porId(trilhasDe(null), TRILHA_CONSULTOR).niveis[0].nome).toBe('Júnior');
+  });
 });

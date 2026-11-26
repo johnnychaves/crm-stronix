@@ -147,5 +147,7 @@ describe('chaveDaPesquisa', () => {
   it('sem dia válido, null', () => {
     expect(chaveDaPesquisa(ANUAL_DEZ, '')).toBeNull();
     expect(chaveDaPesquisa(ANUAL_DEZ, undefined)).toBeNull();
+    expect(chaveDaPesquisa(ANUAL_DEZ, '2027-13-05')).toBeNull();
+    expect(chaveDaPesquisa(ANUAL_DEZ, '2027-00-05')).toBeNull();
   });
 });

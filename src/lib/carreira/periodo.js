@@ -89,5 +89,7 @@ export function pecasDaAderencia({ inicio, fim }) {
 export function chaveDaPesquisa(trilha, inicio) {
   const m = /^(\d{4})-(\d{2})-\d{2}$/.exec(String(inicio ?? ''));
   if (!m) return null;
-  return periodoDe(trilha, new Date(Number(m[1]), Number(m[2]) - 1, 0))?.chave ?? null;
+  const mes = Number(m[2]);
+  if (mes < 1 || mes > 12) return null;
+  return periodoDe(trilha, new Date(Number(m[1]), mes - 1, 0))?.chave ?? null;
 }
