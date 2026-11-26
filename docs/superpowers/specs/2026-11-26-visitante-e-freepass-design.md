@@ -188,10 +188,10 @@ No freepass por aulas, o lançamento (pela aba Contratos ou pelo Agendar) marca 
 
 - Cada aula é um registro em `stronix_aulas`, com o `freepassId`. A coleção já guarda várias aulas por pessoa.
 - O lead continua com uma **aula da vez**, a próxima que ainda não teve desfecho, no agendamento de sempre (`appointment*` e `currentAulaId`). É ela que a Meta, a Agenda de hoje, o "A seguir", o cartão do Stronizap e Aulas mostram.
-- Quando o desfecho da aula da vez é marcado (Compareceu ou Não compareceu), a aula da vez passa sozinha para a seguinte do freepass, em todo caminho que grava desfecho.
+- A aula da vez passa para a seguinte do freepass **no dia da aula seguinte**, e não no desfecho: a Agenda de hoje lê o agendamento gravado no lead, e trocá-lo no Compareceu tiraria a aula de hoje da Agenda e impediria corrigir o desfecho no mesmo dia. Quem troca é o app de quem vende, ao abrir no dia (uma conferência das aulas de freepass do dia em `stronix_aulas`, que só grava quando o lead ainda está numa aula anterior). A aula anterior sem desfecho fica "sem desfecho" no registro, como qualquer aula que ninguém marcou.
 - O cartão do freepass na aba Contratos lista as aulas, com o dia, a hora, o desfecho e um "Remarcar" em cada uma.
 - **Cancelou** cancela só a aula da vez e passa para a seguinte. A vaga volta ao freepass como "1 aula a agendar", que o cartão mostra e deixa agendar.
-- **Limite aceito:** a aula seguinte só aparece na Agenda de hoje do dia dela se o desfecho da anterior já tiver sido marcado. A Meta já cobra como urgente a aula que passou do horário sem desfecho.
+- **Limite aceito:** a troca acontece quando alguém que vende abre o app no dia. Até lá, a Agenda de hoje, a Meta e o lembrete do Stronizap ainda não veem a aula do dia.
 
 ### Como as aulas contam
 
