@@ -154,3 +154,51 @@ export function freepassLongText(fp, now = new Date()) {
   if (d === 0) return `Termina hoje, ${ddmm(end)}`;
   return `${d === 1 ? 'Falta 1 dia' : `Faltam ${d} dias`}, até ${ddmm(end)}`;
 }
+
+export const FREEPASS_INTERACTION_TYPE = 'freepass';
+
+// Um freepass por modalidade (decisão do Johnny, 26/11/2026). Conta qualquer
+// freepass da pessoa na modalidade, correndo ou encerrado. O gestor libera
+// com uma confirmação.
+export function launchCheck({ type, freepasses, modalidadeName, gestor }) {
+  const repeated = (freepasses || []).some(fp => fp.modalidadeId === type?.modalidadeId);
+  if (!repeated) return null;
+  const why = `Essa pessoa já teve um freepass de ${modalidadeName}.`;
+  return gestor ? { confirm: `${why} Lançar outro mesmo assim?` } : { block: `${why} Só o gestor libera outro.` };
+}
+
+// O início que a janela aceita: de 7 dias atrás (lançamento atrasado) a 30 dias
+// à frente.
+export function launchStartRange(now = new Date()) {
+  const today = startOfLocalDay(now);
+  return { min: addDays(today, -7), max: addDays(today, 30) };
+}
+
+// O documento de stronix_freepass, sem a hora do servidor (quem grava põe o
+// createdAt). Por aulas, o início é o dia do lançamento e o fim fica null até
+// a entrega 2 gravar o dia da última aula.
+export function buildFreepassDoc({ lead, type, modalidadeName, startsAt, appUser, via }) {
+  const start = startOfLocalDay(getSafeDateOrNull(startsAt) || new Date());
+  return {
+    leadId: lead.id,
+    typeId: type.id, typeName: type.name,
+    modalidadeId: type.modalidadeId, modalidadeName: modalidadeName || null,
+    kind: type.kind, total: type.quantity,
+    startsAt: start,
+    endsAt: type.kind === FREEPASS_KINDS.DIAS ? addDays(start, type.quantity - 1) : null,
+    aulas: 0,
+    status: FREEPASS_STATUS.CORRENDO,
+    contractAtStart: lead.currentContractId || null,
+    consultantId: lead.consultantId || null, consultantName: lead.consultantName || null,
+    createdById: appUser?.id || null, createdByName: appUser?.name || null, createdByAuthUid: appUser?.authUid || null,
+    via
+  };
+}
+
+export function freepassLaunchText(fp) {
+  const head = `Freepass lançado: ${fp.typeName} (${fp.modalidadeName})`;
+  if (fp.kind === FREEPASS_KINDS.AULAS) return `${head}, ${freepassQuantityText({ kind: fp.kind, quantity: fp.total })} para agendar.`;
+  return `${head}, de ${ddmm(getSafeDateOrNull(fp.startsAt))} a ${ddmm(getSafeDateOrNull(fp.endsAt))}.`;
+}
+
+export const freepassEndText = (fp) => `Freepass encerrado: ${fp.typeName}.`;

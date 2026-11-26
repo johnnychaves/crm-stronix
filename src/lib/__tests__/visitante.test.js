@@ -164,3 +164,69 @@ describe('textos do andamento', () => {
     expect(freepassLongText(fpAulas({ aulas: 0 }), dia('2026-11-23'))).toBe('0 de 2 aulas agendadas');
   });
 });
+
+import {
+  launchCheck, buildFreepassDoc, freepassLaunchText, freepassEndText, launchStartRange, FREEPASS_INTERACTION_TYPE
+} from '../visitante.js';
+
+describe('launchCheck', () => {
+  const tipoP = { id: 't1', modalidadeId: 'm1' };
+  const ja = [{ modalidadeId: 'm1', status: 'encerrado' }];
+  it('libera a primeira vez na modalidade', () => {
+    expect(launchCheck({ type: tipoP, freepasses: [{ modalidadeId: 'm2' }], modalidadeName: 'Pilates', gestor: false })).toBeNull();
+  });
+  it('barra o consultor na mesma modalidade, mesmo com o outro encerrado', () => {
+    expect(launchCheck({ type: tipoP, freepasses: ja, modalidadeName: 'Pilates', gestor: false }))
+      .toEqual({ block: 'Essa pessoa já teve um freepass de Pilates. Só o gestor libera outro.' });
+  });
+  it('pede confirmação ao gestor', () => {
+    expect(launchCheck({ type: tipoP, freepasses: ja, modalidadeName: 'Pilates', gestor: true }))
+      .toEqual({ confirm: 'Essa pessoa já teve um freepass de Pilates. Lançar outro mesmo assim?' });
+  });
+});
+
+describe('launchStartRange', () => {
+  it('vai de 7 dias atrás a 30 dias à frente', () => {
+    const { min, max } = launchStartRange(dia('2026-11-26'));
+    expect(min.getDate()).toBe(19);
+    expect(max.getMonth()).toBe(11);
+    expect(max.getDate()).toBe(26);
+  });
+});
+
+describe('buildFreepassDoc', () => {
+  const lead = { id: 'L1', consultantId: 'u1', consultantName: 'Ana', currentContractId: undefined };
+  const user = { id: 'u2', name: 'Bruno', authUid: 'a2' };
+  it('por dias grava o último dia, início + (N-1)', () => {
+    const d = buildFreepassDoc({
+      lead, appUser: user, via: 'contratos', modalidadeName: 'Musculação', startsAt: dia('2026-11-20'),
+      type: { id: 't', name: 'Muscu 7 dias', modalidadeId: 'm', kind: 'dias', quantity: 7 }
+    });
+    expect(d.startsAt.getDate()).toBe(20);
+    expect(d.startsAt.getHours()).toBe(0);
+    expect(d.endsAt.getDate()).toBe(26);
+    expect(d).toMatchObject({
+      leadId: 'L1', typeId: 't', typeName: 'Muscu 7 dias', modalidadeId: 'm', modalidadeName: 'Musculação',
+      kind: 'dias', total: 7, aulas: 0, status: 'correndo', contractAtStart: null,
+      consultantId: 'u1', consultantName: 'Ana', createdById: 'u2', createdByName: 'Bruno', createdByAuthUid: 'a2', via: 'contratos'
+    });
+  });
+  it('por aulas nasce sem fim', () => {
+    const d = buildFreepassDoc({
+      lead, appUser: user, via: 'contratos', modalidadeName: 'Pilates', startsAt: dia('2026-11-20'),
+      type: { id: 't', name: 'Pilates 2 aulas', modalidadeId: 'm', kind: 'aulas', quantity: 2 }
+    });
+    expect(d.endsAt).toBeNull();
+  });
+});
+
+describe('textos da linha do tempo', () => {
+  it('lançamento e encerramento', () => {
+    expect(freepassLaunchText({ typeName: 'Muscu 7 dias', modalidadeName: 'Musculação', kind: 'dias', total: 7, startsAt: dia('2026-11-20'), endsAt: dia('2026-11-26') }))
+      .toBe('Freepass lançado: Muscu 7 dias (Musculação), de 20/11 a 26/11.');
+    expect(freepassLaunchText({ typeName: 'Pilates 2 aulas', modalidadeName: 'Pilates', kind: 'aulas', total: 2 }))
+      .toBe('Freepass lançado: Pilates 2 aulas (Pilates), 2 aulas para agendar.');
+    expect(freepassEndText({ typeName: 'Pilates 2 aulas' })).toBe('Freepass encerrado: Pilates 2 aulas.');
+    expect(FREEPASS_INTERACTION_TYPE).toBe('freepass');
+  });
+});
