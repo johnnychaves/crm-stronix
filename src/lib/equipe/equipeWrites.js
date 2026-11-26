@@ -2,7 +2,7 @@
 // A ficha nasce com o id da pessoa na primeira gravação (setDoc com merge),
 // então duas abas caem no mesmo documento. Spec
 // docs/superpowers/specs/2026-11-26-cadastro-da-equipe-design.md.
-import { collection, doc, getDocs, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
+import { collection, doc, getDocs, query, runTransaction, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { appId, EQUIPE_PATH, LEADS_PATH, PROFESSORS_PATH, USERS_PATH, storage } from '../firebase.js';
 import { commitOpsInChunks } from '../funnels.js';
@@ -11,23 +11,29 @@ import { isValidLeadId } from '../routes.js';
 
 const docDe = (db, caminho, id) => doc(db, 'artifacts', appId, 'public', 'data', caminho, id);
 
-// Grava os campos de um bloco. Na primeira gravação, a ficha ganha os vínculos
-// com o login e o professor, a função, o nome e o status.
+// Grava os campos de um bloco. Se a ficha ainda não existe no banco, ela ganha
+// os vínculos com o login e o professor, a função, o nome e o status. Quem
+// decide é a leitura dentro da transação, e não a ficha que a tela viu: a tela
+// pode estar atrasada, e uma ficha já existente nunca pode ter o status
+// trocado de volta para ativo.
 export async function gravarBloco(db, pessoa, campos, autor) {
-  const nova = !pessoa.ficha;
-  await setDoc(docDe(db, EQUIPE_PATH, pessoa.id), {
-    ...campos,
-    ...(nova ? {
-      userId: pessoa.user?.id ?? null,
-      professorId: pessoa.professor?.id ?? null,
-      funcao: pessoa.funcao,
-      nome: campos.nome ?? pessoa.nome,
-      status: 'ativo',
-      createdAt: serverTimestamp(),
-    } : {}),
-    updatedAt: serverTimestamp(),
-    updatedBy: autor?.id ?? null,
-  }, { merge: true });
+  const ref = docDe(db, EQUIPE_PATH, pessoa.id);
+  await runTransaction(db, async (tx) => {
+    const nova = !(await tx.get(ref)).exists();
+    tx.set(ref, {
+      ...campos,
+      ...(nova ? {
+        userId: pessoa.user?.id ?? null,
+        professorId: pessoa.professor?.id ?? null,
+        funcao: pessoa.funcao,
+        nome: campos.nome ?? pessoa.nome,
+        status: 'ativo',
+        createdAt: serverTimestamp(),
+      } : {}),
+      updatedAt: serverTimestamp(),
+      updatedBy: autor?.id ?? null,
+    }, { merge: true });
+  });
 }
 
 // As modalidades e a foto do professor, que moram no cadastro do professor.
@@ -40,8 +46,10 @@ export async function gravarProfessor(db, professorId, campos) {
 // mudou. Movido do TeamAccessSection (updateMember e saveProfessor).
 export async function renomearPessoa(db, pessoa, nome) {
   let leadsMudaram = false;
+  // As cópias dos leads vão antes do nome do login e do professor: se a
+  // gravação cair no meio, o nome antigo continua valendo e a próxima
+  // tentativa refaz a cópia, em vez de achar que não há o que renomear.
   if (pessoa.user && pessoa.user.name !== nome) {
-    await updateDoc(docDe(db, USERS_PATH, pessoa.user.id), { name: nome });
     const snap = await getDocs(query(
       collection(db, 'artifacts', appId, 'public', 'data', LEADS_PATH),
       where('consultantId', '==', pessoa.user.id),
@@ -50,14 +58,15 @@ export async function renomearPessoa(db, pessoa, nome) {
       await commitOpsInChunks(db, snap.docs.map((d) => ({ ref: docDe(db, LEADS_PATH, d.id), data: { consultantName: nome } })), 400);
       leadsMudaram = true;
     }
+    await updateDoc(docDe(db, USERS_PATH, pessoa.user.id), { name: nome });
   }
   if (pessoa.professor && pessoa.professor.nome !== nome) {
-    await setDoc(docDe(db, PROFESSORS_PATH, pessoa.professor.id), { nome, updatedAt: serverTimestamp() }, { merge: true });
     const leads = await leadsWhere(db, 'appointmentProfessorId', '==', pessoa.professor.id);
     if (leads.length) {
       await commitOpsInChunks(db, leads.map((l) => ({ ref: docDe(db, LEADS_PATH, l.id), data: { appointmentProfessorName: nome } })), 400);
       leadsMudaram = true;
     }
+    await setDoc(docDe(db, PROFESSORS_PATH, pessoa.professor.id), { nome, updatedAt: serverTimestamp() }, { merge: true });
   }
   return leadsMudaram;
 }

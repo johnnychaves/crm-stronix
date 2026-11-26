@@ -103,8 +103,9 @@ export function redactDomAttrs(text) {
   return text.replace(DOM_ATTR_RE, '[$1="[redigido]"]');
 }
 
-// Dois endereços levam o id de um documento: a ficha (/<academia>/ficha/<id>,
-// o id do lead) e o modelo de rotina aberto (/<academia>/rotinas/modelos/<id>).
+// Três endereços levam o id de um documento: a ficha (/<academia>/ficha/<id>,
+// o id do lead), o modelo de rotina aberto (/<academia>/rotinas/modelos/<id>)
+// e a ficha da equipe (/<academia>/configuracoes/equipe/<id>).
 // O SDK copia o caminho cru para request.url, para o nome da transação no
 // escopo (que vai em todo erro), para as migalhas de navegação e para url.path.
 // A troca usa a mesma marca do molde de rota (routeTemplate), então é
