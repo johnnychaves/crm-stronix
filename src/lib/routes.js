@@ -27,6 +27,11 @@ const tela = (segs, title, trava = {}) => Object.freeze({ segs: Object.freeze(se
 // Sub-telas: id interno para o segmento em português. Molde da subaba do
 // super-admin (SUPER_TABS, abaixo). Elas NÃO entram na screenKey nem no molde
 // do Sentry: trocar de seção ou de aba não pode remontar a tela.
+// Abas da ficha da equipe (/configuracoes/equipe/<id>/<aba>). Dados é o
+// padrão e não vai para o endereço.
+export const PESSOA_ABAS = Object.freeze({ dados: '', movimentacoes: 'movimentacoes', acesso: 'acesso' });
+const PESSOA_ABA_BY_SEGMENT = Object.freeze({ movimentacoes: 'movimentacoes', acesso: 'acesso' });
+
 export const SETTINGS_SECTIONS = Object.freeze({
   overview: 'visao-geral',
   team: 'equipe',
@@ -225,6 +230,22 @@ function readScreen(segs, out) {
     readSub('rotinas', out.rest, out);
     return;
   }
+  if (head === 'configuracoes' && lower(segs[1]) === SETTINGS_SECTIONS.team && segs.length >= 3) {
+    // A ficha da equipe é sub-tela das Configurações, como o modelo de rotina:
+    // a tela continua 'settings', então o SettingsView não remonta (ele lê a
+    // base de leads ao montar). Id inválido ou aba desconhecida abre a lista.
+    out.screen = 'settings';
+    out.rest = segs.slice(1);
+    const aba = segs.length === 3 ? 'dados' : (segs.length === 4 ? PESSOA_ABA_BY_SEGMENT[lower(segs[3])] ?? null : null);
+    if (isValidLeadId(segs[2]) && aba) {
+      out.sub = 'team';
+      out.pessoaId = segs[2];
+      out.pessoaAba = aba;
+    } else {
+      out.subUnknown = true;
+    }
+    return;
+  }
   if (head === 'super-admin') {
     const child = lower(segs[1]);
     const tab = segs.length === 1 ? 'overview'
@@ -309,7 +330,7 @@ const encode = (s) => {
 // montar (sem academia, ficha sem id válido): quem chama não navega. Tela
 // desconhecida vira a inicial.
 export function hrefFor(tenantId, screen, opts = {}) {
-  const { leadId, superTab, sub, modelId, profId } = opts || {};
+  const { leadId, superTab, sub, modelId, profId, pessoaId, pessoaAba } = opts || {};
   if (typeof tenantId !== 'string' || tenantId === '') return null;
   const t = encode(tenantId);
   if (t === null) return null;
@@ -335,6 +356,13 @@ export function hrefFor(tenantId, screen, opts = {}) {
     // um emoji) cai na lista, nunca em /rotinas/modelos/null.
     const mid = isValidLeadId(modelId) ? encode(modelId) : null;
     if (mid !== null) return `${base}/rotinas/modelos/${mid}`;
+  }
+  if (screen === 'settings' && sub === 'team') {
+    const pid = isValidLeadId(pessoaId) ? encode(pessoaId) : null;
+    if (pid !== null) {
+      const aba = own(PESSOA_ABAS, pessoaAba) && PESSOA_ABAS[pessoaAba] ? `/${PESSOA_ABAS[pessoaAba]}` : '';
+      return `${base}/configuracoes/${SETTINGS_SECTIONS.team}/${pid}${aba}`;
+    }
   }
   return `${base}/${SCREENS[screen].segs.join('/')}${trecho}`;
 }

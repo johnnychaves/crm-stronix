@@ -119,9 +119,13 @@ const MODEL_PATH_RE = /(\/rotinas\/modelos\/)[^/?#\s"'<>]+/gi;
 // E o id do professor do perfil (/professores/perfil/<id>).
 const PROF_PATH_RE = /(\/professores\/perfil\/)[^/?#\s"'<>]+/gi;
 
+// Id da ficha da equipe (/configuracoes/equipe/<id>): é o id do login ou do
+// professor, e não vai para o Sentry.
+const EQUIPE_PATH_RE = /(\/configuracoes\/equipe\/)[^/?#\s"'<>]+/gi;
+
 export function scrubLeadPath(text) {
   if (typeof text !== 'string' || !text) return text;
-  return text.replace(LEAD_PATH_RE, '$1:leadId').replace(MODEL_PATH_RE, '$1:modelId').replace(PROF_PATH_RE, '$1:profId');
+  return text.replace(LEAD_PATH_RE, '$1:leadId').replace(MODEL_PATH_RE, '$1:modelId').replace(PROF_PATH_RE, '$1:profId').replace(EQUIPE_PATH_RE, '$1:pessoaId');
 }
 
 // Rede final: troca o id da ficha e o do modelo de rotina em qualquer texto do

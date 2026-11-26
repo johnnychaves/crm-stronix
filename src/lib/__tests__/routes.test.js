@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { UNSAFE_createBrowserHistory } from 'react-router';
 import {
   HOME_SCREEN, SCREENS, SUPER_TABS, FIRST_LEVEL_SEGMENTS,
-  isValidLeadId, parseAppPath, hrefFor, canGoBackInApp, canAccess,
+  isValidLeadId, parseAppPath, hrefFor, canGoBackInApp, canAccess, screenKey, routeTemplate,
 } from '../routes.js';
 
 const T = 'stronix-crm-app';
@@ -447,7 +447,7 @@ describe('sub-tela no caminho', () => {
   });
 
   it('sub-tela desconhecida e segmento a mais marcam subUnknown, sem virar endereço desconhecido', () => {
-    for (const p of [`/${T}/configuracoes/xyz`, `/${T}/configuracoes/equipe/demais`, `/${T}/ficha/AbC/xyz`, `/${T}/ficha/AbC/crm/demais`]) {
+    for (const p of [`/${T}/configuracoes/xyz`, `/${T}/configuracoes/equipe/u-1/acesso/demais`, `/${T}/ficha/AbC/xyz`, `/${T}/ficha/AbC/crm/demais`]) {
       const r = parseAppPath(p);
       expect([r.sub, r.subUnknown, r.unknown], p).toEqual([null, true, false]);
     }
@@ -568,5 +568,35 @@ describe('Rotinas no endereço', () => {
     expect(canAccess('rotinas', { id: 'g', role: 'admin' })).toBe(true);
     expect(canAccess('rotinas', { id: 'c', role: 'consultant' })).toBe(false);
     expect(canAccess('rotinas', { id: 'p', role: 'professor', professorId: 'x' })).toBe(false);
+  });
+});
+
+describe('ficha da equipe nas Configurações', () => {
+  it('lê o id e a aba', () => {
+    expect(parseAppPath('/stronix-crm-app/configuracoes/equipe/u-123')).toMatchObject({ screen: 'settings', sub: 'team', pessoaId: 'u-123', pessoaAba: 'dados', subUnknown: false });
+    expect(parseAppPath('/stronix-crm-app/configuracoes/equipe/u-123/acesso')).toMatchObject({ pessoaId: 'u-123', pessoaAba: 'acesso' });
+    expect(parseAppPath('/stronix-crm-app/configuracoes/equipe/u-123/movimentacoes').pessoaAba).toBe('movimentacoes');
+  });
+  it('aba desconhecida ou segmento a mais abre a lista', () => {
+    const r = parseAppPath('/stronix-crm-app/configuracoes/equipe/u-123/xyz');
+    expect(r).toMatchObject({ screen: 'settings', subUnknown: true });
+    expect(r.pessoaId).toBeUndefined();
+  });
+  it('a lista continua a seção de sempre', () => {
+    const r = parseAppPath('/stronix-crm-app/configuracoes/equipe');
+    expect(r).toMatchObject({ screen: 'settings', sub: 'team' });
+    expect(r.pessoaId).toBeUndefined();
+  });
+  it('monta o endereço da ficha e da aba', () => {
+    expect(hrefFor('stronix-crm-app', 'settings', { sub: 'team', pessoaId: 'u-123' })).toBe('/stronix-crm-app/configuracoes/equipe/u-123');
+    expect(hrefFor('stronix-crm-app', 'settings', { sub: 'team', pessoaId: 'u-123', pessoaAba: 'acesso' })).toBe('/stronix-crm-app/configuracoes/equipe/u-123/acesso');
+    expect(hrefFor('stronix-crm-app', 'settings', { sub: 'team', pessoaId: 'u-123', pessoaAba: 'dados' })).toBe('/stronix-crm-app/configuracoes/equipe/u-123');
+    expect(hrefFor('stronix-crm-app', 'settings', { sub: 'team', pessoaId: '' })).toBe('/stronix-crm-app/configuracoes/equipe');
+  });
+  it('abrir a ficha não troca a chave da tela, para as Configurações não remontarem', () => {
+    expect(screenKey(parseAppPath('/stronix-crm-app/configuracoes/equipe/u-123'))).toBe('settings');
+  });
+  it('o nome da transação não leva o id', () => {
+    expect(routeTemplate('/stronix-crm-app/configuracoes/equipe/u-123')).toBe('/:tenant/configuracoes');
   });
 });

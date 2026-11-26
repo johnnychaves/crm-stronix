@@ -46,6 +46,8 @@ export function screenState(shown, locationState, appUser) {
     sub: def?.subs ? (shown.sub ?? def.subPadrao) : null,
     modelId: shown?.screen === 'rotinas' ? (shown.modelId ?? null) : null,
     profId: shown?.screen === 'professorPerfil' ? (shown.profId ?? null) : null,
+    pessoaId: shown?.screen === 'settings' ? (shown.pessoaId ?? null) : null,
+    pessoaAba: shown?.screen === 'settings' ? (shown.pessoaAba ?? null) : null,
   };
 }
 
