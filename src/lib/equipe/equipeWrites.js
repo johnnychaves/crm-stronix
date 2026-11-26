@@ -1,6 +1,6 @@
 // Gravações da ficha da equipe pelo app (o gestor, pelas regras do Firestore).
-// A ficha nasce com o id da pessoa na primeira gravação (setDoc com merge),
-// então duas abas caem no mesmo documento. Spec
+// A ficha nasce com o id da pessoa, decidida numa transação, então duas abas
+// caem no mesmo documento. Spec
 // docs/superpowers/specs/2026-11-26-cadastro-da-equipe-design.md.
 import { collection, doc, getDocs, query, runTransaction, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';

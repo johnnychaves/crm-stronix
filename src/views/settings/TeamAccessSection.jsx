@@ -1,6 +1,8 @@
+import { EditarAcessoDialog } from './equipe/EditarAcessoDialog.jsx';
+import { ProfessorPicker } from './equipe/ProfessorPicker.jsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Copy, Dumbbell, Mail, Pencil, Plus, Shield, Trash2 } from 'lucide-react';
-import { collection, doc, addDoc, getDocs, query, where, setDoc, updateDoc, deleteDoc, deleteField, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, addDoc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, appId, LEADS_PATH, PROFESSORS_PATH, USERS_PATH } from '../../lib/firebase.js';
 import { commitOpsInChunks } from '../../lib/funnels.js';
 import { leadsWhere } from '../../lib/settingsLeads.js';
@@ -11,9 +13,8 @@ import { isGestor, isProfessor, roleLabel, roleOf, ROLES } from '../../lib/acess
 import { hasModule, MODULES } from '../../lib/modules.js';
 import {
   availableProfessors, inviteRoleOptions, linkedProfessorIds, linkedProfessorText,
-  planRoleChange, PROFESSOR_LINK_MESSAGES, SET_ROLE_ACTION
+  PROFESSOR_LINK_MESSAGES, SET_ROLE_ACTION
 } from '../../lib/teamRoles.js';
-import { planLoginEmailChange, loginEmailConfirmText, LOGIN_EMAIL_FAILED_MESSAGE } from '../../lib/loginEmail.js';
 import { cn } from '../../lib/utils.js';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 import { useToast } from '../../contexts/ToastContext.jsx';
@@ -182,25 +183,6 @@ function ProfessorRow({ professor, modalities, aulas, share, conversion, last, w
     </div>
   );
 }
-
-// Escolha do professor do cadastro que a pessoa é: só os ativos e sem login,
-// mais o próprio professor de quem está sendo editado.
-function ProfessorPicker({ value, options, onChange, disabled = false }) {
-  return (
-    <DialogField
-      label="Professor do cadastro"
-      hint={options.length === 0
-        ? 'Nenhum professor ativo sem acesso. Cadastre o professor no card Professores, mais abaixo.'
-        : 'Cada professor do cadastro tem um login só.'}
-    >
-      <select className={FIELD_INPUT} value={value} onChange={e => onChange(e.target.value)} disabled={disabled} required>
-        <option value="" disabled>Escolha o professor</option>
-        {options.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
-      </select>
-    </DialogField>
-  );
-}
-
 function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHandled, onLeadsChanged }) {
   const toast = useToast();
   const { professores, modalities } = useGeneralConfig();
@@ -210,7 +192,8 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
   const tenantModules = appUser?.tenantModules;
   const professorEnabled = hasModule(tenantModules, MODULES.FALTOSOS);
 
-  const [memberDialog, setMemberDialog] = useState(null); // null | {mode:'create'|'edit', user}
+  const [memberDialog, setMemberDialog] = useState(null); // null | {mode:'create'}
+  const [editUser, setEditUser] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
 
@@ -235,34 +218,14 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
   const professorLogins = linkedProfessorIds(users);
   const createLabel = professorEnabled ? 'Cadastrar pessoa' : 'Cadastrar consultor';
 
-  // Diálogo de membro, calculado no render. O papel aparece no cadastro com o
-  // módulo ligado e na edição de quem não é gestor, quando o módulo está ligado
-  // ou a pessoa já é professor (o módulo pode ter sido desligado depois).
-  const editingUser = memberDialog?.mode === 'edit' ? memberDialog.user : null;
-  const showRoleField = editingUser
-    ? !isGestor(editingUser) && (professorEnabled || isProfessor(editingUser))
-    : professorEnabled;
+  // No cadastro, o papel aparece com o módulo ligado.
+  const showRoleField = professorEnabled;
   const creatingProfessor = memberDialog?.mode === 'create' && form.role === ROLES.PROFESSOR;
-  const memberProfessorOptions = availableProfessors(professores, users, {
-    exceptUserId: editingUser?.id ?? null,
-    keepId: editingUser?.professorId ?? null
-  });
+  const memberProfessorOptions = availableProfessors(professores, users);
   const inviteProfessorOptions = availableProfessors(professores, users);
 
   const openCreate = () => { setForm({ ...emptyForm, password: generateTemporaryPassword() }); setMemberDialog({ mode: 'create' }); };
-  const openEdit = (user) => {
-    setForm({
-      name: user.name || '',
-      email: user.email || '',
-      password: '',
-      shiftStart: user.shiftStart || '',
-      shiftEnd: user.shiftEnd || '',
-      dailyVolumeTarget: user.dailyVolumeTarget != null ? String(user.dailyVolumeTarget) : '',
-      role: roleOf(user),
-      professorId: user.professorId || ''
-    });
-    setMemberDialog({ mode: 'edit', user });
-  };
+  const openEdit = (user) => setEditUser(user);
 
   // Atalho da Visão geral: 'new' abre o cadastro, um id destaca a linha.
   useEffect(() => {
@@ -329,155 +292,6 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
     } catch (err) {
       console.error(err);
       toast.error(`Falha de rede ao cadastrar ${noun}.`);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // Papel e professor ligado mudam pelo servidor (set-role do
-  // /api/admin-users), que confere o módulo, o professor do cadastro, a
-  // carteira e a vaga de consultor. Devolve true quando o resto do cadastro
-  // pode seguir.
-  const changeRole = async (target, change, allowExtra = false) => {
-    const res = await fetch('/api/admin-users', {
-      method: 'POST',
-      headers: await authHeader(),
-      body: JSON.stringify({
-        action: SET_ROLE_ACTION,
-        userDocId: target.id,
-        role: change.role,
-        ...(change.role === ROLES.PROFESSOR ? { professorId: change.professorId } : {}),
-        allowExtra
-      })
-    });
-    const data = await res.json().catch(() => ({}));
-    if (res.status === 409 && data?.requiresExtraConfirmation) {
-      return confirmExtra(data.extraUserPrice) ? changeRole(target, change, true) : false;
-    }
-    if (!res.ok) { toast.error(data.error || 'Não foi possível trocar o papel.'); return false; }
-    if (data.changed !== false) {
-      toast.success(change.role === roleOf(target)
-        ? 'Professor do cadastro trocado.'
-        : `O papel de ${target.name} agora é ${roleLabel({ role: change.role })}. O acesso novo vale quando a pessoa entrar de novo.`);
-    }
-    if (data.isExtra) toast.info('Este consultor entrou como extra. A mensalidade foi ajustada a partir da próxima fatura.', { duration: 8000 });
-    return true;
-  };
-
-  const updateMember = async () => {
-    const target = memberDialog?.user;
-    if (!target) return;
-    // A senha é conferida antes de gravar o cadastro. Se fosse recusada só no
-    // fim, o resto das alterações já estaria salvo com o formulário aberto.
-    if (form.password.trim()) {
-      const passwordProblem = passwordPolicyError(form.password);
-      if (passwordProblem) { toast.warning(passwordProblem); return; }
-    }
-    // O que muda no papel. Professor sem professor escolhido nem chega ao
-    // servidor.
-    const roleChange = planRoleChange(target, form);
-    if (roleChange?.role === ROLES.PROFESSOR && !roleChange.professorId) {
-      toast.warning(PROFESSOR_LINK_MESSAGES.missing);
-      return;
-    }
-    // O e-mail de login de quem tem conta muda pelo servidor (set-email do
-    // /api/admin-users), no Auth e no cadastro juntos, e as sessões da pessoa
-    // caem. O cliente só grava o e-mail do cadastro sem conta, que não tem
-    // login para trocar.
-    const emailChange = planLoginEmailChange(target, form.email);
-    if (emailChange.kind === 'invalid') { toast.warning(emailChange.error); return; }
-    const ownEmail = emailChange.kind === 'account'
-      && emailChange.body.targetAuthUid === normalizeUid(appUser?.authUid);
-    // Trocar o próprio e-mail derruba a sessão de quem está salvando, e a troca
-    // de senha que viria em seguida seria recusada pelo servidor.
-    if (ownEmail && form.password.trim()) {
-      toast.warning('Troque o seu e-mail e a sua senha em duas vezes: salve o e-mail, entre de novo e depois troque a senha.');
-      return;
-    }
-    if (emailChange.kind === 'account'
-      && !window.confirm(loginEmailConfirmText({ name: target.name, email: emailChange.email, self: ownEmail }))) return;
-
-    setSaving(true);
-    try {
-      // A troca de papel vai primeiro: é o único passo que pode pedir a
-      // confirmação do extra, e recusada, nada mais é salvo.
-      if (roleChange && !(await changeRole(target, roleChange))) return;
-
-      if (emailChange.kind === 'account') {
-        const res = await fetch('/api/admin-users', {
-          method: 'POST',
-          headers: await authHeader(),
-          body: JSON.stringify(emailChange.body)
-        });
-        const data = await res.json().catch(() => ({}));
-        // Sem o e-mail trocado, nada mais é salvo: o formulário fica aberto com
-        // o que foi digitado.
-        if (!res.ok) { toast.error(data.error || LOGIN_EMAIL_FAILED_MESSAGE); return; }
-        // changed: false é o e-mail que a conta já tinha. O login não mudou.
-        if (data.changed !== false) {
-          toast.success(ownEmail
-            ? 'Seu e-mail de login mudou. Saia e entre de novo com o e-mail novo.'
-            : 'E-mail de login trocado. A pessoa passa a entrar com o e-mail novo.');
-        }
-      }
-
-      const newName = form.name.trim();
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', USERS_PATH, target.id), {
-        name: newName,
-        // O e-mail só entra aqui no cadastro sem conta. Com conta, quem grava é
-        // o set-email, junto com o Auth.
-        ...(emailChange.kind === 'record' ? { email: emailChange.email } : {}),
-        // authUid não sai daqui: é a chave que liga o cadastro à conta do Auth,
-        // e as rules agora recusam a troca. Ele nasce no /api/admin-users (ação
-        // create) e no aceite de convite.
-        shiftStart: form.shiftStart || null,
-        shiftEnd: form.shiftEnd || null,
-        // Vazio ou 0 = sem meta de prospecção. Não existe padrão de academia:
-        // o piso é 100% individual. O professor não prospecta, então a meta
-        // dele sai junto.
-        dailyVolumeTarget: form.role !== ROLES.PROFESSOR && form.dailyVolumeTarget !== '' && Number(form.dailyVolumeTarget) > 0
-          ? Math.min(500, Math.floor(Number(form.dailyVolumeTarget)))
-          : deleteField(),
-        password: deleteField()
-      });
-
-      // consultantName é desnormalizado nos leads (Kanban, Agendamentos, CSV,
-      // ranking do Dashboard) — sem esta cascata tudo isso exibiria o nome
-      // antigo. Busca direto no Firestore pra alcançar a base inteira.
-      if (target.name !== newName) {
-        const leadsSnap = await getDocs(query(
-          collection(db, 'artifacts', appId, 'public', 'data', LEADS_PATH),
-          where('consultantId', '==', target.id)
-        ));
-        if (!leadsSnap.empty) {
-          await commitOpsInChunks(db, leadsSnap.docs.map(d => ({
-            ref: doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, d.id),
-            data: { consultantName: newName }
-          })), 400);
-        }
-      }
-
-      if (form.password.trim()) {
-        const targetUid = target.authUid;
-        if (!targetUid) {
-          toast.error('Cadastro sem authUid. Não é possível redefinir senha.');
-        } else {
-          const res = await fetch('/api/admin-users', {
-            method: 'POST',
-            headers: await authHeader(),
-            body: JSON.stringify({ action: 'set-password', targetAuthUid: targetUid, password: form.password })
-          });
-          const data = await res.json();
-          if (!res.ok) { toast.error(data.error || 'Erro ao redefinir senha.'); return; }
-          toast.success(`Senha redefinida. Nova senha: ${form.password}`, { duration: 8000 });
-        }
-      }
-
-      toast.success('Cadastro atualizado.');
-      setMemberDialog(null);
-    } catch (err) {
-      console.error(err);
-      toast.error('Erro ao salvar alterações.');
     } finally {
       setSaving(false);
     }
@@ -750,28 +564,21 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
         ))}
       </SettingsPanel>
 
-      {/* Cadastro / edição de membro */}
+      {/* Cadastro de membro */}
       <FormDialog
         open={Boolean(memberDialog)}
         onOpenChange={(v) => !v && setMemberDialog(null)}
-        title={memberDialog?.mode === 'edit'
-          ? `Editar ${memberDialog.user.name}`
-          : (creatingProfessor ? 'Cadastrar acesso de professor' : 'Cadastrar consultor')}
-        description={memberDialog?.mode === 'edit'
-          ? 'O authUid é gerado no cadastro e não muda. Preencha a nova senha só se quiser redefini-la.'
-          : `Cria a conta no Firebase Auth e o cadastro interno numa operação só. Anote a senha temporária para entregar ao ${creatingProfessor ? 'professor' : 'consultor'}.`}
-        submitLabel={memberDialog?.mode === 'edit' ? 'Salvar alterações' : 'Cadastrar'}
+        title={creatingProfessor ? 'Cadastrar acesso de professor' : 'Cadastrar consultor'}
+        description={`Cria a conta no Firebase Auth e o cadastro interno numa operação só. Anote a senha temporária para entregar ao ${creatingProfessor ? 'professor' : 'consultor'}.`}
+        submitLabel="Cadastrar"
         submitting={saving}
-        onSubmit={() => (memberDialog?.mode === 'edit' ? updateMember() : createMember())}
+        onSubmit={() => createMember()}
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <DialogField label="Nome">
             <input className={FIELD_INPUT} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Ex: Ana Duarte" required />
           </DialogField>
-          <DialogField
-            label="E-mail de login"
-            hint={memberDialog?.mode === 'edit' ? 'Trocar o e-mail muda o login da pessoa.' : undefined}
-          >
+          <DialogField label="E-mail de login">
             <input className={FIELD_INPUT} type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="ana@academia.com.br" required />
           </DialogField>
         </div>
@@ -796,8 +603,8 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
         )}
 
         <DialogField
-          label={memberDialog?.mode === 'edit' ? 'Nova senha (opcional)' : 'Senha temporária'}
-          hint={memberDialog?.mode === 'edit' ? `Em branco mantém a senha atual. ${PASSWORD_RULE_TEXT}` : PASSWORD_RULE_TEXT}
+          label="Senha temporária"
+          hint={PASSWORD_RULE_TEXT}
         >
           <div className="flex gap-2">
             <input
@@ -805,8 +612,8 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
               type="text"
               value={form.password}
               onChange={e => setForm({ ...form, password: e.target.value })}
-              placeholder={memberDialog?.mode === 'edit' ? 'Deixe em branco para não alterar' : 'Digite ou clique em Gerar'}
-              required={memberDialog?.mode === 'create'}
+              placeholder="Digite ou clique em Gerar"
+              required
             />
             <SettingsBtn size={36} type="button" onClick={() => setForm({ ...form, password: generateTemporaryPassword() })}>Gerar</SettingsBtn>
           </div>
@@ -820,18 +627,16 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
             <input className={FIELD_INPUT} type="time" value={form.shiftEnd} onChange={e => setForm({ ...form, shiftEnd: e.target.value })} />
           </DialogField>
         </div>
-
-        {memberDialog?.mode === 'edit' && form.role !== ROLES.PROFESSOR && (
-          <DialogField label="Meta de prospecção (ações/dia)" hint="0 ou vazio desabilita a prospecção da pessoa.">
-            <input
-              className={cn(FIELD_INPUT, 'num')}
-              type="number" min="0" max="500" placeholder="off"
-              value={form.dailyVolumeTarget}
-              onChange={e => setForm({ ...form, dailyVolumeTarget: e.target.value })}
-            />
-          </DialogField>
-        )}
       </FormDialog>
+
+      <EditarAcessoDialog
+        db={db}
+        appUser={appUser}
+        user={editUser}
+        usersList={users}
+        open={Boolean(editUser)}
+        onOpenChange={(v) => !v && setEditUser(null)}
+      />
 
       {/* Convite por e-mail */}
       <FormDialog

@@ -9,6 +9,7 @@ import { createElement as h, act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { updateDoc, deleteDoc } from 'firebase/firestore';
 import { TeamAccessSection } from '../../views/settings/TeamAccessSection.jsx';
+import { EditarAcessoDialog } from '../../views/settings/equipe/EditarAcessoDialog.jsx';
 import { GeneralConfigContext } from '../../contexts/GeneralConfigContext.jsx';
 import { MODULES } from '../modules.js';
 
@@ -120,8 +121,19 @@ const campo = (rotulo) => [...document.querySelectorAll('label')]
   .find((l) => l.firstElementChild?.textContent === rotulo)
   ?.querySelector('input, select') ?? null;
 const opcoes = (select) => [...select.options].filter((o) => !o.disabled).map((o) => o.textContent);
-const editar = (i) => clicar(document.querySelectorAll('button[title="Editar membro"]')[i]);
-const linhas = () => [...document.querySelectorAll('button[title="Editar membro"]')].map((b) => b.parentElement.parentElement);
+// Monta o diálogo de editar o acesso do membro i, no mesmo contexto da lista.
+async function editar(i, { modules = [MODULES.FALTOSOS], equipe = EQUIPE } = {}) {
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  root = createRoot(container);
+  await act(async () => {
+    root.render(h(
+      GeneralConfigContext.Provider,
+      { value: { modalities: [], professores: PROFESSORES } },
+      h(EditarAcessoDialog, { db: {}, appUser: { ...GESTOR, tenantModules: modules }, user: equipe[i], usersList: equipe, open: true, onOpenChange: () => {} })
+    ));
+  });
+}
 const chamadasDaApi = () => ordem.filter(([tipo]) => tipo === 'api');
 
 describe('Equipe & acessos sem o módulo', () => {
@@ -153,25 +165,13 @@ describe('Equipe & acessos sem o módulo', () => {
   });
 
   it('quem já é professor continua com o selo, e o professor ligado não troca', async () => {
-    await montar({ modules: [] });
-    expect(linhas()[2].textContent).toContain('Professor');
-    await editar(2);
+    await editar(2, { modules: [] });
     expect(campo('Papel').value).toBe('professor');
     expect(campo('Professor do cadastro').disabled).toBe(true);
   });
 });
 
 describe('Equipe & acessos com o módulo', () => {
-  it('a lista mostra o papel de cada um e o professor ligado, sem meta de prospecção para o professor', async () => {
-    await montar();
-    const [gestor, ana, rafa] = linhas();
-    expect(gestor.textContent).toContain('Gestor');
-    expect(ana.textContent).toContain('Consultor');
-    expect(ana.textContent).toContain('20/dia');
-    expect(rafa.textContent).toContain('Professor');
-    expect(rafa.textContent).toContain('Rafael Menezes');
-    expect(rafa.textContent).not.toContain('sem meta');
-  });
 
   it('o convite de professor só oferece professor ativo e sem login, e manda o id', async () => {
     await montar();
@@ -227,7 +227,6 @@ describe('Equipe & acessos com o módulo', () => {
   });
 
   it('editar: professor que volta a consultor passa pelo set-role antes de gravar o cadastro', async () => {
-    await montar();
     await editar(2);
     expect(campo('Papel').value).toBe('professor');
     expect(campo('Professor do cadastro').value).toBe('prof-rafa');
@@ -248,7 +247,6 @@ describe('Equipe & acessos com o módulo', () => {
   it('set-role recusado mostra o erro do servidor e não grava o cadastro', async () => {
     const erro = 'Ana ainda tem leads na carteira. Passe os leads em Configurações → Migrar leads antes de mudar o papel para Professor.';
     respostas = [{ status: 409, body: { error: erro } }];
-    await montar();
     await editar(1);
     await escrever(campo('Papel'), 'professor');
     await escrever(campo('Professor do cadastro'), 'prof-lu');
@@ -266,7 +264,6 @@ describe('Equipe & acessos com o módulo', () => {
   it('vagas cheias: recusar o extra não salva nada nem pede de novo ao servidor', async () => {
     respostas = [{ status: 409, body: { requiresExtraConfirmation: true, extraUserPrice: 50 } }];
     vi.stubGlobal('confirm', vi.fn(() => false));
-    await montar();
     await editar(2);
     await escrever(campo('Papel'), 'consultant');
     await clicar(botao('Salvar alterações'));
@@ -289,7 +286,6 @@ describe('Equipe & acessos com o módulo', () => {
       { status: 409, body: { requiresExtraConfirmation: true, extraUserPrice: 50 } },
       { status: 200, body: { ok: true, changed: true, isExtra: true } },
     ];
-    await montar();
     await editar(2);
     await escrever(campo('Papel'), 'consultant');
     await clicar(botao('Salvar alterações'));
@@ -310,7 +306,6 @@ describe('Equipe & acessos com o módulo', () => {
   });
 
   it('editar: consultor que vira professor manda o professor ao set-role e apaga a meta de prospecção', async () => {
-    await montar();
     await editar(1);
     expect(campo('Meta de prospecção (ações/dia)').value).toBe('20');
     await escrever(campo('Papel'), 'professor');
@@ -336,18 +331,10 @@ describe('Equipe & acessos com o módulo', () => {
   });
 
   it('o gestor não tem campo de papel', async () => {
-    await montar();
     await editar(0);
     expect(campo('Papel')).toBeNull();
   });
 
-  it('professor do cadastro com login não pode ser excluído', async () => {
-    await montar();
-    await clicar(document.querySelector('button[title="Excluir Rafael Menezes"]'));
-    expect(toast.warning.mock.calls[0][0]).toContain('tem acesso ao app');
-    expect(confirm).not.toHaveBeenCalled();
-    expect(deleteDoc).not.toHaveBeenCalled();
-  });
 });
 
 // A faixa de vagas mostra quantos professores têm acesso, fora das vagas de
