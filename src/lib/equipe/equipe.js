@@ -27,7 +27,9 @@ function pessoa({ id, ficha, user, professor, agora }) {
   const desligada = ficha ? ficha.status === 'desligado' : (!user && professor?.ativo === false);
   let acesso = 'sem';
   if (desligada) acesso = 'desligado';
-  else if (user) acesso = 'com';
+  // Cadastro de login sem authUid ainda não entra: o vínculo acontece no
+  // primeiro login pelo e-mail (a Visão geral cobra isso).
+  else if (user) acesso = user.authUid ? 'com' : 'sem';
   else if (ficha?.convite && conviteValido(ficha.convite, agora)) acesso = 'convite';
   return { id, ficha: ficha || null, user: user || null, professor: professor || null, funcao, nome, desligada, acesso };
 }

@@ -88,6 +88,10 @@ describe('filtrarEquipe', () => {
 });
 
 describe('montarEquipe: casos da revisão', () => {
+  it('login sem authUid aparece sem acesso, porque a pessoa ainda não entra', () => {
+    const us = [{ id: 'u-h', name: 'Hosiel', role: 'consultant' }];
+    expect(montarEquipe({ users: us, agora: AGORA })[0].acesso).toBe('sem');
+  });
   it('uma ficha não pega o login nem o professor que outra já pegou', () => {
     const fichas = [
       { id: 'u-d', userId: 'u-d', status: 'ativo' },

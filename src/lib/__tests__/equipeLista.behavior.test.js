@@ -77,6 +77,16 @@ describe('lista da equipe', () => {
     await montar({ pessoas: fora, filtros: { situacao: 'desligados', funcao: null, vinculo: null, acesso: null } });
     expect(document.body.textContent).toContain('Desligado em 10/11/2026');
   });
+  it('desligado conta o tempo de casa até a saída, não até hoje', async () => {
+    const fora = montarEquipe({
+      fichas: [{ id: 'u-ex', nome: 'Ex Colega', funcao: 'consultor', status: 'desligado', movimentacoes: [{ tipo: 'admissao', data: '2024-05-06' }, { tipo: 'desligamento', data: '2026-08-30' }] }],
+      users: [], professores: [], agora: new Date(2026, 10, 26),
+    });
+    await montar({ pessoas: fora, filtros: { situacao: 'desligados', funcao: null, vinculo: null, acesso: null } });
+    const t = document.body.textContent;
+    expect(t).toContain('2 anos e 3 meses');
+    expect(t).toContain('05/2024 a 08/2026');
+  });
   it('lista vazia diz isso', async () => {
     await montar({ pessoas: [] });
     expect(document.body.textContent).toContain('Ninguém neste filtro.');

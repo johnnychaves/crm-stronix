@@ -96,11 +96,11 @@ export function FichaDados({ db, appUser, tenantId, pessoa, professores, modalit
     }
   };
 
-  const campo = (rotulo, nome, props = {}) => (
+  const campo = (rotulo, nome, { mascara = null, ...props } = {}) => (
     <Fld label={rotulo}>
       <input name={nome} className={FIELD_INPUT} autoComplete="off"
         aria-invalid={aberto.erro && aberto.campo === nome ? true : undefined} aria-describedby={aberto.erro && aberto.campo === nome ? erroId : undefined}
-        value={aberto.form[nome] ?? ''} onChange={(e) => set(nome, e.target.value)} {...props} />
+        value={aberto.form[nome] ?? ''} onChange={(e) => set(nome, mascara ? mascara(e.target.value) : e.target.value)} {...props} />
     </Fld>
   );
 
@@ -167,7 +167,7 @@ export function FichaDados({ db, appUser, tenantId, pessoa, professores, modalit
         ), aberto?.bloco === 'identidade' && (
           <>
             {campo('Nome completo', 'nome')}
-            <div className="grid gap-3 sm:grid-cols-2">{campo('CPF', 'cpf', { inputMode: 'numeric', placeholder: '000.000.000-00' })}{campo('RG', 'rg')}</div>
+            <div className="grid gap-3 sm:grid-cols-2">{campo('CPF', 'cpf', { inputMode: 'numeric', placeholder: '000.000.000-00', mascara: formatCPF })}{campo('RG', 'rg')}</div>
             <div className="grid gap-3 sm:grid-cols-2">{campo('Nascimento', 'nascimento', { type: 'date' })}</div>
           </>
         ))}
@@ -182,7 +182,7 @@ export function FichaDados({ db, appUser, tenantId, pessoa, professores, modalit
           </>
         ), aberto?.bloco === 'contato' && (
           <>
-            <div className="grid gap-3 sm:grid-cols-2">{campo('Celular', 'celular', { inputMode: 'tel', placeholder: '(51) 99999-9999' })}{campo('E-mail pessoal', 'emailPessoal', { type: 'email' })}</div>
+            <div className="grid gap-3 sm:grid-cols-2">{campo('Celular', 'celular', { inputMode: 'tel', placeholder: '(51) 9 0000-0000', mascara: formatPhone })}{campo('E-mail pessoal', 'emailPessoal', { type: 'email' })}</div>
             <AddressForm form={aberto.form} set={set} setForm={(fn) => setAberto((a) => (a?.bloco === 'contato' ? { ...a, form: typeof fn === 'function' ? fn(a.form) : fn } : a))} />
           </>
         ))}

@@ -5,7 +5,7 @@ import { AppLink } from '../../../components/nav/AppLink.jsx';
 import { FilterChip } from '../../dashboard/DashFilterBar.jsx';
 import { isClientLead } from '../../../lib/leads.js';
 import { professorModalityNames } from '../../../lib/professores.js';
-import { FUNCAO_TEXTO, VINCULOS, admissaoDe, dataBR, desligadoEmTexto, faltasDaFicha, tempoDeCasa } from '../../../lib/equipe/ficha.js';
+import { FUNCAO_TEXTO, VINCULOS, admissaoDe, dataBR, desligadoEmTexto, faltasDaFicha, periodoNaEquipe, tempoDeCasa } from '../../../lib/equipe/ficha.js';
 import { filtrarEquipe } from '../../../lib/equipe/equipe.js';
 import { AcessoSelo, FichaAnel, FuncaoSelo, PessoaAvatar, VinculoSelo } from './equipeVisual.jsx';
 
@@ -40,7 +40,7 @@ export function EquipeLista({ pessoas, filtros, setFiltros, busca, setBusca, hre
     if (p.funcao === 'professor') {
       const mods = professorModalityNames(p.professor, modalities).join(' e ');
       const n = porProfessor.get(p.professor?.id);
-      return [mods, n ? `${n} alunos` : ''].filter(Boolean).join(', ');
+      return [mods, n ? `${n} ${n === 1 ? 'aluno' : 'alunos'}` : ''].filter(Boolean).join(', ');
     }
     const n = p.funcao === 'consultor' && p.user ? porConsultor.get(p.user.id) : 0;
     return n ? `${n} leads` : '';
@@ -73,39 +73,47 @@ export function EquipeLista({ pessoas, filtros, setFiltros, busca, setBusca, hre
         </span>
       </div>
 
-      <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-card">
-        <div className="hidden h-10 items-center gap-3 border-b border-border bg-muted/40 px-5 text-[12px] font-semibold text-muted-foreground md:grid" style={{ gridTemplateColumns: GRADE }}>
-          <span>Pessoa</span><span>Função</span><span>Vínculo</span><span>Acesso ao app</span><span>Na equipe</span><span>Ficha</span>
-        </div>
-        {visiveis.length === 0 ? (
-          <p className="px-5 py-10 text-center text-[13px] text-muted-foreground">Ninguém neste filtro.</p>
-        ) : visiveis.map((p, i) => {
-          const { total, faltam } = faltasDaFicha(p);
-          const admissao = admissaoDe(p.ficha);
-          const sub = subDe(p);
-          return (
-            <div key={p.id} className={cn('relative grid items-center gap-3 px-5 py-3 transition hover:bg-muted/50', i < visiveis.length - 1 && 'border-b border-border')}
-              style={{ gridTemplateColumns: GRADE }}>
-              <div className="flex min-w-0 items-center gap-2.5">
-                <PessoaAvatar pessoa={p} />
-                <div className="min-w-0">
-                  <AppLink to={hrefDe(p.id)} stretched draggable={false} aria-label={`Abrir a ficha de ${p.nome}`}
-                    className="block truncate text-[13.5px] font-semibold outline-none focus-visible:after:anel-foco focus-visible:after:ring-inset">{p.nome}</AppLink>
-                  <div className="truncate text-[11.5px] text-muted-foreground">{p.user?.email || p.ficha?.emailPessoal || p.ficha?.convite?.email || ''}</div>
+      {/* shortcut: no celular a tabela rola de lado; um desenho próprio fica para quando o celular entrar */}
+      <section className="overflow-x-auto overscroll-x-contain rounded-2xl border border-border bg-card shadow-card">
+        <div className="min-w-[880px]">
+          <div className="grid h-10 items-center gap-3 border-b border-border bg-muted/40 px-5 text-[12px] font-semibold text-muted-foreground" style={{ gridTemplateColumns: GRADE }}>
+            <span>Pessoa</span><span>Função</span><span>Vínculo</span><span>Acesso ao app</span><span>Na equipe</span><span>Ficha</span>
+          </div>
+          {visiveis.length === 0 ? (
+            <p className="px-5 py-10 text-center text-[13px] text-muted-foreground">Ninguém neste filtro.</p>
+          ) : visiveis.map((p, i) => {
+            const { total, faltam } = faltasDaFicha(p);
+            const admissao = admissaoDe(p.ficha);
+            // Quem saiu conta o tempo até o desligamento, não até hoje.
+            const saiu = p.desligada ? periodoNaEquipe(p.ficha)?.ate : null;
+            const tempo = admissao ? tempoDeCasa(admissao, saiu ? new Date(`${saiu}T12:00:00`) : agora) : '';
+            const sub = subDe(p);
+            return (
+              <div key={p.id} className={cn('relative grid items-center gap-3 px-5 py-3 transition hover:bg-muted/50', i < visiveis.length - 1 && 'border-b border-border')}
+                style={{ gridTemplateColumns: GRADE }}>
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <PessoaAvatar pessoa={p} />
+                  <div className="min-w-0">
+                    <AppLink to={hrefDe(p.id)} stretched draggable={false} aria-label={`Abrir a ficha de ${p.nome}`}
+                      className="block truncate text-[13.5px] font-semibold outline-none focus-visible:after:anel-foco focus-visible:after:ring-inset">{p.nome}</AppLink>
+                    <div className="truncate text-[11.5px] text-muted-foreground">{p.user?.email || p.ficha?.emailPessoal || p.ficha?.convite?.email || ''}</div>
+                  </div>
                 </div>
+                <div className="min-w-0"><FuncaoSelo funcao={p.funcao} />{sub && <div className="mt-1 truncate text-[11.5px] text-muted-foreground">{sub}</div>}</div>
+                <div><VinculoSelo vinculo={p.ficha?.vinculo} /></div>
+                <div><AcessoSelo acesso={p.acesso} textoDesligado={p.desligada ? desligadoEmTexto(p.ficha) : null} /></div>
+                <div className="text-[12.5px]">
+                  {!admissao ? <span className="text-muted-foreground">Sem admissão</span>
+                    : tempo === 'desde hoje' && !saiu ? <div className="font-semibold">Na equipe desde hoje</div>
+                      : (<><div className="font-semibold">{tempo}</div><div className="text-[11.5px] text-muted-foreground">
+                        {saiu ? `${dataBR(admissao).slice(3)} a ${dataBR(saiu).slice(3)}` : `desde ${dataBR(admissao).slice(3)}`}
+                      </div></>)}
+                </div>
+                <FichaAnel ok={total - faltam.length} total={total} />
               </div>
-              <div className="min-w-0"><FuncaoSelo funcao={p.funcao} />{sub && <div className="mt-1 truncate text-[11.5px] text-muted-foreground">{sub}</div>}</div>
-              <div><VinculoSelo vinculo={p.ficha?.vinculo} /></div>
-              <div><AcessoSelo acesso={p.acesso} textoDesligado={p.desligada ? desligadoEmTexto(p.ficha) : null} /></div>
-              <div className="text-[12.5px]">
-                {!admissao ? <span className="text-muted-foreground">Sem admissão</span>
-                  : tempoDeCasa(admissao, agora) === 'desde hoje' ? <div className="font-semibold">Na equipe desde hoje</div>
-                    : (<><div className="font-semibold">{tempoDeCasa(admissao, agora)}</div><div className="text-[11.5px] text-muted-foreground">desde {dataBR(admissao).slice(3)}</div></>)}
-              </div>
-              <FichaAnel ok={total - faltam.length} total={total} />
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </section>
     </div>
   );

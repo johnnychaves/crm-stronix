@@ -26,9 +26,12 @@ export function FichaAcesso({ pessoa, professorEnabled, onEditarAcesso, onTirarA
         {u && !isGestor(u) && <SettingsBtn size={34} onClick={onTirarAcesso}>Tirar acesso</SettingsBtn>}
         {podeDar && <SettingsBtn size={34} kind="primary" icon={<KeyRound size={13} />} onClick={onDarAcesso}>Dar acesso</SettingsBtn>}
       </header>
+      {u && !u.authUid && (
+        <p className="mt-3 text-[13px] text-muted-foreground">O login ainda não está vinculado: a pessoa entra uma vez com o e-mail de login para vincular.</p>
+      )}
       {u ? (
         <dl className="mt-3 grid gap-x-5 gap-y-3 [grid-template-columns:repeat(auto-fill,minmax(180px,1fr))]">
-          <Linha rotulo="Situação"><AcessoSelo acesso="com" /></Linha>
+          <Linha rotulo="Situação"><AcessoSelo acesso={pessoa.acesso} /></Linha>
           <Linha rotulo="Papel">{roleLabel(u)}</Linha>
           <Linha rotulo="E-mail de login">{u.email}</Linha>
           {u.shiftStart && u.shiftEnd && <Linha rotulo="Turno">{`${u.shiftStart} às ${u.shiftEnd}`}</Linha>}
