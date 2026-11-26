@@ -126,3 +126,15 @@ describe('minutos até o primeiro contato de um lead', () => {
     expect(firstContactMinutesOf({ id: 'a', createdAt: T(1, 10) }, { contactTimes, limit: T(1, 10, 15).getTime() })).toBeNull();
   });
 });
+
+describe('volta a treinar da importação da Next Fit', () => {
+  const VOLTA = { id: 'v1', leadId: 'a', type: 'presence_return', text: 'Voltou a treinar em 03/10', createdAt: T(3, 9) };
+
+  it('não conta como contato', () => {
+    expect(isContactInteraction(VOLTA)).toBe(false);
+  });
+
+  it('não vira o primeiro contato do lead', () => {
+    expect(contactTimesByLead([VOLTA]).has('a')).toBe(false);
+  });
+});

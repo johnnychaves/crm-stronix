@@ -282,6 +282,10 @@ export const hasActiveInteractionToday = (lead, interactions, todayStart) => {
     // esta exclusão, o 🎉 da conversão acenderia "Já interagido hoje" no
     // INDICADOR quando o indicado fecha matrícula.
     if (i.type === 'referral') return false;
+    // A volta a treinar vem da planilha da Next Fit, e ninguém falou com o
+    // aluno: sem esta exclusão, a importação acenderia o "Já interagido hoje"
+    // do cliente na Meta da renovação e dos vencidos.
+    if (i.type === PRESENCE_RETURN_TYPE) return false;
     if (isRegistrationInteraction(i)) return false;
     if (isZapSignalInteraction(i)) return false;
     return true;

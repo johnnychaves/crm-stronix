@@ -4,7 +4,7 @@
 
 import { dayKeyOf, monthKeyOf, monthLabel } from './operacional/month.js';
 import { parseValorBRL } from './format.js';
-import { ZAP_SIGNUP_TYPE, ZAP_SIGNAL_TYPE, ZAP_VIA, isAiInteraction, isZapSignalInteraction } from './leads.js';
+import { PRESENCE_RETURN_TYPE, ZAP_SIGNUP_TYPE, ZAP_SIGNAL_TYPE, ZAP_VIA, isAiInteraction, isZapSignalInteraction } from './leads.js';
 
 // Troca de responsável feita pelo cadastro completo da ficha: status_change
 // com dois colchetes, "Responsável alterado de [Ana] para [Bruno]."
@@ -311,6 +311,12 @@ export const classifyInteraction = (i) => {
   // decidido pelo type. Entra em Marcos e aparece com o interruptor de
   // Sistema desligado.
   if (i.type === ZAP_SIGNUP_TYPE) return 'origin';
+  // "Voltou a treinar", gravada pela importação das planilhas da Next Fit
+  // (src/lib/faltosos/lotesImportacao.js): marco da presença do aluno,
+  // decidido pelo type, e fora do 'origin', que a ficha desenha como o marco
+  // de início. Entra em Marcos e aparece com o interruptor de Sistema
+  // desligado.
+  if (i.type === PRESENCE_RETURN_TYPE) return 'presence';
   // Linha da conversa pelo Stronizap (o lead escreveu, a equipe enviou):
   // bucket Conversas, decidido pelo type. Vem antes das regras de texto, porque
   // o trecho da mensagem do lead é texto livre.
@@ -357,7 +363,7 @@ export const TIMELINE_FILTERS = [
   { id: 'conversation', label: 'Conversas',    kinds: ['conversation'] },
   { id: 'appointment',  label: 'Agendamentos', kinds: ['appointment'] },
   { id: 'note',         label: 'Anotações',    kinds: ['note'] },
-  { id: 'milestone',    label: 'Marcos',       kinds: ['status', 'contract', 'referral', 'origin'] }
+  { id: 'milestone',    label: 'Marcos',       kinds: ['status', 'contract', 'referral', 'origin', 'presence'] }
 ];
 
 export const TIMELINE_SYSTEM_KIND = 'system';
@@ -384,6 +390,7 @@ export const timelineTypeLabel = (i) => {
     case 'status': return isOwnerChangeText(t) ? 'Responsável' : 'Fase';
     case 'referral': return 'Indicação';
     case 'origin': return 'Início';
+    case 'presence': return 'Presença';
     case 'conversation': return /^📞|ligaç/i.test(t) ? 'Ligação' : 'WhatsApp';
     case 'note': return i?.pinned ? 'Nota fixa' : 'Nota';
     case 'appointment': return /aula/i.test(t) ? 'Aula' : 'Agenda';
