@@ -29,7 +29,8 @@ export function EditarAcessoDialog({ db, appUser, user, usersList, open, onOpenC
   const [abertoPara, setAbertoPara] = useState(null);
   const [form, setForm] = useState(() => formDe(user));
   const [saving, setSaving] = useState(false);
-  if (open && abertoPara !== user?.id) { setAbertoPara(user?.id ?? null); setForm(formDe(user)); }
+  const alvo = user?.id ?? null;
+  if (open && abertoPara !== alvo) { setAbertoPara(alvo); setForm(formDe(user)); }
   if (!open && abertoPara !== null) setAbertoPara(null);
   if (!user) return null;
 
@@ -49,6 +50,7 @@ export function EditarAcessoDialog({ db, appUser, user, usersList, open, onOpenC
     Authorization: `Bearer ${await auth.currentUser.getIdToken()}`
   });
 
+  // Papel e professor ligado mudam pelo servidor (set-role do
   // /api/admin-users), que confere o módulo, o professor do cadastro, a
   // carteira e a vaga de consultor. Devolve true quando o resto do cadastro
   // pode seguir.

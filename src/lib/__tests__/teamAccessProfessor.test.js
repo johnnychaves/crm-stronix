@@ -61,6 +61,7 @@ let root = null;
 let respostas = [];
 
 beforeEach(() => {
+  fechar.mockClear();
   ordem.length = 0;
   updateDoc.mockClear();
   deleteDoc.mockClear();
@@ -122,6 +123,7 @@ const campo = (rotulo) => [...document.querySelectorAll('label')]
   ?.querySelector('input, select') ?? null;
 const opcoes = (select) => [...select.options].filter((o) => !o.disabled).map((o) => o.textContent);
 // Monta o diálogo de editar o acesso do membro i, no mesmo contexto da lista.
+const fechar = vi.fn();
 async function editar(i, { modules = [MODULES.FALTOSOS], equipe = EQUIPE } = {}) {
   const container = document.createElement('div');
   document.body.appendChild(container);
@@ -130,7 +132,7 @@ async function editar(i, { modules = [MODULES.FALTOSOS], equipe = EQUIPE } = {})
     root.render(h(
       GeneralConfigContext.Provider,
       { value: { modalities: [], professores: PROFESSORES } },
-      h(EditarAcessoDialog, { db: {}, appUser: { ...GESTOR, tenantModules: modules }, user: equipe[i], usersList: equipe, open: true, onOpenChange: () => {} })
+      h(EditarAcessoDialog, { db: {}, appUser: { ...GESTOR, tenantModules: modules }, user: equipe[i], usersList: equipe, open: true, onOpenChange: fechar })
     ));
   });
 }
@@ -256,6 +258,7 @@ describe('Equipe & acessos com o módulo', () => {
     ]);
     expect(toast.error).toHaveBeenCalledWith(erro);
     expect(updateDoc).not.toHaveBeenCalled();
+    expect(fechar).not.toHaveBeenCalled();
   });
 
   // Professor que volta a consultor ocupa vaga do plano. Com as vagas cheias,
@@ -274,6 +277,7 @@ describe('Equipe & acessos com o módulo', () => {
       ['api', '/api/admin-users', { action: 'set-role', userDocId: 'uid-rafa', role: 'consultant', allowExtra: false }],
     ]);
     expect(updateDoc).not.toHaveBeenCalled();
+    expect(fechar).not.toHaveBeenCalled();
     expect(toast.success).not.toHaveBeenCalled();
     expect(toast.info).not.toHaveBeenCalled();
     expect(toast.error).not.toHaveBeenCalled();

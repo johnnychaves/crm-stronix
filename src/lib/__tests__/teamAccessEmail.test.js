@@ -55,6 +55,7 @@ let respostaDaApi = null;
 beforeEach(() => {
   ordem.length = 0;
   updateDoc.mockClear();
+  fechar.mockClear();
   for (const fn of Object.values(toast)) fn.mockClear();
   respostaDaApi = { status: 200, body: { ok: true, changed: true } };
   vi.stubGlobal('fetch', vi.fn(async (url, init) => {
@@ -136,6 +137,7 @@ describe('Editar membro: e-mail de login de quem tem conta', () => {
 
     expect(toast.error).toHaveBeenCalledWith(LOGIN_EMAIL_TAKEN_MESSAGE);
     expect(updateDoc).not.toHaveBeenCalled();
+    expect(fechar).not.toHaveBeenCalled();
     expect(toast.success).not.toHaveBeenCalled();
     // O formulário continua aberto, com o que foi digitado.
     expect(campoEmail().value).toBe('ana@gmail.com');
@@ -149,6 +151,7 @@ describe('Editar membro: e-mail de login de quem tem conta', () => {
 
     expect(chamadasDaApi()).toEqual([]);
     expect(updateDoc).not.toHaveBeenCalled();
+    expect(fechar).not.toHaveBeenCalled();
   });
 
   it('formato ruim avisa antes de perguntar e não chama nada', async () => {
@@ -161,6 +164,7 @@ describe('Editar membro: e-mail de login de quem tem conta', () => {
     expect(confirm).not.toHaveBeenCalled();
     expect(chamadasDaApi()).toEqual([]);
     expect(updateDoc).not.toHaveBeenCalled();
+    expect(fechar).not.toHaveBeenCalled();
   });
 
   it('e-mail igual ao de antes não chama a API, não pergunta e não grava e-mail', async () => {
@@ -213,6 +217,7 @@ describe('Editar membro: o próprio gestor', () => {
     expect(confirm).not.toHaveBeenCalled();
     expect(chamadasDaApi()).toEqual([]);
     expect(updateDoc).not.toHaveBeenCalled();
+    expect(fechar).not.toHaveBeenCalled();
   });
 });
 

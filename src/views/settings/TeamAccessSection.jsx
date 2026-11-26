@@ -1,6 +1,6 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { EditarAcessoDialog } from './equipe/EditarAcessoDialog.jsx';
 import { ProfessorPicker } from './equipe/ProfessorPicker.jsx';
-import { useEffect, useMemo, useRef, useState } from 'react';
 import { Copy, Dumbbell, Mail, Pencil, Plus, Shield, Trash2 } from 'lucide-react';
 import { collection, doc, addDoc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, appId, LEADS_PATH, PROFESSORS_PATH, USERS_PATH } from '../../lib/firebase.js';
@@ -13,7 +13,7 @@ import { isGestor, isProfessor, roleLabel, roleOf, ROLES } from '../../lib/acess
 import { hasModule, MODULES } from '../../lib/modules.js';
 import {
   availableProfessors, inviteRoleOptions, linkedProfessorIds, linkedProfessorText,
-  PROFESSOR_LINK_MESSAGES, SET_ROLE_ACTION
+  PROFESSOR_LINK_MESSAGES
 } from '../../lib/teamRoles.js';
 import { cn } from '../../lib/utils.js';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
