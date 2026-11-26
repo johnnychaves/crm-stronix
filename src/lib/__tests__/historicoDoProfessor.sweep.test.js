@@ -58,6 +58,9 @@ const REVISADOS = {
   'api/admin-users.js': 'papel da equipe',
   'api/invite-accept.js': 'convite de professor',
   'api/invite-create.js': 'convite de professor',
+  // Faltosos (Professor e faltosos, PR 2A): o professor do aluno no estado
+  // dos faltosos e nas ligações da Next Fit. Nenhum deles grava o lead.
+  'src/lib/faltosos/ligacaoProfessores.js': 'ligação dos professores da Next Fit, guardada em stronix_config/faltosos',
 };
 
 const comChave = [...arquivosDeCodigo(join(RAIZ, 'src')), ...arquivosDeCodigo(join(RAIZ, 'api'))]
