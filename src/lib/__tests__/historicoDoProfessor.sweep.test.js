@@ -63,6 +63,7 @@ const REVISADOS = {
   'src/lib/faltosos/ligacaoProfessores.js': 'ligação dos professores da Next Fit, guardada em stronix_config/faltosos',
   'src/lib/faltosos/planoImportacao.js': 'estado de cada faltoso (stronix_faltosos), não o lead',
   'src/lib/faltosos/lotesImportacao.js': 'gravação de stronix_faltosos, nunca de stronix_leads',
+  'src/lib/faltosos/passosImportacao.js': 'escolhas da ligação dos professores na janela',
 };
 
 const comChave = [...arquivosDeCodigo(join(RAIZ, 'src')), ...arquivosDeCodigo(join(RAIZ, 'api'))]
