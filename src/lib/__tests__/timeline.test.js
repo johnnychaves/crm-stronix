@@ -170,6 +170,10 @@ describe('matchesTimelineFilter', () => {
 describe('timelineTypeLabel — a coluna de versalete', () => {
   const l = (over) => timelineTypeLabel(over);
 
+  it('o freepass tem rótulo próprio', () => {
+    expect(l({ type: 'freepass', _kind: 'appointment', text: 'Freepass lançado: Pilates 2 aulas, aula experimental' })).toBe('Freepass');
+  });
+
   it('separa ligação de WhatsApp dentro de conversas', () => {
     expect(l({ _kind: 'conversation', text: '📞 Ligação: sem resposta' })).toBe('Ligação');
     expect(l({ _kind: 'conversation', text: '📲 Mensagem WhatsApp enviada: oi' })).toBe('WhatsApp');
@@ -820,5 +824,12 @@ describe('troca de funil na mudança de fase (funnelChangeOf)', () => {
     expect(funnelChangeOf(troca({}), FUNNELS)).toBeNull();
     expect(funnelChangeOf(troca({ funnelId: 'f2', fromFunnelId: 'f1' }), [])).toBeNull();
     expect(funnelChangeOf(null, FUNNELS)).toBeNull();
+  });
+});
+
+describe('parseAppointment: o texto do freepass não é agendamento', () => {
+  it('lançar e encerrar freepass não viram cartão de agendamento', () => {
+    expect(parseAppointment({ text: 'Freepass lançado: Muscu 7 dias (Musculação), de 26/11 a 02/12.' })).toBeNull();
+    expect(parseAppointment({ text: 'Freepass encerrado: Muscu 7 dias.' })).toBeNull();
   });
 });

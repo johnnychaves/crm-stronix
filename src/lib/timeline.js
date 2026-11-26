@@ -315,6 +315,9 @@ export const classifyInteraction = (i) => {
   // bucket Conversas, decidido pelo type. Vem antes das regras de texto, porque
   // o trecho da mensagem do lead é texto livre.
   if (i.type === ZAP_SIGNAL_TYPE) return 'conversation';
+  // Lançamento e encerramento do freepass: bucket de Agendamentos, decidido
+  // pelo type, porque o texto cita "aulas" e o nome do tipo é livre.
+  if (i.type === 'freepass') return 'appointment';
   // Cadastro importado de outro sistema (clientImportWrites.js): evento de
   // sistema, atrás do interruptor. Vem antes do regex de contrato porque o
   // texto cita o plano e a vigência.
@@ -375,6 +378,7 @@ export const timelineTypeLabel = (i) => {
   // A linha da conversa pelo Stronizap é sempre WhatsApp: o trecho do lead é
   // texto livre, e uma palavra como "ligação" não pode mudar o rótulo.
   if (i?.type === ZAP_SIGNAL_TYPE) return 'WhatsApp';
+  if (i?.type === 'freepass') return 'Freepass';
   switch (i?._kind) {
     case 'contract': return 'Contrato';
     case 'status': return isOwnerChangeText(t) ? 'Responsável' : 'Fase';

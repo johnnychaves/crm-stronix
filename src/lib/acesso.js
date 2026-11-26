@@ -60,6 +60,9 @@ export const ACTIONS = Object.freeze({
   CADASTRO_EDITAR: 'cadastro.editar',
   FICHA_MUDAR_FASE: 'ficha.mudarFase',
   CONTRATO_EDITAR: 'contrato.editar',
+  // Lançar e encerrar freepass (spec 2026-11-26). Gestor e consultor; o
+  // professor não.
+  FREEPASS_LANCAR: 'freepass.lancar',
   INDICACAO_CADASTRAR: 'indicacao.cadastrar',
   CLIENTES_EXPORTAR: 'clientes.exportar',
   LEADS_VER: 'leads.ver',

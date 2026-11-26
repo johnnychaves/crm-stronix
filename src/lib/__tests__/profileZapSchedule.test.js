@@ -259,4 +259,19 @@ describe('o rodapé do desfecho depois de remarcar pela Meta Diária', () => {
     expect(html.match(/Agendada em 29\/09 por Ana Souza, pelo Stronizap/g)).toHaveLength(2);
     expect(html).not.toContain('Agendada em 01/10');
   });
+
+  // Freepass lançado ou encerrado entre o agendamento e o desfecho cai no
+  // bucket Agendamentos, mas não é o agendamento de origem do desfecho.
+  it('o freepass lançado entre o agendamento e o desfecho não vira a origem do desfecho', () => {
+    const freepass = {
+      id: 'f1', type: 'freepass', freepassId: 'fp1',
+      text: 'Freepass lançado: Muscu 7 dias (Musculação), de 30/09 a 07/10.',
+      consultantName: 'Carla Dias', createdAt: new Date(2026, 8, 30, 10, 0),
+    };
+    const veio = { ...VEIO_DIA_3, id: 'd6', createdAt: new Date(2026, 9, 1, 18, 40) };
+    linha.registros = [veio, freepass, AGENDA];
+    const html = ficha();
+    expect(html).toContain('Agendada em 29/09 por Ana Souza, pelo Stronizap');
+    expect(html).not.toContain('Agendada em 30/09');
+  });
 });
