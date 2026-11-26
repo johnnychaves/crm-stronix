@@ -145,7 +145,7 @@ export function TrilhaGrade({ trilha, pessoas, onMudar, onRegras, avisar }) {
             checked={numero.ligado}
             onCheckedChange={(v) => onMudar((t) => ligarNumero(t, id, v))}
             aria-label={`${nome} conta nesta trilha`}
-            className="focus-visible:anel-foco focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            className="focus-visible:anel-foco focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           />
         );
         return (

@@ -139,7 +139,7 @@ export function TrilhaRegras({ trilha, onMudar, totalDePessoas, modalities, cale
         </Regra>
         <Regra rotulo={rotuloDoMes}>
           <Select value={String(primeiro)} onValueChange={(v) => onMudar((t) => com(t, { mes: Number(v) }))} disabled={calendarioTravado}>
-            <SelectTrigger aria-label={rotuloDoMes} className="h-10 w-[240px] rounded-[11px] border-border focus-visible:anel-foco">
+            <SelectTrigger aria-label={rotuloDoMes} className="h-10 w-[240px] rounded-[11px] border-border focus-visible:anel-foco focus-visible:ring-2 focus-visible:ring-ring">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

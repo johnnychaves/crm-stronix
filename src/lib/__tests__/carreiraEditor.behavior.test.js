@@ -137,6 +137,22 @@ describe('a grade de níveis e metas', () => {
   });
 });
 
+describe('o anel do foco', () => {
+  // O anel-foco é um @utility que o cn não conhece: sem o ring-2 ring-ring
+  // escrito, o anel de 50% do primitivo fica por cima dele.
+  it('a chave e a lista do mês não levam o anel de 50% do primitivo', async () => {
+    await render({ inicial: ESTAGIARIO, gravada: ESTAGIARIO, pessoas: NINGUEM });
+    const chave = document.body.querySelector('[role="switch"]');
+    const mes = document.body.querySelector('button[aria-label="Meses da avaliação"]');
+    for (const el of [chave, mes]) {
+      expect(el.className).toContain('focus-visible:anel-foco');
+      expect(el.className).toContain('focus-visible:ring-ring');
+      expect(el.className).not.toContain('ring-ring/50');
+      expect(el.className).not.toContain('ring-[3px]');
+    }
+  });
+});
+
 describe('o rascunho e a barra de salvar', () => {
   it('trocar de aba não perde o que foi digitado', async () => {
     await render({ inicial: PROFESSOR, gravada: PROFESSOR, pessoas: GENTE });
