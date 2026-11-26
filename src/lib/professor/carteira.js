@@ -7,6 +7,24 @@ import { contractStateAt } from '../operacional/base.js';
 import { planModalityIds } from '../planos.js';
 import { professorAt } from '../professorHistory.js';
 
+// A modalidade do plano para o professor responsável (regra do Johnny,
+// 25/11/2026): o Flow e o Move levam a musculação junto, mas são de pilates e
+// de funcional. Plano com a musculação e mais uma modalidade fica, aqui, só
+// com a outra, e um professor de musculação não conta esse aluno. Plano com
+// três modalidades (o Experience) continua com as três. Quem lê o catálogo
+// passa os planos por aqui antes das contas (useProfessoresDados e o servidor
+// da pesquisa).
+const MUSCULACAO_RE = /muscula/i;
+export function planosDoProfessor(planos, modalidades) {
+  const musc = new Set((modalidades || []).filter((m) => MUSCULACAO_RE.test(String(m?.name || ''))).map((m) => m.id));
+  if (!musc.size) return planos || [];
+  return (planos || []).map((p) => {
+    const ids = planModalityIds(p);
+    const outras = ids.filter((id) => !musc.has(id));
+    return ids.length === 2 && outras.length === 1 ? { ...p, modalityIds: outras } : p;
+  });
+}
+
 // Contratos de plano da modalidade do professor, por leadId. Contrato sem
 // plano no catálogo (plano apagado ou importado sem plano) fica fora.
 export function contratosDaModalidade(contratos, professor, planos) {

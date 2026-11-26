@@ -18,7 +18,7 @@ import { TENANT_SLUG_READ_RE, isReservedTenantSlug } from '../src/lib/tenantSlug
 import { hasModule, MODULES } from '../src/lib/modules.js';
 import { isValidCpf } from '../src/lib/brazilLookups.js';
 import { normalizeContracts } from '../src/lib/operacional/base.js';
-import { carteiraAt } from '../src/lib/professor/carteira.js';
+import { carteiraAt, planosDoProfessor } from '../src/lib/professor/carteira.js';
 import { somarResposta } from '../src/lib/professor/nps.js';
 import { recebeRespostas } from '../src/lib/professor/pesquisas.js';
 
@@ -75,12 +75,14 @@ async function alunoDaCarteira(slug, professor, cpf, agora) {
   const ls = await dataCollection(slug, LEADS).where('cpfDigits', '==', cpf).limit(10).get();
   const leads = ls.docs.map((d) => ({ id: d.id, ...d.data() })).filter((l) => l.professorId === professor.id);
   if (!leads.length) return null;
-  const [contratosSnaps, planosSnap] = await Promise.all([
+  const [contratosSnaps, planosSnap, modsSnap] = await Promise.all([
     Promise.all(leads.map((l) => dataCollection(slug, CONTRATOS).where('leadId', '==', l.id).get())),
     dataCollection(slug, PLANOS).get(),
+    dataCollection(slug, MODALIDADES).get(),
   ]);
   const contratos = normalizeContracts(contratosSnaps.flatMap((s) => s.docs.map((d) => ({ id: d.id, ...d.data() }))));
-  const planos = planosSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const modalidades = modsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const planos = planosDoProfessor(planosSnap.docs.map((d) => ({ id: d.id, ...d.data() })), modalidades);
   return carteiraAt({ leads, contratos, planos, professor, data: agora }).find((a) => a.estado === 'vigente')?.lead ?? null;
 }
 

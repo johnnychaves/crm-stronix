@@ -217,7 +217,7 @@ export function NpsTab({ nps, metaNps, pode, professorLogado, primeiroNome, db, 
       )}
 
       {pode && (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
           <section aria-labelledby="nps-quem" className={cn(CARD, 'min-w-0')}>
             <h3 id="nps-quem" className="m-0 font-display text-[16px] font-bold">Quem respondeu <span className="num font-medium text-muted-foreground">{respostas.length}</span></h3>
             {lendo ? <p className="mb-0 mt-2 text-[13px] text-muted-foreground">Carregando as respostas…</p>

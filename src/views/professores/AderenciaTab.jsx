@@ -59,7 +59,7 @@ export function AderenciaTab({ linhas, resumo, metas, leadsById, professorLogado
     return (
       <div className="rounded-2xl border border-dashed border-border p-6 text-[13.5px] text-muted-foreground">
         <b className="block text-foreground">Sem dados ainda.</b>
-        A aderência aparece quando as presenças da aula de funcional forem importadas do relatório da Next Fit.
+        {professorLogado ? 'A sua turma' : `A turma de ${primeiroNome}`} ainda não tem presença importada. Hoje o relatório importado da Next Fit é o das aulas de funcional, então a aderência só aparece para quem dá essas aulas.
       </div>
     );
   }

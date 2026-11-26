@@ -468,8 +468,8 @@ service cloud.firestore {
     // rascunho só nasce rascunho. Depois de aberta, as perguntas e as turmas
     // não mudam, porque a resposta guarda o id das perguntas e a nota vale com
     // metade da turma, e a única troca de situação é para encerrada (não
-    // reabre). Só o rascunho se apaga. O src/lib/__tests__/npsRules.test.js lê
-    // estes blocos.
+    // reabre), sem mexer nas datas nem no ciclo. Só o rascunho se apaga. O
+    // src/lib/__tests__/npsRules.test.js lê estes blocos.
     match /artifacts/{appId}/public/data/stronix_nps_pesquisas/{id} {
       allow read: if inTenant(appId) && tenantActive(appId) && hasModule(appId, 'faltosos');
       allow create: if isAdmin(appId) && inTenant(appId) && tenantActive(appId) && hasModule(appId, 'faltosos')
@@ -478,7 +478,10 @@ service cloud.firestore {
         && (resource.data.situacao == 'rascunho'
           || (request.resource.data.situacao == 'encerrada'
             && request.resource.data.perguntas == resource.data.perguntas
-            && request.resource.data.get('turmas', null) == resource.data.get('turmas', null)));
+            && request.resource.data.get('turmas', null) == resource.data.get('turmas', null)
+            && request.resource.data.inicio == resource.data.inicio
+            && request.resource.data.fim == resource.data.fim
+            && request.resource.data.ciclo == resource.data.ciclo));
       allow delete: if isAdmin(appId) && inTenant(appId) && tenantActive(appId) && hasModule(appId, 'faltosos')
         && resource.data.situacao == 'rascunho';
     }

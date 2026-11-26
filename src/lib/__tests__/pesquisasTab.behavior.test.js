@@ -67,6 +67,17 @@ describe('o link de cada professor', () => {
     expect(document.activeElement?.id).toBe('pesq-destaque');
   });
 
+  it('cada professor com link tem o Copiar link na pesquisa aberta', async () => {
+    const escrever = vi.fn(async () => {});
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: escrever }, configurable: true });
+    render({ tenantId: 'acad', professores: [{ id: 'b', nome: 'Bruno Carvalho', npsCode: 'k7q2mx9pza' }, { id: 'c', nome: 'Camila Rocha' }] });
+    const copiar = [...container.querySelectorAll('button')].filter((b) => b.textContent.startsWith('Copiar link'));
+    expect(copiar.map((b) => b.textContent)).toEqual(['Copiar link de Bruno Carvalho']);
+    await clicar(copiar[0]);
+    expect(escrever).toHaveBeenCalledWith(`${window.location.origin}/avaliar/acad/k7q2mx9pza`);
+    expect(toast.success).toHaveBeenCalledWith('Link de Bruno copiado.');
+  });
+
   it('com todos os links, não avisa nada', () => {
     render({ professores: PROFS.map((p) => ({ ...p, npsCode: 'k7q2mx9pza' })) });
     expect(container.textContent).not.toContain('sem o link');
@@ -98,7 +109,7 @@ describe('a lista das pesquisas', () => {
   });
 
   it('sem aberta, o destaque diz isso e o rascunho abre com confirmação', async () => {
-    render({ pesquisas: [RASCUNHO], totais: [] });
+    render({ pesquisas: [RASCUNHO], totais: [], hoje: '2027-11-28' });
     expect(container.textContent).toContain('Nenhuma pesquisa aberta');
     await clicar(botao('Abrir pesquisa'));
     const confirma = container.querySelector('[role="alertdialog"]');
@@ -107,6 +118,12 @@ describe('a lista das pesquisas', () => {
     await clicar([...confirma.querySelectorAll('button')].find((b) => b.textContent === 'Abrir pesquisa'));
     expect(w.abrirPesquisa).toHaveBeenCalledWith({}, 'dez', expect.objectContaining({ turmas: { b: 21, c: 25 } }));
     expect(toast.success).toHaveBeenCalledWith('Pesquisa aberta.');
+  });
+
+  it('o rascunho não abre mais de uma semana antes do início, e diz quando abre', () => {
+    render({ pesquisas: [RASCUNHO], totais: [], hoje: '2027-06-14' });
+    expect(botao('Abrir pesquisa').disabled).toBe(true);
+    expect(container.textContent).toContain('Abre a partir de 24/11, uma semana antes do início');
   });
 
   it('encerrar pede confirmação', async () => {
@@ -121,7 +138,7 @@ describe('a lista das pesquisas', () => {
 
 describe('o formulário', () => {
   it('passa pelos três passos e abre a pesquisa nova', async () => {
-    render({ pesquisas: [], totais: [] });
+    render({ pesquisas: [], totais: [], hoje: '2027-11-28' });
     await clicar(botao('Nova pesquisa'));
     expect(document.activeElement.textContent).toBe('Nome e datas');
     expect(botao('Continuar').disabled).toBe(true);

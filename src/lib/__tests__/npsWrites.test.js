@@ -25,7 +25,7 @@ const { abrirPesquisa, gerarLinksQueFaltam, gerarNovoLink } = await import('../n
 
 const PERGUNTAS = [{ id: 'p1', texto: 'Recomendaria?', principal: true }];
 const rascunho = { nome: 'Junho', inicio: '2027-06-01', fim: '2027-06-20', ciclo: 2027, situacao: 'rascunho', perguntas: PERGUNTAS };
-const agora = new Date(2027, 4, 20, 10);
+const agora = new Date(2027, 4, 28, 10);
 
 beforeEach(() => {
   s.docs = { r1: rascunho };
@@ -47,6 +47,13 @@ describe('abrirPesquisa', () => {
     expect(doP1[0].dados).toEqual({ npsCode: expect.stringMatching(/^[a-km-np-z2-9]{10}$/), npsCodeEm: 'AGORA' });
     expect(s.updates.some((u) => u.id === 'p2')).toBe(false);
     expect(s.updates.find((u) => u.id === 'r1').dados.situacao).toBe('aberta');
+  });
+
+  it('recusa abrir mais de uma semana antes do início, e abre a partir de uma semana antes', async () => {
+    await expect(abrirPesquisa({}, 'r1', { turmas: { p1: 2 }, agora: new Date(2027, 4, 24, 10) })).rejects.toThrow('abre a partir de 25/05/2027');
+    expect(s.updates).toEqual([]);
+    await abrirPesquisa({}, 'r1', { turmas: { p1: 2 }, agora: new Date(2027, 4, 25, 10) });
+    expect(s.updates).toHaveLength(1);
   });
 
   it('recusa sem turma, fora do rascunho e com pesquisa incompleta', async () => {

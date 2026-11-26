@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, Info, Plus, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { ciclosDaPesquisa, MAX_PERGUNTAS, problemaDaPesquisa } from '../../lib/professor/pesquisas.js';
+import { dayKeyOf } from '../../lib/operacional/month.js';
+import { abreAPartirDe, ciclosDaPesquisa, MAX_PERGUNTAS, podeAbrir, problemaDaPesquisa } from '../../lib/professor/pesquisas.js';
 import { BOTAO, BOTAO_PRI, Confirmacao } from './Confirmacao.jsx';
-import { cicloLongo, periodoTexto } from './pesquisasTexto.js';
+import { cicloLongo, diaTexto, periodoTexto } from './pesquisasTexto.js';
 
 // O formulário da pesquisa em três passos (mockup B): nome e datas, perguntas,
 // revisar e abrir. O rodapé diz o que falta e só deixa seguir com o passo
@@ -23,7 +24,7 @@ function problemaDoPasso(form, passo) {
   return p;
 }
 
-export function PesquisaForm({ id, inicial, turmaHoje, outraAberta, onSalvar, onAbrir, onExcluir, onVoltar }) {
+export function PesquisaForm({ id, inicial, turmaHoje, hoje = dayKeyOf(new Date()), outraAberta, onSalvar, onAbrir, onExcluir, onVoltar }) {
   const [form, setForm] = useState(inicial);
   const [passo, setPasso] = useState(0);
   const [confirmar, setConfirmar] = useState(null); // 'abrir' | 'excluir'
@@ -65,6 +66,7 @@ export function PesquisaForm({ id, inicial, turmaHoje, outraAberta, onSalvar, on
 
   const travaPasso = problemaDoPasso(form, passo);
   const travaTudo = problemaDaPesquisa(form);
+  const cedo = !travaTudo && !podeAbrir(form, hoje);
   // Só o campo preenchido errado fica vermelho; o que falta, o rodapé diz.
   const invalido = (campo) => (travaPasso?.campo === campo && String(form[campo] ?? '').trim() !== '') || undefined;
 
@@ -215,7 +217,8 @@ export function PesquisaForm({ id, inicial, turmaHoje, outraAberta, onSalvar, on
         )}
 
         <p role="status" className="m-0 min-h-[18px] text-[12.5px] font-semibold text-amber-700 dark:text-amber-300">
-          {travaPasso?.texto ?? (passo === 2 && outraAberta ? `A pesquisa ${outraAberta.nome} está aberta. Encerre ela antes de abrir esta.` : '')}
+          {travaPasso?.texto ?? (passo === 2 && outraAberta ? `A pesquisa ${outraAberta.nome} está aberta. Encerre ela antes de abrir esta.`
+            : passo === 2 && cedo ? `Salve o rascunho e abra a partir de ${diaTexto(abreAPartirDe(form.inicio)).slice(0, 5)}, uma semana antes do início, para a turma ser a da época da pesquisa.` : '')}
         </p>
 
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -232,7 +235,7 @@ export function PesquisaForm({ id, inicial, turmaHoje, outraAberta, onSalvar, on
             {passo < 2 ? (
               <button type="button" disabled={Boolean(travaPasso) || ocupado} onClick={() => setPasso((p) => p + 1)} className={BOTAO_PRI}>Continuar</button>
             ) : (
-              <button type="button" disabled={Boolean(travaTudo) || Boolean(outraAberta) || turmaHoje == null || ocupado} onClick={() => setConfirmar('abrir')} className={BOTAO_PRI}>Abrir pesquisa</button>
+              <button type="button" disabled={Boolean(travaTudo) || Boolean(outraAberta) || cedo || turmaHoje == null || ocupado} onClick={() => setConfirmar('abrir')} className={BOTAO_PRI}>Abrir pesquisa</button>
             )}
           </span>
         </div>

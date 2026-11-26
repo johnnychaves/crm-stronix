@@ -140,6 +140,20 @@ describe('npsDoCiclo', () => {
     expect(r).toMatchObject({ nota: 9.33, pesquisas: 1, passa: true, promotores: 83 });
   });
 
+  it('a encerrada antes do dia do início nunca recebeu resposta e fica fora do ciclo', () => {
+    const fechou = (iso) => ({ toDate: () => new Date(iso) });
+    const r = npsDoCiclo({
+      pesquisas: [
+        pesquisa('cedo', '2027-06-01', { encerradaEm: fechou('2026-11-25T20:00:00') }),
+        pesquisa('jun', '2027-06-01', { encerradaEm: fechou('2027-06-20T20:00:00') }),
+      ],
+      totais: [],
+      professorId: 'p1',
+      ciclo: 2027,
+    });
+    expect(r.itens.map((i) => i.pesquisa.id)).toEqual(['jun']);
+  });
+
   it('a pesquisa sem totais aparece com zero respostas e sem nota', () => {
     const r = npsDoCiclo({ pesquisas: [pesquisa('dez', '2027-12-01', { situacao: 'aberta' })], totais: [], professorId: 'p1', ciclo: 2027 });
     expect(r.itens[0].resultado).toMatchObject({ respostas: 0, turma: 20, valida: false, nota: null });

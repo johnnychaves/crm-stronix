@@ -234,9 +234,9 @@ export function AvaliarScreen({ slug, code }) {
         setStatus('');
         setFocarTitulo((n) => n + 1);
         setTimeout(() => confete(document.getElementById('avl-selo'), 60), 50);
-      } else if (r.motivo === 'ja') {
+      } else if (r.motivo === 'ja' || r.motivo === 'fora') {
         setTela('cpf');
-        setAlerta('ja');
+        setAlerta(r.motivo);
         setStatus('');
       } else if (r.motivo === 'fechada') {
         setInfo((i) => ({ ...i, pesquisa: null }));
