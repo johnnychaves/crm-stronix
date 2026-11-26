@@ -41,9 +41,11 @@ import {
   SCHEDULE_LIMIT, ZAP_SCHEDULE_MESSAGES, unitsView, readScheduleOptionsBody, buildScheduleOptions,
   readScheduleBody, readStatusBody, scheduleWithStoredNames, checkScheduleCatalog, checkFuture, leadBelongsToNumber,
   hasSameAppointment,
-  scheduleRecordChanges, buildScheduleWrites, appointmentDetailOf, alreadyScheduledBody, scheduleRefusal
+  scheduleRecordChanges, freepassPlan, buildScheduleWrites, appointmentDetailOf, alreadyScheduledBody, scheduleRefusal
 } from './_zapSchedule.js';
 import { contactOf } from '../src/lib/guardian.js';
+import { MODULES, hasModule } from '../src/lib/modules.js';
+import { normalizeFreepassTypes } from '../src/lib/visitante.js';
 
 const LEADS_PATH = 'stronix_leads';
 // Config geral da academia (mesmo doc que PaceSection.jsx grava em
@@ -59,6 +61,8 @@ const UNITS_PATH = 'stronix_units';
 const MODALITIES_PATH = 'stronix_modalities';
 const PROFESSORS_PATH = 'stronix_professores';
 const AULAS_PATH = 'stronix_aulas';
+// O freepass (entrega 2 do Visitante), só com o módulo Stronix 2.0.
+const FREEPASS_PATH = 'stronix_freepass';
 // Catálogos do formulário do cadastro, na ordem em que readCatalogs devolve.
 const CATALOG_PATHS = ['stronix_sources', 'stronix_dores', 'stronix_modalities', 'stronix_funnels', 'stronix_statuses'];
 
@@ -619,10 +623,13 @@ async function handleSchedule(req, res) {
     if (problem) return responder(res, problem);
 
     const serverTime = admin.firestore.FieldValue.serverTimestamp();
-    const increment = admin.firestore.FieldValue.increment(1);
     const leadRef = leadsCollection(tenantId).doc(schedule.leadId);
     const aulas = academyCollection(tenantId, AULAS_PATH);
-    const interactionRef = academyCollection(tenantId, INTERACTIONS_PATH).doc();
+    const interactions = academyCollection(tenantId, INTERACTIONS_PATH);
+    const interactionRef = interactions.doc();
+    // Com o módulo Stronix 2.0, a aula entra no freepass (freepassPlan). Sem
+    // ele, tudo fica como antes do freepass.
+    const freepassCol = hasModule(tenant, MODULES.FALTOSOS) ? academyCollection(tenantId, FREEPASS_PATH) : null;
 
     // Conferência do lead, do pedido repetido e gravação na MESMA transação:
     // dois cliques, duas pessoas ou o "Tentar de novo" depois de uma resposta
@@ -649,16 +656,31 @@ async function handleSchedule(req, res) {
       // aula só reaproveita o registro do currentAulaId se ele for mesmo uma
       // aula deste lead (isOpenAulaRecord); senão, nasce outro.
       const records = docsOf(await tx.get(aulas.where('leadId', '==', lead.id)));
+      // Os freepass do lead também são lidos antes de qualquer gravação.
+      const freepasses = freepassCol ? docsOf(await tx.get(freepassCol.where('leadId', '==', lead.id))) : null;
       const { close, openRecordId } = scheduleRecordChanges({ lead, schedule, at, records });
       const newRecordRef = openRecordId ? null : aulas.doc();
+      const newRecordId = newRecordRef ? newRecordRef.id : null;
+      const freepass = freepasses && freepassPlan({
+        lead, actor, schedule, at, records, freepasses, close, openRecordId, newRecordId, byAi, now: agora,
+        types: normalizeFreepassTypes(catalogs.config?.freepassTypes), modalities: catalogs.modalities,
+        newFreepassId: () => freepassCol.doc().id
+      });
       const writes = buildScheduleWrites({
-        lead, actor, schedule, at, professors: catalogs.professors, channelName, close,
-        openRecordId, newRecordId: newRecordRef ? newRecordRef.id : null, serverTime, increment, byAi
+        lead, actor, schedule, at, professors: catalogs.professors, channelName, close, openRecordId, newRecordId,
+        serverTime, byAi, freepass,
+        // O lançamento do freepass é a segunda interação da gravação, como no logInteractions.
+        increment: admin.firestore.FieldValue.increment(freepass?.launch ? 2 : 1)
       });
       if (writes.closed) tx.update(aulas.doc(writes.closed.id), writes.closed.update);
       if (openRecordId) tx.update(aulas.doc(openRecordId), writes.record.update);
       else tx.create(newRecordRef, writes.record.create);
+      for (const fp of writes.freepassWrites) {
+        if (fp.create) tx.create(freepassCol.doc(fp.id), fp.create);
+        else tx.update(freepassCol.doc(fp.id), fp.update);
+      }
       tx.create(interactionRef, writes.interaction);
+      if (writes.launchInteraction) tx.create(interactions.doc(), writes.launchInteraction);
       tx.update(leadRef, writes.leadPatch);
       return { scheduled: { ...lead, ...writes.leadPatch } };
     });

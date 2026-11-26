@@ -109,6 +109,19 @@ describe('faixa do cartão no horário de Brasília', () => {
     });
   });
 
+  // O resumo do freepass (entrega 2 do Visitante) guarda o último dia na
+  // meia-noite de Brasília, que em UTC é 03:00 do mesmo dia. Às 22:00 de
+  // Brasília o processo já está no dia seguinte.
+  it('às 22:00 de Brasília, o freepass do resumo que termina hoje continua na faixa', () => {
+    const lead = {
+      freepassId: 'fp1', freepassKind: 'dias', freepassTotal: 7, freepassStartsAt: brt('2026-09-02T00:00'),
+      freepassEndsAt: brt('2026-09-08T00:00'), freepassAulas: 0, freepassStatus: 'correndo', freepassContractAtStart: null
+    };
+    expect(buildZapStrip(lead, brt('2026-09-08T22:00'))).toEqual({ kind: 'freepass', tone: 'avencer', text: 'Freepass termina hoje' });
+    expect(buildZapStrip({ ...lead, freepassEndsAt: brt('2026-09-10T00:00') }, brt('2026-09-08T22:00'))?.text)
+      .toBe('Freepass até 10/09 · faltam 2 dias');
+  });
+
   it('às 22:00 de Brasília, contrato vencido em 31/08 conta 8 dias, e não 9', () => {
     const lead = cliente({ currentContractEndsAt: brt('2026-08-31T00:00') });
     expect(buildZapStrip(lead, brt('2026-09-08T22:00'))).toEqual({
