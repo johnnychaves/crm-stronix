@@ -139,6 +139,20 @@ describe('a lista das pesquisas', () => {
     expect(document.activeElement.id).toBe('pesq-destaque');
   });
 
+  it('abrir pela Próxima leva o foco ao destaque quando a pesquisa aberta chega, mesmo depois', async () => {
+    render({ pesquisas: [RASCUNHO], totais: [], hoje: '2027-11-28' });
+    await clicar(botao('Abrir pesquisa'));
+    const confirma = container.querySelector('[role="alertdialog"]');
+    await clicar([...confirma.querySelectorAll('button')].find((b) => b.textContent === 'Abrir pesquisa'));
+    // A resposta do servidor ainda não chegou: o destaque segue sem pesquisa.
+    await act(async () => { await new Promise((ok) => requestAnimationFrame(ok)); });
+    expect(document.activeElement.id).not.toBe('pesq-destaque');
+    render({ pesquisas: [{ ...RASCUNHO, situacao: 'aberta', turmas: { b: 21 } }], totais: [], hoje: '2027-12-02' });
+    await act(async () => { await new Promise((ok) => requestAnimationFrame(ok)); });
+    expect(document.activeElement.id).toBe('pesq-destaque');
+    expect(document.activeElement.textContent).toContain('Dezembro de 2027');
+  });
+
   it('a Próxima é o rascunho que ainda pode abrir, e não o que já passou do fim', () => {
     const velho = { ...RASCUNHO, id: 'out', nome: 'Outubro de 2027', inicio: '2027-10-01', fim: '2027-10-20' };
     render({ pesquisas: [velho, RASCUNHO], totais: [], hoje: '2027-11-28' });

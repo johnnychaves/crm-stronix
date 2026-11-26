@@ -3,6 +3,7 @@ import { ClipboardList, Plus, TriangleAlert } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Avatar } from '../../components/ui/Avatar.jsx';
 import { useToast } from '../../contexts/ToastContext.jsx';
+import { useLatestRef } from '../../hooks/useLatestRef.js';
 import { npsLinkDe } from '../../lib/npsLink.js';
 import { abrirPesquisa, encerrarPesquisa, excluirRascunho, gerarLinksQueFaltam, salvarRascunho } from '../../lib/npsWrites.js';
 import { abreAPartirDe, estadoDaPesquisa, fimPassou, novaPesquisa, pesquisaEmCurso, podeAbrir, progressoDaTurma } from '../../lib/professor/pesquisas.js';
@@ -262,8 +263,23 @@ export function PesquisasTab({ db, appUser, tenantId, pesquisas, totais, profess
   const voltar = () => { voltouRef.current = true; setEditando(null); };
 
   // Depois de encerrar ou de abrir pela lista, o botão clicado some: o foco vai
-  // para o título do destaque, que existe com e sem pesquisa aberta.
-  const focarDestaque = () => requestAnimationFrame(() => document.getElementById('pesq-destaque')?.focus());
+  // para o título do destaque, que existe com e sem pesquisa aberta. Abrir é
+  // transação, e a lista só muda quando o servidor responde: o foco espera o
+  // destaque mostrar a pesquisa esperada (null é nenhuma aberta), senão o
+  // título trocado logo depois o derrubaria.
+  const emCursoId = emCurso?.id ?? null;
+  const emCursoRef = useLatestRef(emCursoId);
+  const focoPendente = useRef(undefined);
+  const focar = () => requestAnimationFrame(() => document.getElementById('pesq-destaque')?.focus());
+  useEffect(() => {
+    if (focoPendente.current === undefined || focoPendente.current !== emCursoId) return;
+    focoPendente.current = undefined;
+    focar();
+  }, [emCursoId]);
+  const focarDestaque = (esperado) => {
+    if (emCursoRef.current === esperado) focar();
+    else focoPendente.current = esperado;
+  };
   const falhou = (e, texto) => {
     console.error('pesquisas', e);
     toast.error(e?.paraTela ? e.message : texto);
@@ -272,7 +288,7 @@ export function PesquisasTab({ db, appUser, tenantId, pesquisas, totais, profess
     try {
       await encerrarPesquisa(db, p.id);
       toast.success('Pesquisa encerrada.');
-      focarDestaque();
+      focarDestaque(null);
     } catch (e) { falhou(e, 'Não deu para encerrar a pesquisa. Tente de novo.'); }
   };
   // A turma sai do instante do clique: a tela pode ter ficado aberta por dias.
@@ -302,7 +318,7 @@ export function PesquisasTab({ db, appUser, tenantId, pesquisas, totais, profess
     }
   };
   const abrirDaLista = async (p) => {
-    try { await abrir(p.id); focarDestaque(); } catch (e) { falhou(e, 'Não deu para abrir a pesquisa. Tente de novo.'); }
+    try { await abrir(p.id); focarDestaque(p.id); } catch (e) { falhou(e, 'Não deu para abrir a pesquisa. Tente de novo.'); }
   };
 
   if (editando) {
