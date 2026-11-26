@@ -11,9 +11,9 @@ const bloco = (() => {
 describe('regra de stronix_freepass', () => {
   it('existe', () => { expect(bloco).not.toBe(''); });
   it('lê quem é da academia e o professor não grava', () => {
-    expect(bloco).toMatch(/allow read: if inTenant\(appId\) && tenantActive\(appId\);/);
-    expect(bloco).toMatch(/allow create: if inTenant\(appId\) && tenantActive\(appId\)\s*&& !isProfessor\(appId\);/);
-    expect(bloco).toMatch(/allow update: if inTenant\(appId\) && tenantActive\(appId\)\s*&& !isProfessor\(appId\)/);
+    expect(bloco).toMatch(/allow read: if inTenant\(appId\) && tenantActive\(appId\) && hasModule\(appId, 'faltosos'\);/);
+    expect(bloco).toMatch(/allow create: if inTenant\(appId\) && tenantActive\(appId\) && hasModule\(appId, 'faltosos'\)\s*&& !isProfessor\(appId\);/);
+    expect(bloco).toMatch(/allow update: if inTenant\(appId\) && tenantActive\(appId\) && hasModule\(appId, 'faltosos'\)\s*&& !isProfessor\(appId\)/);
     expect(bloco).toMatch(/allow delete: if false;/);
   });
   it('na atualização, o lead e quem lançou não mudam', () => {

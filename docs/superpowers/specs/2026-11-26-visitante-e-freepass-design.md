@@ -156,6 +156,8 @@ Nada é migrado. As aulas experimentais agendadas antes da mudança mostram o pa
 
 ## Parte 4: as entregas
 
+A entrega 1 vai ao ar atrás do módulo Stronix 2.0 (faltosos), para ser testada na STRONIX antes de valer para as outras academias (pedido do Johnny, 26/11/2026).
+
 Cada entrega com tela nova começa por 2 ou 3 mockups para o Johnny escolher.
 
 1. **A base.** Tipos de freepass em Configurações → Agendamento, com o padrão de cada modalidade (o painel de quantidades antigo fica até a entrega 2, porque o Agendar ainda o usa). "Lançar freepass" na aba Contratos e a janela de lançamento. A etiqueta Visitante e a cor na ficha, e o cartão do freepass na aba Contratos com o andamento e o "Encerrar freepass". O fim pela matrícula e pela perda, lido na hora. Linha do tempo com o lançamento e o encerramento. Regras do Firestore da coleção nova. Mockups da cor, da aba Contratos e da janela.

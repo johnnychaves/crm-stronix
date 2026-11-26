@@ -25,8 +25,8 @@ const fmtDia = (d) => (d ? d.toLocaleDateString('pt-BR') : '—');
 // Lead ou cliente sem contrato vigente. O lead lança o freepass aqui e se
 // matricula pelo Marcar venda do cabeçalho (spec 2026-11-26). O cliente sem
 // contrato não tem Marcar venda, então continua com Matricular agora.
-function EmptyState({ firstName, isReadOnly, loading, onEnroll, isClient, canFreepass, onLaunchFreepass, lost, experimenting }) {
-  const freepass = !isClient;
+function EmptyState({ firstName, isReadOnly, loading, onEnroll, isClient, freepassOn, canFreepass, onLaunchFreepass, lost, experimenting }) {
+  const freepass = freepassOn && !isClient;
   return (
     <section className="rounded-2xl border border-dashed border-slate-300 dark:border-white/[0.1] bg-card p-8 text-center">
       <div className="size-[46px] rounded-[14px] grid place-items-center mx-auto mb-3 bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-300"><FileText size={20} /></div>
@@ -98,10 +98,11 @@ function ClosedCard({ hero, facts, status, vigencia, isReadOnly, loading, freepa
 export function ContractsTab({
   lead, leadContracts, firstName, isReadOnly, loading, contractThresholdDays, renewalCheckpoints,
   onEnroll, onRenew, onEditContract, onContractAction, onActivate,
-  isClient, freepasses = [], freepassesLoading = false, canFreepass = false, onLaunchFreepass, onEndFreepass
+  isClient, freepasses = [], freepassesLoading = false, freepassOn = false, canFreepass = false, onLaunchFreepass, onEndFreepass
 }) {
   const now = new Date();
-  const running = activeFreepassesOf(lead, freepasses, now);
+  // Sem o módulo Stronix 2.0 a aba ignora freepass por inteiro.
+  const running = freepassOn ? activeFreepassesOf(lead, freepasses, now) : [];
   // A aba lê o CONTRATO, não as marcas de cliente: quando as marcas estavam
   // erradas, a aba dizia "Ainda não é cliente" com o contrato gravado.
   // Com próximo contrato, o destaque é o contrato em uso, e no último dia dele
@@ -147,9 +148,9 @@ export function ContractsTab({
         <FreepassCard key={fp.id} freepass={fp} now={now} canFreepass={canFreepass && !isReadOnly} loading={loading} onEnd={onEndFreepass} />
       ))}
       {!hasContract ? (
-        <EmptyState firstName={firstName} isReadOnly={isReadOnly} loading={loading || freepassesLoading} lost={lead.status === 'Perda'} experimenting={running.length > 0} onEnroll={onEnroll} isClient={isClient} canFreepass={canFreepass} onLaunchFreepass={onLaunchFreepass} />
+        <EmptyState freepassOn={freepassOn} firstName={firstName} isReadOnly={isReadOnly} loading={loading || freepassesLoading} lost={lead.status === 'Perda'} experimenting={running.length > 0} onEnroll={onEnroll} isClient={isClient} canFreepass={canFreepass} onLaunchFreepass={onLaunchFreepass} />
       ) : closed ? (
-        <ClosedCard hero={hero} facts={heroFacts} status={status} vigencia={vigencia} isReadOnly={isReadOnly} loading={loading} freepassesLoading={freepassesLoading} onEnroll={onEnroll} canFreepass={canFreepass} onLaunchFreepass={onLaunchFreepass} />
+        <ClosedCard hero={hero} facts={heroFacts} status={status} vigencia={vigencia} isReadOnly={isReadOnly} loading={loading} freepassesLoading={freepassesLoading} onEnroll={onEnroll} canFreepass={freepassOn && canFreepass} onLaunchFreepass={onLaunchFreepass} />
       ) : (
         <ContractHeroCard
           lead={lead}

@@ -10,12 +10,12 @@ describe('ficha e Visitante', () => {
     expect(src).toMatch(/Visitante · \{visitor\.shortText\}/);
   });
   it('lançar e encerrar passam pela ação e pelas gravações do freepass', () => {
-    expect(src).toMatch(/can\(appUser, ACTIONS\.FREEPASS_LANCAR\)/);
+    expect(src).toMatch(/freepassOn && can\(appUser, ACTIONS\.FREEPASS_LANCAR\)/);
     expect(src).toMatch(/writeFreepassLaunch\(/);
     expect(src).toMatch(/writeFreepassEnd\(/);
   });
   it('a aba Contratos recebe os freepass da pessoa', () => {
-    expect(src).toMatch(/useLeadFreepasses\(\{ db, leadId: lead\?\.id, active: listenersActive \}\)/);
+    expect(src).toMatch(/useLeadFreepasses\(\{ db, leadId: lead\?\.id, active: listenersActive && freepassOn \}\)/);
     expect(src).toMatch(/freepasses=\{freepasses \?\? \[\]\}/);
   });
   it('lead em Perda não recebe freepass e os gravadores conferem a leitura e a regra', () => {
@@ -23,5 +23,10 @@ describe('ficha e Visitante', () => {
     expect(src).toMatch(/Reative o lead antes de lançar o freepass\./);
     expect(src).toMatch(/launchCheck\(\{ type, freepasses, modalidadeName, gestor: isGestor\(appUser\) \}\)/);
     expect(src).toMatch(/freepassesLoading=\{freepasses === null\}/);
+  });
+  it('tudo depende do módulo Stronix 2.0', () => {
+    expect(src).toMatch(/const freepassOn = hasModule\(appUser\?\.tenantModules, MODULES\.FALTOSOS\);/);
+    expect(src).toMatch(/\{freepassOn && visitor && \(/);
+    expect(src).toMatch(/freepassOn=\{freepassOn\}/);
   });
 });

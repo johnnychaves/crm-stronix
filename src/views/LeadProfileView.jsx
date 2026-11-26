@@ -13,6 +13,7 @@ import { withBucket } from '../lib/leadDerived.js';
 import { planStageMove, planLoss, planUpgradeMove, planUpgradeDecline, stageMoveBlockMessage, withStageEntered, reactivationFunnels, REACTIVATED_NOTE } from '../lib/stageMove.js';
 import { canEditLead, isLeadConverted } from '../lib/leads.js';
 import { ACTIONS, can, isGestor, isSeller } from '../lib/acesso.js';
+import { MODULES, hasModule } from '../lib/modules.js';
 import { normalizeAppointmentType, getSafeDateOrNull } from '../lib/dates.js';
 // firstName vira contactFirstName: o arquivo já tem um firstName local, do próprio lead.
 import { contactLabel, contactOf, firstName as contactFirstName, hasPhone, isMinorNow, telHref, whatsappHref } from '../lib/guardian.js';
@@ -105,7 +106,9 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // ao vivo. Antes vinha do prop global filtrado por leadId — que pós-G2 é só o
   // mês corrente. A ficha remonta por lead (key), então o hook não reseta.
   const interactions = useLeadTimeline({ db, leadId: lead?.id, active: listenersActive });
-  const freepasses = useLeadFreepasses({ db, leadId: lead?.id, active: listenersActive });
+  // Freepass só existe com o módulo Stronix 2.0 (faltosos); sem ele a ficha é a de antes.
+  const freepassOn = hasModule(appUser?.tenantModules, MODULES.FALTOSOS);
+  const freepasses = useLeadFreepasses({ db, leadId: lead?.id, active: listenersActive && freepassOn });
   const toast = useToast();
   const isReadOnly = !canEditLead(appUser);
   // Linha do tempo COLABORATIVA: qualquer consultor do tenant pode escrever
@@ -123,7 +126,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   const canEditCadastro = !isReadOnly && can(appUser, ACTIONS.CADASTRO_EDITAR);
   const canMudarFase = can(appUser, ACTIONS.FICHA_MUDAR_FASE);
   const canContrato = can(appUser, ACTIONS.CONTRATO_EDITAR);
-  const canFreepass = can(appUser, ACTIONS.FREEPASS_LANCAR);
+  const canFreepass = freepassOn && can(appUser, ACTIONS.FREEPASS_LANCAR);
   const [freepassOpen, setFreepassOpen] = useState(false);
   const canIndicar = can(appUser, ACTIONS.INDICACAO_CADASTRAR);
   // Última trava dos handlers. O botão já some, mas a ação não pode passar
@@ -1139,7 +1142,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                   <span className={cn('size-1.5 rounded-full', profileTone.strong)} aria-hidden="true" />
                   {stateChipText(profileState.label)}
                 </span>
-                {visitor && (
+                {freepassOn && visitor && (
                   <span className="inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full bg-teal-100 px-2.5 text-[12.5px] font-semibold text-teal-700 dark:bg-teal-500/10 dark:text-teal-300">
                     <span className="size-1.5 rounded-full bg-teal-500" aria-hidden="true" />Visitante · {visitor.shortText}
                   </span>
@@ -1548,6 +1551,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
             isClient={isClient}
             freepasses={freepasses ?? []}
             freepassesLoading={freepasses === null}
+            freepassOn={freepassOn}
             canFreepass={canFreepass && lead.status !== 'Perda'}
             onLaunchFreepass={openFreepass}
             onEndFreepass={endFreepass}

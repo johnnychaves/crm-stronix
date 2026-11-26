@@ -10,7 +10,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const props = {
   leadContracts: [], firstName: 'Rafa', isReadOnly: false, loading: false, contractThresholdDays: 30, renewalCheckpoints: [90, 60, 30],
   onEnroll: vi.fn(), onRenew: vi.fn(), onEditContract: vi.fn(), onContractAction: vi.fn(), onActivate: vi.fn(),
-  onLaunchFreepass: vi.fn(), onEndFreepass: vi.fn()
+  onLaunchFreepass: vi.fn(), onEndFreepass: vi.fn(), freepassOn: true
 };
 const fp = { id: 'f1', kind: 'aulas', total: 2, aulas: 0, typeName: 'Pilates 2 aulas', modalidadeName: 'Pilates', status: 'correndo', startsAt: new Date(), endsAt: null, contractAtStart: null };
 
@@ -74,5 +74,14 @@ describe('aba Contratos com freepass', () => {
     await montar({ lead: { id: 'L', status: 'Novo' }, isClient: false, freepasses: [fp, fd], canFreepass: true });
     expect(texto()).toContain('nenhuma ainda');
     expect(texto()).toMatch(/até \d{2}\/\d{2}/);
+  });
+  it('sem o módulo, a aba é a de antes: Matricular agora, texto original, sem freepass', async () => {
+    await montar({ lead: { id: 'L', status: 'Novo' }, isClient: false, freepasses: [fp], canFreepass: true, freepassOn: false });
+    expect(botao('Matricular agora')).toBeTruthy();
+    expect(botao('Lançar freepass')).toBeUndefined();
+    expect(botao('Lançar outro freepass')).toBeUndefined();
+    expect(botao('Encerrar freepass')).toBeUndefined();
+    expect(texto()).not.toContain('Pilates 2 aulas');
+    expect(texto()).toContain('Quando Rafa fechar, registre plano, valor e vigência. A renovação passa a ser acompanhada por aqui.');
   });
 });

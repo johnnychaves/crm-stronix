@@ -14,6 +14,7 @@ import { ReferralOwnersSection } from './ReferralOwnersSection.jsx';
 import { getReferralFunnel, pendingReferralOwners } from '../../lib/referrals.js';
 import { PaceSection } from './PaceSection.jsx';
 import { SchedulingSection } from './SchedulingSection.jsx';
+import { MODULES, hasModule } from '../../lib/modules.js';
 import { FunnelsSection } from './FunnelsSection.jsx';
 import { CatalogsSection } from './CatalogsSection.jsx';
 import { ImportClientsSection } from './ImportClientsSection.jsx';
@@ -188,7 +189,7 @@ function SettingsView({
         {secao === 'sched' && (
           <SchedulingSection
             db={db} modalities={modalities} units={units}
-            trialClassOptions={trialClassOptions} freepassTypes={freepassTypes} leads={leads} onLeadsChanged={reloadLeads}
+            trialClassOptions={trialClassOptions} freepassTypes={freepassTypes} freepassOn={hasModule(appUser?.tenantModules, MODULES.FALTOSOS)} leads={leads} onLeadsChanged={reloadLeads}
           />
         )}
         {secao === 'funnels' && (

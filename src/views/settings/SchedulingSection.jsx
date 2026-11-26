@@ -86,7 +86,7 @@ function TrialPackageCard({ pack, onRemove }) {
   );
 }
 
-function SchedulingSection({ db, modalities, units, trialClassOptions, freepassTypes, leads, onLeadsChanged }) {
+function SchedulingSection({ db, modalities, units, trialClassOptions, freepassTypes, freepassOn = false, leads, onLeadsChanged }) {
   const toast = useToast();
   const [saving, setSaving] = useState(false);
 
@@ -381,7 +381,7 @@ function SchedulingSection({ db, modalities, units, trialClassOptions, freepassT
         </div>
       </SettingsPanel>
 
-      <FreepassTypesPanel db={db} modalities={modalities} freepassTypes={freepassTypes} />
+      {freepassOn && <FreepassTypesPanel db={db} modalities={modalities} freepassTypes={freepassTypes} />}
 
       <FormDialog
         open={Boolean(modalityDialog)}
