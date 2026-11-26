@@ -1,6 +1,6 @@
 # Cadastro da equipe
 
-status: revisão
+status: ativo (aprovada pelo Johnny em 26/11/2026)
 data: 2026-11-26
 responsável: Johnny
 mockup escolhido: A, `docs/superpowers/specs/mockups/2026-11-26-equipe-a-lista-e-pagina.html` (os outros dois, B e C, ficam na mesma pasta)
@@ -132,7 +132,7 @@ A gravação, na ordem:
 
 1. O professor em `stronix_professores`, quando é professor (como o "Cadastrar professor" de hoje).
 2. A ficha, com id novo, a função, o nome, o celular, o e-mail pessoal, o vínculo, a admissão e o `professorId`.
-3. O acesso: o `create` do `/api/admin-users` ou o `/api/invite-create`, os dois com o `fichaId`.
+3. O acesso: o `create` do `/api/admin-users`, e o app grava o `userId` na ficha com o id da conta que a resposta traz; ou o `/api/invite-create` com o `fichaId`, e o servidor liga o login à ficha no aceite.
 
 Se o passo 3 falhar, a pessoa já está na lista, sem acesso, e a gaveta diz isso e oferece tentar de novo. O fim mostra um comprovante ("Paula Martins entrou na equipe"), com o que falta na ficha e os botões "Completar a ficha" e "Cadastrar outra pessoa".
 
@@ -156,7 +156,7 @@ Nenhuma função nova na Vercel (continuam 11 de 12).
 
 ### `api/admin-users.js`
 
-- **`create`** aceita `fichaId`. Antes de criar a conta, confere que a ficha existe na academia (sem ela, 422 e nada é criado). Depois de criar a conta e o cadastro, grava o `userId` na ficha. Sem `fichaId`, nada muda.
+- **`create`** não muda: ele já devolve o id da conta (`authUid`, que é também o id do cadastro de login), e o app grava esse id na ficha.
 - **`desligar`** (ação nova), com `{ fichaId, data, tipoDesligamento, motivo, substitutos }`. Confere que quem pede é gestor e que a ficha é da academia, e faz, na ordem:
   1. Recusa o desligamento do gestor e o de quem pede.
   2. Recusa, com 409 e o texto do `ownsLeads`, se o login ligado à ficha ainda é dono de algum lead.
@@ -203,7 +203,7 @@ match /tenants/{tenant}/equipe/{fichaId}/{fileName} {
 - `SETTINGS_SECTIONS.team` continua `equipe`. A ficha é lida à parte no `readScreen`, como o modelo de rotina: `/configuracoes/equipe/<id>` e as abas `movimentacoes` e `acesso`. Id que não passa no `isValidLeadId` cai na lista.
 - Filtros da lista no endereço, pela tabela de `src/lib/screenParams.js`: `sit=desligados` (ausente é Ativos), `funcao`, `vinculo` e `acesso`. A busca pelo nome fica no estado da tela, porque texto de busca nunca vai para o endereço.
 - O `src/lib/sentryScrub.js` ganha a troca de `/configuracoes/equipe/<id>` por `/configuracoes/equipe/:pessoaId`, encadeada com as outras, com teste.
-- O título da aba na ficha é "Equipe · <Academia> · STRONILEAD", sem o nome da pessoa.
+- O título da aba na ficha continua "Configurações · <Academia> · STRONILEAD", sem o nome da pessoa.
 - CPF, RG, nascimento, endereço, tipo e motivo do desligamento só existem na ficha, que só o gestor lê. Nada disso vai para o log, para a auditoria nem para o Sentry. A ação `desligar` registra no log a academia, a ficha e quem desligou, sem o motivo.
 
 ## Sem o módulo Stronix 2.0
@@ -229,7 +229,7 @@ A tela é a mesma. Sem o módulo:
 - As movimentações: admissão nova, correção da data, desligamento e readmissão.
 - A cópia do nome para o login e o professor.
 - A ação `desligar`, com o banco falso da `api/`: recusa do gestor, de si mesmo e do consultor com leads; alunos para o substituto da modalidade, com o histórico; professor inativo; conta apagada pelo caminho do `delete`; ficha gravada por último; repetir não estraga; `userId` de outra academia recusado.
-- O `create` e o convite com `fichaId`, inclusive a ficha que não existe.
+- O convite com `fichaId`, inclusive a ficha que não existe, e o aceite que liga o login à ficha.
 - A regra do Firestore da coleção nova, no molde do `professorRules.test.js`.
 - O endereço da ficha no `routes.test.js` e no `sentryScrub`.
 - A tela em jsdom: lista com filtros, ficha com as três abas, a gaveta do cadastro do começo ao comprovante, o diálogo de desligar com e sem substituto.
@@ -243,7 +243,9 @@ Proposta de três PRs, que o plano de implementação detalha:
 2. **Cadastrar pessoa:** a gaveta, o `fichaId` no `create` e no convite.
 3. **Desligar e readmitir:** a ação `desligar` e o readmitir.
 
-## Pontos em aberto
+## Fechados na revisão
 
-1. Todo lead com o professor que sai passa ao substituto, ex-alunos inclusive. A outra saída é passar só a carteira ativa e deixar o ex-aluno com o professor inativo.
-2. O RG conta no anel. Se for só opcional, o anel passa a ter um item a menos.
+Aprovados pelo Johnny junto com a spec, em 26/11/2026:
+
+1. Todo lead com o professor que sai passa ao substituto, ex-alunos inclusive, para quem volta não cair num professor inativo.
+2. O RG conta no anel.
