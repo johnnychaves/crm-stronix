@@ -54,7 +54,6 @@ const REVISADOS = {
   'src/lib/teamRoles.js': 'papel da equipe',
   'src/views/settings/TeamAccessSection.jsx': 'papel da equipe',
   // Ficha da equipe (stronix_equipe), não o lead.
-  'src/lib/equipe/equipe.js': 'ficha da equipe',
   'src/lib/equipe/equipeWrites.js': 'ficha da equipe',
   'api/_professorLink.js': 'vínculo do login com o professor',
   'api/_npsPublico.js': 'resposta e totais da pesquisa de NPS, não grava lead',
