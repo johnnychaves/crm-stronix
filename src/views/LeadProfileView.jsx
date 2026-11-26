@@ -2,12 +2,15 @@ import { useState, useMemo, useRef } from 'react';
 import { collection, doc, deleteDoc, getDocs, updateDoc, writeBatch, query, where, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH, CONTRACTS_PATH, storage } from '../lib/firebase.js';
 import { uploadLeadPhoto, deleteLeadPhoto } from '../lib/leadPhoto.js';
-import { logInteraction } from '../lib/interactions.js';
+import { logInteraction, logInteractions } from '../lib/interactions.js';
 import { useLeadTimeline } from '../hooks/useLeadTimeline.js';
 import { useLeadFreepasses } from '../hooks/useLeadFreepasses.js';
+import { useLeadAulas } from '../hooks/useLeadAulas.js';
 import { FreepassLaunchModal } from '../modals/FreepassLaunchModal.jsx';
-import { FREEPASS_INTERACTION_TYPE, activeFreepassesOf, freepassSummaryPatch, launchCheck, visitorOf } from '../lib/visitante.js';
+import { FREEPASS_INTERACTION_TYPE, activeFreepassesOf, freepassChoiceFor, freepassSummaryPatch, launchCheck, visitorOf } from '../lib/visitante.js';
 import { writeFreepassEnd, writeFreepassLaunch } from '../lib/freepassWrites.js';
+import { freepassLaunchParts, freepassScheduleWrites } from '../lib/freepassAgendaWrites.js';
+import { AULA_STATUS } from '../lib/aulas.js';
 import { useReferrals } from '../hooks/useReferrals.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { planStageMove, planLoss, planUpgradeMove, planUpgradeDecline, stageMoveBlockMessage, withStageEntered, reactivationFunnels, REACTIVATED_NOTE } from '../lib/stageMove.js';
@@ -109,6 +112,10 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // Freepass só existe com o módulo Stronix 2.0 (faltosos); sem ele a ficha é a de antes.
   const freepassOn = hasModule(appUser?.tenantModules, MODULES.FALTOSOS);
   const freepasses = useLeadFreepasses({ db, leadId: lead?.id, active: listenersActive && freepassOn });
+  // Os registros de aula da pessoa: o Agendar de aula move a aula pendente
+  // (currentAulaId 'agendada'), e o freepass dela é o movingFreepassId.
+  const leadAulas = useLeadAulas({ db, leadId: lead?.id, active: listenersActive && freepassOn });
+  const movingFreepassId = (lead?.currentAulaId && (leadAulas || []).find((r) => r.id === lead.currentAulaId && r.status === AULA_STATUS.AGENDADA)?.freepassId) || null;
   const toast = useToast();
   const isReadOnly = !canEditLead(appUser);
   // Linha do tempo COLABORATIVA: qualquer consultor do tenant pode escrever
@@ -158,6 +165,17 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   const [activatingId, setActivatingId] = useState(null);
   // Threshold de vencimento do contexto (sem prop-drilling) p/ a seção Contrato.
   const { contractThresholdDays, contratos, professores, renewalCheckpoints, freepassTypes, modalities } = useGeneralConfig();
+  // O passo Freepass do Agendar: o que a aula da modalidade faz com o freepass
+  // (visitante.js). Enquanto os freepass, ou o registro da aula pendente, não
+  // chegaram, o passo espera.
+  const freepassChoice = (modalidadeName) => {
+    if (freepasses === null || (lead.currentAulaId && leadAulas === null)) return { kind: 'loading' };
+    const modalidadeId = (modalities || []).find((m) => m.name === modalidadeName)?.id || null;
+    return freepassChoiceFor({
+      lead, freepasses, types: freepassTypes, modalidadeId, movingFreepassId,
+      canLaunch: canFreepass && lead.status !== 'Perda',
+    });
+  };
 
   // O compositor da Linha do tempo: aberto ou fechado, em que modo e o rascunho
   // de cada modo. Tudo mora na ficha porque a aba desmonta o compositor quando a
@@ -677,19 +695,30 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     [usersList]
   );
 
-  const handleWizardConfirm = async ({ typeLabel, date, modalidade, professorId, soloTraining, quantidade, unidade, note: wizNote, contactOwnerId: wizOwnerId, contactOwnerName: wizOwnerName }) => {
+  // `freepass` vem do passo Freepass do assistente (null sem o módulo): a aula
+  // entra no freepass que corre ('use'), nasce com um freepass novo ('launch')
+  // ou fica avulsa ('avulsa').
+  const handleWizardConfirm = async ({ typeLabel, date, modalidade, professorId, soloTraining, quantidade, unidade, note: wizNote, contactOwnerId: wizOwnerId, contactOwnerName: wizOwnerName, freepass: fpPick = null }) => {
     if (!canTimeline) { toast.warning('Você não tem permissão para agendar neste lead.'); return; }
     if (!(date instanceof Date) || isNaN(date.getTime())) { toast.warning('Selecione o dia e o horário.'); return; }
+    // Lançar freepass é do consultor e do gestor (canFreepass), nunca em lead perdido.
+    const launchType = fpPick?.kind === 'launch' ? (freepassTypes || []).find((t) => t.id === fpPick.typeId) || null : null;
+    if (fpPick?.kind === 'launch' && (!canFreepass || lead.status === 'Perda')) { negarAcesso(); return; }
+    if (fpPick?.kind === 'launch' && !launchType) { toast.warning('Esse freepass não está mais cadastrado. Escolha de novo.'); return; }
     setLoading(true);
     try {
       const appointmentType = normalizeAppointmentType(typeLabel); // 'visita' | 'aula_experimental' | null
       const isAula = appointmentType === 'aula_experimental';
       const isVisita = appointmentType === 'visita';
+      const profName = (id) => (id ? professorNameById(professores, id) : null);
 
       let extra = '';
       if (isAula) {
+        // Com o freepass, a quantidade sai do texto: quem diz quantas aulas são é o freepass.
         const q = quantidade || 1;
-        extra = ` (${modalidade ? modalidade + ' · ' : ''}${q} ${q === 1 ? 'aula' : 'aulas'})`;
+        extra = fpPick
+          ? (modalidade ? ` (${modalidade})` : '')
+          : ` (${modalidade ? modalidade + ' · ' : ''}${q} ${q === 1 ? 'aula' : 'aulas'})`;
         if (professorId) extra += ` · ${professorNameById(professores, professorId)}`;
         else if (soloTraining) extra += ' · Treina sozinho';
       } else if (isVisita && unidade) {
@@ -719,43 +748,76 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
       // que o lead tem, ou cancelado na troca de tipo), e o do tipo novo muda
       // de data ou nasce. Falha ali não derruba o agendamento do lead.
       // Mensagem e ligação não têm registro.
+      // Freepass: o lançamento reserva o id do freepass antes, para a aula 1
+      // nascer nele; as aulas 2..N vão no mesmo lote da interação.
+      const launch = launchType
+        ? freepassLaunchParts({
+            db, lead, appUser, type: launchType, modalidadeName: modalidade,
+            aulas: (fpPick.aulas || [{ date, professorId, soloTraining }]).map((a) => ({
+              scheduledFor: a.date, professorId: a.professorId || null, professorName: profName(a.professorId),
+              soloTraining: Boolean(a.soloTraining), modality: modalidade || null,
+            })),
+          })
+        : null;
+      const targetId = fpPick?.kind === 'use' ? fpPick.freepassId : launch?.ref.id || null;
       const currentAulaId = await recordNewAppointment({
         db, lead, appointmentType,
         fields: isAula
           ? {
               professorId: professorId || null,
-              professorName: professorId ? professorNameById(professores, professorId) : null,
+              professorName: profName(professorId),
               soloTraining: Boolean(soloTraining),
               modality: modalidade || null,
               scheduledFor: date,
+              // Com o módulo, a aula avulsa movida sai do freepass (null).
+              ...(fpPick && { freepassId: targetId }),
             }
           : { unit: unidade || null, scheduledFor: date },
       });
+
+      // A aula pendente que saiu de um freepass (para outro, para avulsa, ou
+      // cancelada pela troca por visita) devolve a vaga: o freepass recalcula.
+      const leftId = (isAula || isVisita) && movingFreepassId !== targetId ? movingFreepassId : null;
+      const fpSide = launch || (freepasses && (targetId || leftId))
+        ? await freepassScheduleWrites({ db, lead, freepasses: freepasses || [], targetId, leftId, launch, currentAulaId })
+        : null;
+      // A aula da vez é a mais cedo do freepass (freepassAulaDaVez).
+      const vez = fpSide?.daVez;
+      const da = vez
+        ? { date: getSafeDateOrNull(vez.scheduledFor), modalidade: vez.modality || null, professorId: vez.professorId || null, soloTraining: Boolean(vez.soloTraining), currentAulaId: vez.id }
+        : { date, modalidade, professorId, soloTraining, currentAulaId };
 
       // Patch em src/lib/schedulePatch.js: mensagem e ligação mexem SÓ no
       // próximo contato; visita e aula mexem no contato E no compromisso. Vive
       // fora da view porque foi solto aqui dentro que o bug de 18/08/2026
       // nasceu, sem teste possível.
       const up = buildSchedulePatch({
-        typeLabel, date, modalidade, professorId,
-        professorName: professorId ? professorNameById(professores, professorId) : null,
-        soloTraining, quantidade, unidade, note: noteStr, currentAulaId,
+        typeLabel, ...da, professorName: profName(da.professorId),
+        quantidade, unidade, note: noteStr,
         contactOwnerId: wizOwnerId || null, contactOwnerName: wizOwnerName || null,
         appointmentOwnerId: apptOwner?.id || null, appointmentOwnerName: apptOwner?.name || null,
       });
+      // O resumo do freepass no lead (freepassSummaryPatch), quando a gravação mexe no freepass.
+      const freepassLead = fpSide ? fpSide.leadPatch : {};
 
-      await logInteraction(db, lead, appUser,
-        {
-          text,
-          type: 'note',
-          // Meta por VOLUME: todo agendamento criado pelo wizard conta como ação
-          // de pipeline (visita/aula/mensagem/ligação) — ver lib/dailyGoal.js.
-          volumeKind: appointmentType || (/liga/i.test(typeLabel) ? 'ligacao' : 'mensagem')
-        },
-        up
+      // Um lote só: a interação do agendamento (e a do lançamento), o patch do
+      // lead e, pelo gancho, o freepass e as aulas 2..N.
+      await logInteractions(db, lead, appUser,
+        [
+          {
+            text,
+            type: 'note',
+            // Meta por VOLUME: todo agendamento criado pelo wizard conta como ação
+            // de pipeline (visita/aula/mensagem/ligação) — ver lib/dailyGoal.js.
+            volumeKind: appointmentType || (/liga/i.test(typeLabel) ? 'ligacao' : 'mensagem')
+          },
+          ...(fpSide?.notes || []),
+        ],
+        { ...up, ...freepassLead },
+        fpSide?.extra || null
       );
 
-      toast.success(`Agendamento criado para ${dateStr}.`);
+      toast.success(launch ? `Freepass lançado. ${launch.extras.length ? 'Primeira aula' : 'Aula'} em ${dateStr}.` : `Agendamento criado para ${dateStr}.`);
       closeComposerIn('schedule');
       setLoading(false);
     } catch (e) {
@@ -1417,6 +1479,10 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                 usersList={activeUsers}
                 leadOwnerName={lead.consultantName || null}
                 leadOwnerId={lead.consultantId || null}
+                // Lead em Perda não vira Visitante: sem o passo Freepass, a aula é avulsa.
+                freepassOn={freepassOn}
+                freepassChoice={freepassOn && lead.status !== 'Perda' ? freepassChoice : null}
+                leadFirstName={(lead.name || '').split(' ')[0]}
               />
             )}
           />

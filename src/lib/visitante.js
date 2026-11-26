@@ -309,6 +309,19 @@ export function nextFreepassAula({ records, freepassId, now = new Date() }) {
     .sort((a, b) => a.at - b.at)[0]?.r || null;
 }
 
+// Para onde o agendamento do lead aponta depois de gravar aula de freepass:
+// para a nextFreepassAula, a não ser que a aula atual do lead (currentAulaId,
+// a que acabou de ser gravada) esteja pendente e seja mais cedo ou igual.
+// null quer dizer "fica na atual".
+export function freepassAulaDaVez({ records, freepassId, currentAulaId, now = new Date() }) {
+  const next = nextFreepassAula({ records, freepassId, now });
+  if (!next || next.id === currentAulaId) return null;
+  const cur = (records || []).find(r => r.id === currentAulaId && r.status === AULA_AGENDADA);
+  const curAt = getSafeDateOrNull(cur?.scheduledFor);
+  if (curAt && curAt <= getSafeDateOrNull(next.scheduledFor)) return null;
+  return next;
+}
+
 // A etiqueta da ficha e das listas: quem já é aluno com contrato ativo e faz
 // freepass de outra modalidade está num upgrade, não visitando.
 export function freepassTagOf({ lead, contractActive, now = new Date() }) {

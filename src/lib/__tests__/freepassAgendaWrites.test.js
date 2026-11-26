@@ -1,19 +1,25 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const m = vi.hoisted(() => ({ docs: [], filtros: [] }));
-vi.mock('../firebase.js', () => ({ appId: 'acad', AULAS_PATH: 'stronix_aulas' }));
+const m = vi.hoisted(() => ({ docs: [], filtros: [], n: 0 }));
+vi.mock('../firebase.js', () => ({ appId: 'acad', AULAS_PATH: 'stronix_aulas', FREEPASS_PATH: 'stronix_freepass' }));
 vi.mock('firebase/firestore', () => ({
   collection: (_db, ...p) => ({ path: p.join('/') }),
-  doc: (col) => ({ path: `${col.path}/auto` }),
+  // doc(col) reserva um id novo; doc(col, id) aponta para um documento.
+  doc: (col, id) => {
+    if (id) return { path: `${col.path}/${id}`, id };
+    m.n += 1;
+    return { path: `${col.path}/auto${m.n}`, id: `auto${m.n}` };
+  },
   query: (col, ...filtros) => ({ col, filtros }),
   where: (campo, op, valor) => ({ campo, op, valor }),
   getDocs: async (q) => { m.filtros = q.filtros; return { docs: m.docs.map(([id, d]) => ({ id, data: () => d })) }; },
   serverTimestamp: () => 'TS',
 }));
 
-const { readLeadAulas, extraAulaRecords, freepassAfterAulas } = await import('../freepassAgendaWrites.js');
+const { readLeadAulas, extraAulaRecords, freepassAfterAulas, freepassLaunchParts, freepassScheduleWrites } = await import('../freepassAgendaWrites.js');
 
 const lead = { id: 'L1', name: 'Rafa', consultantId: 'u1', consultantAuthUid: 'a1', consultantName: 'Ana' };
+beforeEach(() => { m.docs = []; m.n = 0; });
 
 describe('freepassAgendaWrites', () => {
   it('readLeadAulas consulta por leadId e junta o id', async () => {
@@ -44,5 +50,83 @@ describe('freepassAgendaWrites', () => {
     expect(r.patch.aulas).toBe(2);
     expect(r.patch.endsAt).toEqual(new Date(2026, 11, 3));
     expect(r.freepass).toMatchObject({ id: 'fp1', total: 2, aulas: 2 });
+  });
+});
+
+// O lado do freepass do Agendar da ficha. O lote é simulado: o gancho extra
+// recebe um batch que só anota as chamadas.
+const fakeBatch = () => {
+  const calls = [];
+  return { calls, set: (ref, data) => calls.push(['set', ref.path, data]), update: (ref, data) => calls.push(['update', ref.path, data]) };
+};
+const now = new Date(2026, 10, 26, 10, 0);
+const aula = (id, d, over = {}) => [id, { leadId: 'L1', type: 'aula', status: 'agendada', scheduledFor: d, ...over }];
+const fpAulas = (over = {}) => ({
+  id: 'f1', kind: 'aulas', total: 2, aulas: 1, typeName: 'Pilates 2 aulas', modalidadeId: 'm1', modalidadeName: 'Pilates',
+  status: 'correndo', startsAt: new Date(2026, 10, 20), endsAt: null, contractAtStart: null, ...over,
+});
+
+describe('freepassScheduleWrites', () => {
+  it('use: conta a aula no freepass, grava o resumo e aponta para a aula mais cedo', async () => {
+    m.docs = [
+      aula('antes', new Date(2026, 10, 28, 18), { freepassId: 'f1' }),
+      aula('nova', new Date(2026, 11, 4, 18), { freepassId: 'f1' }),
+    ];
+    const r = await freepassScheduleWrites({ db: {}, lead, freepasses: [fpAulas()], targetId: 'f1', currentAulaId: 'nova', now });
+    expect(r.daVez.id).toBe('antes');
+    expect(r.notes).toEqual([]);
+    expect(r.leadPatch).toMatchObject({ freepassId: 'f1', freepassAulas: 2, freepassEndsAt: new Date(2026, 11, 4) });
+    const b = fakeBatch();
+    r.extra(b);
+    expect(b.calls).toEqual([['update', 'artifacts/acad/public/data/stronix_freepass/f1', { aulas: 2, endsAt: new Date(2026, 11, 4) }]]);
+  });
+
+  it('aula que sai do freepass (avulsa ou troca de freepass): o freepass antigo recalcula e volta a ter vaga', async () => {
+    m.docs = [aula('movida', new Date(2026, 10, 28, 18), { freepassId: null })];
+    const r = await freepassScheduleWrites({ db: {}, lead, freepasses: [fpAulas()], targetId: null, leftId: 'f1', currentAulaId: 'movida', now });
+    expect(r.daVez).toBeNull();
+    const b = fakeBatch();
+    r.extra(b);
+    expect(b.calls).toEqual([['update', 'artifacts/acad/public/data/stronix_freepass/f1', { aulas: 0, endsAt: null }]]);
+    expect(r.leadPatch).toMatchObject({ freepassId: 'f1', freepassAulas: 0 });
+  });
+
+  it('launch por aulas: cria o freepass com as N aulas, as aulas 2..N e a nota do lançamento', async () => {
+    const tipo = { id: 't1', name: 'Pilates 2 aulas', modalidadeId: 'm1', kind: 'aulas', quantity: 2, padrao: true, ativo: true };
+    const aulas = [
+      { scheduledFor: new Date(2026, 10, 27, 18), professorId: 'p1', professorName: 'Leo', soloTraining: false, modality: 'Pilates' },
+      { scheduledFor: new Date(2026, 11, 4, 18), professorId: 'p1', professorName: 'Leo', soloTraining: false, modality: 'Pilates' },
+    ];
+    const launch = freepassLaunchParts({ db: {}, lead, appUser: { id: 'u1', name: 'Ana', authUid: 'a1' }, type: tipo, modalidadeName: 'Pilates', aulas });
+    expect(launch.ref.path).toBe('artifacts/acad/public/data/stronix_freepass/auto1');
+    expect(launch.extras).toHaveLength(1);
+    expect(launch.extras[0].data).toMatchObject({ freepassId: 'auto1', scheduledFor: aulas[1].scheduledFor, professorId: 'p1' });
+    // A aula 1 foi gravada pelo recordNewAppointment, com o id do freepass reservado.
+    m.docs = [aula('a1', aulas[0].scheduledFor, { freepassId: 'auto1' })];
+    const r = await freepassScheduleWrites({ db: {}, lead, freepasses: [], targetId: 'auto1', launch, currentAulaId: 'a1', now });
+    expect(r.daVez).toBeNull();
+    expect(r.notes).toEqual([{ type: 'freepass', text: 'Freepass lançado: Pilates 2 aulas (Pilates), 2 aulas para agendar.', freepassId: 'auto1' }]);
+    expect(r.leadPatch).toMatchObject({ freepassId: 'auto1', freepassKind: 'aulas', freepassAulas: 2, freepassEndsAt: new Date(2026, 11, 4) });
+    const b = fakeBatch();
+    r.extra(b);
+    expect(b.calls.map(([op, path]) => [op, path])).toEqual([
+      ['set', 'artifacts/acad/public/data/stronix_freepass/auto1'],
+      ['set', launch.extras[0].ref.path],
+    ]);
+    expect(b.calls[0][2]).toMatchObject({
+      leadId: 'L1', typeId: 't1', via: 'agendar', aulas: 2, total: 2, startsAt: new Date(2026, 10, 27), endsAt: new Date(2026, 11, 4), createdAt: 'TS',
+    });
+    expect(b.calls[0][2]).not.toHaveProperty('id');
+  });
+
+  it('launch por dias: começa no dia da aula e conta a aula', async () => {
+    const tipo = { id: 't2', name: 'Pilates 7 dias', modalidadeId: 'm1', kind: 'dias', quantity: 7, padrao: true, ativo: true };
+    const launch = freepassLaunchParts({ db: {}, lead, appUser: null, type: tipo, modalidadeName: 'Pilates', aulas: [{ scheduledFor: new Date(2026, 10, 28, 9), modality: 'Pilates' }] });
+    expect(launch.extras).toEqual([]);
+    m.docs = [aula('a1', new Date(2026, 10, 28, 9), { freepassId: launch.ref.id })];
+    const r = await freepassScheduleWrites({ db: {}, lead, freepasses: [], targetId: launch.ref.id, launch, currentAulaId: 'a1', now });
+    const b = fakeBatch();
+    r.extra(b);
+    expect(b.calls[0][2]).toMatchObject({ startsAt: new Date(2026, 10, 28), endsAt: new Date(2026, 11, 4), aulas: 1 });
   });
 });

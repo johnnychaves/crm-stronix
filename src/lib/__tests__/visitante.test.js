@@ -466,3 +466,29 @@ describe('freepassTagOf', () => {
     expect(freepassTagOf({ lead: { status: 'Novo' }, contractActive: true, now })).toBeNull();
   });
 });
+
+import { freepassAulaDaVez } from '../visitante.js';
+
+describe('freepassAulaDaVez', () => {
+  const now = new Date('2026-11-26T10:00:00');
+  const rec = (id, d, over = {}) => ({ id, freepassId: 'f', status: 'agendada', scheduledFor: new Date(`${d}T18:00:00`), ...over });
+  it('a aula gravada é a mais cedo do freepass: fica nela (null)', () => {
+    const records = [rec('nova', '2026-11-27'), rec('b', '2026-12-04')];
+    expect(freepassAulaDaVez({ records, freepassId: 'f', currentAulaId: 'nova', now })).toBeNull();
+  });
+  it('outra aula do freepass vem antes: o agendamento do lead aponta para ela', () => {
+    const records = [rec('nova', '2026-12-04'), rec('antes', '2026-11-28')];
+    expect(freepassAulaDaVez({ records, freepassId: 'f', currentAulaId: 'nova', now }).id).toBe('antes');
+  });
+  it('a aula atual do lead é pendente e mais cedo, mesmo fora do freepass: fica nela', () => {
+    const records = [rec('atual', '2026-11-27', { freepassId: null }), rec('b', '2026-11-28')];
+    expect(freepassAulaDaVez({ records, freepassId: 'f', currentAulaId: 'atual', now })).toBeNull();
+  });
+  it('a aula atual já tem desfecho: vale a mais cedo do freepass', () => {
+    const records = [rec('atual', '2026-11-26', { status: 'attended' }), rec('b', '2026-11-28')];
+    expect(freepassAulaDaVez({ records, freepassId: 'f', currentAulaId: 'atual', now }).id).toBe('b');
+  });
+  it('sem aula pendente no freepass: null', () => {
+    expect(freepassAulaDaVez({ records: [rec('velha', '2026-11-20')], freepassId: 'f', currentAulaId: 'x', now })).toBeNull();
+  });
+});

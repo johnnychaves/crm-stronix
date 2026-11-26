@@ -38,6 +38,7 @@ const REVISADOS = {
   'src/lib/clientRegistration.js': 'formulário do cadastro completo',
   // Registro da aula em stronix_aulas, não o professor do lead.
   'src/lib/aulas.js': 'registro da aula',
+  'src/lib/aulasPlan.js': 'aulas marcadas no lançamento do freepass, registro da aula',
   'src/components/profile/ScheduleWizard.jsx': 'escolha do professor da aula',
   'src/views/LeadProfileView.jsx': 'registro da aula do assistente',
   'src/views/DailyGoalView.jsx': 'registro da aula do Remarcar',
