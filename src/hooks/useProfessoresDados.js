@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { collection, doc, getDocs, onSnapshot, query, setDoc, where } from 'firebase/firestore';
+import { collection, doc, getDocs, query, setDoc, where } from 'firebase/firestore';
 import { appId, CONFIG_PATH, LEADS_PATH, PRESENCAS_PATH } from '../lib/firebase.js';
 import { clientsAllQuerySpec } from '../lib/leadQueries.js';
 import { normalizeContracts } from '../lib/operacional/base.js';
 import { planosDoProfessor } from '../lib/professor/carteira.js';
 import { limitesDoCiclo } from '../lib/professor/ciclo.js';
 import { metasDe } from '../lib/professor/metas.js';
-import { TRILHA_PROFESSOR, trilhasDe } from '../lib/carreira/trilhas.js';
+import { TRILHA_PROFESSOR } from '../lib/carreira/trilhas.js';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { useAulasInWindow } from './useAulasInWindow.js';
+import { useCarreira } from './useCarreira.js';
 import { usePagedLeads } from './usePagedLeads.js';
 
 // Os dados das telas de professores (lista, metas e perfil). Professores,
@@ -73,24 +74,9 @@ export function useProfessoresDados({ db, ciclo, listenersActive }) {
   }, [db, ler, ciclo]);
   const presencasDoCiclo = presencas?.ciclo === ciclo ? presencas : null;
 
-  // { doc, erro } da última resposta, ou null antes da primeira.
-  const [carreira, setCarreira] = useState(null);
-  useEffect(() => {
-    if (!db || !listenersActive) return undefined;
-    const ref = doc(db, 'artifacts', appId, 'public', 'data', CONFIG_PATH, CARREIRA_ID);
-    return onSnapshot(
-      ref,
-      (snap) => setCarreira({ doc: snap.exists() ? snap.data() : null, erro: null }),
-      (err) => {
-        console.error('useProfessoresDados carreira', err);
-        setCarreira({ doc: null, erro: err });
-      },
-    );
-  }, [db, listenersActive]);
+  // As metas de hoje e as trilhas, do mesmo documento (useCarreira).
+  const { carreira, trilhas } = useCarreira({ db, listenersActive });
   const metas = useMemo(() => (carreira ? metasDe(carreira.doc) : null), [carreira]);
-  // As trilhas do plano de carreira, do mesmo documento. A Professor, enquanto
-  // não foi gravada, sai das metas de hoje (trilhasDe).
-  const trilhas = useMemo(() => (carreira ? trilhasDe(carreira.doc) : null), [carreira]);
   const trilhaProfessor = useMemo(() => trilhas?.find((t) => t.id === TRILHA_PROFESSOR) ?? null, [trilhas]);
 
   // O documento inteiro: o formulário das metas tem todas elas.
