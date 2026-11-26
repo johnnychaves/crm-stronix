@@ -297,6 +297,14 @@ describe('appointmentDetailOf: o agendamento que a ficha, o cartão e a Meta mos
     expect(appointmentDetailOf(lead, unidades)).toMatchObject({ unit: 'Unidade Antiga', unitAddress: null, modality: null, quantity: null });
   });
 
+  it('aula numa academia de uma unidade só: leva o endereço dela, sem a unidade', () => {
+    const umaSo = unitsView([{ name: 'Centro', address: ' Rua Garibaldi, 1200 ', order: 0 }]);
+    expect(appointmentDetailOf(PEDRO, umaSo)).toMatchObject({ unit: null, unitAddress: 'Rua Garibaldi, 1200' });
+    const semEndereco = unitsView([{ name: 'Centro', address: '', order: 0 }]);
+    expect(appointmentDetailOf(PEDRO, semEndereco)).toMatchObject({ unit: null, unitAddress: null });
+    expect(appointmentDetailOf(PEDRO, [])).toMatchObject({ unit: null, unitAddress: null });
+  });
+
   it('unidade esquecida numa aula não aparece: unit e unitAddress saem null', () => {
     const lead = { ...PEDRO, appointmentUnit: 'Centro' };
     expect(appointmentDetailOf(lead, unidades)).toMatchObject({ type: 'aula_experimental', unit: null, unitAddress: null });

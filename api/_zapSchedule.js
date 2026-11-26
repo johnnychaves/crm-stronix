@@ -200,7 +200,9 @@ export function wardRelationship(lead) {
 // O agendamento que a ficha, o cartão e a Meta Diária mostram hoje, no
 // formato AppointmentDetail do contrato da ponte, ou null. Sai do lead, pelas
 // mesmas leituras do cartão, e cancelado vira null. `units` é a lista de
-// unitsView, de onde sai o endereço da unidade pelo nome.
+// unitsView, de onde sai o endereço da unidade pelo nome. A aula não escolhe
+// unidade: com uma unidade só na academia, ela leva o endereço dessa unidade
+// (para o link de rota da confirmação no Stronizap), e o `unit` fica null.
 export function appointmentDetailOf(lead, units = []) {
   if (!lead || isAppointmentCancelled(lead)) return null;
   const type = normalizeAppointmentType(getLeadAppointmentType(lead));
@@ -214,7 +216,9 @@ export function appointmentDetailOf(lead, units = []) {
     type,
     at: at.toISOString(),
     unit,
-    unitAddress: unit ? ((units || []).find((u) => u.name === unit)?.address ?? null) : null,
+    unitAddress: unit
+      ? ((units || []).find((u) => u.name === unit)?.address ?? null)
+      : (!isVisita && units?.length === 1 ? units[0].address : null),
     modality: isVisita ? null : textOrNull(lead.appointmentModality),
     professorName: isVisita ? null : textOrNull(lead.appointmentProfessorName),
     soloTraining: isVisita ? false : Boolean(lead.appointmentSoloTraining),
