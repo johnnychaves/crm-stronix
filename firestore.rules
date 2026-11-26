@@ -460,6 +460,21 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Freepass das aulas experimentais (spec
+    // docs/superpowers/specs/2026-11-26-visitante-e-freepass-design.md). Lê
+    // quem é da academia. Consultor e gestor lançam e encerram, inclusive no
+    // lead de outro consultor, como o contrato. O professor não lança nem
+    // encerra. Não se apaga: o histórico conta nos painéis. O
+    // src/lib/__tests__/freepassRules.test.js lê este bloco.
+    match /artifacts/{appId}/public/data/stronix_freepass/{id} {
+      allow read: if inTenant(appId) && tenantActive(appId);
+      allow create: if inTenant(appId) && tenantActive(appId)
+        && !isProfessor(appId);
+      allow update: if inTenant(appId) && tenantActive(appId)
+        && !isProfessor(appId);
+      allow delete: if false;
+    }
+
     // Pesquisa de NPS dos alunos (spec
     // docs/superpowers/specs/2026-11-24-perfil-do-professor-design.md e plano
     // docs/superpowers/plans/2026-11-25-perfil-do-professor-04-pesquisas.md).

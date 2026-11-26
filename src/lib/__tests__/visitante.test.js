@@ -1,5 +1,6 @@
 // src/lib/__tests__/visitante.test.js
 import { describe, it, expect } from 'vitest';
+import { classifyInteraction } from '../timeline.js';
 import {
   normalizeFreepassTypes, freepassTypeProblem, saveFreepassType, freepassQuantityText
 } from '../visitante.js';
@@ -228,5 +229,11 @@ describe('textos da linha do tempo', () => {
       .toBe('Freepass lançado: Pilates 2 aulas (Pilates), 2 aulas para agendar.');
     expect(freepassEndText({ typeName: 'Pilates 2 aulas' })).toBe('Freepass encerrado: Pilates 2 aulas.');
     expect(FREEPASS_INTERACTION_TYPE).toBe('freepass');
+  });
+});
+
+describe('linha do tempo', () => {
+  it('o freepass cai em Agendamentos', () => {
+    expect(classifyInteraction({ type: 'freepass', text: 'Freepass lançado: Pilates 2 aulas (Pilates), 2 aulas para agendar.' })).toBe('appointment');
   });
 });

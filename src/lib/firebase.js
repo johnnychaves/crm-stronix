@@ -163,6 +163,9 @@ export const PLANS_PATH = 'stronix_planos';
 // imutável), ligado ao lead/cliente por leadId.
 export const CONTRACTS_PATH = 'stronix_contratos';
 export const AULAS_PATH = 'stronix_aulas';
+// Freepass das aulas experimentais (spec docs/superpowers/specs/2026-11-26-visitante-e-freepass-design.md).
+// 1 doc por freepass, ligado à pessoa por leadId.
+export const FREEPASS_PATH = 'stronix_freepass';
 // Config "geral" da academia — doc único (singleton) sob este path.
 export const CONFIG_PATH = 'stronix_config';
 export const CONFIG_GENERAL_ID = 'general';
