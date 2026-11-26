@@ -44,7 +44,7 @@ describe('tabela de parâmetros', () => {
   });
 
   it('tela sem filtro devolve objeto vazio e query vazia', () => {
-    for (const tela of ['settings', 'ficha', 'superadmin', 'xyz']) {
+    for (const tela of ['ficha', 'superadmin', 'xyz']) {
       expect(ler(tela, '?mes=2026-08', dash), tela).toEqual({});
       expect(montar(tela, { monthKey: '2026-08' }, dash), tela).toBe('');
     }
@@ -749,5 +749,20 @@ describe('ciclo do plano de carreira (Professores e perfil)', () => {
     expect(screenParamsQuery('professores', { ciclo: 2027 }, ctx)).toBe('');
     expect(screenParamsQuery('professorPerfil', { ciclo: 2026 }, ctx)).toBe('?ciclo=2026');
     expect(screenParamsQuery('professores', { ciclo: 2025 }, ctx)).toBe('');
+  });
+});
+
+describe('Equipe & acessos', () => {
+  it('ausente é ativos e todos; valor de fora cai no padrão', () => {
+    expect(readScreenParams('settings', '')).toEqual({ situacao: 'ativos', funcao: null, vinculo: null, acesso: null });
+    expect(readScreenParams('settings', '?sit=xyz&funcao=dono&vinculo=nada&acesso=talvez'))
+      .toEqual({ situacao: 'ativos', funcao: null, vinculo: null, acesso: null });
+  });
+  it('lê e escreve os quatro, sem escrever o padrão', () => {
+    const q = '?sit=desligados&funcao=professor&vinculo=estagio&acesso=sem';
+    const v = readScreenParams('settings', q);
+    expect(v).toEqual({ situacao: 'desligados', funcao: 'professor', vinculo: 'estagio', acesso: 'sem' });
+    expect(screenParamsQuery('settings', v)).toBe(q);
+    expect(screenParamsQuery('settings', { situacao: 'ativos', funcao: null, vinculo: null, acesso: null })).toBe('');
   });
 });
