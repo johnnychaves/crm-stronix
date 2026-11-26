@@ -4,6 +4,10 @@ import { appId, LEADS_PATH, INTERACTIONS_PATH, CONTRACTS_PATH, storage } from '.
 import { uploadLeadPhoto, deleteLeadPhoto } from '../lib/leadPhoto.js';
 import { logInteraction } from '../lib/interactions.js';
 import { useLeadTimeline } from '../hooks/useLeadTimeline.js';
+import { useLeadFreepasses } from '../hooks/useLeadFreepasses.js';
+import { FreepassLaunchModal } from '../modals/FreepassLaunchModal.jsx';
+import { activeFreepassesOf, visitorOf } from '../lib/visitante.js';
+import { writeFreepassEnd, writeFreepassLaunch } from '../lib/freepassWrites.js';
 import { useReferrals } from '../hooks/useReferrals.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { planStageMove, planLoss, planUpgradeMove, planUpgradeDecline, stageMoveBlockMessage, withStageEntered, reactivationFunnels, REACTIVATED_NOTE } from '../lib/stageMove.js';
@@ -101,6 +105,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // ao vivo. Antes vinha do prop global filtrado por leadId — que pós-G2 é só o
   // mês corrente. A ficha remonta por lead (key), então o hook não reseta.
   const interactions = useLeadTimeline({ db, leadId: lead?.id, active: listenersActive });
+  const freepasses = useLeadFreepasses({ db, leadId: lead?.id, active: listenersActive });
   const toast = useToast();
   const isReadOnly = !canEditLead(appUser);
   // Linha do tempo COLABORATIVA: qualquer consultor do tenant pode escrever
@@ -118,6 +123,8 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   const canEditCadastro = !isReadOnly && can(appUser, ACTIONS.CADASTRO_EDITAR);
   const canMudarFase = can(appUser, ACTIONS.FICHA_MUDAR_FASE);
   const canContrato = can(appUser, ACTIONS.CONTRATO_EDITAR);
+  const canFreepass = can(appUser, ACTIONS.FREEPASS_LANCAR);
+  const [freepassOpen, setFreepassOpen] = useState(false);
   const canIndicar = can(appUser, ACTIONS.INDICACAO_CADASTRAR);
   // Última trava dos handlers. O botão já some, mas a ação não pode passar
   // por outro caminho.
@@ -147,7 +154,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   const [editingContractId, setEditingContractId] = useState(null);
   const [activatingId, setActivatingId] = useState(null);
   // Threshold de vencimento do contexto (sem prop-drilling) p/ a seção Contrato.
-  const { contractThresholdDays, contratos, professores, renewalCheckpoints } = useGeneralConfig();
+  const { contractThresholdDays, contratos, professores, renewalCheckpoints, freepassTypes, modalities } = useGeneralConfig();
 
   // O compositor da Linha do tempo: aberto ou fechado, em que modo e o rascunho
   // de cada modo. Tudo mora na ficha porque a aba desmonta o compositor quando a
@@ -291,6 +298,44 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     if (!canContrato) { negarAcesso(); return; }
     setMatriculaMode('matricula');
     setMatriculaOpen(true);
+  };
+
+  // Freepass (spec 2026-11-26). Lança pela janela e encerra à mão. O fim pela
+  // matrícula e pela perda sai da leitura (visitante.js), então os caminhos de
+  // venda e de perda não mudam.
+  const openFreepass = () => {
+    if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
+    if (!canFreepass) { negarAcesso(); return; }
+    setFreepassOpen(true);
+  };
+  const confirmFreepass = async ({ type, modalidadeName, startsAt }) => {
+    if (!canFreepass) { negarAcesso(); return; }
+    setLoading(true);
+    try {
+      await writeFreepassLaunch({ db, lead, appUser, type, modalidadeName, startsAt, existing: activeFreepassesOf(lead, freepasses, new Date()) });
+      setFreepassOpen(false);
+      toast.success('Freepass lançado.');
+    } catch (e) {
+      console.error(e);
+      toast.error('Não foi possível lançar o freepass.');
+    } finally {
+      setLoading(false);
+    }
+  };
+  const endFreepass = async (fp) => {
+    if (!canFreepass) { negarAcesso(); return; }
+    const nome = String(lead.name || '').split(' ')[0];
+    if (!window.confirm(`Encerrar o freepass ${fp.typeName}? ${nome} deixa de aparecer como Visitante.`)) return;
+    setLoading(true);
+    try {
+      await writeFreepassEnd({ db, lead, appUser, freepass: fp, existing: activeFreepassesOf(lead, freepasses, new Date()) });
+      toast.success('Freepass encerrado.');
+    } catch (e) {
+      console.error(e);
+      toast.error('Não foi possível encerrar o freepass.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Renovação: abre o MESMO modal em modo renovação (não re-carimba
@@ -989,6 +1034,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
 
   // O que a faixa de baixo do cabeçalho mostra (src/lib/profileBand.js).
   const bandNow = new Date();
+  const visitor = visitorOf(lead, bandNow);
   const band = {
     next: nextStepCell(lead, bandNow),
     mid: isClient
@@ -1083,6 +1129,11 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                   <span className={cn('size-1.5 rounded-full', profileTone.strong)} aria-hidden="true" />
                   {stateChipText(profileState.label)}
                 </span>
+                {visitor && (
+                  <span className="inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full bg-teal-50 px-2.5 text-[12.5px] font-semibold text-teal-700 dark:bg-teal-500/10 dark:text-teal-300">
+                    <span className="size-1.5 rounded-full bg-teal-500" aria-hidden="true" />Visitante · {visitor.shortText}
+                  </span>
+                )}
                 {upgradeStage && (
                   <span className="inline-flex h-6 shrink-0 items-center gap-1 rounded-full bg-violet-50 px-2.5 text-[12.5px] font-semibold text-violet-700 dark:bg-violet-500/10 dark:text-violet-300">
                     <TrendingUp size={11} aria-hidden="true" /> Upgrade · {upgradeStage.name}
@@ -1484,6 +1535,11 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
             onContractAction={openContractAction}
             onEditContract={openContractEdit}
             onActivate={openActivate}
+            isClient={isClient}
+            freepasses={freepasses}
+            canFreepass={canFreepass}
+            onLaunchFreepass={openFreepass}
+            onEndFreepass={endFreepass}
           />
         </TabsContent>
 
@@ -1585,6 +1641,19 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
           contract={contractById(activatingId)}
           onClose={() => setActivatingId(null)}
           onDone={() => setActivatingId(null)}
+        />
+      )}
+      {freepassOpen && (
+        <FreepassLaunchModal
+          open={freepassOpen}
+          onOpenChange={setFreepassOpen}
+          firstName={firstName}
+          types={freepassTypes}
+          modalities={modalities}
+          freepasses={freepasses}
+          gestor={isGestor(appUser)}
+          loading={loading}
+          onConfirm={confirmFreepass}
         />
       )}
       {matriculaOpen && (

@@ -20,6 +20,7 @@ vi.mock('../firebase.js', () => ({
   appId: 'acad', LEADS_PATH: 'leads', INTERACTIONS_PATH: 'inter', CONTRACTS_PATH: 'contratos',
   db: {}, auth: {}, storage: {},
 }));
+vi.mock('../../hooks/useLeadFreepasses.js', () => ({ useLeadFreepasses: () => [] }));
 vi.mock('../../hooks/useLeadTimeline.js', () => ({ useLeadTimeline: () => [] }));
 vi.stubGlobal('window', { location: { origin: 'https://stronilead.com.br' } });
 
@@ -183,7 +184,8 @@ describe('ficha do professor: Contratos só para leitura', () => {
     const casos = [
       [cliente(start), [start], 'Renovar contrato'],
       [cliente(vencido), [vencido], 'Nova matrícula'],
-      [LEAD, [], 'Matricular agora'],
+      [{ ...cliente(vencido), currentContractId: null, currentPlanName: null }, [], 'Matricular agora'],
+      [LEAD, [], 'Lançar freepass'],
     ];
     casos.forEach(([lead, contratos, botao]) => {
       expect(ficha({ lead, tab: 'contratos', appUser: CONSULTOR, contratos })).toContain(botao);
