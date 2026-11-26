@@ -40,6 +40,7 @@ const REVISADOS = {
   'src/lib/aulas.js': 'registro da aula',
   'src/lib/aulasPlan.js': 'aulas marcadas no lançamento do freepass, registro da aula',
   'src/lib/freepassAgendaWrites.js': 'registro da aula do freepass e agendamento do lead (appointmentProfessorId, pelo buildSchedulePatch)',
+  'src/hooks/useFreepassAdvance.js': 'aula da vez do freepass no agendamento do lead (appointmentProfessorId, pelo buildSchedulePatch)',
   'src/components/profile/ScheduleWizard.jsx': 'escolha do professor da aula',
   'src/views/LeadProfileView.jsx': 'registro da aula do assistente',
   'src/views/DailyGoalView.jsx': 'registro da aula do Remarcar',
