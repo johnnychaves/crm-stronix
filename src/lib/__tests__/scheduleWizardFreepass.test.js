@@ -96,7 +96,8 @@ describe('com o módulo', () => {
     const escolha = vi.fn(() => ({ kind: 'use', freepass: FP, aulasLeft: 1 }));
     const onConfirm = await montar({ freepassOn: true, freepassChoice: escolha });
     await clicar(botao('Pilates'));
-    expect(escolha).toHaveBeenCalledWith('Pilates');
+    // O segundo argumento é o modo 'new' (o Agendar do cartão do freepass), aqui desligado.
+    expect(escolha).toHaveBeenCalledWith('Pilates', false);
     expect(titulo()).toBe('A aula entra no freepass de Rafaela');
     expect(botao('Usar o freepass Pilates 2 aulas').textContent).toContain('1 de 2 agendadas');
     expect(botao('Aula avulsa').textContent).toContain('Não conta nas 2 aulas');

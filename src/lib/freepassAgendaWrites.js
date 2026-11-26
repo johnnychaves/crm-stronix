@@ -1,11 +1,13 @@
 // Peças das aulas do freepass: lê os registros do lead, monta os registros
 // extras que o lote do lançamento grava e recalcula o contador do freepass.
-import { collection, doc, getDocs, query, where, serverTimestamp } from 'firebase/firestore';
-import { appId, AULAS_PATH, FREEPASS_PATH } from './firebase.js';
+import { collection, doc, getDocs, query, where, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { appId, AULAS_PATH, FREEPASS_PATH, LEADS_PATH } from './firebase.js';
 import { AULA_STATUS, APPOINTMENT_RECORD_TYPES, aulaRecordFields } from './aulas.js';
+import { calendarDaysBetween, getSafeDateOrNull } from './dates.js';
+import { appointmentTaskOwnerFor, buildSchedulePatch } from './schedulePatch.js';
 import {
   activeFreepassesOf, buildFreepassDoc, freepassAulaDaVez, freepassAulasPatch, freepassLaunchText,
-  freepassSummaryPatch, FREEPASS_INTERACTION_TYPE
+  freepassSummaryPatch, nextFreepassAula, FREEPASS_INTERACTION_TYPE
 } from './visitante.js';
 
 const aulasCol = (db) => collection(db, 'artifacts', appId, 'public', 'data', AULAS_PATH);
@@ -42,13 +44,13 @@ export function freepassAfterAulas({ freepass, records }) {
   return { patch, freepass: { ...freepass, ...patch } };
 }
 
-// O freepass que nasce no Agendar da ficha: o id reservado, o documento e os
-// registros das aulas 2..N. `aulas` são os campos de registro de cada aula, em
-// ordem de data; a primeira é gravada pelo recordNewAppointment e é a aula da
-// vez. O início é o dia da primeira aula.
-export function freepassLaunchParts({ db, lead, appUser, type, modalidadeName, aulas }) {
+// O freepass que nasce no Agendar da ficha (ou na aba Contratos, `via`): o id
+// reservado, o documento e os registros das aulas 2..N. `aulas` são os campos
+// de registro de cada aula, em ordem de data; a primeira é gravada pelo
+// recordNewAppointment e é a aula da vez. O início é o dia da primeira aula.
+export function freepassLaunchParts({ db, lead, appUser, type, modalidadeName, aulas, via = 'agendar' }) {
   const ref = doc(freepassCol(db));
-  const data = buildFreepassDoc({ lead, type, modalidadeName, startsAt: aulas[0].scheduledFor, appUser, via: 'agendar' });
+  const data = buildFreepassDoc({ lead, type, modalidadeName, startsAt: aulas[0].scheduledFor, appUser, via });
   return { ref, data, extras: extraAulaRecords({ db, lead, freepassId: ref.id, aulas: aulas.slice(1) }) };
 }
 
@@ -88,4 +90,48 @@ export async function freepassScheduleWrites({ db, lead, freepasses, targetId = 
       for (const [id, patch] of patches) if (id !== launched?.id) batch.update(doc(freepassCol(db), id), patch);
     },
   };
+}
+
+// A aula nova que não remarca a pendente (o "Agendar" e o "Remarcar" do cartão
+// do freepass) só toma o agendamento do lead quando vira a aula da vez. O lead
+// fica com o que tem quando o agendamento dele, sem desfecho, é no instante
+// `at` ou antes (a aula pendente mais cedo, mesmo atrasada), ou quando tem
+// desfecho e é de hoje em diante: quem tira essa aula do lead é a virada do dia
+// da aula seguinte (Tarefa 6), para a Agenda de hoje não perder a aula marcada.
+export function leadKeepsAppointment(lead, at, now = new Date()) {
+  const cur = getSafeDateOrNull(lead?.appointmentScheduledFor);
+  const next = getSafeDateOrNull(at);
+  if (!cur || !lead?.appointmentType || !next) return false;
+  return lead.appointmentOutcome ? calendarDaysBetween(now, cur) >= 0 : cur <= next;
+}
+
+// Remarcar uma aula do freepass que não é a da vez (o diálogo do cartão): muda
+// só o dia e o professor do registro, reconta o freepass (o fim do por aulas
+// é o dia da última aula) e, quando a aula passa a ser a mais cedo, o
+// agendamento do lead aponta para ela. Um lote só, sem interação. `fields` são
+// os campos do registro: scheduledFor, professorId, professorName, soloTraining.
+export async function writeFreepassAulaMove({ db, lead, appUser, freepasses, aula, fields, now = new Date() }) {
+  const freepass = (freepasses || []).find((fp) => fp.id === aula.freepassId);
+  if (!freepass) throw new Error('writeFreepassAulaMove: freepass da aula não encontrado');
+  const records = (await readLeadAulas(db, lead.id)).map((r) => (r.id === aula.id ? { ...r, ...fields } : r));
+  const after = freepassAfterAulas({ freepass, records });
+  const running = activeFreepassesOf(lead, (freepasses || []).map((fp) => (fp.id === freepass.id ? after.freepass : fp)), now);
+  const next = nextFreepassAula({ records, freepassId: freepass.id, now });
+  // Se outra aba fez dela a aula da vez enquanto o diálogo estava aberto, o lead acompanha a mudança.
+  const leadOnIt = lead.currentAulaId === aula.id;
+  const toNext = Boolean(next) && (leadOnIt || (next.id !== lead.currentAulaId && !leadKeepsAppointment(lead, next.scheduledFor, now)));
+  const owner = toNext ? appointmentTaskOwnerFor({ scheduler: appUser, lead }) : null;
+  const leadPatch = {
+    ...freepassSummaryPatch(running, now),
+    ...(toNext && buildSchedulePatch({
+      typeLabel: 'Aula Experimental', date: getSafeDateOrNull(next.scheduledFor), modalidade: next.modality || null,
+      professorId: next.professorId || null, professorName: next.professorName || null, soloTraining: Boolean(next.soloTraining),
+      currentAulaId: next.id, appointmentOwnerId: owner?.id || null, appointmentOwnerName: owner?.name || null,
+    })),
+  };
+  const batch = writeBatch(db);
+  batch.update(doc(aulasCol(db), aula.id), fields);
+  batch.update(doc(freepassCol(db), freepass.id), after.patch);
+  batch.update(doc(collection(db, 'artifacts', appId, 'public', 'data', LEADS_PATH), lead.id), leadPatch);
+  await batch.commit();
 }

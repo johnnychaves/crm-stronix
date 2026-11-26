@@ -98,7 +98,8 @@ function ClosedCard({ hero, facts, status, vigencia, isReadOnly, loading, freepa
 export function ContractsTab({
   lead, leadContracts, firstName, isReadOnly, loading, contractThresholdDays, renewalCheckpoints,
   onEnroll, onRenew, onEditContract, onContractAction, onActivate,
-  isClient, freepasses = [], freepassesLoading = false, freepassOn = false, canFreepass = false, onLaunchFreepass, onEndFreepass
+  isClient, freepasses = [], freepassesLoading = false, freepassOn = false, canFreepass = false, onLaunchFreepass, onEndFreepass,
+  leadAulas = [], canSchedule = false, onRemarcarAula, onAgendarAula
 }) {
   const now = new Date();
   // Sem o módulo Stronix 2.0 a aba ignora freepass por inteiro.
@@ -145,7 +146,10 @@ export function ContractsTab({
     <div className="flex flex-col gap-4">
       <ContractTimeline timeline={timeline} />
       {running.map(fp => (
-        <FreepassCard key={fp.id} freepass={fp} now={now} canFreepass={canFreepass && !isReadOnly} loading={loading} onEnd={onEndFreepass} />
+        <FreepassCard
+          key={fp.id} freepass={fp} now={now} canFreepass={canFreepass && !isReadOnly} loading={loading} onEnd={onEndFreepass}
+          aulas={leadAulas.filter((r) => r.freepassId === fp.id)} canSchedule={canSchedule} onRemarcar={onRemarcarAula} onAgendar={onAgendarAula}
+        />
       ))}
       {!hasContract ? (
         <EmptyState freepassOn={freepassOn} firstName={firstName} isReadOnly={isReadOnly} loading={loading || freepassesLoading} lost={lead.status === 'Perda'} experimenting={running.length > 0} onEnroll={onEnroll} isClient={isClient} canFreepass={canFreepass} onLaunchFreepass={onLaunchFreepass} />

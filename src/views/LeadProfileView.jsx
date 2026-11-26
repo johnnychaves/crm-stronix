@@ -7,9 +7,10 @@ import { useLeadTimeline } from '../hooks/useLeadTimeline.js';
 import { useLeadFreepasses } from '../hooks/useLeadFreepasses.js';
 import { useLeadAulas } from '../hooks/useLeadAulas.js';
 import { FreepassLaunchModal } from '../modals/FreepassLaunchModal.jsx';
+import { FreepassAulaModal } from '../modals/FreepassAulaModal.jsx';
 import { FREEPASS_INTERACTION_TYPE, activeFreepassesOf, freepassChoiceFor, freepassPickMatches, freepassSummaryPatch, launchCheck, visitorOf } from '../lib/visitante.js';
 import { writeFreepassEnd, writeFreepassLaunch } from '../lib/freepassWrites.js';
-import { freepassLaunchParts, freepassScheduleWrites } from '../lib/freepassAgendaWrites.js';
+import { freepassLaunchParts, freepassScheduleWrites, leadKeepsAppointment, writeFreepassAulaMove } from '../lib/freepassAgendaWrites.js';
 import { AULA_STATUS } from '../lib/aulas.js';
 import { useReferrals } from '../hooks/useReferrals.js';
 import { withBucket } from '../lib/leadDerived.js';
@@ -115,7 +116,8 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // Os registros de aula da pessoa: o Agendar de aula move a aula pendente
   // (currentAulaId 'agendada'), e o freepass dela é o movingFreepassId.
   const leadAulas = useLeadAulas({ db, leadId: lead?.id, active: listenersActive && freepassOn });
-  const movingFreepassId = (lead?.currentAulaId && (leadAulas || []).find((r) => r.id === lead.currentAulaId && r.status === AULA_STATUS.AGENDADA)?.freepassId) || null;
+  const pendingAula = (lead?.currentAulaId && (leadAulas || []).find((r) => r.id === lead.currentAulaId && r.status === AULA_STATUS.AGENDADA)) || null;
+  const movingFreepassId = pendingAula?.freepassId || null;
   const toast = useToast();
   const isReadOnly = !canEditLead(appUser);
   // Linha do tempo COLABORATIVA: qualquer consultor do tenant pode escrever
@@ -167,12 +169,13 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   const { contractThresholdDays, contratos, professores, renewalCheckpoints, freepassTypes, modalities } = useGeneralConfig();
   // O passo Freepass do Agendar: o que a aula da modalidade faz com o freepass
   // (visitante.js). Enquanto os freepass, ou o registro da aula pendente, não
-  // chegaram, o passo espera.
-  const freepassChoice = (modalidadeName) => {
+  // chegaram, o passo espera. `fresh` (o "Agendar" do cartão do freepass) cria
+  // uma aula a mais sem remarcar a pendente, então nada se move.
+  const freepassChoice = (modalidadeName, fresh = false) => {
     if (freepasses === null || (lead.currentAulaId && leadAulas === null)) return { kind: 'loading' };
     const modalidadeId = (modalities || []).find((m) => m.name === modalidadeName)?.id || null;
     return freepassChoiceFor({
-      lead, freepasses, types: freepassTypes, modalidadeId, movingFreepassId,
+      lead, freepasses, types: freepassTypes, modalidadeId, movingFreepassId: fresh ? null : movingFreepassId,
       canLaunch: canFreepass && lead.status !== 'Perda',
     });
   };
@@ -183,11 +186,12 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   const [composer, setComposer] = useState({ open: false, mode: 'note' });
   const [composerDrafts, setComposerDrafts] = useState(EMPTY_DRAFTS);
   // O Remarcar do "A seguir" abre o Agendar já no tipo do item, e `n` remonta o
-  // assistente a cada Remarcar. Abrir o compositor por outro caminho limpa o
-  // tipo, para o próximo Agendar nascer em branco.
-  const [scheduleStart, setScheduleStart] = useState({ type: null, n: 0 });
+  // assistente a cada Remarcar. O cartão do freepass abre também na modalidade
+  // e, no "Agendar" da vaga livre, no modo 'new'. Abrir o compositor por outro
+  // caminho limpa tudo, para o próximo Agendar nascer em branco.
+  const [scheduleStart, setScheduleStart] = useState({ type: null, modalidade: null, mode: null, n: 0 });
   const openComposer = (mode = 'note') => {
-    setScheduleStart((s) => (s.type ? { ...s, type: null } : s));
+    setScheduleStart((s) => (s.type || s.mode ? { ...s, type: null, modalidade: null, mode: null } : s));
     setComposer({ open: true, mode });
   };
   const closeComposer = () => setComposer({ open: false, mode: 'note' });
@@ -330,13 +334,25 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     if (lead.status === 'Perda') { toast.warning('Reative o lead antes de lançar o freepass.'); return; }
     setFreepassOpen(true);
   };
-  const confirmFreepass = async ({ type, modalidadeName, startsAt }) => {
+  const confirmFreepass = async ({ type, modalidadeName, startsAt, aulas = null }) => {
     if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
     if (!canFreepass) { negarAcesso(); return; }
     if (lead.status === 'Perda') { toast.warning('Reative o lead antes de lançar o freepass.'); return; }
     if (freepasses === null) return;
     const check = launchCheck({ type, freepasses, modalidadeName, gestor: isGestor(appUser) });
-    if (check.block) { toast.warning(check.block); return; }
+    if (check?.block) { toast.warning(check.block); return; }
+    // Por aulas, as aulas nascem marcadas pelo gravador do Agendar: o mesmo
+    // payload do assistente, com a interação do agendamento e a aula da vez.
+    if (aulas) {
+      const [first] = aulas;
+      const ok = await handleWizardConfirm({
+        typeLabel: 'Aula Experimental', date: first.date, modalidade: modalidadeName,
+        professorId: first.professorId, soloTraining: first.soloTraining, note: '',
+        freepass: { kind: 'launch', typeId: type.id, aulas, via: 'contratos' },
+      });
+      if (ok === true) setFreepassOpen(false);
+      return;
+    }
     setLoading(true);
     try {
       await writeFreepassLaunch({ db, lead, appUser, type, modalidadeName, startsAt, existing: activeFreepassesOf(lead, freepasses, new Date()) });
@@ -361,6 +377,42 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     } catch (e) {
       console.error(e);
       toast.error('Não foi possível encerrar o freepass.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // O cartão do freepass: a aula da vez remarca pelo Agendar da ficha (move a
+  // pendente), outra aula agendada pelo diálogo, e a vaga livre agenda uma aula
+  // a mais pelo Agendar no modo 'new'. Quem pode é quem agenda (canTimeline).
+  const [aulaMove, setAulaMove] = useState(null);
+  const openScheduleFromCard = (start) => {
+    if (!canTimeline) { toast.warning('Você não tem permissão para agendar neste lead.'); return; }
+    setScheduleStart((s) => ({ ...start, n: s.n + 1 }));
+    setComposer({ open: true, mode: 'schedule' });
+    onTab('timeline');
+    requestAnimationFrame(() => composerRef.current?.scrollIntoView?.({ block: 'nearest' }));
+  };
+  const remarcarAula = (aula, { number, taken }) => {
+    if (aula.id === lead.currentAulaId) { openScheduleFromCard({ type: 'aula', modalidade: aula.modality || null, mode: null }); return; }
+    if (!canTimeline) { toast.warning('Você não tem permissão para agendar neste lead.'); return; }
+    setAulaMove({ aula, number, taken });
+  };
+  const agendarAula = (fp) => openScheduleFromCard({ type: 'aula', modalidade: fp.modalidadeName || null, mode: 'new' });
+  const saveAulaMove = async ({ date, professorId, soloTraining }) => {
+    if (!canTimeline) { toast.warning('Você não tem permissão para agendar neste lead.'); return; }
+    if (freepasses === null) return;
+    setLoading(true);
+    try {
+      await writeFreepassAulaMove({
+        db, lead, appUser, freepasses, aula: aulaMove.aula,
+        fields: { scheduledFor: date, professorId: professorId || null, professorName: professorId ? professorNameById(professores, professorId) : null, soloTraining: Boolean(soloTraining) },
+      });
+      toast.success(`Aula ${aulaMove.number} remarcada.`);
+      setAulaMove(null);
+    } catch (e) {
+      console.error(e);
+      toast.error('Não foi possível remarcar a aula.');
     } finally {
       setLoading(false);
     }
@@ -697,8 +749,11 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
 
   // `freepass` vem do passo Freepass do assistente (null sem o módulo): a aula
   // entra no freepass que corre ('use'), nasce com um freepass novo ('launch')
-  // ou fica avulsa ('avulsa'). Devolve false quando recusa antes de gravar,
-  // para o assistente ficar como está.
+  // ou fica avulsa ('avulsa'). Com `fresh` (o "Agendar" do cartão do freepass),
+  // a aula é uma a mais: não remarca a pendente, e o agendamento do lead só
+  // muda se ela virar a aula da vez. Com `via: 'contratos'`, é o lançamento por
+  // aulas da aba Contratos, que já conferiu o launchCheck. Devolve false quando
+  // recusa antes de gravar, para o assistente ficar como está, e true quando grava.
   const handleWizardConfirm = async ({ typeLabel, date, modalidade, professorId, soloTraining, quantidade, unidade, note: wizNote, contactOwnerId: wizOwnerId, contactOwnerName: wizOwnerName, freepass: fpPick = null }) => {
     if (!canTimeline) { toast.warning('Você não tem permissão para agendar neste lead.'); return; }
     if (!(date instanceof Date) || isNaN(date.getTime())) { toast.warning('Selecione o dia e o horário.'); return; }
@@ -713,7 +768,8 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     }
     // A escolha do passo é conferida com os dados de agora: outra aba pode ter
     // lançado o freepass, ou ele encheu ou foi encerrado.
-    if (fpPick && !freepassPickMatches(fpPick, freepassChoice(modalidade))) {
+    const fresh = Boolean(fpPick?.fresh);
+    if (fpPick && fpPick.via !== 'contratos' && !freepassPickMatches(fpPick, freepassChoice(modalidade, fresh))) {
       toast.warning('O freepass mudou enquanto você agendava. Confira o passo Freepass.');
       return false;
     }
@@ -765,7 +821,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
       // nascer nele; as aulas 2..N vão no mesmo lote da interação.
       const launch = launchType
         ? freepassLaunchParts({
-            db, lead, appUser, type: launchType, modalidadeName: modalidade,
+            db, lead, appUser, type: launchType, modalidadeName: modalidade, via: fpPick.via,
             aulas: (fpPick.aulas || [{ date, professorId, soloTraining }]).map((a) => ({
               scheduledFor: a.date, professorId: a.professorId || null, professorName: profName(a.professorId),
               soloTraining: Boolean(a.soloTraining), modality: modalidade || null,
@@ -774,7 +830,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
         : null;
       const targetId = fpPick?.kind === 'use' ? fpPick.freepassId : launch?.ref.id || null;
       const currentAulaId = await recordNewAppointment({
-        db, lead, appointmentType,
+        db, lead, appointmentType, fresh,
         fields: isAula
           ? {
               professorId: professorId || null,
@@ -787,10 +843,12 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
             }
           : { unit: unidade || null, scheduledFor: date },
       });
+      // A aula a mais que não foi gravada volta com o ponteiro antigo: nada pode seguir.
+      if (fresh && isAula && currentAulaId === (lead.currentAulaId || null)) throw new Error('a aula nova não foi gravada');
 
       // A aula pendente que saiu de um freepass (para outro, para avulsa, ou
       // cancelada pela troca por visita) devolve a vaga: o freepass recalcula.
-      const leftId = (isAula || isVisita) && movingFreepassId !== targetId ? movingFreepassId : null;
+      const leftId = !fresh && (isAula || isVisita) && movingFreepassId !== targetId ? movingFreepassId : null;
       const fpSide = launch || (freepasses && (targetId || leftId))
         ? await freepassScheduleWrites({ db, lead, freepasses: freepasses || [], targetId, leftId, launch, currentAulaId })
         : null;
@@ -812,7 +870,8 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
         contactOwnerId: wizOwnerId || null, contactOwnerName: wizOwnerName || null,
         appointmentOwnerId: apptOwner?.id || null, appointmentOwnerName: apptOwner?.name || null,
       });
-      const leadAppt = vez && lead.currentAulaId === vez.id ? {} : up;
+      // A aula a mais (fresh) não tira do lead um agendamento mais cedo nem a aula de hoje com desfecho.
+      const leadAppt = (vez && lead.currentAulaId === vez.id) || (fresh && leadKeepsAppointment(lead, da.date)) ? {} : up;
       // O resumo do freepass no lead (freepassSummaryPatch), quando a gravação mexe no freepass.
       const freepassLead = fpSide ? fpSide.leadPatch : {};
 
@@ -834,8 +893,10 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
       );
 
       toast.success(launch ? `Freepass lançado. ${launch.extras.length ? 'Primeira aula' : 'Aula'} em ${dateStr}.` : `Agendamento criado para ${dateStr}.`);
-      closeComposerIn('schedule');
+      // O lançamento pela aba Contratos não fecha o Agendar que ficou aberto na Linha do tempo.
+      if (fpPick?.via !== 'contratos') closeComposerIn('schedule');
       setLoading(false);
+      return true;
     } catch (e) {
       console.error(e);
       toast.error('Não foi possível salvar o agendamento.');
@@ -1489,6 +1550,8 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
               <ScheduleWizard
                 key={scheduleStart.n}
                 initialTypeId={scheduleStart.type}
+                initialModalidade={scheduleStart.modalidade}
+                mode={scheduleStart.mode}
                 onConfirm={handleWizardConfirm}
                 onCancel={closeComposer}
                 submitting={loading}
@@ -1637,6 +1700,10 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
             canFreepass={canFreepass && lead.status !== 'Perda'}
             onLaunchFreepass={openFreepass}
             onEndFreepass={endFreepass}
+            leadAulas={leadAulas ?? []}
+            canSchedule={canTimeline}
+            onRemarcarAula={remarcarAula}
+            onAgendarAula={agendarAula}
           />
         </TabsContent>
 
@@ -1751,6 +1818,19 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
           gestor={isGestor(appUser)}
           loading={loading}
           onConfirm={confirmFreepass}
+          pendingAula={pendingAula}
+        />
+      )}
+      {aulaMove && (
+        <FreepassAulaModal
+          open
+          onOpenChange={(o) => { if (!o) setAulaMove(null); }}
+          aula={aulaMove.aula}
+          number={aulaMove.number}
+          taken={aulaMove.taken}
+          firstName={firstName}
+          loading={loading}
+          onConfirm={saveAulaMove}
         />
       )}
       {matriculaOpen && (

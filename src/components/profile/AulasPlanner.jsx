@@ -11,13 +11,17 @@ import { aulasForConfirm, aulasProblem, aulasSentence, resolveAulaRows, shortDay
 const CHIP = 'h-8 rounded-full border px-3 text-[12.5px] font-semibold transition focus-visible:outline-none focus-visible:anel-foco';
 const FIELD = 'mt-1 h-9 w-full rounded-lg border border-border bg-card px-2.5 text-[13px] num outline-none focus-visible:anel-foco dark:[color-scheme:dark]';
 const IDLE = 'border-border bg-card hover:border-slate-300 dark:hover:border-white/15';
+// O tom da aula experimental no Agendar (WZ_TONES.teal), o padrão fora dele.
+const TEAL = { text: 'text-teal-700', soft: 'bg-teal-50', ring: 'ring-teal-300', darkText: 'dark:text-teal-300', darkSoft: 'dark:bg-teal-500/10', darkRing: 'dark:ring-teal-500/40' };
 
-// days: os cartões de dia do assistente (wzDayOptions), { off, date }.
+// days: os cartões de dia (dayOptions, em lib/aulasPlan.js), { off, date }.
 // professors: os professores da modalidade; "Treina sozinho" vem sempre.
-export function AulasPlanner({ rows, onChange, days, professors, tone, firstName, now = new Date() }) {
+// No Remarcar de uma aula do freepass: `first` é o número dela, `taken` os
+// dias das outras aulas e `doneText` a frase de quando está tudo certo.
+export function AulasPlanner({ rows, onChange, days, professors, tone = TEAL, firstName, now = new Date(), first = 1, taken = [], doneText = null }) {
   const [otherOpen, setOtherOpen] = useState(() => new Set());
   const resolved = resolveAulaRows(rows);
-  const problem = aulasProblem(resolved, now);
+  const problem = aulasProblem(resolved, now, { first, taken });
 
   // Mexer numa linha a tira do automático, com o que ela mostrava mais a mudança.
   const setRow = (i, patch) => onChange(rows.map((r, k) => (k === i ? { ...resolved[i], ...patch, auto: false } : r)));
@@ -39,13 +43,13 @@ export function AulasPlanner({ rows, onChange, days, professors, tone, firstName
     <div className="flex max-w-[560px] flex-col gap-3">
       {resolved.map((r, i) => (
         <fieldset key={i} className="rounded-xl border border-border p-4">
-          <legend className="sr-only">Aula {i + 1}{r.auto ? `, igual à aula ${i}, uma semana depois` : ''}</legend>
+          <legend className="sr-only">Aula {first + i}{r.auto ? `, igual à aula ${first + i - 1}, uma semana depois` : ''}</legend>
           <div aria-hidden="true" className="mb-3 flex items-center gap-2">
-            <span className={cn('grid size-6 place-items-center rounded-full text-[12px] font-bold', tone.soft, tone.darkSoft, tone.text, tone.darkText)}>{i + 1}</span>
-            <span className="text-[15px] font-semibold">Aula {i + 1}</span>
-            {r.auto && <span className="text-[12px] text-muted-foreground">igual à aula {i}, uma semana depois</span>}
+            <span className={cn('grid size-6 place-items-center rounded-full text-[12px] font-bold', tone.soft, tone.darkSoft, tone.text, tone.darkText)}>{first + i}</span>
+            <span className="text-[15px] font-semibold">Aula {first + i}</span>
+            {r.auto && <span className="text-[12px] text-muted-foreground">igual à aula {first + i - 1}, uma semana depois</span>}
           </div>
-          <div className="mb-3 flex flex-wrap gap-1.5" role="group" aria-label={`Dia da aula ${i + 1}`}>
+          <div className="mb-3 flex flex-wrap gap-1.5" role="group" aria-label={`Dia da aula ${first + i}`}>
             {chipsFor(r).map((o) => {
               const sel = Boolean(r.date) && calendarDaysBetween(o.date, r.date) === 0;
               return (
@@ -59,7 +63,7 @@ export function AulasPlanner({ rows, onChange, days, professors, tone, firstName
               <CalendarDays size={13} aria-hidden="true" /> Outro dia
             </button>
             {otherOpen.has(i) && (
-              <input type="date" aria-label={`Outro dia da aula ${i + 1}`} min={toDateInputValue(now)}
+              <input type="date" aria-label={`Outro dia da aula ${first + i}`} min={toDateInputValue(now)}
                 value={toDateInputValue(r.date)} onChange={(e) => { const d = fromDateInputValue(e.target.value); if (d) setRow(i, { date: d }); }}
                 className="h-8 rounded-lg border border-border bg-card px-2 text-[12.5px] num outline-none focus-visible:anel-foco dark:[color-scheme:dark]" />
             )}
@@ -82,7 +86,7 @@ export function AulasPlanner({ rows, onChange, days, professors, tone, firstName
       ))}
       <p role="status" className={cn('rounded-lg px-3 py-2.5 text-[12.5px] font-medium',
         problem ? 'bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300' : cn(tone.soft, tone.darkSoft, tone.text, tone.darkText))}>
-        {problem || aulasSentence(firstName, aulasForConfirm(resolved))}
+        {problem || doneText || aulasSentence(firstName, aulasForConfirm(resolved))}
       </p>
     </div>
   );

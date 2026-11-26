@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 import { WizardFrame, WizardStepper, StageHead, WizardSummary, WizardProgress, WizardNote } from './WizardLayout.jsx';
 import { AulasPlanner } from './AulasPlanner.jsx';
 import { FreepassStep } from './FreepassStep.jsx';
-import { aulasCountText, aulasForConfirm, aulasProblem, aulasRangeText, emptyAulaRows, resolveAulaRows } from '../../lib/aulasPlan.js';
+import { aulasCountText, aulasForConfirm, aulasProblem, aulasRangeText, dayOptions as wzDayOptions, emptyAulaRows, resolveAulaRows } from '../../lib/aulasPlan.js';
 
 // ScheduleWizard: o Agendar da ficha. Tipos Mensagem, Ligação, Visita e Aula,
 // passos liberados em sequência, confirmar só quando completo. Desenho A2
@@ -23,12 +23,15 @@ import { aulasCountText, aulasForConfirm, aulasProblem, aulasRangeText, emptyAul
 // que a ficha calcula (`freepassChoice(modalidade)`: usar o que corre, lançar um
 // tipo, ou aula avulsa). O tipo por aulas troca professor e dia pelo "Marcar as
 // aulas" (AulasPlanner). `freepassChoice` null (lead em Perda) tira o passo.
+// `initialModalidade` abre a aula já na modalidade, e `mode: 'new'` (o
+// "Agendar" do cartão do freepass) cria uma aula a mais sem remarcar a
+// pendente: a escolha sai sem o movingFreepassId e o freepass vai com `fresh`.
 //
 // CONTRATO: onConfirm devolve { typeId, typeLabel, date, modalidade, professorId,
 // soloTraining, quantidade, unidade, note, contactOwnerId, contactOwnerName,
 // freepass } — consumido por handleWizardConfirm na LeadProfileView. `freepass`
 // é null sem o módulo (e fora da aula) e, com ele, { kind: 'avulsa' | 'use' |
-// 'launch', freepassId?, moving?, typeId?, aulas? }; no lançamento por aulas,
+// 'launch', freepassId?, moving?, typeId?, aulas?, fresh? }; no lançamento por aulas,
 // `aulas` são [{ date, professorId, soloTraining }] em ordem de data, e date,
 // professorId e soloTraining são os da primeira.
 
@@ -78,28 +81,6 @@ function aulasHead(values, firstName) {
 
 const aulasRowsOf = (values) => values.aulas || emptyAulaRows(values.freepass?.quantity || 1);
 
-// Dias sugeridos: DISTINTOS e consecutivos (não repete "Amanhã"). Começa em
-// HOJE quando ainda dá tempo no dia (antes das 18h); à noite começa direto em
-// AMANHÃ. Rótulos: Hoje / Amanhã / dia da semana (Terça-feira, Quarta-feira…).
-function wzDayOptions(count = 5, metaWeekdays = null) {
-  // metaWeekdays = dias da semana programados na Meta Diária (getDay(): 0=dom..6=sáb).
-  // Definido → os cards rápidos só sugerem dias PROGRAMADOS (ex.: seg–sex). Limite de
-  // 90 dias de busca p/ evitar laço infinito caso a lista venha vazia/estranha.
-  const onMeta = (d) => !metaWeekdays || metaWeekdays.length === 0 || metaWeekdays.includes(d.getDay());
-  const startOff = new Date().getHours() >= 18 ? 1 : 0;
-  const out = [];
-  for (let k = 0; out.length < count && k < 90; k++) {
-    const off = startOff + k;
-    const d = new Date(); d.setDate(d.getDate() + off); d.setHours(0, 0, 0, 0);
-    if (!onMeta(d)) continue;
-    let label;
-    if (off === 0) label = 'Hoje';
-    else if (off === 1) label = 'Amanhã';
-    else { label = d.toLocaleDateString('pt-BR', { weekday: 'long' }); label = label.charAt(0).toUpperCase() + label.slice(1); }
-    out.push({ off, label, date: d });
-  }
-  return out;
-}
 const wzSameDay = (a, b) => a instanceof Date && b instanceof Date && a.toDateString() === b.toDateString();
 // Aplica HH:MM ao dia de `cur` (ou hoje, se ainda não escolheu o dia).
 function wzWithTime(cur, hhmm) {
@@ -385,11 +366,15 @@ const WzSummaryCard = ({ type, values, complete, professores, aulasStep, planned
   );
 };
 
-function ScheduleWizard({ onConfirm, onCancel, submitting = false, usersList = [], leadOwnerName = null, leadOwnerId = null, initialTypeId = null, freepassOn = false, freepassChoice = null, leadFirstName = '' }) {
+function ScheduleWizard({ onConfirm, onCancel, submitting = false, usersList = [], leadOwnerName = null, leadOwnerId = null, initialTypeId = null, initialModalidade = null, mode = null, freepassOn = false, freepassChoice = null, leadFirstName = '' }) {
   const { modalities, trialClassOptions, units, professores } = useGeneralConfig();
   // O tipo pode vir escolhido (o Remarcar do A seguir abre já na visita ou na aula).
   const [typeId, setTypeId] = useState(WZ_TYPES.some((tp) => tp.id === initialTypeId) ? initialTypeId : null);
-  const [values, setValues] = useState({});
+  const [values, setValues] = useState(() => (
+    initialTypeId === 'aula' && (modalities || []).some((m) => m.name === initialModalidade) ? { modalidade: initialModalidade } : {}
+  ));
+  // O modo vale para o assistente montado: a ficha remonta a cada abertura (key).
+  const [fresh] = useState(mode === 'new');
   const [editing, setEditing] = useState(null);
   const [note, setNote] = useState('');
   // Só redesenha: o Confirmar que achou aula no passado mostra o aviso do passo.
@@ -421,7 +406,7 @@ function ScheduleWizard({ onConfirm, onCancel, submitting = false, usersList = [
   }, [type, ownerOptions, freepassOn, freepassChoice, launchAulas]);
   const color = type ? type.color : 'brand';
   const qtyOptions = (trialClassOptions && trialClassOptions.length ? trialClassOptions : [1]);
-  const choice = flow.includes('freepass') && values.modalidade ? freepassChoice(values.modalidade) : null;
+  const choice = flow.includes('freepass') && values.modalidade ? freepassChoice(values.modalidade, fresh) : null;
   const aulasStep = flow.includes('aulas');
   const resolvedAulas = aulasStep ? resolveAulaRows(aulasRowsOf(values)) : null;
   const aulasIssue = aulasStep ? aulasProblem(resolvedAulas) : null;
@@ -481,6 +466,7 @@ function ScheduleWizard({ onConfirm, onCancel, submitting = false, usersList = [
         ...(fp.kind === 'use' && { freepassId: fp.freepassId, moving: fp.moving }),
         ...(fp.kind === 'launch' && { typeId: fp.typeId }),
         ...(planned && { aulas: planned }),
+        ...(fresh && { fresh: true }),
       },
       unidade: type.id === 'visita' ? (values.unidade || null) : null,
       note: note.trim(),
