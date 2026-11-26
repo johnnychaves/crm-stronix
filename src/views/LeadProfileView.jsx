@@ -1431,6 +1431,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                       key={i.id}
                       i={i}
                       statuses={statuses}
+                      funnels={safeFunnels}
                       stageTransitions={stageTransitions}
                       outcomeOrigin={outcomeOrigin}
                       flash={flashId === i.id}
