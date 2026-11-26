@@ -3,6 +3,7 @@ import { ClipboardList } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useNpsDados } from '../../hooks/useNpsDados.js';
+import { useMinuteClock } from '../../hooks/useMinuteClock.js';
 import { useProfessoresDados } from '../../hooks/useProfessoresDados.js';
 import { useScreenParams } from '../../hooks/useScreenParams.js';
 import { dayKeyOf } from '../../lib/operacional/month.js';
@@ -33,7 +34,10 @@ export function ProfessoresView({ db, appUser, tenantId, tab, onTab, listenersAc
   const dados = useProfessoresDados({ db, ciclo, listenersActive });
   const { carregando, erro, professores, planos, contratos, clientes, aulas, presencas, metas, salvarMetas } = dados;
   const nps = useNpsDados({ db, listenersActive });
-  const hoje = dayKeyOf(agora);
+  // O dia das pesquisas (prazo, situação, quando o Abrir libera) anda com o
+  // relógio, para a aba aberta de um dia para o outro não ficar no dia velho.
+  const relogio = useMinuteClock();
+  const hoje = dayKeyOf(relogio);
 
   const ativos = useMemo(() => (professores || []).filter((p) => p.ativo !== false).sort(porNome), [professores]);
 

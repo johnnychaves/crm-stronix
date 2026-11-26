@@ -13,7 +13,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 // O Popper do Radix mede o conteúdo com ResizeObserver, que o jsdom não tem.
 globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} };
 
-const s = vi.hoisted(() => ({ dados: null, carteira: [], nps: null, npsArgs: null, respostas: [] }));
+const s = vi.hoisted(() => ({ dados: null, carteira: [], nps: null, npsArgs: null, respostas: [], conversao: null }));
 vi.mock('../../hooks/useNpsDados.js', () => ({
   useNpsDados: (args) => { s.npsArgs = args; return s.nps; },
   useNpsRespostas: () => ({ carregando: false, erro: null, respostas: s.respostas }),
@@ -31,7 +31,7 @@ vi.mock('../professor/renovacao.js', () => ({
   carteiraDoCiclo: () => s.carteira,
 }));
 vi.mock('../professor/conversao.js', () => ({
-  conversaoDoCiclo: () => ({
+  conversaoDoCiclo: () => s.conversao ?? ({
     professor: { vieram: 15, matricularam: 8, taxa: 53 },
     academia: { vieram: 140, matricularam: 63, taxa: 45 },
     passa: true,
@@ -96,6 +96,7 @@ beforeEach(() => {
   };
   s.nps = { carregando: false, erro: null, pesquisas: [], totais: [] };
   s.respostas = [];
+  s.conversao = null;
   s.carteira = [
     linha('l1', 'Gustavo Rangel', 'vencer', true),
     linha('l2', 'Pedro Sales', 'vencer'),
@@ -159,6 +160,8 @@ describe('o que cada papel vê', () => {
     await render('/acad/professores/perfil/p2');
     const placar = byLabel('Critérios do plano de carreira');
     expect(placar.textContent).toContain('6 de 9 contratos renovaram');
+    // Júnior com 67% contra a média de 45%: bateu, como na lista.
+    expect(placar.textContent).toContain('Bateu a média do nível');
     expect(placar.textContent).toContain('8 de 15 pessoas se matricularam');
     expect(placar.textContent).toContain('Acima da academia');
     expect(placar.textContent).toContain('Sem pesquisa ainda');
@@ -194,6 +197,24 @@ describe('a carteira', () => {
     await click(pilula('Não renovou'));
     expect(alunos()).toEqual(['Bianca Teles']);
     expect(document.body.textContent).toContain('Clube+ Move');
+  });
+
+  it('conversão igual à da academia não passa, e o selo diz que empatou', async () => {
+    s.conversao = { professor: { vieram: 7, matricularam: 2, taxa: 29 }, academia: { vieram: 21, matricularam: 6, taxa: 29 }, passa: false, incompleto: false };
+    await render('/acad/professores/perfil/p2');
+    const placar = byLabel('Critérios do plano de carreira');
+    expect(placar.textContent).toContain('Empatou com a academia');
+    expect(placar.textContent).not.toContain('Abaixo da academia');
+  });
+
+  it('o trancado mostra Trancado, e não um vencimento que já passou', async () => {
+    s.carteira = [{ ...linha('t1', 'Tânia Lopes', 'vencer'), estado: 'trancado', vence: new Date(2026, 10, 10) }];
+    await render('/acad/professores/perfil/p2');
+    const li = document.body.querySelector('[aria-label="Carteira do professor"] li');
+    expect(li.textContent).toContain('Trancado');
+    expect(li.textContent).toContain('O fim previsto, 10/11/2026, anda com o trancamento');
+    expect(li.textContent).not.toContain('A vencer');
+    expect(li.textContent).not.toContain('vence hoje');
   });
 
   it('o aviso conta quem não tem CPF e mostra só essas pessoas', async () => {

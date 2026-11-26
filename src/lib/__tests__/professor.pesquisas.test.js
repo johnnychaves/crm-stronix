@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { normalizeContracts } from '../operacional/base.js';
 import {
-  ciclosDaPesquisa, estadoDaPesquisa, novaPesquisa, npsDoCiclo, paraGravar, PERGUNTA_PRINCIPAL_PADRAO,
+  ciclosDaPesquisa, estadoDaPesquisa, fimPassou, novaPesquisa, podeAbrir, npsDoCiclo, paraGravar, PERGUNTA_PRINCIPAL_PADRAO,
   pesquisaEmCurso, problemaDaPesquisa, progressoDaTurma, recebeRespostas, resumoDaPesquisa, turmasDoDia,
 } from '../professor/pesquisas.js';
 import { somarResposta } from '../professor/nps.js';
@@ -63,6 +63,16 @@ describe('estado da pesquisa', () => {
     expect(estadoDaPesquisa({ situacao: 'encerrada' }, '2027-06-05')).toBe('encerrada');
     expect(estadoDaPesquisa({ situacao: 'rascunho' }, '2027-06-05')).toBe('rascunho');
     expect(estadoDaPesquisa({}, '2027-06-05')).toBe('rascunho');
+  });
+
+  it('abre de uma semana antes do início até o último dia, e não depois do fim', () => {
+    const r = { inicio: '2027-06-01', fim: '2027-06-20' };
+    expect(podeAbrir(r, '2027-05-24')).toBe(false);
+    expect(podeAbrir(r, '2027-05-25')).toBe(true);
+    expect(podeAbrir(r, '2027-06-20')).toBe(true);
+    expect(fimPassou(r, '2027-06-20')).toBe(false);
+    expect(fimPassou(r, '2027-06-21')).toBe(true);
+    expect(podeAbrir(r, '2027-06-21')).toBe(false);
   });
 
   it('aberta antes do início não recebe resposta', () => {

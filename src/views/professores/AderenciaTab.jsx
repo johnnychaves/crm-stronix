@@ -18,7 +18,7 @@ const sextaDe = (iso) => {
   return ddmm(toDateInputValue(new Date(d.getFullYear(), d.getMonth(), d.getDate() + 4)));
 };
 // O semestre da semana pela segunda-feira: janeiro a junho, julho a novembro,
-// e dezembro, que fica fora da conta.
+// e o dezembro que abre o ciclo, que fica fora da conta.
 const grupoDe = (iso) => {
   const m = Number(iso.slice(5, 7));
   return m <= 6 ? 0 : m <= 11 ? 1 : 2;
@@ -65,7 +65,9 @@ export function AderenciaTab({ linhas, resumo, metas, leadsById, professorLogado
   }
 
   const fechados = resumo.semestres.filter((s) => s.fechado && s.taxa != null).length;
-  const grupos = [0, 1, 2].map((g) => linhas.filter((l) => grupoDe(l.semana) === g)).map((ls, g) => ({ g, ls })).filter((x) => x.ls.length);
+  // Do mais novo para o mais antigo, como as semanas: julho a novembro, janeiro
+  // a junho e o dezembro que abre o ciclo.
+  const grupos = [1, 0, 2].map((g) => ({ g, ls: linhas.filter((l) => grupoDe(l.semana) === g) })).filter((x) => x.ls.length);
   const somaDoGrupo = (ls) => ls.reduce((a, l) => ({ contam: a.contam + l.contam, aderentes: a.aderentes + l.aderentes, uma: a.uma + l.umaPresenca, zero: a.zero + l.nenhuma }), { contam: 0, aderentes: 0, uma: 0, zero: 0 });
 
   return (

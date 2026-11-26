@@ -147,3 +147,26 @@ export function casarComLeads(contagem, leads) {
   });
   return { registros, semLead: [...semLead], duplicados: [...duplicados] };
 }
+
+// O nome de cada CPF pelo relatório, para as pendências que a recepção acerta.
+// Sem coluna de CPF, o CPF da linha vem do cpfPorNome, como na contagem.
+export function nomePorCpf(linhas, colunas, porNome = null) {
+  const mapa = new Map();
+  (linhas || []).forEach((l) => {
+    const nome = String(l[colunas.nome] ?? '').trim();
+    const cpf = colunas.cpf ? soDigitos(l[colunas.cpf]) : (porNome?.get(chaveDoNome(nome)) ?? '');
+    if (cpf.length === 11 && nome && !mapa.has(cpf)) mapa.set(cpf, nome);
+  });
+  return mapa;
+}
+
+// Os docs de uma importação anterior que a nova não regrava: o aluno que não
+// tem mais presença na semana (a Next Fit trocou para falta). Só nas semanas
+// que receberam algum registro agora, para uma rodada que não casou ninguém
+// numa semana não apagar a semana inteira. `existentes` são os ids
+// ('<leadId>_<semana>') já gravados nas semanas importadas.
+export function idsQueSobram(existentes, registros) {
+  const novos = new Set((registros || []).map((r) => `${r.leadId}_${r.semana}`));
+  const semanas = new Set((registros || []).map((r) => r.semana));
+  return (existentes || []).filter((id) => !novos.has(id) && semanas.has(id.slice(id.lastIndexOf('_') + 1)));
+}

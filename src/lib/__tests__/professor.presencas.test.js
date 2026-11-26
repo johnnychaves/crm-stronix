@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  casarComLeads, colunasDoRelatorio, cpfPorNome, diaDaAula, presencasDoRelatorio, semanaDe, semanasInteiras,
+  casarComLeads, colunasDoRelatorio, cpfPorNome, diaDaAula, idsQueSobram, nomePorCpf, presencasDoRelatorio, semanaDe, semanasInteiras,
 } from '../professor/presencas.js';
 
 const CPF_A = '52998224725';
@@ -101,5 +101,22 @@ describe('o relatório Presenças por contrato, sem CPF', () => {
     ], col, { de: '2026-11-02', ate: '2026-11-06', cpfPorNome: porNome });
     expect([...r.contagem.entries()]).toEqual([[`${CPF_A}_2026-11-02`, 2]]);
     expect(r.resumo).toMatchObject({ presencas: 2, falta: 2, semCpf: 2 });
+  });
+});
+
+describe('reimportação e pendências', () => {
+  it('idsQueSobram: o que a importação nova não regrava, só nas semanas que receberam registro', () => {
+    const registros = [{ leadId: 'ana', semana: '2026-11-02', presencas: 2 }];
+    const existentes = ['ana_2026-11-02', 'bia_2026-11-02', 'bia_2026-11-09'];
+    expect(idsQueSobram(existentes, registros)).toEqual(['bia_2026-11-02']);
+    expect(idsQueSobram(existentes, [])).toEqual([]);
+  });
+
+  it('nomePorCpf: o nome da linha pelo CPF do cpfPorNome, quando o relatório não tem CPF', () => {
+    const col = { cpf: null, nome: 'Cliente/Oportunidade' };
+    const porNome = new Map([['ana lima', CPF_A]]);
+    const mapa = nomePorCpf([{ 'Cliente/Oportunidade': 'Ana Lima' }, { 'Cliente/Oportunidade': 'Sem Lista' }], col, porNome);
+    expect([...mapa.entries()]).toEqual([[CPF_A, 'Ana Lima']]);
+    expect(nomePorCpf([{ CPF: '529.982.247-25', Nome: 'Ana' }], { cpf: 'CPF', nome: 'Nome' }).get(CPF_A)).toBe('Ana');
   });
 });

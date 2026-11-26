@@ -10,7 +10,9 @@ import { carteiraAt } from './carteira.js';
 import { npsDe, npsDoAno, RESPOSTAS_MINIMAS } from './nps.js';
 import { pct } from '../crm/stats.js';
 
-export const PERGUNTA_PRINCIPAL_PADRAO = 'De 0 a 10, quanto você recomendaria o professor a um amigo?';
+// A página pública diz "Avaliando as aulas de <nome>" e não sabe o gênero de
+// quem dá a aula, então a pergunta padrão fala das aulas.
+export const PERGUNTA_PRINCIPAL_PADRAO = 'De 0 a 10, quanto você recomendaria essas aulas a um amigo?';
 export const MAX_PERGUNTAS = 5;
 
 // Date local do dia 'AAAA-MM-DD', ou null quando o texto não é um dia que existe.
@@ -83,9 +85,12 @@ export function abreAPartirDe(inicio) {
   d.setDate(d.getDate() - DIAS_PARA_ABRIR);
   return dayKeyOf(d);
 }
+// O fim que já passou também trava: a pesquisa nasceria encerrada, com as
+// turmas gravadas e os links gerados à toa.
+export const fimPassou = (p, hoje) => Boolean(p?.fim) && hoje > p.fim;
 export const podeAbrir = (p, hoje) => {
   const desde = abreAPartirDe(p?.inicio);
-  return desde != null && hoje >= desde;
+  return desde != null && hoje >= desde && !fimPassou(p, hoje);
 };
 
 // Encerrada antes do dia do início, a pesquisa nunca recebeu resposta e não

@@ -56,6 +56,11 @@ describe('abrirPesquisa', () => {
     expect(s.updates).toHaveLength(1);
   });
 
+  it('recusa abrir depois do fim, com o motivo', async () => {
+    await expect(abrirPesquisa({}, 'r1', { turmas: { p1: 2 }, agora: new Date(2027, 5, 21, 10) })).rejects.toThrow('O fim desta pesquisa já passou');
+    expect(s.updates).toEqual([]);
+  });
+
   it('recusa sem turma, fora do rascunho e com pesquisa incompleta', async () => {
     await expect(abrirPesquisa({}, 'r1', { turmas: {}, agora })).rejects.toMatchObject({ paraTela: true });
     s.docs.r1 = { ...rascunho, situacao: 'aberta' };

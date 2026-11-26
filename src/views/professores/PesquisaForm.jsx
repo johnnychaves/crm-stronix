@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, Info, Plus, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { dayKeyOf } from '../../lib/operacional/month.js';
-import { abreAPartirDe, ciclosDaPesquisa, MAX_PERGUNTAS, podeAbrir, problemaDaPesquisa } from '../../lib/professor/pesquisas.js';
+import { abreAPartirDe, ciclosDaPesquisa, fimPassou, MAX_PERGUNTAS, podeAbrir, problemaDaPesquisa } from '../../lib/professor/pesquisas.js';
 import { BOTAO, BOTAO_PRI, Confirmacao } from './Confirmacao.jsx';
 import { cicloLongo, diaTexto, periodoTexto } from './pesquisasTexto.js';
 
@@ -31,6 +31,10 @@ export function PesquisaForm({ id, inicial, turmaHoje, hoje = dayKeyOf(new Date(
   const [ocupado, setOcupado] = useState(false);
   const titulo = useRef(null);
   const ultimoDisparo = useRef(null);
+  const abrirRef = useRef(null);
+  const excluirRef = useRef(null);
+  // O Voltar da confirmação devolve o foco ao botão que a abriu.
+  const fecharConfirmacao = (ref) => { setConfirmar(null); requestAnimationFrame(() => ref.current?.focus()); };
 
   // O foco vai para o título do passo ao abrir o formulário e a cada troca.
   useEffect(() => { titulo.current?.focus(); }, [passo]);
@@ -67,6 +71,7 @@ export function PesquisaForm({ id, inicial, turmaHoje, hoje = dayKeyOf(new Date(
   const travaPasso = problemaDoPasso(form, passo);
   const travaTudo = problemaDaPesquisa(form);
   const cedo = !travaTudo && !podeAbrir(form, hoje);
+  const passou = !travaTudo && fimPassou(form, hoje);
   // Só o campo preenchido errado fica vermelho; o que falta, o rodapé diz.
   const invalido = (campo) => (travaPasso?.campo === campo && String(form[campo] ?? '').trim() !== '') || undefined;
 
@@ -198,7 +203,7 @@ export function PesquisaForm({ id, inicial, turmaHoje, hoje = dayKeyOf(new Date(
                 acao="Abrir pesquisa"
                 ocupado={ocupado}
                 onConfirmar={abrir}
-                onVoltar={() => setConfirmar(null)}
+                onVoltar={() => fecharConfirmacao(abrirRef)}
               />
             )}
           </div>
@@ -212,12 +217,13 @@ export function PesquisaForm({ id, inicial, turmaHoje, hoje = dayKeyOf(new Date(
             perigo
             ocupado={ocupado}
             onConfirmar={excluir}
-            onVoltar={() => setConfirmar(null)}
+            onVoltar={() => fecharConfirmacao(excluirRef)}
           />
         )}
 
         <p role="status" className="m-0 min-h-[18px] text-[12.5px] font-semibold text-amber-700 dark:text-amber-300">
           {travaPasso?.texto ?? (passo === 2 && outraAberta ? `A pesquisa ${outraAberta.nome} está aberta. Encerre ela antes de abrir esta.`
+            : passo === 2 && passou ? 'O fim desta pesquisa já passou. Volte ao primeiro passo e mude as datas.'
             : passo === 2 && cedo ? `Salve o rascunho e abra a partir de ${diaTexto(abreAPartirDe(form.inicio)).slice(0, 5)}, uma semana antes do início, para a turma ser a da época da pesquisa.` : '')}
         </p>
 
@@ -225,7 +231,7 @@ export function PesquisaForm({ id, inicial, turmaHoje, hoje = dayKeyOf(new Date(
           <span className="flex flex-wrap items-center gap-3">
             <button type="button" disabled={passo === 0 || ocupado} onClick={() => { setConfirmar(null); setPasso((p) => p - 1); }} className={BOTAO}>Voltar</button>
             {id && (
-              <button type="button" disabled={ocupado} onClick={() => setConfirmar('excluir')} className={LINK}>Excluir rascunho</button>
+              <button ref={excluirRef} type="button" disabled={ocupado} onClick={() => setConfirmar('excluir')} className={LINK}>Excluir rascunho</button>
             )}
           </span>
           <span className="flex flex-wrap gap-2">
@@ -235,7 +241,7 @@ export function PesquisaForm({ id, inicial, turmaHoje, hoje = dayKeyOf(new Date(
             {passo < 2 ? (
               <button type="button" disabled={Boolean(travaPasso) || ocupado} onClick={() => setPasso((p) => p + 1)} className={BOTAO_PRI}>Continuar</button>
             ) : (
-              <button type="button" disabled={Boolean(travaTudo) || Boolean(outraAberta) || cedo || turmaHoje == null || ocupado} onClick={() => setConfirmar('abrir')} className={BOTAO_PRI}>Abrir pesquisa</button>
+              <button ref={abrirRef} type="button" disabled={Boolean(travaTudo) || Boolean(outraAberta) || cedo || turmaHoje == null || ocupado} onClick={() => setConfirmar('abrir')} className={BOTAO_PRI}>Abrir pesquisa</button>
             )}
           </span>
         </div>

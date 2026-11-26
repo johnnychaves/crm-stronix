@@ -5,9 +5,11 @@
 // Soma as presenças de cada aluno por semana (segunda a sexta), casa pelo CPF
 // (cpfDigits do lead) e grava stronix_presencas/{leadId}_{segunda}:
 // { leadId, semana, presencas, fonte, arquivo, importadoEm }. Regravar a mesma
-// semana troca o número. Só entram as semanas inteiras de --de a --ate, o
-// período do relatório, para um relatório que corta a semana não gravar uma
-// contagem pela metade.
+// semana troca o número, e o aluno que não tem mais presença numa semana
+// importada perde o registro antigo (só nas semanas que receberam algum
+// registro agora). Só entram as semanas inteiras de --de a --ate, o período do
+// relatório, para um relatório que corta a semana não gravar uma contagem
+// pela metade.
 //
 // O relatório "Presenças por contrato" não traz o CPF. Ele vem da lista de
 // clientes da Next Fit (--clientes=<exportação com as colunas Nome e CPF>), pelo
@@ -28,7 +30,7 @@ import { basename } from 'node:path';
 import process from 'node:process';
 import admin from 'firebase-admin';
 import * as XLSX from 'xlsx';
-import { casarComLeads, colunasDoRelatorio, cpfPorNome, presencasDoRelatorio } from '../src/lib/professor/presencas.js';
+import { casarComLeads, colunasDoRelatorio, cpfPorNome, idsQueSobram, nomePorCpf, presencasDoRelatorio } from '../src/lib/professor/presencas.js';
 
 const args = process.argv.slice(2);
 const arquivo = args.find((a) => !a.startsWith('--'));
@@ -90,16 +92,23 @@ const { registros, semLead, duplicados } = casarComLeads(contagem, leads);
 const alunos = new Set(registros.map((r) => r.leadId)).size;
 console.log(`Casados: ${registros.length} registros de ${alunos} alunos. CPF sem cadastro no Stronilead: ${semLead.length}. CPF com mais de um cadastro: ${duplicados.length}. Presenças sem CPF: ${semCpf.length} (${new Set(semCpf.map((l) => String(l[colunas.nome] ?? ''))).size} pessoas).`);
 
+// O que sobrou de uma importação anterior nas semanas que receberam registro.
+const existentes = [];
+const semanasComRegistro = [...new Set(registros.map((r) => r.semana))];
+for (let i = 0; i < semanasComRegistro.length; i += 30) {
+  const snap = await col('stronix_presencas').where('semana', 'in', semanasComRegistro.slice(i, i + 30)).get();
+  snap.docs.forEach((d) => existentes.push(d.id));
+}
+const sobram = idsQueSobram(existentes, registros);
+console.log(`Registros de uma importação anterior sem presença agora (saem com --apply): ${sobram.length}.`);
+
 if (pendencias) {
   const nome = (l) => String(l[colunas.nome] ?? '').replace(/[;\n]/g, ' ');
-  const porCpf = new Map();
-  linhas.forEach((l) => {
-    const cpf = String(l[colunas.cpf] ?? '').replace(/\D/g, '');
-    if (cpf && !porCpf.has(cpf)) porCpf.set(cpf, nome(l));
-  });
+  const porCpf = nomePorCpf(linhas, colunas, porNome);
+  const limpo = (v) => String(v ?? '').replace(/[;\n]/g, ' ');
   const saida = ['motivo;nome;cpf'];
-  semLead.forEach((c) => saida.push(`CPF sem cadastro no Stronilead;${porCpf.get(c) ?? ''};${c}`));
-  duplicados.forEach((c) => saida.push(`CPF em mais de um cadastro;${porCpf.get(c) ?? ''};${c}`));
+  semLead.forEach((c) => saida.push(`CPF sem cadastro no Stronilead;${limpo(porCpf.get(c))};${c}`));
+  duplicados.forEach((c) => saida.push(`CPF em mais de um cadastro;${limpo(porCpf.get(c))};${c}`));
   const motivoSemCpf = porNome ? 'Nome sem CPF na lista de clientes da Next Fit (ou repetido)' : 'Linha sem CPF';
   [...new Set(semCpf.map(nome))].forEach((n) => saida.push(`${motivoSemCpf};${n};`));
   writeFileSync(pendencias, `${saida.join('\n')}\n`);
@@ -112,6 +121,11 @@ if (!aplicar) {
 }
 
 const agora = admin.firestore.FieldValue.serverTimestamp();
+for (let i = 0; i < sobram.length; i += 400) {
+  const lote = db.batch();
+  sobram.slice(i, i + 400).forEach((id) => lote.delete(col('stronix_presencas').doc(id)));
+  await lote.commit();
+}
 for (let i = 0; i < registros.length; i += 400) {
   const lote = db.batch();
   registros.slice(i, i + 400).forEach((r) => {
@@ -119,5 +133,5 @@ for (let i = 0; i < registros.length; i += 400) {
   });
   await lote.commit();
 }
-console.log(`Gravados: ${registros.length} registros em stronix_presencas.`);
+console.log(`Gravados: ${registros.length} registros em stronix_presencas. Apagados: ${sobram.length}.`);
 process.exit(0);

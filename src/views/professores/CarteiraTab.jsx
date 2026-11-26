@@ -15,12 +15,15 @@ const SITUACOES = [
   ['renovou', 'Renovou'],
   ['nao', 'Não renovou'],
 ];
-const SITUACAO_TEXTO = { vencer: 'A vencer', renovou: 'Renovou', nao: 'Não renovou' };
+const SITUACAO_TEXTO = { vencer: 'A vencer', renovou: 'Renovou', nao: 'Não renovou', trancado: 'Trancado' };
 const SITUACAO_COR = {
   vencer: 'bg-amber-500/15 text-amber-800 dark:text-amber-300 before:bg-amber-500',
   renovou: 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 before:bg-emerald-500',
   nao: 'bg-rose-500/10 text-rose-700 dark:text-rose-300 before:bg-rose-500',
+  trancado: 'bg-yellow-400/20 text-yellow-800 dark:text-yellow-300 before:bg-yellow-500',
 };
+// A pílula da linha: o trancado é "A vencer" no filtro, mas a pílula diz Trancado.
+const pilulaDe = (l) => (l.situacao === 'vencer' && l.estado === 'trancado' ? 'trancado' : l.situacao);
 const COLUNAS = '@[760px]:grid-cols-[minmax(220px,1.6fr)_minmax(140px,1fr)_minmax(170px,1fr)_128px]';
 const LINK = 'rounded font-semibold underline outline-none focus-visible:anel-foco';
 
@@ -29,6 +32,14 @@ const dataBr = (d) => getSafeDateOrNull(d)?.toLocaleDateString('pt-BR') ?? null;
 function Vencimento({ linha, agora }) {
   const data = dataBr(linha.vence);
   if (!data) return <span className="text-muted-foreground">Sem data</span>;
+  if (linha.situacao === 'vencer' && linha.estado === 'trancado') {
+    return (
+      <>
+        <b className="num block font-medium">Trancado</b>
+        <small className="block text-[12px] text-muted-foreground">O fim previsto, {data}, anda com o trancamento</small>
+      </>
+    );
+  }
   if (linha.situacao === 'vencer') {
     const dias = calendarDaysBetween(agora, linha.vence);
     return (
@@ -131,8 +142,8 @@ export function CarteiraTab({ linhas, planosById, agora, descricao, professorLog
                 </span>
                 <span className="order-4 text-right text-[13px] @[760px]:order-none @[760px]:text-left @[760px]:text-[14px]"><Vencimento linha={l} agora={agora} /></span>
                 <span className="order-2 @[760px]:order-none">
-                  <span className={cn("inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 text-[12px] font-semibold before:size-1.5 before:rounded-full before:content-['']", SITUACAO_COR[l.situacao])}>
-                    {SITUACAO_TEXTO[l.situacao]}
+                  <span className={cn("inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 text-[12px] font-semibold before:size-1.5 before:rounded-full before:content-['']", SITUACAO_COR[pilulaDe(l)])}>
+                    {SITUACAO_TEXTO[pilulaDe(l)]}
                   </span>
                 </span>
               </li>
