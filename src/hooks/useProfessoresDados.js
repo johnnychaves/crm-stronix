@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { collection, doc, getDocs, query, setDoc, where } from 'firebase/firestore';
-import { appId, CONFIG_PATH, LEADS_PATH, PRESENCAS_PATH } from '../lib/firebase.js';
+import { useEffect, useMemo, useState } from 'react';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { appId, LEADS_PATH, PRESENCAS_PATH } from '../lib/firebase.js';
 import { clientsAllQuerySpec } from '../lib/leadQueries.js';
 import { normalizeContracts } from '../lib/operacional/base.js';
 import { planosDoProfessor } from '../lib/professor/carteira.js';
@@ -26,8 +26,8 @@ import { usePagedLeads } from './usePagedLeads.js';
 // guarda o último valor.
 //
 // `metas` é null até a primeira resposta, e `carregando` fica verdadeiro até
-// as três leituras responderem.
-const CARREIRA_ID = 'carreira';
+// as três leituras responderem. As metas de hoje ficam só para leitura: quem
+// grava é Configurações → Plano de carreira, no campo `trilhas`.
 const CLIENTES_SPEC_KEY = 'professores-clientes';
 
 export function useProfessoresDados({ db, ciclo, listenersActive }) {
@@ -79,12 +79,6 @@ export function useProfessoresDados({ db, ciclo, listenersActive }) {
   const metas = useMemo(() => (carreira ? metasDe(carreira.doc) : null), [carreira]);
   const trilhaProfessor = useMemo(() => trilhas?.find((t) => t.id === TRILHA_PROFESSOR) ?? null, [trilhas]);
 
-  // O documento inteiro: o formulário das metas tem todas elas.
-  const salvarMetas = useCallback(
-    (m) => setDoc(doc(db, 'artifacts', appId, 'public', 'data', CONFIG_PATH, CARREIRA_ID), m),
-    [db],
-  );
-
   return {
     carregando: !clientesProntos || aulasCarregando || carreira === null || !presencasDoCiclo,
     erro: clientesErro || aulasErro || carreira?.erro || presencasDoCiclo?.erro || null,
@@ -97,6 +91,5 @@ export function useProfessoresDados({ db, ciclo, listenersActive }) {
     metas,
     trilhas,
     trilhaProfessor,
-    salvarMetas,
   };
 }

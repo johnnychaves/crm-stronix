@@ -65,12 +65,13 @@ export const ROTINAS_TABS = Object.freeze({
   hoje: 'hoje',
 });
 // Sub-telas de Professores (spec 2026-11-24-perfil-do-professor, PR 3): a
-// lista e as metas. A lista é o endereço curto /<academia>/professores. O PR 4
-// acrescenta as pesquisas.
+// lista e as pesquisas. A lista é o endereço curto /<academia>/professores. As
+// metas saíram para Configurações → Plano de carreira (plano
+// 2026-11-26-plano-de-carreira-02): /professores/metas é lido à parte
+// (metasAntigas) e leva à trilha Professor.
 export const PROFESSORES_SUBS = Object.freeze({
   lista: 'lista',
   pesquisas: 'pesquisas',
-  metas: 'metas',
 });
 // Abas do perfil do professor, em /professores/perfil/<id>/<aba>, lido à parte
 // em readScreen. O PR 4 acrescenta a NPS e o PR 6 a Aderência.
@@ -215,6 +216,10 @@ function readScreen(segs, out) {
     }
     out.screen = 'professores';
     out.rest = segs.slice(1);
+    if (out.rest.length === 1 && lower(out.rest[0]) === 'metas') {
+      out.metasAntigas = true;
+      return;
+    }
     readSub('professores', out.rest, out);
     return;
   }
@@ -448,6 +453,13 @@ function accessRedirect(route, appUser, home, { tenantId = null, search = '' } =
     // caem. Quem não abre a Visão geral vai para a tela inicial dele sem aviso.
     if (route.screen === HOME_SCREEN) return redirectTo(home);
     return redirectTo(home, { notice: blockedNotice(route.screen, appUser) });
+  }
+  // O endereço antigo das metas leva à trilha Professor em Configurações →
+  // Plano de carreira. Depois da trava de tela: sem o módulo, ou sem ser
+  // gestor, o aviso é o da tela Professores.
+  if (route.metasAntigas) {
+    const destino = hrefFor(tenantId, 'settings', { sub: 'carreira', trilhaId: 'professor' });
+    if (destino) return redirectTo(destino);
   }
   // O professor abre só o próprio perfil: o de outro leva ao dele, na mesma
   // aba, com o aviso de tela não liberada (spec 2026-11-24); sem cadastro de

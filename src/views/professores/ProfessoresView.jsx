@@ -6,6 +6,9 @@ import { useNpsDados } from '../../hooks/useNpsDados.js';
 import { useMinuteClock } from '../../hooks/useMinuteClock.js';
 import { useProfessoresDados } from '../../hooks/useProfessoresDados.js';
 import { useScreenParams } from '../../hooks/useScreenParams.js';
+import { AppLink } from '../../components/nav/AppLink.jsx';
+import { hrefFor } from '../../lib/routes.js';
+import { TRILHA_PROFESSOR } from '../../lib/carreira/trilhas.js';
 import { dayKeyOf } from '../../lib/operacional/month.js';
 import { cicloDe, limitesDoCiclo, semestresDoCiclo } from '../../lib/professor/ciclo.js';
 import { estadoDaPesquisa, npsDoCiclo, resumoDaPesquisa, turmasDoDia } from '../../lib/professor/pesquisas.js';
@@ -15,15 +18,15 @@ import { FilterBar } from '../dashboard/DashFilterBar.jsx';
 import { criterioAderencia, criterioConversao, criterioNps, criterioRenovacao } from './criterios.js';
 import { aderenciaPorSemana, aderenciaResumo } from '../../lib/professor/aderencia.js';
 import { LegendaDosEstados, ProfessoresTabela } from './ProfessoresTabela.jsx';
-import { MetasForm } from './MetasForm.jsx';
 import { PesquisasTab } from './PesquisasTab.jsx';
 import { diaTexto, prazoTexto } from './pesquisasTexto.js';
 import { CicloControl, TAB_CONTAGEM, TAB_TRIGGER } from './ProfessoresComum.jsx';
 
 // A tela Professores do gestor (mockup A de 25/11/2026): a lista de placar e
-// as sub-telas Pesquisas (mockup B das pesquisas) e Metas. O ciclo mora no
-// endereço (`ciclo`), e a aba é a sub-tela (/professores, /professores/pesquisas
-// e /professores/metas), que o App troca com replace.
+// a sub-tela Pesquisas (mockup B das pesquisas). O ciclo mora no endereço
+// (`ciclo`), e a aba é a sub-tela (/professores e /professores/pesquisas), que
+// o App troca com replace. As metas moram em Configurações → Plano de carreira,
+// na trilha Professor (o link "Metas da trilha").
 const porNome = (a, b) => String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR');
 
 export function ProfessoresView({ db, appUser, tenantId, tab, onTab, listenersActive }) {
@@ -32,7 +35,7 @@ export function ProfessoresView({ db, appUser, tenantId, tab, onTab, listenersAc
   const ctx = useMemo(() => ({ cicloAtual: cicloDe(agora) }), [agora]);
   const [{ ciclo }, setParams] = useScreenParams('professores', ctx);
   const dados = useProfessoresDados({ db, ciclo, listenersActive });
-  const { carregando, erro, professores, planos, contratos, clientes, aulas, presencas, metas, salvarMetas, trilhaProfessor } = dados;
+  const { carregando, erro, professores, planos, contratos, clientes, aulas, presencas, metas, trilhaProfessor } = dados;
   const nps = useNpsDados({ db, listenersActive });
   // O dia das pesquisas (prazo, situação, quando o Abrir libera) anda com o
   // relógio, para a aba aberta de um dia para o outro não ficar no dia velho.
@@ -74,7 +77,8 @@ export function ProfessoresView({ db, appUser, tenantId, tab, onTab, listenersAc
 
   const turmasDoMomento = (instante) => turmasDoDia({ clientes, contratos, planos, professores, agora: instante });
 
-  const aba = tab === 'metas' || tab === 'pesquisas' ? tab : 'lista';
+  const aba = tab === 'pesquisas' ? tab : 'lista';
+  const metasHref = hrefFor(tenantId, 'settings', { sub: 'carreira', trilhaId: TRILHA_PROFESSOR });
   const academiaTaxa = contas?.academia.academia.taxa ?? null;
 
   return (
@@ -84,6 +88,11 @@ export function ProfessoresView({ db, appUser, tenantId, tab, onTab, listenersAc
         subline="Plano de carreira do time técnico. Os números são do ciclo de avaliação, de dezembro a novembro."
       >
         <CicloControl ciclo={ciclo} cicloAtual={ctx.cicloAtual} onCiclo={(c) => setParams({ ciclo: c })} />
+        {metasHref && (
+          <AppLink to={metasHref} className="inline-flex h-[38px] items-center rounded-xl border border-border bg-card px-3 text-[13px] font-semibold shadow-card outline-none hover:border-brand-200 hover:text-brand-700 focus-visible:anel-foco dark:hover:text-brand-300">
+            Metas da trilha
+          </AppLink>
+        )}
       </FilterBar>
 
       <div className="px-4 pb-8 pt-2 md:px-8">
@@ -94,7 +103,6 @@ export function ProfessoresView({ db, appUser, tenantId, tab, onTab, listenersAc
               <span className={TAB_CONTAGEM}>{ativos.length}</span>
             </TabsTrigger>
             <TabsTrigger value="pesquisas" className={TAB_TRIGGER}>Pesquisas</TabsTrigger>
-            <TabsTrigger value="metas" className={TAB_TRIGGER}>Metas</TabsTrigger>
           </TabsList>
 
           <TabsContent value="lista" tabIndex={-1}>
@@ -128,11 +136,6 @@ export function ProfessoresView({ db, appUser, tenantId, tab, onTab, listenersAc
               : <PesquisasTab db={db} appUser={appUser} tenantId={tenantId} pesquisas={nps.pesquisas} totais={nps.totais} professores={professores} turmasHoje={turmasHoje} turmasDoMomento={turmasDoMomento} hoje={hoje} agora={agora} />}
           </TabsContent>
 
-          <TabsContent value="metas" tabIndex={-1}>
-            {metas
-              ? <MetasForm metas={metas} salvarMetas={salvarMetas} academia={academiaTaxa} />
-              : <p className="text-[13px] text-muted-foreground">Carregando as metas…</p>}
-          </TabsContent>
         </Tabs>
       </div>
     </div>

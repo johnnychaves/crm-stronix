@@ -17,11 +17,12 @@ const semLigacao = { id: 'u7', authUid: 'uid-7', role: 'professor', tenantId: T,
 const decide = (path, user) => routeDecision(parseAppPath(path), user);
 
 describe('endereço das telas de professores', () => {
-  it('lista e metas', () => {
+  it('lista e pesquisas; o endereço das metas é o antigo', () => {
     expect(parseAppPath(`/${T}/professores`)).toMatchObject({ screen: 'professores', sub: null, subUnknown: false, unknown: false });
-    expect(parseAppPath(`/${T}/professores/metas`)).toMatchObject({ screen: 'professores', sub: 'metas' });
+    expect(parseAppPath(`/${T}/professores/metas`)).toMatchObject({ screen: 'professores', metasAntigas: true, subUnknown: false });
+    expect('metasAntigas' in parseAppPath(`/${T}/professores`)).toBe(false);
     expect(parseAppPath(`/${T}/professores/xyz`)).toMatchObject({ screen: 'professores', subUnknown: true });
-    expect(hrefFor(T, 'professores', { sub: 'metas' })).toBe(`/${T}/professores/metas`);
+    expect(hrefFor(T, 'professores', { sub: 'metas' })).toBe(`/${T}/professores`);
     expect(hrefFor(T, 'professores')).toBe(`/${T}/professores`);
     expect(parseAppPath(`/${T}/professores/pesquisas`)).toMatchObject({ screen: 'professores', sub: 'pesquisas' });
     expect(hrefFor(T, 'professores', { sub: 'pesquisas' })).toBe(`/${T}/professores/pesquisas`);
@@ -93,5 +94,19 @@ describe('decisão de rota', () => {
 
   it('o perfil de outra academia cai na lista da sessão, sem o id', () => {
     expect(decide('/outra-academia/professores/perfil/P1', gestor)).toMatchObject({ kind: 'redirect', to: `/${T}/professores` });
+  });
+
+  // As metas moram em Configurações → Plano de carreira (plano
+  // 2026-11-26-plano-de-carreira-02, tarefa 10).
+  it('/professores/metas leva à trilha Professor nas Configurações', () => {
+    expect(decide(`/${T}/professores/metas`, gestor)).toMatchObject({
+      kind: 'redirect',
+      to: `/${T}/configuracoes/carreira/professor`,
+      target: { screen: 'settings', sub: 'carreira', trilhaId: 'professor', trilhaAba: 'metas' },
+      notice: null,
+    });
+    expect(decide('/outra-academia/professores/metas', gestor)).toMatchObject({ kind: 'redirect', to: `/${T}/configuracoes/carreira/professor` });
+    expect(decide(`/${T}/professores/metas`, gestorSemModulo)).toMatchObject({ kind: 'redirect', to: `/${T}`, notice: 'nao-encontrada' });
+    expect(decide(`/${T}/professores/metas`, consultor)).toMatchObject({ kind: 'redirect', notice: 'so-gestor' });
   });
 });
