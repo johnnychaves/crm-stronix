@@ -245,3 +245,16 @@ describe('linha do tempo', () => {
     expect(classifyInteraction({ type: 'freepass', text: 'Freepass lançado: Pilates 2 aulas (Pilates), 2 aulas para agendar.' })).toBe('appointment');
   });
 });
+
+describe('chip a partir dos docs', () => {
+  it('com um por dias já terminado e um por aulas correndo, o chip é o das aulas', () => {
+    const now = new Date('2026-11-26T10:00:00');
+    const lead = { id: 'L', status: 'Novo', currentContractId: null };
+    const docs = [
+      { id: 'a', kind: 'dias', total: 3, typeName: 'Muscu 3 dias', status: 'correndo', startsAt: new Date('2026-11-01T00:00:00'), endsAt: new Date('2026-11-03T00:00:00'), contractAtStart: null },
+      { id: 'b', kind: 'aulas', total: 2, aulas: 1, typeName: 'Pilates 2 aulas', status: 'correndo', startsAt: new Date('2026-11-20T00:00:00'), endsAt: null, contractAtStart: null }
+    ];
+    const v = visitorOf({ ...lead, ...freepassSummaryPatch(activeFreepassesOf(lead, docs, now), now) }, now);
+    expect(v.id).toBe('b');
+  });
+});

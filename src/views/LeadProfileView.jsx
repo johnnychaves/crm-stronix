@@ -6,7 +6,7 @@ import { logInteraction } from '../lib/interactions.js';
 import { useLeadTimeline } from '../hooks/useLeadTimeline.js';
 import { useLeadFreepasses } from '../hooks/useLeadFreepasses.js';
 import { FreepassLaunchModal } from '../modals/FreepassLaunchModal.jsx';
-import { FREEPASS_INTERACTION_TYPE, activeFreepassesOf, visitorOf } from '../lib/visitante.js';
+import { FREEPASS_INTERACTION_TYPE, activeFreepassesOf, freepassSummaryPatch, launchCheck, visitorOf } from '../lib/visitante.js';
 import { writeFreepassEnd, writeFreepassLaunch } from '../lib/freepassWrites.js';
 import { useReferrals } from '../hooks/useReferrals.js';
 import { withBucket } from '../lib/leadDerived.js';
@@ -306,10 +306,16 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   const openFreepass = () => {
     if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
     if (!canFreepass) { negarAcesso(); return; }
+    if (lead.status === 'Perda') { toast.warning('Reative o lead antes de lançar o freepass.'); return; }
     setFreepassOpen(true);
   };
   const confirmFreepass = async ({ type, modalidadeName, startsAt }) => {
+    if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
     if (!canFreepass) { negarAcesso(); return; }
+    if (lead.status === 'Perda') { toast.warning('Reative o lead antes de lançar o freepass.'); return; }
+    if (freepasses === null) return;
+    const check = launchCheck({ type, freepasses, modalidadeName, gestor: isGestor(appUser) });
+    if (check.block) { toast.warning(check.block); return; }
     setLoading(true);
     try {
       await writeFreepassLaunch({ db, lead, appUser, type, modalidadeName, startsAt, existing: activeFreepassesOf(lead, freepasses, new Date()) });
@@ -323,12 +329,13 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     }
   };
   const endFreepass = async (fp) => {
+    if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
     if (!canFreepass) { negarAcesso(); return; }
     const nome = String(lead.name || '').split(' ')[0];
     if (!window.confirm(`Encerrar o freepass ${fp.typeName}? ${nome} deixa de aparecer como Visitante.`)) return;
     setLoading(true);
     try {
-      await writeFreepassEnd({ db, lead, appUser, freepass: fp, existing: activeFreepassesOf(lead, freepasses, new Date()) });
+      await writeFreepassEnd({ db, lead, appUser, freepass: fp, existing: activeFreepassesOf(lead, freepasses ?? [], new Date()) });
       toast.success('Freepass encerrado.');
     } catch (e) {
       console.error(e);
@@ -1035,7 +1042,9 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
 
   // O que a faixa de baixo do cabeçalho mostra (src/lib/profileBand.js).
   const bandNow = new Date();
-  const visitor = visitorOf(lead, bandNow);
+  // Com os docs chegados, o chip sai deles (o resumo do lead pode estar velho).
+  const running = freepasses ? activeFreepassesOf(lead, freepasses, bandNow) : null;
+  const visitor = visitorOf(running ? { ...lead, ...freepassSummaryPatch(running, bandNow) } : lead, bandNow);
   const band = {
     next: nextStepCell(lead, bandNow),
     mid: isClient
@@ -1131,7 +1140,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                   {stateChipText(profileState.label)}
                 </span>
                 {visitor && (
-                  <span className="inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full bg-teal-50 px-2.5 text-[12.5px] font-semibold text-teal-700 dark:bg-teal-500/10 dark:text-teal-300">
+                  <span className="inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full bg-teal-100 px-2.5 text-[12.5px] font-semibold text-teal-700 dark:bg-teal-500/10 dark:text-teal-300">
                     <span className="size-1.5 rounded-full bg-teal-500" aria-hidden="true" />Visitante · {visitor.shortText}
                   </span>
                 )}
@@ -1537,8 +1546,9 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
             onEditContract={openContractEdit}
             onActivate={openActivate}
             isClient={isClient}
-            freepasses={freepasses}
-            canFreepass={canFreepass}
+            freepasses={freepasses ?? []}
+            freepassesLoading={freepasses === null}
+            canFreepass={canFreepass && lead.status !== 'Perda'}
             onLaunchFreepass={openFreepass}
             onEndFreepass={endFreepass}
           />
@@ -1651,7 +1661,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
           firstName={firstName}
           types={freepassTypes}
           modalities={modalities}
-          freepasses={freepasses}
+          freepasses={freepasses ?? []}
           gestor={isGestor(appUser)}
           loading={loading}
           onConfirm={confirmFreepass}
