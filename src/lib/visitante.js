@@ -75,3 +75,82 @@ export function freepassQuantityText({ kind, quantity }) {
   if (kind === FREEPASS_KINDS.DIAS) return `${n} ${n === 1 ? 'dia' : 'dias'}`;
   return `${n} ${n === 1 ? 'aula' : 'aulas'}`;
 }
+
+const endDayOf = (fp) => startOfLocalDay(fp?.endsAt);
+const nul = (v) => (v === undefined ? null : v);
+
+// Corre enquanto não foi encerrado à mão e o último dia não passou. Por aulas
+// sem o fim marcado (a entrega 2 grava o dia da última aula), corre sempre.
+export function isFreepassRunning(fp, now = new Date()) {
+  if (!fp || fp.status !== FREEPASS_STATUS.CORRENDO) return false;
+  const end = endDayOf(fp);
+  return !end || calendarDaysBetween(now, end) >= 0;
+}
+
+// Os freepass que fazem da pessoa um Visitante agora. A perda e a matrícula
+// não gravam nada no freepass: o lead em Perda não é Visitante, e um contrato
+// atual diferente do que a pessoa tinha no lançamento quer dizer que houve
+// matrícula ou renovação. Assim todo caminho que matricula ou marca perda
+// encerra o freepass sem mexer em nenhum deles. Limite aceito: o lead
+// reativado da Perda dentro do prazo volta a aparecer como Visitante.
+export function activeFreepassesOf(lead, freepasses, now = new Date()) {
+  if (!lead || lead.status === 'Perda') return [];
+  const contract = lead.currentContractId || null;
+  return (freepasses || []).filter(fp => (fp.contractAtStart || null) === contract && isFreepassRunning(fp, now));
+}
+
+export const FREEPASS_SUMMARY_EMPTY = Object.freeze({
+  freepassId: null, freepassKind: null, freepassTotal: null, freepassTypeName: null,
+  freepassModalidadeName: null, freepassStartsAt: null, freepassEndsAt: null,
+  freepassAulas: null, freepassStatus: null, freepassContractAtStart: null
+});
+
+// O resumo que vai para o lead, para as listas e o cabeçalho saberem quem é
+// Visitante sem ler a coleção. Com mais de um correndo, o que termina
+// primeiro; o por aulas sem fim marcado fica por último.
+export function freepassSummaryPatch(freepasses, now = new Date()) {
+  const running = (freepasses || []).filter(fp => isFreepassRunning(fp, now));
+  if (!running.length) return { ...FREEPASS_SUMMARY_EMPTY };
+  const endMs = (fp) => endDayOf(fp)?.getTime() ?? Infinity;
+  const fp = running.slice().sort((a, b) => endMs(a) - endMs(b))[0];
+  return {
+    freepassId: fp.id, freepassKind: fp.kind, freepassTotal: fp.total, freepassTypeName: nul(fp.typeName),
+    freepassModalidadeName: nul(fp.modalidadeName), freepassStartsAt: nul(fp.startsAt), freepassEndsAt: nul(fp.endsAt),
+    freepassAulas: fp.aulas ?? 0, freepassStatus: fp.status, freepassContractAtStart: fp.contractAtStart || null
+  };
+}
+
+const summaryOf = (lead) => ({
+  id: lead.freepassId, kind: lead.freepassKind, total: lead.freepassTotal, typeName: lead.freepassTypeName,
+  modalidadeName: lead.freepassModalidadeName, startsAt: lead.freepassStartsAt, endsAt: lead.freepassEndsAt,
+  aulas: lead.freepassAulas, status: lead.freepassStatus, contractAtStart: lead.freepassContractAtStart
+});
+
+// Quem é Visitante agora, pelo resumo do lead. null quando não é.
+export function visitorOf(lead, now = new Date()) {
+  if (!lead?.freepassId) return null;
+  const fp = summaryOf(lead);
+  if (!activeFreepassesOf(lead, [fp], now).length) return null;
+  return { ...fp, shortText: freepassShortText(fp, now), longText: freepassLongText(fp, now) };
+}
+
+// O andamento para a etiqueta: "faltam 3 dias", "termina hoje", "1 de 2 aulas".
+export function freepassShortText(fp, now = new Date()) {
+  if (fp.kind === FREEPASS_KINDS.AULAS) return `${fp.aulas ?? 0} de ${fp.total} aulas`;
+  const start = startOfLocalDay(fp.startsAt);
+  if (start && calendarDaysBetween(now, start) > 0) return `começa em ${ddmm(start)}`;
+  const d = calendarDaysBetween(now, endDayOf(fp));
+  if (d === 0) return 'termina hoje';
+  return d === 1 ? 'falta 1 dia' : `faltam ${d} dias`;
+}
+
+// O andamento para o cartão da aba Contratos.
+export function freepassLongText(fp, now = new Date()) {
+  if (fp.kind === FREEPASS_KINDS.AULAS) return `${fp.aulas ?? 0} de ${fp.total} aulas agendadas`;
+  const start = startOfLocalDay(fp.startsAt);
+  const end = endDayOf(fp);
+  if (start && calendarDaysBetween(now, start) > 0) return `Começa em ${ddmm(start)} e vai até ${ddmm(end)}`;
+  const d = calendarDaysBetween(now, end);
+  if (d === 0) return `Termina hoje, ${ddmm(end)}`;
+  return `${d === 1 ? 'Falta 1 dia' : `Faltam ${d} dias`}, até ${ddmm(end)}`;
+}

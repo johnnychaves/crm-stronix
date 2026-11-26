@@ -73,3 +73,94 @@ describe('freepassQuantityText', () => {
     expect(freepassQuantityText({ kind: 'aulas', quantity: 2 })).toBe('2 aulas');
   });
 });
+
+import {
+  isFreepassRunning, activeFreepassesOf, freepassSummaryPatch, visitorOf,
+  freepassShortText, freepassLongText, FREEPASS_SUMMARY_EMPTY
+} from '../visitante.js';
+
+const dia = (s) => new Date(`${s}T12:00:00`);
+const fpDias = (over = {}) => ({
+  id: 'f1', kind: 'dias', total: 7, typeName: 'Muscu 7 dias', modalidadeName: 'Musculação',
+  startsAt: dia('2026-11-20'), endsAt: dia('2026-11-26'), aulas: 0, status: 'correndo', contractAtStart: null, ...over
+});
+const fpAulas = (over = {}) => ({
+  id: 'f2', kind: 'aulas', total: 2, typeName: 'Pilates 2 aulas', modalidadeName: 'Pilates',
+  startsAt: dia('2026-11-20'), endsAt: null, aulas: 1, status: 'correndo', contractAtStart: null, ...over
+});
+
+describe('isFreepassRunning', () => {
+  it('por dias, vale até o fim do último dia', () => {
+    expect(isFreepassRunning(fpDias(), new Date('2026-11-26T23:59:00'))).toBe(true);
+    expect(isFreepassRunning(fpDias(), new Date('2026-11-27T00:01:00'))).toBe(false);
+  });
+  it('por aulas sem fim marcado continua correndo', () => {
+    expect(isFreepassRunning(fpAulas(), dia('2027-03-01'))).toBe(true);
+  });
+  it('encerrado à mão não corre', () => {
+    expect(isFreepassRunning(fpDias({ status: 'encerrado' }), dia('2026-11-21'))).toBe(false);
+  });
+});
+
+describe('activeFreepassesOf', () => {
+  const lead = { status: 'Novo', currentContractId: null };
+  it('deixa de fora o lead em Perda', () => {
+    expect(activeFreepassesOf({ ...lead, status: 'Perda' }, [fpDias()], dia('2026-11-21'))).toEqual([]);
+  });
+  it('deixa de fora o freepass de antes de um contrato novo', () => {
+    expect(activeFreepassesOf({ ...lead, currentContractId: 'c9' }, [fpDias()], dia('2026-11-21'))).toEqual([]);
+  });
+  it('o ex-aluno continua Visitante enquanto o contrato atual é o do lançamento', () => {
+    const ex = { status: 'Venda', currentContractId: 'c1' };
+    expect(activeFreepassesOf(ex, [fpDias({ contractAtStart: 'c1' })], dia('2026-11-21'))).toHaveLength(1);
+  });
+  it('lê campo ausente como null', () => {
+    expect(activeFreepassesOf({ status: 'Novo' }, [fpDias({ contractAtStart: undefined })], dia('2026-11-21'))).toHaveLength(1);
+  });
+});
+
+describe('freepassSummaryPatch', () => {
+  it('sem freepass correndo, limpa o resumo inteiro', () => {
+    expect(freepassSummaryPatch([], dia('2026-11-21'))).toEqual(FREEPASS_SUMMARY_EMPTY);
+  });
+  it('com dois correndo, fica o que termina primeiro, e o por aulas sem fim vai por último', () => {
+    const p = freepassSummaryPatch([fpAulas(), fpDias()], dia('2026-11-21'));
+    expect(p.freepassId).toBe('f1');
+    expect(p.freepassKind).toBe('dias');
+    expect(p.freepassTotal).toBe(7);
+    expect(p.freepassContractAtStart).toBeNull();
+  });
+});
+
+describe('visitorOf', () => {
+  const now = dia('2026-11-23');
+  const lead = { status: 'Novo', currentContractId: null, ...freepassSummaryPatch([fpDias()], now) };
+  it('lê o resumo do lead', () => {
+    const v = visitorOf(lead, now);
+    expect(v.id).toBe('f1');
+    expect(v.shortText).toBe('faltam 3 dias');
+  });
+  it('some sem resumo, na Perda, com contrato novo e depois do fim', () => {
+    expect(visitorOf({ status: 'Novo' }, now)).toBeNull();
+    expect(visitorOf({ ...lead, status: 'Perda' }, now)).toBeNull();
+    expect(visitorOf({ ...lead, currentContractId: 'c1' }, now)).toBeNull();
+    expect(visitorOf(lead, dia('2026-11-27'))).toBeNull();
+  });
+});
+
+describe('textos do andamento', () => {
+  it('por dias', () => {
+    expect(freepassShortText(fpDias(), dia('2026-11-26'))).toBe('termina hoje');
+    expect(freepassShortText(fpDias(), dia('2026-11-25'))).toBe('falta 1 dia');
+    expect(freepassLongText(fpDias(), dia('2026-11-23'))).toBe('Faltam 3 dias, até 26/11');
+    expect(freepassLongText(fpDias(), dia('2026-11-26'))).toBe('Termina hoje, 26/11');
+  });
+  it('por dias, antes de começar', () => {
+    expect(freepassShortText(fpDias(), dia('2026-11-18'))).toBe('começa em 20/11');
+    expect(freepassLongText(fpDias(), dia('2026-11-18'))).toBe('Começa em 20/11 e vai até 26/11');
+  });
+  it('por aulas', () => {
+    expect(freepassShortText(fpAulas(), dia('2026-11-23'))).toBe('1 de 2 aulas');
+    expect(freepassLongText(fpAulas({ aulas: 0 }), dia('2026-11-23'))).toBe('0 de 2 aulas agendadas');
+  });
+});
