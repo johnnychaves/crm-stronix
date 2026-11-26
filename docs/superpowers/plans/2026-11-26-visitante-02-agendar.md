@@ -13,6 +13,10 @@
 - `src/lib/visitante.js` só importa `./dates.js` (a `api/` lê o arquivo). Código novo de regra que a `api/` use vai para lá ou para outro arquivo puro com o mesmo limite.
 - O dono da tarefa, o eco do agendamento, o registro em `stronix_aulas` e o texto da interação continuam como hoje. O freepass entra por cima, sem mudar essas regras.
 
+**Agendar é remarcar quando há aula pendente.** Hoje o Agendar de aula (ficha, Meta e ponte) move o registro pendente do lead (`currentAulaId` com status 'agendada', pelo `upsertScheduledAula`) em vez de criar outro. Isso continua: com aula pendente, o Agendar remarca essa aula, e a escolha do freepass recebe o `movingFreepassId` (o `freepassId` desse registro), que mantém a aula no mesmo freepass ("Continua no freepass ..."), mesmo com o freepass cheio. Aula nova num freepass que já tem aula pendente (a vaga que voltou depois de um Cancelou) só nasce pelo "Agendar" do cartão do freepass, no modo `new` (Tarefa 4), que cria o registro sem mover o pendente.
+
+**A aula da vez é a mais cedo.** Depois de toda gravação que cria, move ou cancela aula de freepass, o agendamento do lead aponta para `nextFreepassAula` (a pendente mais cedo, de hoje em diante), a não ser que o agendamento atual do lead seja uma aula pendente mais cedo que ela. A aula com desfecho só sai do agendamento do lead pela Tarefa 6, no dia da aula seguinte.
+
 ---
 
 ### Tarefa 1: Regra pura do Agendar com freepass
@@ -30,6 +34,8 @@
 - `freepassChoiceText(choice, modalidadeName)` → a linha do Remarcar e o aviso do passo: `'Entra no freepass Pilates 2 aulas (2 de 2)'`, `'Nasce o freepass Pilates 2 aulas'`, `'Aula avulsa: já teve freepass de Pilates em 10/11'`, `'Aula avulsa: o freepass já tem as 2 aulas'`, `'Aula avulsa: Pilates não tem freepass cadastrado'`, `'Aula avulsa: só o consultor lança freepass'`.
 - `freepassAulasPatch({ freepass, records })` → `{ aulas, endsAt }`: `aulas` = registros com `freepassId === freepass.id` e `status !== 'cancelled'`; `endsAt` = no por aulas, com `aulas >= total`, o começo do dia do `scheduledFor` mais tarde entre eles, senão `null`; no por dias, devolve o `endsAt` do freepass como está.
 - `currentAulaToAdvance({ lead, records, now })` → o registro para onde a aula da vez deve andar, ou `null`: o registro de hoje (`scheduledFor` no dia local de `now`), com `freepassId`, `status === 'agendada'`, diferente de `lead.currentAulaId`, quando o agendamento do lead é de um dia anterior a hoje, já tem desfecho (`appointmentOutcome`) ou não existe. Com mais de um, o mais cedo.
+- `movingFreepassId` (opcional, em `freepassChoiceFor` e `autoFreepassFor`): o `freepassId` do registro pendente que o Agendar vai mover. Freepass que corre e é da modalidade pedida → `{ kind: 'use', freepass, aulasLeft, moving: true }`, contando a aula movida como livre e nunca 'full'. Vem antes das outras regras. Texto: `'Continua no freepass Pilates 2 aulas'`.
+- `nextFreepassAula({ records, freepassId, now })` → o registro agendado mais cedo do freepass, de hoje em diante, ou null.
 - `freepassTagOf({ lead, contractActive, now })` → `null` | `{ label: 'Visitante' | 'Upgrade', text }`, sobre o `visitorOf`. Com `contractActive` (contrato ativo, a vencer, trancado ou agendado), `label: 'Upgrade'` e `text` = `'Pilates, faltam 3 dias'` (modalidade mais andamento); senão `'Visitante'` e o `shortText`.
 
 **Casos de teste (mínimo):** cada `kind` e `reason` de `freepassChoiceFor`; o padrão primeiro em `types`; `autoFreepassFor` com e sem padrão; os seis textos; `freepassAulasPatch` ignorando cancelados e de outro freepass, com `endsAt` só quando completa; `currentAulaToAdvance` nos quatro casos (lead em aula de ontem, lead com desfecho hoje, lead já na aula de hoje, sem aula de freepass hoje); `freepassTagOf` para lead, ex-aluno e aluno ativo.
@@ -46,6 +52,10 @@
 - `readLeadAulas(db, leadId)` → os registros de `stronix_aulas` do lead (`where('leadId', '==', leadId)`, campo único, sem índice), com `id`.
 - `extraAulaRecords({ db, lead, freepassId, aulas })` → `[{ ref, data }]` para as aulas 2..N do lançamento, cada uma com `aulaRecordFields` (tipo aula, modalidade, professor, `scheduledFor`, `status: 'agendada'`, consultor do dono do lead, como o `recordNewAppointment` faz) e `createdAt: serverTimestamp()`.
 - `freepassAfterAulas({ freepass, records })` → o patch do documento (`freepassAulasPatch`) e o freepass atualizado, para o `freepassSummaryPatch`.
+
+**Ao mover, o `freepassId` só muda quando vem no pedido** (`fields.freepassId !== undefined`): o Remarcar da Meta e a ponte movem a aula sem passar o campo, e o registro não pode perder o freepass por isso. Ao criar, sem o campo, grava `null`.
+
+**`src/hooks/useLeadAulas.js` (novo):** os registros de `stronix_aulas` do lead, ao vivo, no molde do `useLeadFreepasses` (mesma assinatura `{ db, leadId, active }`, null até a primeira resposta, [] na falha). A ficha usa para o `movingFreepassId` e para a lista do cartão.
 
 **Armadilhas:** o `aulasWrites.test.js` mocka `firebase.js`; mantenha o retorno do `recordNewAppointment` (o id da aula). O `rescheduleRecordPlan` não muda. A ponte tem cópia da regra de registro (`api/_zapSchedule.js`, `scheduleRecordChanges` e `buildScheduleWrites`); a Tarefa 7 a acompanha.
 
@@ -64,7 +74,9 @@
 - `onConfirm` ganha `freepass: { kind, freepassId?, type?, aulas? }`, com `aulas = [{ date, professorId, soloTraining }]` no lançamento por aulas (a primeira é a aula da vez).
 - `handleWizardConfirm`:
   - `avulsa`: como hoje, sem `quantidade` (o `trialClassesPlanned` vai `null`).
-  - `use`: o registro da aula leva `freepassId`; o lote atualiza o documento do freepass (`freepassAfterAulas`, com os registros lidos por `readLeadAulas` depois do `recordNewAppointment`) e o resumo no lead.
+  - O `movingFreepassId` sai dos registros do `useLeadAulas`: o `freepassId` do registro `currentAulaId` quando ele está 'agendada'.
+  - `use`: o registro da aula leva `freepassId` (criado ou movido); depois do `recordNewAppointment`, relê os registros (`readLeadAulas`) e atualiza o documento de cada freepass afetado (o novo e, se a aula saiu de outro freepass, o antigo) pelo `freepassAfterAulas`, e o resumo no lead.
+  - Aula avulsa movida de um freepass (troca de modalidade na remarcação) grava `freepassId: null` e recalcula o freepass antigo, que volta a ter uma vaga.
   - `launch`: a aula 1 segue pelo caminho de sempre (`recordNewAppointment` com `freepassId`), e o mesmo lote cria o freepass (`buildFreepassDoc`; no por dias, início no dia da aula), as aulas 2..N (`extraAulaRecords`), a interação `freepass` de lançamento e o resumo. Uma escrita só: `logInteractions(db, lead, appUser, [notaDoAgendamento, notaDoFreepass], up, extra)`.
   - Recusa com `negarAcesso` o `launch` sem `canFreepass`.
 - O texto da interação do agendamento deixa de levar "N aulas" e fica `(Pilates)`; confira o `parseAppointment` e os testes da linha do tempo.
@@ -79,7 +91,7 @@
 
 **Arquivos:** `src/modals/FreepassLaunchModal.jsx` (no tipo por aulas, depois do tipo, o `AulasPlanner`; o início é a primeira aula), `src/lib/freepassWrites.js` (`writeFreepassLaunch` aceita `aulas` e cria os registros e o agendamento da aula 1 no lead, pelo mesmo caminho da Tarefa 3), `src/components/profile/contracts/FreepassCard.jsx` (lista as aulas do freepass: dia, hora, professor, desfecho ou "Agendada", "Remarcar" em cada; "N aula(s) a agendar" com o botão "Agendar" quando `aulas < total`), `src/components/profile/contracts/ContractsTab.jsx` e a ficha (passam os registros e os gravadores). Testes de comportamento em jsdom.
 
-**Comportamento:** "Remarcar" da aula da vez abre o Agendar já na aula (o caminho de sempre); "Remarcar" de uma aula futura muda só a data e o professor daquele registro (`updateDoc` no registro e o `freepassAulasPatch` no documento e no resumo). "Agendar" abre o Agendar já na aula e na modalidade, e o passo Freepass cai no `use`.
+**Comportamento:** "Remarcar" da aula da vez abre o Agendar já na aula (o caminho de sempre); "Remarcar" de uma aula futura muda só a data e o professor daquele registro (`updateDoc` no registro e o `freepassAulasPatch` no documento e no resumo). "Agendar" abre o Agendar já na aula e na modalidade, no modo `new`: o passo Freepass cai no `use` sem `movingFreepassId`, a gravação cria um registro novo em vez de mover o pendente (`recordNewAppointment` com uma opção que pula o plano de fechar e mover) e o agendamento do lead só muda se a aula nova for a `nextFreepassAula` (a regra "A aula da vez é a mais cedo", no topo).
 
 **Commit:** `feat: aba Contratos lança o freepass com as aulas e o cartão lista as aulas`
 
@@ -92,7 +104,7 @@
 **Comportamento:**
 - Remarcar que só move a mesma aula: o registro mantém o `freepassId`; o documento recalcula o fim (`freepassAulasPatch`).
 - Aula nova pela Meta (o "Agendar próxima tentativa", ou a troca de visita para aula): `autoFreepassFor`; `use` liga a aula; `launch` cria o freepass do tipo padrão com essa aula (as outras ficam a agendar); `avulsa` segue sem freepass.
-- Cancelou de uma aula com `freepassId`: o registro já fecha como cancelado (`applyOutcomeToAula`); o documento e o resumo recalculam pelos registros (a vaga volta).
+- Cancelou de uma aula com `freepassId`: o registro já fecha como cancelado (`applyOutcomeToAula`); o documento e o resumo recalculam pelos registros (a vaga volta), e o agendamento do lead passa para a `nextFreepassAula`, quando houver (o Cancelou já apaga o agendamento hoje; aqui ele dá lugar à próxima aula do freepass).
 - A Meta não tem os documentos do freepass: leia-os na hora (`where('leadId','==',id)` em `stronix_freepass`) antes de gravar.
 
 **Commit:** `feat: Meta Diária segue o freepass no Remarcar e no Cancelou`
