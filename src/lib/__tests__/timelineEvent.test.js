@@ -40,6 +40,22 @@ describe('TimelineEvent', () => {
     expect(out).toContain('após 4d em Em contato');
   });
 
+  it('mudança de fase com troca de funil: diz de qual funil para qual', () => {
+    const funnels = [{ id: 'f1', name: 'Comercial', isDefault: true }, { id: 'f2', name: 'Indicações' }];
+    const i = { id: 'sf', type: 'status_change', text: 'Fase alterada para [Negociação].', funnelId: 'f2', fromFunnelId: 'f1', consultantName: 'Ana', createdAt: D(9, 22) };
+    const out = html(i, { funnels, stageTransitions: { sf: { from: 'Em contato', days: 4 } } });
+    expect(out).toContain('Mudou de funil');
+    expect(out).toContain('>Comercial<');
+    expect(out).toContain('>Indicações<');
+    expect(out).toContain('após 4d em Em contato');
+  });
+
+  it('mudança de fase no mesmo funil não fala de funil', () => {
+    const funnels = [{ id: 'f1', name: 'Comercial', isDefault: true }];
+    const i = { id: 'sm', type: 'status_change', text: 'Fase alterada para [Negociação].', funnelId: 'f1', consultantName: 'Ana', createdAt: D(9, 22) };
+    expect(html(i, { funnels })).not.toContain('Mudou de funil');
+  });
+
   it('troca de responsável é linha simples, nunca fase nem perda', () => {
     const out = html({ id: 'o', type: 'status_change', text: 'Responsável alterado de [Ana Souza] para [Bruno Lima].', consultantName: 'Carla', createdAt: D(9, 5) });
     expect(out).toContain('Responsável alterado de Ana Souza para Bruno Lima.');

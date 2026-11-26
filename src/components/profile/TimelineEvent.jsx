@@ -8,6 +8,7 @@ import {
   contractEventOf,
   parseAppointment,
   extractStageNameFromInteractionText,
+  funnelChangeOf,
   isOwnerChangeText,
   ownerChangeText,
   zapScheduleTitle,
@@ -28,7 +29,8 @@ import { ZapDayCard } from './ZapDayCard.jsx';
 // (renderTimelineEvent), movida sem mudar.
 //
 // Props: i (a interação com _kind, de classifyInteraction), statuses (as etapas,
-// para a cor dos chips), stageTransitions (de buildStageTransitions),
+// para a cor dos chips), funnels (os funis, para o nome na troca de funil),
+// stageTransitions (de buildStageTransitions),
 // outcomeOrigin (o agendamento que originou cada desfecho) e flash (o evento que
 // o "Ver no histórico" do compositor acabou de abrir). O id de cada evento é
 // `ev-<id da interação>`, e ele aceita o foco sem entrar no Tab, para o "Ver no
@@ -82,7 +84,7 @@ function PhaseChip({ name, destination, statuses }) {
   );
 }
 
-export function TimelineEvent({ i, statuses, stageTransitions, outcomeOrigin, flash = false }) {
+export function TimelineEvent({ i, statuses, funnels = [], stageTransitions, outcomeOrigin, flash = false }) {
   // Marco de início do cadastro pelo Stronizap: régua com a pílula, fora do
   // padrão do nó. É o registro mais antigo do lead e fecha a linha do tempo.
   if (i._kind === 'origin') return <ZapSignupMarker interaction={i} />;
@@ -198,6 +200,22 @@ export function TimelineEvent({ i, statuses, stageTransitions, outcomeOrigin, fl
         {durationText && <span className="text-[12.5px] text-muted-foreground">{durationText}</span>}
       </div>
     );
+    // A troca de funil não está no texto gravado: sai dos campos da interação.
+    const funnelChange = funnelChangeOf(i, funnels);
+    if (funnelChange) {
+      body = (
+        <>
+          {body}
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 text-[12.5px] text-muted-foreground">
+            <span>Mudou de funil:</span>
+            <span className="font-medium text-slate-700 dark:text-slate-200">{funnelChange.from}</span>
+            <ArrowRight size={13} className="shrink-0 text-slate-400 dark:text-slate-500" aria-hidden="true" />
+            <span className="sr-only">para</span>
+            <span className="font-medium text-slate-700 dark:text-slate-200">{funnelChange.to}</span>
+          </div>
+        </>
+      );
+    }
   } else if ((appt && appt.when) || i.appointmentOutcome) {
     // Agendamento e desfecho dividem o cartão. O selo sai do campo real
     // appointmentOutcome quando existe; o agendamento sem desfecho fica em

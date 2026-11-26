@@ -18,6 +18,7 @@ import {
   isAppointmentReschedule,
   parseAppointment,
   extractStageNameFromInteractionText,
+  funnelChangeOf,
   isOwnerChangeText,
   ownerChangeText,
   TIMELINE_FILTERS,
@@ -788,5 +789,36 @@ describe('linha de sinal da conversa pelo Stronizap (type zap_signal)', () => {
 
     expect(matchesTimelineFilter(kind, 'conversation')).toBe(true);
     expect(kind).not.toBe(TIMELINE_SYSTEM_KIND);
+  });
+});
+
+describe('troca de funil na mudança de fase (funnelChangeOf)', () => {
+  const FUNNELS = [
+    { id: 'f1', name: 'Comercial', isDefault: true },
+    { id: 'f2', name: 'Indicações' },
+  ];
+  const troca = (extra) => ({ type: 'status_change', text: 'Fase alterada para [Agendado].', toStatus: 'Agendado', ...extra });
+
+  it('mudou de funil: os nomes de origem e de destino', () => {
+    expect(funnelChangeOf(troca({ funnelId: 'f2', fromFunnelId: 'f1' }), FUNNELS)).toEqual({ from: 'Comercial', to: 'Indicações' });
+  });
+
+  it('troca dentro do mesmo funil não grava fromFunnelId e não é troca de funil', () => {
+    expect(funnelChangeOf(troca({ funnelId: 'f1' }), FUNNELS)).toBeNull();
+  });
+
+  it('lead sem funil é do funil padrão: ir para o padrão não é troca, ir para outro é', () => {
+    expect(funnelChangeOf(troca({ funnelId: 'f1', fromFunnelId: null }), FUNNELS)).toBeNull();
+    expect(funnelChangeOf(troca({ funnelId: 'f2', fromFunnelId: null }), FUNNELS)).toEqual({ from: 'Comercial', to: 'Indicações' });
+  });
+
+  it('funil que não existe mais aparece como funil excluído', () => {
+    expect(funnelChangeOf(troca({ funnelId: 'f2', fromFunnelId: 'apagado' }), FUNNELS)).toEqual({ from: 'funil excluído', to: 'Indicações' });
+  });
+
+  it('troca antiga, sem os campos, ou sem a lista de funis: nada a mostrar', () => {
+    expect(funnelChangeOf(troca({}), FUNNELS)).toBeNull();
+    expect(funnelChangeOf(troca({ funnelId: 'f2', fromFunnelId: 'f1' }), [])).toBeNull();
+    expect(funnelChangeOf(null, FUNNELS)).toBeNull();
   });
 });

@@ -24,6 +24,22 @@ export const extractStageNameFromInteractionText = (text = '') => {
   return match ? match[1].trim() : '';
 };
 
+// Troca de funil na mudança de fase: a interação guarda o funil de destino em
+// funnelId e, só quando o funil muda, o de origem em fromFunnelId
+// (stageChangeFields, em stageMove.js). O texto gravado não diz o funil. Lead
+// sem funil é do funil padrão, como no Pipeline (isItemInFunnel). Devolve
+// { from, to } com os nomes, ou null. Trocas de antes de 14/09/2026 não têm os
+// campos e o "Trazer um funil" das Configurações não grava interação no lead.
+export const funnelChangeOf = (i, funnels = []) => {
+  if (!i || i.fromFunnelId === undefined || !Array.isArray(funnels) || funnels.length === 0) return null;
+  const padrao = (funnels.find((f) => f?.isDefault === true) || funnels[0])?.id ?? null;
+  const fromId = i.fromFunnelId || padrao;
+  const toId = i.funnelId || padrao;
+  if (!fromId || !toId || fromId === toId) return null;
+  const name = (id) => funnels.find((f) => f?.id === id)?.name || 'funil excluído';
+  return { from: name(fromId), to: name(toId) };
+};
+
 const validDate = (d) => (d instanceof Date && !isNaN(d.getTime()) ? d : null);
 
 // Agrupa eventos por mês, com o nome e o ano ("Setembro de 2026"), inclusive o
