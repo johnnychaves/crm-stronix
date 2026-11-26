@@ -12,9 +12,13 @@
 import { useEffect, useRef } from 'react';
 import { collection, doc, getDoc, getDocs, query, updateDoc, where } from 'firebase/firestore';
 import { appId, AULAS_PATH, FREEPASS_PATH, LEADS_PATH } from '../lib/firebase.js';
-import { getSafeDateOrNull } from '../lib/dates.js';
+import { calendarDaysBetween, getSafeDateOrNull } from '../lib/dates.js';
+import { isAppointmentEcho } from '../lib/outcomeCorrection.js';
 import { buildSchedulePatch } from '../lib/schedulePatch.js';
 import { activeFreepassesOf, currentAulaToAdvance } from '../lib/visitante.js';
+
+// As chaves do próximo contato que o buildSchedulePatch grava com o eco.
+const NEXT_CONTACT_KEYS = ['nextFollowUp', 'nextFollowUpType', 'nextFollowUpNote', 'nextFollowUpOwnerId', 'nextFollowUpOwnerName'];
 
 // Para cada lead, o patch que passa o agendamento para a aula de hoje, ou nada.
 // `records` são os registros de hoje; só contam os de freepass que existe e
@@ -40,6 +44,13 @@ export function advancePlan({ records, leadsById, freepassesById, now = new Date
       soloTraining: Boolean(aula.soloTraining), currentAulaId: aula.id,
     });
     // O dono da tarefa fica: a aula seguinte é de quem já tinha a anterior.
+    // Ninguém clicou aqui, então um contato de verdade (não o eco do agendamento)
+    // de hoje em diante fica. O já vencido é sobrescrito, como no Agendar.
+    const lead = leadsById.get(leadId);
+    const next = getSafeDateOrNull(lead.nextFollowUp);
+    if (next && !isAppointmentEcho(lead) && calendarDaysBetween(now, next) >= 0) {
+      for (const k of NEXT_CONTACT_KEYS) delete patch[k];
+    }
     out.push({ leadId, patch });
   }
   return out;

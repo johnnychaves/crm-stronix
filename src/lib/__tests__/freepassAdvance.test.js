@@ -56,6 +56,24 @@ describe('advancePlan', () => {
     });
   });
 
+  it('contato de verdade de hoje em diante fica', () => {
+    const lead = { ...LEAD, nextFollowUp: at(1, 9), nextFollowUpType: 'Mensagem', nextFollowUpNote: 'confirmar', nextFollowUpOwnerId: 'carla' };
+    const [{ patch }] = plan({ leadsById: new Map([['ana', lead]]) });
+    for (const k of ['nextFollowUp', 'nextFollowUpType', 'nextFollowUpNote', 'nextFollowUpOwnerId', 'nextFollowUpOwnerName']) {
+      expect(patch).not.toHaveProperty(k);
+    }
+    expect(patch).toMatchObject({ currentAulaId: 'a2', appointmentScheduledFor: AULA.scheduledFor });
+  });
+
+  it('contato de verdade já vencido e o eco do agendamento são sobrescritos', () => {
+    const vencido = { ...LEAD, nextFollowUp: at(-1, 9), nextFollowUpType: 'Ligação', nextFollowUpOwnerId: 'carla' };
+    const eco = { ...LEAD, nextFollowUp: at(2, 9), nextFollowUpType: 'Aula Experimental' };
+    for (const lead of [vencido, eco]) {
+      const [{ patch }] = plan({ leadsById: new Map([['ana', lead]]) });
+      expect(patch).toMatchObject({ nextFollowUp: AULA.scheduledFor, nextFollowUpType: 'Aula Experimental', nextFollowUpOwnerId: null });
+    }
+  });
+
   it('não mexe no dono da tarefa', () => {
     const [{ patch }] = plan();
     expect(patch).not.toHaveProperty('appointmentOwnerId');
