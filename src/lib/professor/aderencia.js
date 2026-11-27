@@ -98,3 +98,17 @@ export function aderenciaResumo(linhas, pecas, asOf = new Date()) {
   const atual = [...ano.semestres].reverse().find((sm) => sm.inicio <= asOf && sm.taxa != null) ?? null;
   return { ...ano, taxa: atual?.taxa ?? null, emAndamento: atual != null };
 }
+
+// O semestral (plano de carreira, PR 3): o período inteiro é a unidade. Soma
+// as semanas de todos os pedaços, porque no semestral de junho e dezembro o
+// segundo período tem o pedaço de junho (um mês) e o de julho a novembro, e a
+// média dos dois daria a junho o peso de cinco meses. A nota sai quando todos
+// os pedaços fecham; antes disso, a taxa até agora com `emAndamento`.
+export function aderenciaSomada(linhas, pecas, asOf = new Date()) {
+  const semestres = (pecas || []).map((s) => ({ ...s, fechado: s.fim <= asOf, ...aderenciaDoSemestre(linhas, s) }));
+  const contam = semestres.reduce((a, s) => a + s.contam, 0);
+  const aderentes = semestres.reduce((a, s) => a + s.aderentes, 0);
+  const taxa = pct(aderentes, contam);
+  const fechado = semestres.length > 0 && semestres.every((s) => s.fechado);
+  return { semestres, nota: fechado ? taxa : null, taxa, emAndamento: !fechado && taxa != null };
+}
