@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { BookOpen, Building2 } from 'lucide-react';
 import { DAILY_GOAL_CATEGORIES } from '../lib/leads.js';
 import { getSafeDateOrNull } from '../lib/dates.js';
@@ -12,6 +12,8 @@ import { NoteToggle, PopupButton, PopupLabel, PopupShell } from '../components/d
 import { WhenPicker } from '../components/dailygoal/popup/WhenPicker.jsx';
 import { POPUP_FIELD } from '../components/dailygoal/popup/popupKit.js';
 import { RadioGroup, RadioGroupOption } from '../components/ui/radio-group.jsx';
+import { metaFreepassChoice, readMetaFreepassData } from '../lib/freepassMetaWrites.js';
+import { freepassChoiceText } from '../lib/visitante.js';
 
 // Remarcar visita ou aula experimental, e o "Agendar próxima tentativa" que a
 // Meta abre depois do Não compareceu (flow 'after_no_show'). Na família de
@@ -19,15 +21,19 @@ import { RadioGroup, RadioGroupOption } from '../components/ui/radio-group.jsx';
 // modalidade, professor e aulas previstas) fica numa linha com "Alterar", e a
 // observação atrás de "+ Adicionar observação". Quem grava é o handleReschedule
 // da Meta, pelo onConfirm, com os mesmos argumentos de antes.
+// Com o módulo Stronix 2.0 (freepassOn), a aula experimental não pede "Aulas
+// previstas": quem diz quantas são é o freepass, e o pop-up mostra o que a aula
+// faz com ele (metaFreepassChoice). Os freepass e os registros da pessoa são
+// lidos uma vez ao abrir; a gravação relê antes de gravar.
 
 const TYPES = [
   { id: 'visita', label: 'Visita' },
   { id: 'aula_experimental', label: 'Aula experimental' },
 ];
 
-export function RescheduleModal({ lead, categorySlug, currentDate, currentType, flow = 'manual', onConfirm, onClose }) {
+export function RescheduleModal({ lead, categorySlug, currentDate, currentType, flow = 'manual', onConfirm, onClose, db = null, appUser = null, freepassOn = false }) {
   const isAfterNoShow = flow === 'after_no_show';
-  const { modalities, trialClassOptions, professores } = useGeneralConfig();
+  const { modalities, trialClassOptions, professores, freepassTypes } = useGeneralConfig();
   const toast = useToast();
   const typeLabelId = useId();
   const modalityId = useId();
@@ -62,6 +68,18 @@ export function RescheduleModal({ lead, categorySlug, currentDate, currentType, 
   const qtyOptions = baseQty.includes(qty) ? baseQty : [...baseQty, qty].sort((a, b) => a - b);
 
   const isAula = apptType === 'aula_experimental';
+  // null enquanto lê, { error } se a leitura falhou.
+  const [fpData, setFpData] = useState(null);
+  const leadId = lead?.id;
+  useEffect(() => {
+    if (!freepassOn || !db || !leadId) return undefined;
+    let live = true;
+    readMetaFreepassData(db, leadId)
+      .then((data) => { if (live) setFpData(data); })
+      .catch((err) => { console.error('readMetaFreepassData', err); if (live) setFpData({ error: true }); });
+    return () => { live = false; };
+  }, [freepassOn, db, leadId]);
+  const showQty = !freepassOn;
   const typeText = isAula ? 'Aula experimental' : 'Visita';
   const professorText = professorSel === SOLO_TRAINING
     ? SOLO_TRAINING_LABEL
@@ -71,6 +89,18 @@ export function RescheduleModal({ lead, categorySlug, currentDate, currentType, 
     ? (apptAt ? `Não compareceu ${dayRefText(apptAt, now)}` : 'Não compareceu')
     : (apptAt ? `${typeText} marcada para ${dayRefText(apptAt, now)}` : 'Sem horário marcado');
   const hint = whenIsFuture(when, nowMs) ? '' : 'Escolha um dia e horário futuros.';
+  // O mesmo nome que a gravação usa (aparado), para a linha não dizer outra coisa.
+  const modalityName = modality.trim();
+  const fpChoice = freepassOn && isAula && fpData && !fpData.error
+    ? metaFreepassChoice({
+        lead, freepasses: fpData.freepasses, records: fpData.records, types: freepassTypes, modalities,
+        modalidadeName: modalityName || null, appUser, at: whenInstant(when), afterNoShow: isAfterNoShow, now,
+      }).choice
+    : null;
+  const fpLine = !freepassOn || !isAula ? null
+    : fpData === null ? { text: 'Conferindo o freepass…', tone: 'muted' }
+      : fpData.error ? { text: 'Não deu para conferir o freepass. A remarcação confere de novo ao gravar.', tone: 'muted' }
+        : { text: freepassChoiceText(fpChoice, modalityName || 'a modalidade'), tone: fpChoice.kind === 'avulsa' ? 'muted' : 'teal' };
 
   const handleConfirm = async () => {
     if (hint || submitting) return;
@@ -85,7 +115,7 @@ export function RescheduleModal({ lead, categorySlug, currentDate, currentType, 
     const professorName = chosenProfessorId ? professorNameById(professores, chosenProfessorId) : null;
     setSubmitting(true);
     try {
-      await onConfirm(newDate, note, apptType, isAula ? (modality || '').trim() : null, isAula ? finalQty : null, chosenProfessorId, professorName, isAula && isSolo);
+      await onConfirm(newDate, note, apptType, isAula ? modalityName : null, isAula && showQty ? finalQty : null, chosenProfessorId, professorName, isAula && isSolo);
     } finally {
       setSubmitting(false);
     }
@@ -115,7 +145,7 @@ export function RescheduleModal({ lead, categorySlug, currentDate, currentType, 
         <b className="font-semibold">{typeText}</b>
         {isAula && (
           <span className="text-muted-foreground">
-            {modality || 'Sem modalidade'} · {professorText} · {qty} {qty === 1 ? 'aula' : 'aulas'}
+            {modality || 'Sem modalidade'} · {professorText}{showQty && ` · ${qty} ${qty === 1 ? 'aula' : 'aulas'}`}
           </span>
         )}
         <button
@@ -161,13 +191,15 @@ export function RescheduleModal({ lead, categorySlug, currentDate, currentType, 
                   {(modalities || []).map((m) => <option key={m.id} value={m.name}>{m.name}</option>)}
                 </select>
               </div>
-              <div>
-                <PopupLabel htmlFor={qtyId}>Aulas previstas</PopupLabel>
-                <select id={qtyId} value={qty} onChange={(e) => setQty(Number(e.target.value))} className={cn(POPUP_FIELD, 'num w-full cursor-pointer')}>
-                  {qtyOptions.map((n) => <option key={n} value={n}>{n} {n === 1 ? 'aula' : 'aulas'}</option>)}
-                </select>
-              </div>
-              <div className="col-span-2">
+              {showQty && (
+                <div>
+                  <PopupLabel htmlFor={qtyId}>Aulas previstas</PopupLabel>
+                  <select id={qtyId} value={qty} onChange={(e) => setQty(Number(e.target.value))} className={cn(POPUP_FIELD, 'num w-full cursor-pointer')}>
+                    {qtyOptions.map((n) => <option key={n} value={n}>{n} {n === 1 ? 'aula' : 'aulas'}</option>)}
+                  </select>
+                </div>
+              )}
+              <div className={showQty ? 'col-span-2' : ''}>
                 <PopupLabel htmlFor={professorId}>Professor</PopupLabel>
                 <select id={professorId} value={professorSel} onChange={(e) => setProfessorSel(e.target.value)} className={cn(POPUP_FIELD, 'w-full cursor-pointer')}>
                   <option value="">Selecione</option>
@@ -178,6 +210,20 @@ export function RescheduleModal({ lead, categorySlug, currentDate, currentType, 
             </div>
           )}
         </div>
+      )}
+
+      {fpLine && (
+        <p
+          data-slot="freepass-line"
+          className={cn(
+            'rounded-lg px-3 py-2.5 text-[12.5px] font-medium',
+            fpLine.tone === 'teal'
+              ? 'bg-teal-50 text-teal-800 dark:bg-teal-500/10 dark:text-teal-300'
+              : 'bg-muted text-muted-foreground'
+          )}
+        >
+          {fpLine.text}
+        </p>
       )}
 
       <WhenPicker value={when} onChange={setWhen} who={firstName(lead?.name) || 'O lead'} nowMs={nowMs} autoFocus />

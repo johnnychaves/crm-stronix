@@ -102,7 +102,9 @@ function SchedulingSection({ db, modalities, units, trialClassOptions, freepassT
   const [packInput, setPackInput] = useState('');
 
   const options = useMemo(() => normalizeTrialClassOptions(trialClassOptions || []), [trialClassOptions]);
-  const packages = useMemo(() => trialShares(leads, options), [leads, options]);
+  // Com o módulo, quem diz quantas aulas são é o freepass: o painel sai, mas o
+  // trialClassOptions salvo fica, porque a ponte do Stronizap ainda o confere.
+  const packages = useMemo(() => (freepassOn ? [] : trialShares(leads, options)), [freepassOn, leads, options]);
 
   // Montada sob demanda (render não toca no SDK do Firestore).
   const configRef = () => doc(db, 'artifacts', appId, 'public', 'data', CONFIG_PATH, CONFIG_GENERAL_ID);
@@ -362,7 +364,7 @@ function SchedulingSection({ db, modalities, units, trialClassOptions, freepassT
         </SettingsPanel>
       </div>
 
-      <SettingsPanel
+      {!freepassOn && <SettingsPanel
         icon={<BookOpen size={16} />}
         iconTone="brand"
         title="Aulas experimentais"
@@ -379,7 +381,7 @@ function SchedulingSection({ db, modalities, units, trialClassOptions, freepassT
             className="justify-center"
           />
         </div>
-      </SettingsPanel>
+      </SettingsPanel>}
 
       {freepassOn && <FreepassTypesPanel db={db} modalities={modalities} freepassTypes={freepassTypes} />}
 

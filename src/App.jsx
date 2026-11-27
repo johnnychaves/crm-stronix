@@ -63,6 +63,7 @@ import { recordGoalHit as recordGoalHitDoc, goalHitKeyToRecord } from './lib/dai
 import { useRenewalClients } from './hooks/useRenewalClients.js';
 import { useClientsWithContactToday } from './hooks/useClientsWithContactToday.js';
 import { useDayAgenda } from './hooks/useDayAgenda.js';
+import { useFreepassAdvance } from './hooks/useFreepassAdvance.js';
 import { useRouteScroll } from './hooks/useRouteScroll.js';
 import { useActivityGate } from './hooks/useActivityGate.js';
 import { useReloadOnUpdate } from './hooks/useReloadOnUpdate.js';
@@ -1550,6 +1551,15 @@ useEffect(() => {
   // App não remonta no "Acessar como".
   const { items: dayAgendaLeads, loading: dayAgendaLoading } = useDayAgenda({
     db, enabled: listenersActive && !tenantBlock && isSeller(appUser), dayKey: `${sessionKey}:${dayKey}`
+  });
+  // O compromisso pendente de hoje (aula ou visita, com ou sem freepass) entra
+  // no agendamento do lead no dia dele (useFreepassAdvance), só com o módulo:
+  // uma vez por dia e por aba, por quem vende. A Agenda de hoje acima é ao vivo
+  // e vê o agendamento novo sozinha.
+  useFreepassAdvance({
+    db,
+    enabled: listenersActive && !tenantBlock && isSeller(appUser) && hasModule(appUser?.tenantModules, MODULES.FALTOSOS),
+    dayKey: `${sessionKey}:${dayKey}`,
   });
   // A base da Meta (o selo, o título da aba e a tela). Os painéis continuam
   // com o metaLeads.

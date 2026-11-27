@@ -93,6 +93,36 @@ describe('buildZapStrip', () => {
     });
   });
 
+  // Entrega 2 do Visitante: com o resumo do freepass no lead, a faixa sai dele.
+  describe('freepass pelo resumo do lead', () => {
+    const resumo = (extra = {}) => ({
+      freepassId: 'fp1', freepassKind: 'dias', freepassTotal: 7, freepassTypeName: 'Musculação 7 dias',
+      freepassModalidadeName: 'Musculação', freepassStartsAt: brt('2026-09-05T00:00'), freepassEndsAt: brt('2026-09-11T00:00'),
+      freepassAulas: 0, freepassStatus: 'correndo', freepassContractAtStart: null, ...extra
+    });
+
+    it('por dias: até o último dia, com a contagem', () => {
+      expect(buildZapStrip(resumo(), HOJE)).toEqual({ kind: 'freepass', tone: 'neutro', text: 'Freepass até 11/09 · faltam 3 dias' });
+      expect(buildZapStrip(resumo({ freepassEndsAt: brt('2026-09-08T00:00') }), HOJE)).toEqual({
+        kind: 'freepass', tone: 'avencer', text: 'Freepass termina hoje'
+      });
+    });
+
+    it('por aulas: quantas já foram marcadas', () => {
+      const porAulas = resumo({ freepassKind: 'aulas', freepassTotal: 2, freepassAulas: 1, freepassEndsAt: null });
+      expect(buildZapStrip(porAulas, HOJE)).toEqual({ kind: 'freepass', tone: 'neutro', text: 'Freepass · 1 de 2 aulas' });
+      expect(buildZapStrip({ ...porAulas, freepassTotal: 1, freepassAulas: 1 }, HOJE).text).toBe('Freepass · 1 de 1 aula');
+    });
+
+    // Com o resumo, a conta antiga do trialClassesPlanned não volta.
+    it('freepass que acabou, foi encerrado ou é de antes da matrícula não dá faixa', () => {
+      const antigo = { appointmentType: 'Aula', appointmentScheduledFor: brt('2026-09-07T07:00'), trialClassesPlanned: 3 };
+      expect(buildZapStrip({ ...antigo, ...resumo({ freepassEndsAt: brt('2026-09-07T00:00') }) }, HOJE)).toBeNull();
+      expect(buildZapStrip(resumo({ freepassStatus: 'encerrado' }), HOJE)).toBeNull();
+      expect(buildZapStrip({ ...resumo(), currentContractId: 'k9' }, HOJE)).toBeNull();
+    });
+  });
+
   it('compromisso de hoje ganha do marco de renovação', () => {
     const lead = cliente({
       currentContractEndsAt: brt('2026-10-08T00:00'),

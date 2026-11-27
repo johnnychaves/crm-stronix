@@ -15,7 +15,8 @@ import {
   SCHEDULE_LIMIT, LEAD_IDS_MAX, ZAP_SCHEDULE_MESSAGES, unitsView, scheduleCatalogView, suggestedDays, countsForMeta,
   wardRelationship, appointmentDetailOf, scheduleTargets, readScheduleOptionsBody, buildScheduleOptions,
   isDocId, readScheduleBody, readStatusBody, scheduleWithStoredNames, checkScheduleCatalog, checkFuture, leadBelongsToNumber, hasSameAppointment,
-  scheduleInteractionText, pickOpenVisitaId, isOpenAulaRecord, scheduleRecordChanges, buildScheduleWrites, alreadyScheduledBody
+  scheduleInteractionText, pickOpenVisitaId, isOpenAulaRecord, scheduleRecordChanges, freepassPlan, buildScheduleWrites,
+  alreadyScheduledBody
 } from '../_zapSchedule.js';
 import { invalidData, ZAP_LEAD_MESSAGES } from '../_zapLead.js';
 import { aulaRecordFields } from '../../src/lib/aulas.js';
@@ -308,6 +309,12 @@ describe('appointmentDetailOf: o agendamento que a ficha, o cartão e a Meta mos
   it('unidade esquecida numa aula não aparece: unit e unitAddress saem null', () => {
     const lead = { ...PEDRO, appointmentUnit: 'Centro' };
     expect(appointmentDetailOf(lead, unidades)).toMatchObject({ type: 'aula_experimental', unit: null, unitAddress: null });
+  });
+
+  it('aula sem a quantidade no lead (com o freepass): quantity null', () => {
+    expect(appointmentDetailOf({ ...PEDRO, trialClassesPlanned: null }).quantity).toBeNull();
+    const { trialClassesPlanned: _semQuantidade, ...semCampo } = PEDRO;
+    expect(appointmentDetailOf(semCampo).quantity).toBeNull();
   });
 
   it.each([[2.5], [-1], [0]])('quantidade de aulas %s no lead não passa: sai null', (quantidade) => {
@@ -783,6 +790,15 @@ describe('hasSameAppointment: o pedido idêntico ao agendamento que o lead já t
     expect(hasSameAppointment(PEDRO, pedidoAula(extra))).toBe(false);
   });
 
+  // Com o módulo Stronix 2.0, quem diz quantas aulas são é o freepass. O
+  // Stronizap ainda manda a quantidade, e ela não muda o agendamento, com o
+  // lead tendo a quantidade gravada ou não. Sem o módulo, continua contando.
+  it('com o módulo, a quantidade de aulas não conta: outra quantidade, ou o lead sem ela, é o mesmo agendamento', () => {
+    expect(hasSameAppointment(PEDRO, { ...pedidoAula({ quantity: 3 }), freepassOn: true })).toBe(true);
+    expect(hasSameAppointment({ ...PEDRO, trialClassesPlanned: null }, { ...pedidoAula({ quantity: 1 }), freepassOn: true })).toBe(true);
+    expect(hasSameAppointment({ ...PEDRO, trialClassesPlanned: null }, pedidoAula({ quantity: 1 }))).toBe(false);
+  });
+
   it('quem treinava sozinho e agora tem professor é remarcação', () => {
     expect(hasSameAppointment(PEDRO_SOZINHO, pedidoAula())).toBe(false);
   });
@@ -852,6 +868,10 @@ describe('scheduleInteractionText: o texto do assistente, no horário de Brasíl
   it('aula de quem treina sozinho, com anotação', () => {
     expect(scheduleInteractionText({ ...aula, professorId: null, professorName: null, soloTraining: true, note: 'Traz tênis.' }))
       .toBe('🔔 Aula Experimental agendada (Pilates · 1 aula) · Treina sozinho p/ 02/10/2026, 19:00. Obs: Traz tênis.');
+  });
+
+  it('aula sem quantidade (com o freepass): só a modalidade, como na ficha', () => {
+    expect(scheduleInteractionText({ ...aula, quantity: null })).toBe('🔔 Aula Experimental agendada (Pilates) · Carla Dias p/ 02/10/2026, 19:00.');
   });
 
   it('anotação só com espaço não entra', () => {
@@ -1192,6 +1212,271 @@ describe('buildScheduleWrites: o que o assistente grava, numa gravação só', (
     expect(comIa.leadPatch).toEqual(semIa.leadPatch);
     expect(comIa.record).toEqual(semIa.record);
     expect('byAi' in semIa.interaction).toBe(false);
+  });
+});
+
+// Entrega 2 do Visitante: com o módulo Stronix 2.0, a aula pedida pelo
+// Stronizap entra no freepass pela escolha automática (autoFreepassFor).
+describe('freepassPlan: a aula dentro do freepass', () => {
+  const ts = (d) => ({ toDate: () => d });
+  const BRUNO = { id: 'u-bruno', name: 'Bruno Lima', authUid: 'auth-bruno', role: 'consultant' };
+  const CAIO = { id: 'u-caio', name: 'Caio Prof', authUid: 'auth-caio', role: 'professor', professorId: 'p1' };
+  // Quinta, 26/11/2026, 10:00 de Brasília. A aula pedida é na sexta, 27/11, às 19:00.
+  const AGORA_FP = brt('2026-11-26T10:00');
+  const atAula = brt('2026-11-27T19:00');
+  const LEAD = {
+    id: 'L1', name: 'Mariana Lima', status: 'Primeiro contato', consultantId: 'u-ana', consultantName: 'Ana Souza', consultantAuthUid: 'auth-ana'
+  };
+  const MODALIDADES = [{ id: 'm2', name: 'Pilates' }, { id: 'm1', name: 'Musculação' }];
+  const PILATES_2_AULAS = { id: 't1', name: 'Pilates 2 aulas', modalidadeId: 'm2', kind: 'aulas', quantity: 2, padrao: true, ativo: true };
+  const MUSCULACAO_7_DIAS = { id: 't2', name: 'Musculação 7 dias', modalidadeId: 'm1', kind: 'dias', quantity: 7, padrao: true, ativo: true };
+  const AULA = { leadId: 'L1', type: 'aula_experimental', unit: null, modality: 'Pilates', professorId: 'p1', soloTraining: false, quantity: 1, note: null };
+  // O freepass de pilates que a Mariana tem, como a consulta devolve.
+  const fp1 = (extra = {}) => ({
+    id: 'fp1', leadId: 'L1', typeId: 't1', typeName: 'Pilates 2 aulas', modalidadeId: 'm2', modalidadeName: 'Pilates',
+    kind: 'aulas', total: 2, startsAt: ts(brt('2026-11-20T00:00')), endsAt: null, aulas: 1, status: 'correndo', contractAtStart: null,
+    ...extra
+  });
+  const reg = (id, extra = {}) => ({
+    id, type: 'aula', leadId: 'L1', status: 'agendada', modality: 'Pilates', professorId: 'p1', soloTraining: false,
+    scheduledFor: ts(brt('2026-11-28T10:00')), freepassId: 'fp1', ...extra
+  });
+  const A0_FEITA = reg('a0', { status: 'attended', scheduledFor: ts(brt('2026-11-21T10:00')) });
+  const plano = (extra = {}) => freepassPlan({
+    lead: LEAD, actor: ANA, schedule: AULA, at: atAula, records: [], freepasses: [], types: [PILATES_2_AULAS, MUSCULACAO_7_DIAS],
+    modalities: MODALIDADES, newRecordId: 'rec-novo', newFreepassId: () => 'fp-novo', now: AGORA_FP, ...extra
+  });
+
+  it('freepass que corre na modalidade: a aula entra nele, ele é recontado e o fim é o dia da última aula, em Brasília', () => {
+    const p = plano({ records: [A0_FEITA], freepasses: [fp1()] });
+    expect(p.freepassId).toBe('fp1');
+    expect(p.launch).toBeNull();
+    // A meia-noite de Brasília (03:00 em UTC), e não a meia-noite do processo,
+    // que no navegador seria 21h da véspera e encurtaria o freepass.
+    expect(p.updates).toEqual([{ id: 'fp1', patch: { aulas: 2, endsAt: new Date('2026-11-27T03:00:00.000Z') } }]);
+    expect(p.leadSummary).toMatchObject({
+      freepassId: 'fp1', freepassKind: 'aulas', freepassTotal: 2, freepassAulas: 2, freepassEndsAt: new Date('2026-11-27T03:00:00.000Z')
+    });
+    expect(p.slot).toBeNull();
+  });
+
+  it('sem freepass na modalidade, com tipo padrão: nasce o freepass por aulas com a aula pedida', () => {
+    const p = plano();
+    expect(p.freepassId).toBe('fp-novo');
+    expect(p.launch).toEqual({
+      id: 'fp-novo',
+      doc: {
+        leadId: 'L1', typeId: 't1', typeName: 'Pilates 2 aulas', modalidadeId: 'm2', modalidadeName: 'Pilates', kind: 'aulas', total: 2,
+        startsAt: new Date('2026-11-27T03:00:00.000Z'), endsAt: null, aulas: 1, status: 'correndo', contractAtStart: null,
+        consultantId: 'u-ana', consultantName: 'Ana Souza', createdById: 'u-ana', createdByName: 'Ana Souza', createdByAuthUid: 'auth-ana',
+        via: 'stronizap'
+      }
+    });
+    expect(p.updates).toEqual([]);
+    expect(p.leadSummary).toMatchObject({ freepassId: 'fp-novo', freepassAulas: 1, freepassStatus: 'correndo' });
+  });
+
+  it('o freepass por dias nasce no dia da aula e vai até o último dia do tipo, em Brasília', () => {
+    const p = plano({ schedule: { ...AULA, modality: 'Musculação', professorId: 'p2' } });
+    expect(p.launch.doc).toMatchObject({
+      kind: 'dias', total: 7, aulas: 1, startsAt: new Date('2026-11-27T03:00:00.000Z'), endsAt: new Date('2026-12-03T03:00:00.000Z')
+    });
+  });
+
+  it('pedido da IA: o freepass que nasce leva a marca', () => {
+    expect(plano({ byAi: true }).launch.doc.byAi).toBe(true);
+    expect('byAi' in plano().launch.doc).toBe(false);
+  });
+
+  it.each([
+    ['a modalidade sem tipo padrão', { types: [{ ...PILATES_2_AULAS, padrao: false }] }],
+    ['a modalidade sem tipo', { types: [] }],
+    ['já teve freepass na modalidade', { freepasses: [fp1({ status: 'encerrado' })], records: [A0_FEITA] }],
+    ['o professor não lança', { actor: CAIO }],
+    ['lead em Perda', { lead: { ...LEAD, status: 'Perda' } }]
+  ])('aula avulsa (%s): nada de freepass é gravado', (_, extra) => {
+    expect(plano(extra)).toEqual({ freepassId: null, launch: null, updates: [], leadSummary: null, slot: null });
+  });
+
+  it('o consultor que não é o dono lança, e o freepass leva quem lançou', () => {
+    expect(plano({ actor: BRUNO }).launch.doc).toMatchObject({ consultantId: 'u-ana', createdById: 'u-bruno', createdByName: 'Bruno Lima' });
+  });
+
+  it('a aula pendente movida continua no freepass dela, mesmo cheio', () => {
+    const p = plano({
+      records: [A0_FEITA, reg('a1')], freepasses: [fp1({ aulas: 2, endsAt: ts(brt('2026-11-28T00:00')) })], openRecordId: 'a1'
+    });
+    expect(p.freepassId).toBe('fp1');
+    expect(p.updates).toEqual([{ id: 'fp1', patch: { aulas: 2, endsAt: new Date('2026-11-27T03:00:00.000Z') } }]);
+  });
+
+  it('a aula de freepass movida para uma aula avulsa sai do freepass, e a vaga volta', () => {
+    const p = plano({
+      schedule: { ...AULA, modality: 'Musculação', professorId: 'p2' }, types: [PILATES_2_AULAS],
+      records: [A0_FEITA, reg('a1')], freepasses: [fp1({ aulas: 2, endsAt: ts(brt('2026-11-28T00:00')) })], openRecordId: 'a1'
+    });
+    expect(p.freepassId).toBeNull();
+    expect(p.updates).toEqual([{ id: 'fp1', patch: { aulas: 1, endsAt: null } }]);
+    expect(p.leadSummary).toMatchObject({ freepassId: 'fp1', freepassAulas: 1, freepassEndsAt: null });
+  });
+
+  it('a aula de freepass trocada por visita fecha como cancelada, e a vaga volta', () => {
+    const p = plano({
+      schedule: { leadId: 'L1', type: 'visita', unit: 'Centro', modality: null, professorId: null, soloTraining: false, quantity: null, note: null },
+      records: [A0_FEITA, reg('a1')], freepasses: [fp1({ aulas: 2, endsAt: ts(brt('2026-11-28T00:00')) })],
+      close: { id: 'a1', status: 'cancelled' }, newRecordId: 'v-nova'
+    });
+    expect(p.freepassId).toBeNull();
+    expect(p.updates).toEqual([{ id: 'fp1', patch: { aulas: 1, endsAt: null } }]);
+    expect(p.leadSummary).toMatchObject({ freepassAulas: 1 });
+    expect(p.slot).toBeNull();
+  });
+
+  // O lead aponta para o compromisso pendente mais cedo, de hoje em diante.
+  it('a aula movida para depois de outra aula pendente do freepass: o lead aponta para a mais cedo', () => {
+    const fp3 = fp1({ total: 3, aulas: 2 });
+    const records = [reg('a1'), reg('a2', { scheduledFor: ts(brt('2026-11-29T09:00')) })];
+    const p = plano({ records, freepasses: [fp3], openRecordId: 'a1', at: brt('2026-11-30T19:00') });
+    expect(p.slot).toMatchObject({ id: 'a2' });
+    // A aula pedida sendo a mais cedo, o lead fica nela.
+    expect(plano({ records, freepasses: [fp3], openRecordId: 'a1' }).slot).toBeNull();
+  });
+
+  it('a aula pendente de ontem às 22h (01h de hoje em UTC) não vira a aula da vez', () => {
+    const records = [reg('a1'), reg('a3', { scheduledFor: ts(brt('2026-11-25T22:00')) })];
+    const p = plano({ records, freepasses: [fp1({ total: 3, aulas: 2 })], openRecordId: 'a1', at: brt('2026-11-30T19:00') });
+    expect(p.slot).toBeNull();
+  });
+
+  // O caso do Johnny (27/11/2026): a aula avulsa pedida é mais tarde que uma
+  // aula pendente do freepass, e o lead aponta para a do freepass.
+  it('aula avulsa mais tarde que a aula pendente do freepass: o lead aponta para a do freepass', () => {
+    const cheio = fp1({ aulas: 2, endsAt: ts(brt('2026-11-28T00:00')) });
+    const p = plano({ records: [A0_FEITA, reg('a1')], freepasses: [cheio], at: brt('2026-11-30T19:00') });
+    expect(p.freepassId).toBeNull();
+    expect(p.updates).toEqual([]);
+    expect(p.leadSummary).toBeNull();
+    expect(p.slot).toMatchObject({ id: 'a1' });
+  });
+
+  it('visita pedida mais tarde que a aula pendente: o lead aponta para a aula; a visita mais cedo fica', () => {
+    const VISITA = { leadId: 'L1', type: 'visita', unit: 'Centro', modality: null, professorId: null, soloTraining: false, quantity: null, note: null };
+    const records = [reg('a1')];
+    expect(plano({ schedule: VISITA, records, freepasses: [fp1()], at: brt('2026-11-30T09:00'), newRecordId: 'v-nova' }).slot).toMatchObject({ id: 'a1' });
+    expect(plano({ schedule: VISITA, records, freepasses: [fp1()], at: brt('2026-11-27T09:00'), newRecordId: 'v-nova' }).slot).toBeNull();
+  });
+
+  it('a aula pendente de freepass que não corre não puxa o lead', () => {
+    const p = plano({ records: [reg('a1')], freepasses: [fp1({ status: 'encerrado' })], at: brt('2026-11-30T19:00') });
+    expect(p.slot).toBeNull();
+  });
+
+  it('às 22h de Brasília do último dia, o freepass por dias ainda corre e a aula entra nele', () => {
+    const porDias = fp1({ kind: 'dias', total: 7, aulas: 0, endsAt: ts(brt('2026-11-26T00:00')) });
+    const p = plano({ freepasses: [porDias], now: brt('2026-11-26T22:00') });
+    expect(p.freepassId).toBe('fp1');
+    expect(p.launch).toBeNull();
+  });
+});
+
+describe('buildScheduleWrites com o freepass', () => {
+  const HORA = Object.freeze({ horaDoServidor: true });
+  const MAIS_DOIS = Object.freeze({ incremento: 2 });
+  const LEAD = {
+    id: 'L1', name: 'Mariana Lima', status: 'Primeiro contato', consultantId: 'u-ana', consultantName: 'Ana Souza', consultantAuthUid: 'auth-ana'
+  };
+  const AULA = { leadId: 'L1', type: 'aula_experimental', unit: null, modality: 'Pilates', professorId: 'p1', soloTraining: false, quantity: 2, note: 'Traz tênis.' };
+  const atAula = brt('2026-11-27T19:00');
+  const LANCADO = {
+    leadId: 'L1', typeId: 't1', typeName: 'Pilates 2 aulas', modalidadeId: 'm2', modalidadeName: 'Pilates', kind: 'aulas', total: 2,
+    startsAt: brt('2026-11-27T00:00'), endsAt: null, aulas: 1, status: 'correndo', contractAtStart: null, via: 'stronizap'
+  };
+  const plano = (extra = {}) => ({
+    freepassId: 'fp-novo', launch: { id: 'fp-novo', doc: LANCADO }, updates: [], leadSummary: { freepassId: 'fp-novo', freepassAulas: 1 },
+    slot: null, ...extra
+  });
+  const gravar = (extra) => buildScheduleWrites({
+    lead: LEAD, actor: ANA, schedule: AULA, at: atAula, professors: CATALOGOS.professors, channelName: 'Recepção',
+    serverTime: HORA, increment: MAIS_DOIS, newRecordId: 'rec-novo', ...extra
+  });
+
+  it('freepass que nasce: o documento, a nota do lançamento depois da do agendamento e o resumo no lead, sem a quantidade', () => {
+    const w = gravar({ freepass: plano(), byAi: true });
+    expect(w.record.create).toMatchObject({ freepassId: 'fp-novo', modality: 'Pilates', scheduledFor: atAula });
+    expect(w.freepassWrites).toEqual([{ id: 'fp-novo', create: { ...LANCADO, createdAt: HORA } }]);
+    expect(w.interaction).toMatchObject({
+      batchSeq: 0, text: '🔔 Aula Experimental agendada (Pilates) · Carla Dias p/ 27/11/2026, 19:00. Obs: Traz tênis.', byAi: true
+    });
+    expect(w.launchInteraction).toEqual({
+      batchSeq: 1, leadId: 'L1', leadName: 'Mariana Lima', consultantName: 'Ana Souza', leadConsultantId: 'u-ana', leadConsultantAuthUid: 'auth-ana',
+      actorId: 'u-ana', actorAuthUid: 'auth-ana', createdAt: HORA, type: 'freepass',
+      text: 'Freepass lançado: Pilates 2 aulas (Pilates), 1 aula marcada, 1 para agendar.', freepassId: 'fp-novo',
+      via: 'stronizap', zapChannelName: 'Recepção', byAi: true
+    });
+    expect(w.leadPatch).toMatchObject({
+      interactionsCount: MAIS_DOIS, trialClassesPlanned: null, currentAulaId: 'rec-novo', appointmentScheduledFor: atAula,
+      nextFollowUpNote: 'Traz tênis.', freepassId: 'fp-novo', freepassAulas: 1
+    });
+    for (const gravado of [w.record.create, w.interaction, w.launchInteraction, w.leadPatch, w.freepassWrites[0].create]) {
+      expect(Object.values(gravado)).not.toContain(undefined);
+    }
+  });
+
+  it('aula movida para um freepass que já corre: o registro leva o freepassId e o freepass é atualizado', () => {
+    const w = gravar({
+      openRecordId: 'a1',
+      freepass: plano({ freepassId: 'fp1', launch: null, updates: [{ id: 'fp1', patch: { aulas: 2, endsAt: null } }] })
+    });
+    expect(w.record).toEqual({
+      id: 'a1',
+      update: { professorId: 'p1', professorName: 'Carla Dias', soloTraining: false, modality: 'Pilates', scheduledFor: atAula, freepassId: 'fp1' }
+    });
+    expect(w.freepassWrites).toEqual([{ id: 'fp1', update: { aulas: 2, endsAt: null } }]);
+    expect(w.launchInteraction).toBeNull();
+    expect('batchSeq' in w.interaction).toBe(false);
+  });
+
+  it('aula avulsa movida de um freepass: o registro sai do freepass (null)', () => {
+    const w = gravar({ openRecordId: 'a1', freepass: plano({ freepassId: null, launch: null, updates: [{ id: 'fp1', patch: { aulas: 1, endsAt: null } }] }) });
+    expect(w.record.update.freepassId).toBeNull();
+  });
+
+  it('com a aula da vez, o lead aponta para ela, e a anotação fica só no texto', () => {
+    const vez = {
+      id: 'a2', scheduledFor: { toDate: () => brt('2026-11-25T09:00') }, modality: 'Pilates', professorId: 'p2', soloTraining: false
+    };
+    const w = gravar({ openRecordId: 'a1', freepass: plano({ freepassId: 'fp1', launch: null, slot: vez }) });
+    expect(w.leadPatch).toMatchObject({
+      currentAulaId: 'a2', appointmentScheduledFor: brt('2026-11-25T09:00'), nextFollowUp: brt('2026-11-25T09:00'),
+      appointmentProfessorId: 'p2', appointmentProfessorName: 'Rafael Moura', nextFollowUpNote: null
+    });
+    expect(w.interaction.text).toBe('🔔 Aula Experimental agendada (Pilates) · Carla Dias p/ 27/11/2026, 19:00. Obs: Traz tênis.');
+    // A resposta descreve o pedido, de onde o Stronizap monta a confirmação.
+    expect(w.requestedLead).toMatchObject({ id: 'L1', appointmentScheduledFor: atAula, currentAulaId: 'a1', appointmentProfessorId: 'p1', nextFollowUpNote: 'Traz tênis.' });
+  });
+
+  it('com uma visita pendente mais cedo, o lead aponta para ela: o patch é o de visita, com a unidade', () => {
+    const visita = { id: 'v1', type: 'visita', scheduledFor: brt('2026-11-26T09:00'), unit: 'Centro' };
+    const w = gravar({ freepass: plano({ freepassId: null, launch: null, leadSummary: null, slot: visita }) });
+    expect(w.leadPatch).toMatchObject({
+      appointmentType: 'visita', appointmentUnit: 'Centro', appointmentScheduledFor: brt('2026-11-26T09:00'),
+      // A visita não tem currentAulaId: fica o da aula pendente, que o próximo Agendar de aula remarca.
+      appointmentModality: null, nextFollowUpType: 'Visita', nextFollowUpNote: null, currentAulaId: 'rec-novo'
+    });
+    expect(w.requestedLead).toMatchObject({ appointmentType: 'aula_experimental', currentAulaId: 'rec-novo' });
+  });
+
+  it('sem slot, nada muda na resposta', () => {
+    expect(gravar({ freepass: plano() }).requestedLead).toBeNull();
+  });
+
+  it('sem o freepass (módulo desligado), a quantidade continua gravada e no texto, e nada de freepass sai', () => {
+    const w = gravar({ increment: { incremento: 1 } });
+    expect(w.leadPatch.trialClassesPlanned).toBe(2);
+    expect(w.interaction.text).toContain('(Pilates · 2 aulas)');
+    expect('freepassId' in w.leadPatch).toBe(false);
+    expect(w.freepassWrites).toEqual([]);
+    expect(w.launchInteraction).toBeNull();
   });
 });
 

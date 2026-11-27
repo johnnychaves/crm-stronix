@@ -235,6 +235,16 @@ describe('textos da linha do tempo', () => {
       .toBe('Freepass lançado: Muscu 7 dias (Musculação), de 20/11 a 26/11.');
     expect(freepassLaunchText({ typeName: 'Pilates 2 aulas', modalidadeName: 'Pilates', kind: 'aulas', total: 2 }))
       .toBe('Freepass lançado: Pilates 2 aulas (Pilates), 2 aulas para agendar.');
+    // Pelo Agendar, as aulas já nascem marcadas.
+    expect(freepassLaunchText({ typeName: 'Pilates 2 aulas', modalidadeName: 'Pilates', kind: 'aulas', total: 2, aulas: 2 }))
+      .toBe('Freepass lançado: Pilates 2 aulas (Pilates), 2 aulas marcadas.');
+    expect(freepassLaunchText({ typeName: 'Pilates 1 aula', modalidadeName: 'Pilates', kind: 'aulas', total: 1, aulas: 1 }))
+      .toBe('Freepass lançado: Pilates 1 aula (Pilates), 1 aula marcada.');
+    // Pelo Stronizap, nasce só a aula pedida.
+    expect(freepassLaunchText({ typeName: 'Pilates 2 aulas', modalidadeName: 'Pilates', kind: 'aulas', total: 2, aulas: 1 }))
+      .toBe('Freepass lançado: Pilates 2 aulas (Pilates), 1 aula marcada, 1 para agendar.');
+    expect(freepassLaunchText({ typeName: 'Pilates 3 aulas', modalidadeName: 'Pilates', kind: 'aulas', total: 3, aulas: 2 }))
+      .toBe('Freepass lançado: Pilates 3 aulas (Pilates), 2 aulas marcadas, 1 para agendar.');
     expect(freepassEndText({ typeName: 'Pilates 2 aulas' })).toBe('Freepass encerrado: Pilates 2 aulas.');
     expect(FREEPASS_INTERACTION_TYPE).toBe('freepass');
   });
@@ -256,5 +266,295 @@ describe('chip a partir dos docs', () => {
     ];
     const v = visitorOf({ ...lead, ...freepassSummaryPatch(activeFreepassesOf(lead, docs, now), now) }, now);
     expect(v.id).toBe('b');
+  });
+});
+
+import {
+  freepassChoiceFor, autoFreepassFor, freepassChoiceText, freepassAulasPatch,
+  slotToAdvance, freepassTagOf, leadSlotFor, leadPointsTo
+} from '../visitante.js';
+
+describe('freepassChoiceFor', () => {
+  const now = dia('2026-11-23');
+  const lead = { status: 'Novo', currentContractId: null };
+  const tp = (over = {}) => tipo({ id: 'x', modalidadeId: 'm1', ...over });
+  const base = { lead, freepasses: [], types: [tp({ padrao: true })], modalidadeId: 'm1', modalidadeName: 'Pilates', canLaunch: true, now };
+  const fpM = (over = {}) => fpAulas({ modalidadeId: 'm1', ...over });
+
+  it('usa o freepass que corre na modalidade, com as aulas que sobram', () => {
+    const c = freepassChoiceFor({ ...base, freepasses: [fpM()] });
+    expect(c).toMatchObject({ kind: 'use', aulasLeft: 1 });
+    expect(c.freepass.id).toBe('f2');
+  });
+  it('por dias, aulasLeft é null', () => {
+    const c = freepassChoiceFor({ ...base, freepasses: [fpDias({ modalidadeId: 'm1' })] });
+    expect(c).toMatchObject({ kind: 'use', aulasLeft: null });
+  });
+  it('freepass por aulas cheio vira avulsa full', () => {
+    const c = freepassChoiceFor({ ...base, freepasses: [fpM({ aulas: 2 })] });
+    expect(c).toMatchObject({ kind: 'avulsa', reason: 'full' });
+    expect(c.freepass.id).toBe('f2');
+  });
+  it('ignora o freepass de outra modalidade', () => {
+    const c = freepassChoiceFor({ ...base, freepasses: [fpM({ modalidadeId: 'm9' })] });
+    expect(c.kind).toBe('launch');
+  });
+  it('já teve e nenhum corre: avulsa repeated com a data do início', () => {
+    const c = freepassChoiceFor({ ...base, freepasses: [fpM({ status: 'encerrado', startsAt: dia('2026-11-10') })] });
+    expect(c).toMatchObject({ kind: 'avulsa', reason: 'repeated' });
+    expect(c.since.getDate()).toBe(10);
+  });
+  it('repeated usa o mais recente', () => {
+    const c = freepassChoiceFor({ ...base, freepasses: [
+      fpM({ id: 'a', status: 'encerrado', startsAt: dia('2026-10-01') }),
+      fpM({ id: 'b', status: 'encerrado', startsAt: dia('2026-11-10') })
+    ] });
+    expect(c.since.getMonth()).toBe(10);
+  });
+  it('sem tipo ativo na modalidade: noType', () => {
+    expect(freepassChoiceFor({ ...base, types: [tp({ ativo: false }), tp({ modalidadeId: 'm2' })] }))
+      .toEqual({ kind: 'avulsa', reason: 'noType' });
+  });
+  it('sem permissão de lançar: noLaunch', () => {
+    expect(freepassChoiceFor({ ...base, canLaunch: false })).toEqual({ kind: 'avulsa', reason: 'noLaunch' });
+  });
+  it('nunca teve: launch com o padrão primeiro e o inativo de fora', () => {
+    const types = [tp({ id: 'a' }), tp({ id: 'b', padrao: true }), tp({ id: 'c', ativo: false }), tp({ id: 'd' })];
+    const c = freepassChoiceFor({ ...base, types });
+    expect(c.kind).toBe('launch');
+    expect(c.types.map(t => t.id)).toEqual(['b', 'a', 'd']);
+  });
+  it('lead em Perda: avulsa com a razão própria, mesmo para quem lança', () => {
+    expect(freepassChoiceFor({ ...base, lead: { ...lead, status: 'Perda' } })).toEqual({ kind: 'avulsa', reason: 'lost' });
+    expect(freepassChoiceFor({ ...base, lead: { ...lead, status: 'Perda' }, canLaunch: false }).reason).toBe('lost');
+  });
+  it('noType vem antes de noLaunch', () => {
+    expect(freepassChoiceFor({ ...base, types: [], canLaunch: false }).reason).toBe('noType');
+  });
+});
+
+describe('autoFreepassFor', () => {
+  const now = dia('2026-11-23');
+  const base = { lead: { status: 'Novo' }, freepasses: [], modalidadeId: 'm1', modalidadeName: 'Pilates', canLaunch: true, now };
+  it('lança o tipo padrão', () => {
+    const c = autoFreepassFor({ ...base, types: [tipo({ id: 'a' }), tipo({ id: 'b', padrao: true })] });
+    expect(c.kind).toBe('launch');
+    expect(c.type.id).toBe('b');
+  });
+  it('sem padrão, noType', () => {
+    expect(autoFreepassFor({ ...base, types: [tipo()] })).toEqual({ kind: 'avulsa', reason: 'noType' });
+  });
+  it('mantém as outras escolhas', () => {
+    expect(autoFreepassFor({ ...base, types: [tipo({ padrao: true })], canLaunch: false }).reason).toBe('noLaunch');
+  });
+});
+
+describe('freepassChoiceText', () => {
+  const fp = { typeName: 'Pilates 2 aulas', kind: 'aulas', total: 2, aulas: 1 };
+  it('use por aulas e por dias', () => {
+    expect(freepassChoiceText({ kind: 'use', freepass: fp }, 'Pilates')).toBe('Entra no freepass Pilates 2 aulas (2 de 2)');
+    expect(freepassChoiceText({ kind: 'use', freepass: { typeName: 'Muscu 7', kind: 'dias' } }, 'Musculação')).toBe('Entra no freepass Muscu 7');
+  });
+  it('launch com type ou com types', () => {
+    expect(freepassChoiceText({ kind: 'launch', type: { name: 'Pilates 2 aulas' } }, 'Pilates')).toBe('Nasce o freepass Pilates 2 aulas');
+    expect(freepassChoiceText({ kind: 'launch', types: [{ name: 'A' }, { name: 'B' }] }, 'Pilates')).toBe('Nasce o freepass A');
+  });
+  it('avulsas', () => {
+    expect(freepassChoiceText({ kind: 'avulsa', reason: 'repeated', since: dia('2026-11-10') }, 'Pilates'))
+      .toBe('Aula avulsa: já teve freepass de Pilates em 10/11');
+    expect(freepassChoiceText({ kind: 'avulsa', reason: 'full', freepass: { total: 2 } }, 'Pilates'))
+      .toBe('Aula avulsa: o freepass já tem as 2 aulas');
+    expect(freepassChoiceText({ kind: 'avulsa', reason: 'full', freepass: { total: 1 } }, 'Pilates'))
+      .toBe('Aula avulsa: o freepass já tem a 1 aula');
+    expect(freepassChoiceText({ kind: 'avulsa', reason: 'noType' }, 'Pilates')).toBe('Aula avulsa: Pilates não tem freepass cadastrado');
+    expect(freepassChoiceText({ kind: 'avulsa', reason: 'noLaunch' }, 'Pilates')).toBe('Aula avulsa: só o consultor lança freepass');
+    expect(freepassChoiceText({ kind: 'avulsa', reason: 'lost' }, 'Pilates')).toBe('Aula avulsa: lead em Perda não vira Visitante');
+  });
+});
+
+describe('freepassAulasPatch', () => {
+  const fp = { id: 'f', kind: 'aulas', total: 2, endsAt: null };
+  const r = (over = {}) => ({ freepassId: 'f', status: 'agendada', scheduledFor: new Date('2026-11-25T18:30:00'), ...over });
+  it('ignora cancelados e de outro freepass, e não marca fim sem completar', () => {
+    const p = freepassAulasPatch({ freepass: fp, records: [r(), r({ status: 'cancelled' }), r({ freepassId: 'g' })] });
+    expect(p).toEqual({ aulas: 1, endsAt: null });
+  });
+  it('completo: o fim é o começo do dia da última aula', () => {
+    const p = freepassAulasPatch({ freepass: fp, records: [r(), r({ scheduledFor: new Date('2026-11-28T09:00:00') })] });
+    expect(p.aulas).toBe(2);
+    expect(p.endsAt.getDate()).toBe(28);
+    expect(p.endsAt.getHours()).toBe(0);
+  });
+  it('por dias devolve o fim como está', () => {
+    const endsAt = dia('2026-11-26');
+    expect(freepassAulasPatch({ freepass: fpDias({ endsAt }), records: [r({ freepassId: 'f1' })] })).toEqual({ aulas: 1, endsAt });
+  });
+});
+
+describe('slotToAdvance', () => {
+  const now = new Date('2026-11-26T10:00:00');
+  const rec = (id, h, over = {}) => ({ id, freepassId: 'f', status: 'agendada', scheduledFor: new Date(`2026-11-26T${h}:00:00`), ...over });
+  const ontem = new Date('2026-11-25T18:00:00');
+  it('lead com aula de ontem: anda para a aula de hoje', () => {
+    const lead = { currentAulaId: 'old', appointmentScheduledFor: ontem };
+    expect(slotToAdvance({ lead, records: [rec('a', '18')], now }).id).toBe('a');
+  });
+  it('lead sem agendamento anda', () => {
+    expect(slotToAdvance({ lead: {}, records: [rec('a', '18')], now }).id).toBe('a');
+  });
+  it('desfecho hoje: anda para a de hoje que não é a atual, a mais cedo', () => {
+    const lead = { currentAulaId: 'a', appointmentScheduledFor: new Date('2026-11-26T08:00:00'), appointmentOutcome: 'attended' };
+    expect(slotToAdvance({ lead, records: [rec('a', '08'), rec('c', '19'), rec('b', '14')], now }).id).toBe('b');
+  });
+  it('já na aula de hoje: null', () => {
+    const lead = { currentAulaId: 'a', appointmentScheduledFor: ontem };
+    expect(slotToAdvance({ lead, records: [rec('a', '18')], now })).toBeNull();
+  });
+  it('aula de hoje ainda sem desfecho: não mexe', () => {
+    const lead = { currentAulaId: 'x', appointmentScheduledFor: new Date('2026-11-26T15:00:00') };
+    expect(slotToAdvance({ lead, records: [rec('a', '18')], now })).toBeNull();
+  });
+  it('sem compromisso pendente hoje, ou só o cancelado: null', () => {
+    const lead = { appointmentScheduledFor: ontem };
+    expect(slotToAdvance({ lead, records: [], now })).toBeNull();
+    expect(slotToAdvance({ lead, records: [rec('a', '18', { status: 'cancelled' }), rec('b', '19', { scheduledFor: new Date('2026-11-27T18:00:00') })], now })).toBeNull();
+  });
+  it('aula avulsa e visita de hoje também andam', () => {
+    const lead = { appointmentScheduledFor: ontem };
+    expect(slotToAdvance({ lead, records: [rec('a', '18', { freepassId: null })], now }).id).toBe('a');
+    expect(slotToAdvance({ lead, records: [rec('v', '09', { freepassId: null, type: 'visita' })], now }).id).toBe('v');
+  });
+  it('registro de freepass que não existe ou não corre fica de fora', () => {
+    const lead = { appointmentScheduledFor: ontem };
+    const records = [rec('a', '18')];
+    expect(slotToAdvance({ lead, records, freepasses: [], now })).toBeNull();
+    expect(slotToAdvance({ lead, records, freepasses: [{ id: 'f', status: 'encerrado' }], now })).toBeNull();
+    expect(slotToAdvance({ lead, records, freepasses: [{ id: 'f', status: 'correndo', kind: 'aulas' }], now }).id).toBe('a');
+  });
+  it('a visita com desfecho hoje continua agendada no registro e não volta para o lead', () => {
+    const at = new Date('2026-11-26T09:00:00');
+    const lead = { appointmentType: 'visita', appointmentScheduledFor: at, appointmentOutcome: 'attended', currentAulaId: 'velha' };
+    expect(slotToAdvance({ lead, records: [rec('v', '09', { type: 'visita', freepassId: null })], now })).toBeNull();
+    expect(slotToAdvance({ lead, records: [rec('v', '09', { type: 'visita', freepassId: null }), rec('a', '18', { freepassId: null })], now }).id).toBe('a');
+  });
+  it('lê scheduledFor como Timestamp do Firestore', () => {
+    const ts = { toDate: () => new Date('2026-11-26T18:00:00') };
+    expect(slotToAdvance({ lead: {}, records: [rec('a', '18', { scheduledFor: ts })], now }).id).toBe('a');
+  });
+});
+
+describe('aula movida pelo Agendar', () => {
+  const now = dia('2026-11-23');
+  const lead = { status: 'Novo', currentContractId: null };
+  const base = { lead, freepasses: [], types: [], modalidadeId: 'm1', modalidadeName: 'Pilates', canLaunch: true, now };
+  const cheio = fpAulas({ modalidadeId: 'm1', aulas: 2 });
+  it('moving na mesma modalidade com o freepass cheio vira use', () => {
+    const c = freepassChoiceFor({ ...base, freepasses: [cheio], movingFreepassId: 'f2' });
+    expect(c).toMatchObject({ kind: 'use', aulasLeft: 1, moving: true });
+    expect(freepassChoiceFor({ ...base, freepasses: [cheio] })).toMatchObject({ reason: 'full' });
+  });
+  it('por dias, aulasLeft é null', () => {
+    const c = freepassChoiceFor({ ...base, freepasses: [fpDias({ modalidadeId: 'm1' })], movingFreepassId: 'f1' });
+    expect(c).toMatchObject({ kind: 'use', aulasLeft: null, moving: true });
+  });
+  it('moving de outra modalidade ou de freepass que não corre é ignorado', () => {
+    expect(freepassChoiceFor({ ...base, modalidadeId: 'm9', freepasses: [cheio], movingFreepassId: 'f2' }).reason).toBe('noType');
+    const enc = fpAulas({ modalidadeId: 'm1', status: 'encerrado' });
+    expect(freepassChoiceFor({ ...base, freepasses: [enc], movingFreepassId: 'f2' }).reason).toBe('repeated');
+  });
+  it('autoFreepassFor repassa o moving', () => {
+    expect(autoFreepassFor({ ...base, freepasses: [cheio], movingFreepassId: 'f2' }).moving).toBe(true);
+  });
+  it('texto do moving', () => {
+    expect(freepassChoiceText({ kind: 'use', moving: true, freepass: { typeName: 'Pilates 2 aulas', kind: 'aulas', total: 2, aulas: 2 } }, 'Pilates'))
+      .toBe('Continua no freepass Pilates 2 aulas');
+  });
+});
+
+describe('freepassTagOf', () => {
+  const now = dia('2026-11-23');
+  const lead = { status: 'Novo', currentContractId: null, ...freepassSummaryPatch([fpDias()], now) };
+  it('lead e ex-aluno sem contrato ativo são Visitante', () => {
+    expect(freepassTagOf({ lead, contractActive: false, now })).toEqual({ label: 'Visitante', text: 'faltam 3 dias' });
+  });
+  it('aluno ativo é Upgrade, com a modalidade', () => {
+    expect(freepassTagOf({ lead, contractActive: true, now })).toEqual({ label: 'Upgrade', text: 'Musculação, faltam 3 dias' });
+  });
+  it('sem freepass, null', () => {
+    expect(freepassTagOf({ lead: { status: 'Novo' }, contractActive: true, now })).toBeNull();
+  });
+});
+
+import { freepassPickMatches } from '../visitante.js';
+
+describe('freepassPickMatches', () => {
+  const use = { kind: 'use', freepass: { id: 'f1' }, aulasLeft: 1 };
+  const launch = { kind: 'launch', types: [{ id: 't1' }, { id: 't2' }] };
+  it('a escolha feita ainda vale', () => {
+    expect(freepassPickMatches({ kind: 'use', freepassId: 'f1' }, use)).toBe(true);
+    expect(freepassPickMatches({ kind: 'launch', typeId: 't2' }, launch)).toBe(true);
+  });
+  it('a aula avulsa vale em qualquer situação', () => {
+    for (const c of [use, launch, { kind: 'avulsa', reason: 'repeated' }]) expect(freepassPickMatches({ kind: 'avulsa' }, c)).toBe(true);
+  });
+  it('a situação mudou: outro freepass, freepass cheio ou encerrado, tipo que saiu, lançado em outra aba', () => {
+    expect(freepassPickMatches({ kind: 'use', freepassId: 'f1' }, { ...use, freepass: { id: 'f9' } })).toBe(false);
+    expect(freepassPickMatches({ kind: 'use', freepassId: 'f1' }, { kind: 'avulsa', reason: 'full', freepass: { id: 'f1' } })).toBe(false);
+    expect(freepassPickMatches({ kind: 'launch', typeId: 't3' }, launch)).toBe(false);
+    expect(freepassPickMatches({ kind: 'launch', typeId: 't1' }, use)).toBe(false);
+  });
+});
+
+// O lead mostra o compromisso pendente mais cedo (decisão do Johnny, 27/11/2026).
+describe('leadSlotFor', () => {
+  // Sexta, 16/10/2026, 10h.
+  const now = new Date(2026, 9, 16, 10, 0);
+  const rec = (id, at, over = {}) => ({ id, type: 'aula', status: 'agendada', scheduledFor: at, ...over });
+  const lead = (at, over = {}) => ({ appointmentType: 'aula_experimental', appointmentScheduledFor: at, currentAulaId: 'cur', ...over });
+  const qui = new Date(2026, 9, 22, 18, 0);
+  const ter = new Date(2026, 9, 27, 18, 0);
+
+  it('o caso da falta: a próxima tentativa avulsa é mais tarde que a aula do freepass, e o lead aponta para ela', () => {
+    const records = [rec('A', new Date(2026, 9, 13, 18, 0), { freepassId: 'f', status: 'no_show' }), rec('B', qui, { freepassId: 'f' }), rec('C', ter)];
+    expect(leadSlotFor({ lead: lead(ter, { currentAulaId: 'C' }), records, now }).id).toBe('B');
+  });
+  it('o pedido é o mais cedo, ou empata: fica (null)', () => {
+    expect(leadSlotFor({ lead: lead(qui), records: [rec('B', qui), rec('C', ter)], now })).toBeNull();
+  });
+  it('a visita pendente mais cedo também conta', () => {
+    expect(leadSlotFor({ lead: lead(ter), records: [rec('v', qui, { type: 'visita' })], now }).id).toBe('v');
+  });
+  it('sem agendamento, aponta para o pendente mais cedo de hoje em diante', () => {
+    const records = [rec('velha', new Date(2026, 9, 10, 18, 0)), rec('canc', qui, { status: 'cancelled' }), rec('B', ter)];
+    expect(leadSlotFor({ lead: {}, records, now }).id).toBe('B');
+    expect(leadSlotFor({ lead: {}, records: [rec('velha', new Date(2026, 9, 10, 18, 0))], now })).toBeNull();
+  });
+  it('fica a aula de hoje com desfecho e a atrasada sem desfecho', () => {
+    const records = [rec('B', qui)];
+    expect(leadSlotFor({ lead: lead(new Date(2026, 9, 16, 8, 0), { appointmentOutcome: 'attended' }), records, now })).toBeNull();
+    expect(leadSlotFor({ lead: lead(new Date(2026, 9, 14, 18, 0)), records, now })).toBeNull();
+  });
+  it('o desfecho de antes de hoje passa para o pendente', () => {
+    expect(leadSlotFor({ lead: lead(new Date(2026, 9, 14, 18, 0), { appointmentOutcome: 'no_show' }), records: [rec('B', qui)], now }).id).toBe('B');
+  });
+  it('registro de freepass que não corre para o lead fica de fora', () => {
+    const records = [rec('B', qui, { freepassId: 'f' })];
+    expect(leadSlotFor({ lead: lead(ter), records, freepasses: [{ id: 'f', status: 'encerrado' }], now })).toBeNull();
+    expect(leadSlotFor({ lead: lead(ter), records, freepasses: [{ id: 'f', status: 'correndo', kind: 'aulas' }], now }).id).toBe('B');
+  });
+  it('a conta de dias pode ser trocada (a ponte conta no dia de Brasília)', () => {
+    const records = [rec('x', new Date(2026, 9, 16, 22, 0))];
+    expect(leadSlotFor({ lead: {}, records, now }).id).toBe('x');
+    expect(leadSlotFor({ lead: {}, records, now, daysBetween: () => -1 })).toBeNull();
+  });
+});
+
+describe('leadPointsTo', () => {
+  const at = new Date(2026, 9, 22, 18, 0);
+  it('aula pelo currentAulaId, visita pelo tipo e pelo horário', () => {
+    expect(leadPointsTo({ appointmentType: 'aula_experimental', currentAulaId: 'a' }, { id: 'a' })).toBe(true);
+    expect(leadPointsTo({ appointmentType: 'visita', currentAulaId: 'a', appointmentScheduledFor: at }, { id: 'a', type: 'aula', scheduledFor: at })).toBe(false);
+    expect(leadPointsTo({ appointmentType: 'visita', appointmentScheduledFor: at }, { id: 'v', type: 'visita', scheduledFor: at })).toBe(true);
+    expect(leadPointsTo({ appointmentType: 'visita', appointmentScheduledFor: at }, { id: 'v', type: 'visita', scheduledFor: new Date(2026, 9, 23) })).toBe(false);
   });
 });

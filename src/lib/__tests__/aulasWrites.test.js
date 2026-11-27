@@ -268,6 +268,59 @@ describe('recordNewAppointment: o registro do agendamento novo do assistente', (
   });
 });
 
+describe('freepassId no registro de aula', () => {
+  const base = { professorId: 'p1', professorName: 'Carla', soloTraining: false, modality: 'Pilates', scheduledFor: DIA_NOVO };
+
+  it('mover sem freepassId no pedido não mexe no campo do registro', async () => {
+    m.docs.set('a1', { type: 'aula', leadId: 'lead-1', status: 'agendada', freepassId: 'fp1' });
+    await upsertScheduledAppointment({ db: {}, lead, fields: base });
+    expect('freepassId' in m.updates[0].patch).toBe(false);
+  });
+  it('mover com freepassId null tira a aula do freepass', async () => {
+    m.docs.set('a1', { type: 'aula', leadId: 'lead-1', status: 'agendada', freepassId: 'fp1' });
+    await upsertScheduledAppointment({ db: {}, lead, fields: { ...base, freepassId: null } });
+    expect(m.updates[0].patch.freepassId).toBeNull();
+  });
+  it('mover com id grava o id', async () => {
+    m.docs.set('a1', { type: 'aula', leadId: 'lead-1', status: 'agendada' });
+    await upsertScheduledAppointment({ db: {}, lead, fields: { ...base, freepassId: 'fp2' } });
+    expect(m.updates[0].patch.freepassId).toBe('fp2');
+  });
+  it('criar grava o id ou null', async () => {
+    const semAula = { ...lead, currentAulaId: null };
+    await upsertScheduledAppointment({ db: {}, lead: semAula, fields: { ...base, freepassId: 'fp3' } });
+    await upsertScheduledAppointment({ db: {}, lead: semAula, fields: base });
+    expect(m.adds[0].freepassId).toBe('fp3');
+    expect(m.adds[1].freepassId).toBeNull();
+  });
+  it('recordNewAppointment com fresh cria registro novo sem fechar nem mover a aula pendente', async () => {
+    m.docs.set('a1', { type: 'aula', leadId: 'lead-1', status: 'agendada', scheduledFor: DIA_VELHO });
+    const id = await recordNewAppointment({
+      db: {}, lead: { ...lead, appointmentType: 'aula_experimental', appointmentScheduledFor: DIA_VELHO },
+      appointmentType: 'aula_experimental', fields: { ...base, freepassId: 'fp1' }, fresh: true,
+    });
+    expect(id).toBe('novo');
+    expect(m.updates).toHaveLength(0);
+    expect(m.adds[0]).toMatchObject({ type: 'aula', leadId: 'lead-1', status: 'agendada', freepassId: 'fp1', createdAt: 'TS', consultantId: 'u-ana' });
+  });
+  it('fresh em visita é ignorado', async () => {
+    m.docs.set('v1', { type: 'visita', leadId: 'lead-1', status: 'agendada', unit: 'Centro', scheduledFor: DIA_VELHO });
+    await recordNewAppointment({
+      db: {}, lead: { ...lead, appointmentType: 'visita', appointmentScheduledFor: DIA_VELHO },
+      appointmentType: 'visita', fields: { unit: 'Centro', scheduledFor: DIA_NOVO }, fresh: true,
+    });
+    expect(m.adds).toHaveLength(0);
+    expect(m.updates[0].id).toBe('v1');
+  });
+  it('fresh com gravação recusada devolve o ponteiro do lead', async () => {
+    m.recusar = true;
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const id = await recordNewAppointment({ db: {}, lead, appointmentType: 'aula_experimental', fields: base, fresh: true });
+    expect(id).toBe('a1');
+    spy.mockRestore();
+  });
+});
+
 describe('markConvertingAula grava o professor do lead pelo histórico', () => {
   it('troca de professor grava o histórico no lead', async () => {
     m.docs.set('lead-1', { name: 'Ana', professorId: 'p0', professorName: 'Bruno' });

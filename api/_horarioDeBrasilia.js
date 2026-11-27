@@ -112,3 +112,9 @@ export function instanteDeBrasilia(data, hora) {
   const deslocamento = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute) - relogio;
   return new Date(relogio - deslocamento);
 }
+
+// A meia-noite de Brasília do número que diaDeBrasilia devolve: o instante que
+// o navegador grava como começo do dia (startOfLocalDay) nas datas do freepass.
+export function meiaNoiteDoDia(dia) {
+  return instanteDeBrasilia(isoDoDia(dia), '00:00');
+}

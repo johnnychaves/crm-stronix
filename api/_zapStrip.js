@@ -13,7 +13,8 @@ import { DEFAULT_RENEWAL_CHECKPOINTS, daysToExpiryOf, activeRenewalCheckpoint } 
 import { normalizeRenewalCheckpoints } from '../src/lib/leadStatus.js';
 import { getLeadAppointmentType, getLeadAppointmentDate } from '../src/lib/leads.js';
 import { getSafeDateOrNull } from '../src/lib/dates.js';
-import { diaDeBrasilia, horaDeBrasilia, ddmmDoDia } from './_horarioDeBrasilia.js';
+import { visitorOf, FREEPASS_KINDS } from '../src/lib/visitante.js';
+import { diaDeBrasilia, horaDeBrasilia, ddmmDoDia, meiaNoiteDoDia } from './_horarioDeBrasilia.js';
 
 const contagem = (n) => (n === 1 ? 'falta 1 dia' : `faltam ${n} dias`);
 
@@ -21,15 +22,46 @@ const contagem = (n) => (n === 1 ? 'falta 1 dia' : `faltam ${n} dias`);
 // validade em DIAS a partir da aula marcada, e o último dia válido é
 // data + (N-1). Mantido aqui porque freePass.js não exporta a conta crua. A
 // tela conta no fuso do navegador; aqui os dias são os do calendário de
-// Brasília.
-function freepassInfo(lead, now) {
+// Brasília. Devolve o último dia válido (número de diaDeBrasilia), ou null.
+function freepassInfo(lead) {
   const total = Number(lead?.trialClassesPlanned);
   if (!Number.isFinite(total) || total <= 0) return null;
   const marcada = getLeadAppointmentDate(lead);
   if (!marcada) return null;
-  const fimDia = diaDeBrasilia(marcada) + (total - 1);
+  return diaDeBrasilia(marcada) + (total - 1);
+}
+
+// A faixa do freepass por dias, do último dia válido (número de diaDeBrasilia).
+// Tom segue getTrialPassNote: âmbar com 2 dias ou menos, neutro acima disso (o
+// passe está válido, não é alerta).
+function porDias(fimDia, now) {
   const daysLeft = Math.round(fimDia - diaDeBrasilia(now));
-  return { daysLeft, fimDia };
+  if (daysLeft < 0) return null;
+  return {
+    kind: 'freepass',
+    tone: daysLeft <= 2 ? 'avencer' : 'neutro',
+    text: daysLeft === 0 ? 'Freepass termina hoje' : `Freepass até ${ddmmDoDia(fimDia)} · ${contagem(daysLeft)}`
+  };
+}
+
+// Com o resumo do freepass no lead (entrega 2 do Visitante), a faixa sai dele,
+// pelo visitorOf: por dias, o último dia; por aulas, quantas já foram marcadas.
+// Sem o resumo, vale a conta antiga do trialClassesPlanned.
+function faixaDoFreepass(lead, now) {
+  if (!lead.freepassId) {
+    const fimDia = freepassInfo(lead);
+    return fimDia == null ? null : porDias(fimDia, now);
+  }
+  // shortcut: o visitorOf lê o dia no fuso do processo. A meia-noite de
+  // Brasília e as datas do freepass (gravadas na meia-noite de Brasília) caem no
+  // mesmo dia em UTC e em Brasília; vale para esses dois fusos.
+  const v = visitorOf(lead, meiaNoiteDoDia(diaDeBrasilia(now)));
+  if (!v) return null;
+  if (v.kind === FREEPASS_KINDS.AULAS) {
+    return { kind: 'freepass', tone: 'neutro', text: `Freepass · ${v.aulas ?? 0} de ${v.total} ${v.total === 1 ? 'aula' : 'aulas'}` };
+  }
+  const fim = getSafeDateOrNull(v.endsAt);
+  return fim ? porDias(diaDeBrasilia(fim), now) : null;
 }
 
 export function buildZapStrip(lead, now = new Date(), checkpoints = DEFAULT_RENEWAL_CHECKPOINTS) {
@@ -65,18 +97,9 @@ export function buildZapStrip(lead, now = new Date(), checkpoints = DEFAULT_RENE
     };
   }
 
-  // 3. Freepass ainda válido. Tom segue getTrialPassNote: âmbar com 2 dias ou
-  // menos, neutro acima disso (o passe está válido, não é alerta).
-  const passe = freepassInfo(lead, now);
-  if (passe && passe.daysLeft >= 0) {
-    return {
-      kind: 'freepass',
-      tone: passe.daysLeft <= 2 ? 'avencer' : 'neutro',
-      text: passe.daysLeft === 0
-        ? 'Freepass termina hoje'
-        : `Freepass até ${ddmmDoDia(passe.fimDia)} · ${contagem(passe.daysLeft)}`
-    };
-  }
+  // 3. Freepass ainda válido.
+  const passe = faixaDoFreepass(lead, now);
+  if (passe) return passe;
 
   // 4. Marco de renovação (90, 60, 30 por padrão, ou os marcos da academia).
   // Gatilho INDEPENDENTE do status "a vencer" do sistema (que usa o threshold

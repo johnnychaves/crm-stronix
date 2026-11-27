@@ -88,6 +88,10 @@ service cloud.firestore {
     // (src/lib/schedulePatch.js, o Agendar), mais o que o logInteraction
     // (src/lib/interactions.js) soma em toda interação: lastInteractionAt e
     // interactionsCount. A Anotação, o WhatsApp e a Ligação só somam esses dois.
+    // O Agendar de aula dentro de um freepass que corre grava também o resumo
+    // do freepass (freepassSummaryPatch, em src/lib/visitante.js, sempre
+    // inteiro). As chaves freepass* não têm trava de valor: são a cópia que as
+    // listas leem, e a próxima gravação do freepass as refaz.
     // O src/lib/__tests__/professorRules.test.js compara esta lista com a de
     // src/lib/professorWrites.js, que sai dos montadores de verdade: mudou o
     // Agendar, o teste quebra até a regra acompanhar. Um texto por linha e
@@ -107,6 +111,16 @@ service cloud.firestore {
         'appointmentType',
         'appointmentUnit',
         'currentAulaId',
+        'freepassAulas',
+        'freepassContractAtStart',
+        'freepassEndsAt',
+        'freepassId',
+        'freepassKind',
+        'freepassModalidadeName',
+        'freepassStartsAt',
+        'freepassStatus',
+        'freepassTotal',
+        'freepassTypeName',
         'interactionsCount',
         'lastInteractionAt',
         'nextFollowUp',
@@ -521,15 +535,17 @@ service cloud.firestore {
     // existe com o módulo da STRONIX (Stronix 2.0, chave faltosos). Lê quem é
     // da academia. Consultor e gestor lançam e encerram, inclusive no
     // lead de outro consultor, como o contrato. O professor não lança nem
-    // encerra. Não se apaga: o histórico conta nos painéis. Na atualização, o
-    // lead e quem lançou ficam fixos (a entrega 2 grava fim e aulas, então o
-    // resto não é travado). O src/lib/__tests__/freepassRules.test.js lê este bloco.
+    // encerra: na atualização ele só reconta aulas e fim, que é o que o Agendar
+    // de aula dentro do freepass grava (freepassAulasPatch). Não se apaga: o
+    // histórico conta nos painéis. Na atualização, o lead e quem lançou ficam
+    // fixos (a entrega 2 grava fim e aulas, então o resto não é travado). O
+    // src/lib/__tests__/freepassRules.test.js lê este bloco.
     match /artifacts/{appId}/public/data/stronix_freepass/{id} {
       allow read: if inTenant(appId) && tenantActive(appId) && hasModule(appId, 'faltosos');
       allow create: if inTenant(appId) && tenantActive(appId) && hasModule(appId, 'faltosos')
         && !isProfessor(appId);
       allow update: if inTenant(appId) && tenantActive(appId) && hasModule(appId, 'faltosos')
-        && !isProfessor(appId)
+        && (!isProfessor(appId) || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['aulas', 'endsAt']))
         && request.resource.data.leadId == resource.data.leadId
         && request.resource.data.get('createdByAuthUid', null) == resource.data.get('createdByAuthUid', null);
       allow delete: if false;

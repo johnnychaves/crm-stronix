@@ -17,6 +17,7 @@
 
 import { buildSchedulePatch } from './schedulePatch.js';
 import { planProfileNote } from './profileNote.js';
+import { FREEPASS_SUMMARY_EMPTY } from './visitante.js';
 
 const sortedUnique = (xs) => Object.freeze([...new Set(xs)].sort());
 
@@ -33,8 +34,13 @@ export const SCHEDULE_PATCH_FIELDS = sortedUnique(
   SCHEDULE_TYPE_LABELS.flatMap((typeLabel) => Object.keys(buildSchedulePatch({ typeLabel, date: new Date(0) })))
 );
 
+// O resumo do freepass no lead (freepassSummaryPatch), que o Agendar de aula
+// dentro de um freepass que corre grava inteiro. O professor usa o freepass,
+// mas não lança nem encerra.
+export const FREEPASS_SUMMARY_FIELDS = sortedUnique(Object.keys(FREEPASS_SUMMARY_EMPTY));
+
 // Os campos do lead que o professor altera.
-export const PROFESSOR_LEAD_FIELDS = sortedUnique([...SCHEDULE_PATCH_FIELDS, ...LEAD_BUMP_FIELDS]);
+export const PROFESSOR_LEAD_FIELDS = sortedUnique([...SCHEDULE_PATCH_FIELDS, ...LEAD_BUMP_FIELDS, ...FREEPASS_SUMMARY_FIELDS]);
 
 // O desfecho do agendamento no lead. O Agendar o grava sempre vazio
 // (compromisso novo nasce sem desfecho), e a regra só deixa o professor

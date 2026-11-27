@@ -21,7 +21,9 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { buildSchedulePatch, appointmentTaskOwnerFor } from '../schedulePatch.js';
 import { planProfileNote } from '../profileNote.js';
+import { freepassSummaryPatch } from '../visitante.js';
 import {
+  FREEPASS_SUMMARY_FIELDS,
   SCHEDULE_TYPE_LABELS,
   LEAD_BUMP_FIELDS,
   SCHEDULE_PATCH_FIELDS,
@@ -159,7 +161,20 @@ describe('as listas do professorWrites saem dos montadores de verdade', () => {
       SCHEDULE_TYPE_LABELS.flatMap((typeLabel) => Object.keys(buildSchedulePatch({ ...cheio, typeLabel })))
     );
     expect(ordenado(SCHEDULE_PATCH_FIELDS)).toEqual(ordenado(chaves));
-    expect(ordenado(PROFESSOR_LEAD_FIELDS)).toEqual(ordenado(new Set([...chaves, ...LEAD_BUMP_FIELDS])));
+    expect(ordenado(PROFESSOR_LEAD_FIELDS)).toEqual(ordenado(new Set([...chaves, ...LEAD_BUMP_FIELDS, ...FREEPASS_SUMMARY_FIELDS])));
+  });
+
+  // O Agendar de aula dentro de um freepass grava o resumo inteiro, com o
+  // freepass correndo ou sem nenhum (o vazio).
+  it('o resumo do freepass, correndo ou vazio, tem as chaves de FREEPASS_SUMMARY_FIELDS', () => {
+    const fp = {
+      id: 'f1', kind: 'aulas', total: 2, typeName: 'Duas aulas', modalidadeName: 'Pilates',
+      startsAt: new Date(2026, 10, 27), endsAt: null, aulas: 1, status: 'correndo', contractAtStart: null,
+    };
+    const now = new Date(2026, 10, 27, 10, 0);
+    expect(ordenado(Object.keys(freepassSummaryPatch([fp], now)))).toEqual(ordenado(FREEPASS_SUMMARY_FIELDS));
+    expect(ordenado(Object.keys(freepassSummaryPatch([], now)))).toEqual(ordenado(FREEPASS_SUMMARY_FIELDS));
+    expect(FREEPASS_SUMMARY_FIELDS.every((campo) => campo.startsWith('freepass'))).toBe(true);
   });
 
   it('o desfecho são os três campos appointmentOutcome*, e o Agendar sempre os grava vazios', () => {
@@ -242,10 +257,13 @@ describe('as ações do professor na ficha passam pelo logInteraction', () => {
   const ficha = ler('../../views/LeadProfileView.jsx');
   const HANDLERS = ['saveInteraction', 'handleSendWhatsAppMessage', 'handleLogCall', 'handleWizardConfirm'];
 
+  // O Agendar grava pelo logInteractions (plural), porque o lançamento do
+  // freepass leva uma segunda interação e o freepass no mesmo lote. É uma
+  // chamada só, e o resto da proibição vale igual.
   it.each(HANDLERS)('%s grava só pelo logInteraction, com tipo da lista', (nome) => {
     const corpo = corpoDe(ficha, nome);
-    expect(corpo).toContain('logInteraction(db, lead, appUser');
-    expect(corpo.match(/logInteraction\(/g)).toHaveLength(1);
+    expect(corpo).toMatch(/logInteractions?\(db, lead, appUser/);
+    expect(corpo.match(/logInteractions?\(/g)).toHaveLength(1);
     expect(corpo).not.toMatch(/\b(updateDoc|setDoc|addDoc|writeBatch|runTransaction|commit[A-Z]\w*)\(/);
     for (const [, tipo] of corpo.matchAll(/\btype: '([^']+)'/g)) {
       expect(PROFESSOR_INTERACTION_TYPES, `${nome}: type '${tipo}'`).toContain(tipo);
@@ -259,10 +277,53 @@ describe('as ações do professor na ficha passam pelo logInteraction', () => {
     }
   });
 
-  it('o Agendar manda para o lead só o patch do buildSchedulePatch', () => {
+  it('Anotação, WhatsApp e Ligação seguem no logInteraction (soma um no lead)', () => {
+    for (const nome of ['saveInteraction', 'handleSendWhatsAppMessage', 'handleLogCall']) {
+      expect(corpoDe(ficha, nome), nome).not.toContain('logInteractions(');
+    }
+  });
+
+  // O lead recebe o patch do buildSchedulePatch e, quando a gravação mexe no
+  // freepass, o resumo dele (freepassSummaryPatch, pelo freepassScheduleWrites),
+  // que está na professorLeadFields(). No freepass, o professor só reconta
+  // aulas e fim (ver o freepassRules.test.js).
+  // O agendamento do lead fica como está (`{}`) quando ele já aponta para o
+  // compromisso mais cedo, ou quando a aula a mais (fresh) não toma o lugar
+  // dele (leadSlotFor devolve null). Quando o mais cedo é outro, o patch é o do
+  // slotPatchFor, que também sai do buildSchedulePatch.
+  it('o Agendar manda para o lead só o patch do buildSchedulePatch e o resumo do freepass', () => {
     const corpo = corpoDe(ficha, 'handleWizardConfirm');
     expect(corpo).toContain('const up = buildSchedulePatch({');
-    expect(corpo).toMatch(/\},\s*up\s*\);/);
+    expect(corpo).toMatch(/const leadAppt = !slot \? \(fresh \? \{\} : up\)\s*: slot\.id === currentAulaId && isAula \? up\s*: leadPointsTo\(lead, slot\) \? \{\}\s*: slotPatchFor\(\{/);
+    expect(corpo).toMatch(/\{ \.\.\.leadAppt, \.\.\.freepassLead \},\s*fpSide\?\.extra \|\| null\s*\);/);
+    expect(corpo).toContain('const freepassLead = fpSide ? fpSide.leadPatch : {};');
+  });
+
+  // O Remarcar do cartão do freepass, que o professor também usa, não passa
+  // pelo logInteraction: o writeFreepassAulaMove grava num lote só o registro
+  // da aula, o freepass (freepassAulasPatch: aulas e endsAt) e o lead (o resumo
+  // do freepass e, quando a aula passa a ser a da vez, o patch do Agendar), sem
+  // interação e sem o toque. O comportamento com o professor está no
+  // fichaFreepassContratos.test.js.
+  it('o Remarcar do cartão (saveAulaMove) grava só pelo writeFreepassAulaMove, sem interação', () => {
+    const corpo = corpoDe(ficha, 'saveAulaMove');
+    expect(corpo).toContain('await writeFreepassAulaMove({');
+    expect(corpo).not.toMatch(/logInteractions?\(|\b(updateDoc|setDoc|addDoc|writeBatch|runTransaction|commit[A-Z]\w*)\(/);
+    const lib = ler('../freepassAgendaWrites.js');
+    const move = lib.slice(lib.indexOf('export async function writeFreepassAulaMove'), lib.indexOf('\n}\n', lib.indexOf('export async function writeFreepassAulaMove')));
+    expect(move).toMatch(/const leadPatch = \{\s*\.\.\.freepassSummaryPatch\(activeFreepassesOf\(lead, all, now\), now\),\s*\.\.\.\(slot && slotPatchFor\(\{/);
+    expect(move).toContain('taskOwner: appointmentTaskOwnerFor({ scheduler: appUser, lead })');
+    expect(move).toContain('batch.update(doc(freepassCol(db), freepass.id), after.patch);');
+    expect(move).not.toMatch(/logInteractions?\(|lastInteractionAt|interactionsCount/);
+    expect(ler('../freepassAgendaWrites.js')).toContain('const patch = freepassAulasPatch({ freepass, records });');
+  });
+
+  // A segunda interação (o lançamento) soma dois no lead, o que a regra do
+  // professor recusa. O lançamento só passa com canFreepass, que o professor não tem.
+  it('o Agendar só lança freepass com canFreepass', () => {
+    const corpo = corpoDe(ficha, 'handleWizardConfirm');
+    expect(corpo).toMatch(/if \(fpPick\?\.kind === 'launch' && \(!canFreepass \|\| lead\.status === 'Perda'\)\) \{ negarAcesso\(\); return false; \}/);
+    expect(ficha).toContain('const canFreepass = freepassOn && can(appUser, ACTIONS.FREEPASS_LANCAR);');
   });
 });
 

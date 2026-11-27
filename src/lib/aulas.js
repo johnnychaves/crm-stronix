@@ -178,7 +178,7 @@ export function aulaRecordFields({
   modality = null, scheduledFor = null, status = AULA_STATUS.AGENDADA, outcomeAt = null,
   converted = false, convertedAt = null,
   consultantId = null, consultantAuthUid = null, consultantName = null,
-  type = APPOINTMENT_RECORD_TYPES.AULA, unit = null,
+  type = APPOINTMENT_RECORD_TYPES.AULA, unit = null, freepassId = null,
 } = {}) {
   return {
     // Qualquer valor fora de 'visita' vira 'aula': registro nasce aula por
@@ -201,5 +201,6 @@ export function aulaRecordFields({
     consultantId: consultantId || null,
     consultantAuthUid: consultantAuthUid || null,
     consultantName: consultantName || null,
+    freepassId: freepassId || null,
   };
 }

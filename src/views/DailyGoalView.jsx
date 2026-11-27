@@ -3,10 +3,14 @@ import confetti from 'canvas-confetti';
 import { collection, onSnapshot, query, where, serverTimestamp } from 'firebase/firestore';
 import { appId, DAILY_GOAL_HISTORY_PATH } from '../lib/firebase.js';
 import { recordGoalHit as recordGoalHitDoc } from '../lib/dailyGoalHistory.js';
-import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, APPOINTMENT_OUTCOMES, getAppointmentOutcomeMeta, getLeadAppointmentType, getLeadAppointmentDate, goalOwnerFields, isClientLead, outcomeAppliesToAula } from '../lib/leads.js';
+import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, APPOINTMENT_OUTCOMES, getAppointmentOutcomeMeta, getLeadAppointmentType, getLeadAppointmentDate, goalOwnerFields, isClientLead, outcomeAppliesToAula, APPOINTMENT_GOAL_CATEGORIES } from '../lib/leads.js';
 import { isMetaParticipant, isSeller } from '../lib/acesso.js';
 import { awaitingEntriesOf } from '../lib/metaEspera.js';
-import { logInteraction } from '../lib/interactions.js';
+import { logInteraction, logInteractions } from '../lib/interactions.js';
+import { hasModule, MODULES } from '../lib/modules.js';
+import { freepassScheduleWrites } from '../lib/freepassAgendaWrites.js';
+import { metaFreepassPlan, writeSlotAfterCancel } from '../lib/freepassMetaWrites.js';
+import { slotPatchFor } from '../lib/slotPatch.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { stageChangeFields } from '../lib/stageMove.js';
 import { DG_CATEGORY_META, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeRitmo, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, computeVolumeInRange, countMetaDaysInMonth, volumeTargetFor, tomorrowAppointmentsOf, slotTotals, newLeadHandledPatch, renewedGoalDoneInteraction } from '../lib/dailyGoal.js';
@@ -27,6 +31,7 @@ import { applyOutcomeToAula, closeOpenAppointment, upsertScheduledAppointment, u
 import { recordPlanFor } from '../lib/aulas.js';
 import { daysToExpiryOf, activeRenewalCheckpoint } from '../lib/renewalGoal.js';
 import { formatHourLabel } from '../lib/format.js';
+import { getSafeDateOrNull } from '../lib/dates.js';
 import { contactOf, telHref, whatsappHref } from '../lib/guardian.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
@@ -213,7 +218,9 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
   // computeDailyGoalSlots cair no próprio default, e evita o número mágico
   // repetido em cada tela. O que NÃO pode é deixar de repassar — era isso que
   // fazia a Meta do gestor divergir da do consultor.
-  const { metaWeekdays = [1, 2, 3, 4, 5], slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, renewalCheckpoints = [90, 60, 30], renewalGraceDays } = useGeneralConfig();
+  const { metaWeekdays = [1, 2, 3, 4, 5], slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, renewalCheckpoints = [90, 60, 30], renewalGraceDays, freepassTypes, modalities } = useGeneralConfig();
+  // Freepass só existe com o módulo Stronix 2.0 (faltosos); sem ele a Meta é a de antes.
+  const freepassOn = hasModule(appUser?.tenantModules, MODULES.FALTOSOS);
 
   // Renovação: popup de desfecho (8b) ao concluir a tarefa + fluxo de
   // matrícula/renovação existente quando o desfecho é "Renovou".
@@ -515,6 +522,19 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
       if (outcomeAppliesToAula(categorySlug)) {
         try { await applyOutcomeToAula({ db, lead, outcome }); } catch (err) { console.error('applyOutcomeToAula falhou', err); }
       }
+      // Com o módulo, o Cancelou de visita ou aula passa o lead para o
+      // compromisso pendente mais cedo e a aula de freepass devolve a vaga
+      // (writeSlotAfterCancel). É o único lugar que cancela: a Agenda de hoje e
+      // a ficha só marcam Compareceu e Não compareceu.
+      let proximo = null;
+      if (freepassOn && outcome === 'cancelled' && APPOINTMENT_GOAL_CATEGORIES.includes(categorySlug)) {
+        try {
+          proximo = await writeSlotAfterCancel({ db, lead });
+        } catch (err) {
+          console.error('writeSlotAfterCancel falhou', err);
+          toast.warning('O cancelamento foi salvo, mas o próximo compromisso não foi atualizado.');
+        }
+      }
       // Log adicional da mudança de fase para o feed do lead.
       if (promoteTo) {
         await logInteraction(db, lead, appUser, {
@@ -534,6 +554,10 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
       // ficaria sem follow-up futuro). A tarefa de hoje já está fechada.
       if (outcome === 'no_show') {
         setRescheduleTarget({ lead, categorySlug, flow: 'after_no_show' });
+      } else if (proximo) {
+        // O lead já tem o próximo passo: o compromisso pendente mais cedo.
+        const at = getSafeDateOrNull(proximo.scheduledFor);
+        toast.info(`${proximo.type === 'visita' ? 'Próxima visita' : 'Próxima aula'} em ${at.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} às ${at.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}.`);
       } else if (outcome === 'attended' || outcome === 'cancelled') {
         const ctx = outcome === 'attended' ? 'Comparecimento registrado' : 'Agendamento cancelado';
         setNextContactTarget({ lead, categorySlug, flow: 'after_outcome', contextLabel: ctx });
@@ -728,6 +752,18 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
     const finalSoloTraining = isAula ? Boolean(newSoloTraining) : false;
 
     try {
+      // Freepass (só com o módulo Stronix 2.0): relê os freepass e os registros
+      // na hora de gravar e decide pela regra automática (metaFreepassPlan). A
+      // visita que tira a aula pendente do freepass devolve a vaga (leftId).
+      const fp = freepassOn
+        ? await metaFreepassPlan({
+            db, lead, appUser, types: freepassTypes, modalities, afterNoShow: isAfterNoShow,
+            aula: isAula
+              ? { scheduledFor: newDate, modality: finalModality, professorId: finalProfessorId, professorName: finalProfessorName, soloTraining: finalSoloTraining }
+              : null,
+          })
+        : null;
+
       // Dual-write best-effort no histórico de aulas (stronix_aulas): a regra
       // do Firestore pode ainda não estar publicada, então falha aqui não
       // pode quebrar o reagendamento do lead, por isso o try/catch isolado.
@@ -757,6 +793,8 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
               soloTraining: finalSoloTraining,
               modality: finalModality,
               scheduledFor: newDate,
+              // Com o módulo, a aula avulsa sai do freepass (null).
+              ...(fp && { freepassId: fp.targetId }),
             },
           });
         } catch (e) {
@@ -798,6 +836,16 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
         currentAulaId
       };
 
+      // Com o módulo, o freepass reconta pelos registros e o lead aponta para o
+      // compromisso pendente mais cedo (leadSlotFor), com ou sem freepass: a
+      // anotação fica só no texto da interação e o dono da tarefa fica. Lança
+      // erro se a aula não foi gravada no freepass de destino, e aí nada é gravado.
+      const leadAfter = { ...lead, ...leadUpdate };
+      const fpSide = fp
+        ? await freepassScheduleWrites({ db, lead, leadAfter, freepasses: fp.freepasses, targetId: fp.targetId, leftId: fp.leftId, launch: fp.launch, currentAulaId })
+        : null;
+      Object.assign(leadUpdate, fpSide?.leadPatch, fpSide?.slot && slotPatchFor({ lead: leadAfter, record: fpSide.slot }));
+
       let baseText;
       if (isAfterNoShow) {
         baseText = `🔄 Próxima tentativa marcada (${finalApptTypeLabel}) para ${formattedDate} às ${formattedTime}, após "Não veio".`;
@@ -824,7 +872,8 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
         Object.assign(interactionPayload, goalOwnerFields(lead, categorySlug));
       }
 
-      await logInteraction(db, lead, appUser, interactionPayload, leadUpdate);
+      // Um lote só: a interação, o lead e, pelo gancho, o freepass (o que nasce e os recontados).
+      await logInteractions(db, lead, appUser, [interactionPayload, ...(fpSide?.notes || [])], leadUpdate, fpSide?.extra || null);
 
       if (isAfterNoShow) {
         toast.success(`Próxima tentativa em ${formattedDate} às ${formattedTime}.`);
@@ -919,6 +968,9 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
           flow={rescheduleTarget.flow || 'manual'}
           onConfirm={handleReschedule}
           onClose={() => setRescheduleTarget(null)}
+          db={db}
+          appUser={appUser}
+          freepassOn={freepassOn}
         />
       )}
 
