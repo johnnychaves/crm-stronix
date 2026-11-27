@@ -51,9 +51,11 @@ function Pessoas({ titulo, ids, leadsById }) {
   );
 }
 
-export function AderenciaTab({ linhas, resumo, metas, leadsById, professorLogado, primeiroNome }) {
+export function AderenciaTab({ linhas, resumo, barra, meta, faixaMax, semestral = false, leadsById, professorLogado, primeiroNome }) {
   const [aberta, setAberta] = useState(null);
-  const { barra, faixaMin, faixaMax } = metas.aderencia;
+  // A meta é a do nível de agora; sem nível ou com a meta em branco, a aba
+  // não mostra meta.
+  const faixaMin = meta;
 
   if (!linhas.length) {
     return (
@@ -72,14 +74,16 @@ export function AderenciaTab({ linhas, resumo, metas, leadsById, professorLogado
 
   return (
     <div className="flex flex-col gap-4">
-      <section aria-label="Aderência do ano" className={cn(CARD, 'grid gap-4 px-5 py-[18px] md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] md:items-center md:px-[22px]')}>
+      <section aria-label={semestral ? 'Aderência do período' : 'Aderência do ano'} className={cn(CARD, 'grid gap-4 px-5 py-[18px] md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] md:items-center md:px-[22px]')}>
         <div>
-          <div className="flex flex-wrap items-center gap-2 text-[13px] font-semibold text-muted-foreground">Aderência do ano <SeloDaFaixa taxa={resumo.nota} min={faixaMin} max={faixaMax} /></div>
+          <div className="flex flex-wrap items-center gap-2 text-[13px] font-semibold text-muted-foreground">{semestral ? 'Aderência do período' : 'Aderência do ano'} {faixaMin != null && <SeloDaFaixa taxa={resumo.nota} min={faixaMin} max={faixaMax} />}</div>
           <div className={cn('num mb-1.5 mt-2 font-display text-[44px] font-bold leading-none tracking-[-0.03em]', resumo.nota == null && 'text-[28px] text-muted-foreground')}>
             {resumo.nota == null ? 'Sem semestre fechado' : `${resumo.nota}%`}
           </div>
           <p className="m-0 text-[13px] text-muted-foreground">
-            {fechados === 2 ? 'Média dos dois semestres.' : fechados === 1 ? 'Só um semestre fechou, então a nota do ano é a dele.' : 'A nota do ano sai quando o primeiro semestre fechar.'} Dezembro fica fora. Meta: {faixaMin}% a {faixaMax}%, a mesma para os três níveis.
+            {semestral
+              ? (resumo.nota == null ? 'A nota sai quando o período fechar.' : 'Soma das semanas do período.')
+              : fechados === 2 ? 'Média dos dois semestres.' : fechados === 1 ? 'Só um semestre fechou, então a nota do ano é a dele.' : 'A nota do ano sai quando o primeiro semestre fechar.'} Dezembro fica fora.{faixaMin != null && ` Meta: ${faixaMin}% a ${faixaMax}%, do nível de agora.`}
           </p>
         </div>
         <ul className="m-0 flex list-none flex-col gap-2 p-0">
@@ -101,7 +105,7 @@ export function AderenciaTab({ linhas, resumo, metas, leadsById, professorLogado
               A semana do aluno vai de segunda a sexta e conta como aderente com {barra} ou mais aulas de funcional. Ficam fora a semana de trancamento e a primeira semana do contrato.
             </p>
           </div>
-          <p className="m-0 inline-flex items-center gap-2 text-[13px] text-muted-foreground"><span aria-hidden="true" className="inline-block h-2.5 w-4 rounded-[3px] bg-emerald-400/40" />Meta: {faixaMin}% a {faixaMax}%</p>
+          {faixaMin != null && <p className="m-0 inline-flex items-center gap-2 text-[13px] text-muted-foreground"><span aria-hidden="true" className="inline-block h-2.5 w-4 rounded-[3px] bg-emerald-400/40" />Meta: {faixaMin}% a {faixaMax}%</p>}
         </div>
         {grupos.map(({ g, ls }) => {
           const t = somaDoGrupo(ls);
@@ -120,8 +124,8 @@ export function AderenciaTab({ linhas, resumo, metas, leadsById, professorLogado
                       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-5 py-3 md:grid-cols-[150px_110px_minmax(120px,1fr)_120px_120px_auto] md:px-[22px]">
                         <span className="num font-semibold">{ddmm(l.semana)} a {sextaDe(l.semana)}</span>
                         <span className="num text-right md:text-left"><b className="font-display text-[17px]">{l.taxa == null ? '–' : `${l.taxa}%`}</b> <small className="text-[12px] text-muted-foreground">{l.aderentes} de {l.contam}</small></span>
-                        <span role="img" aria-label={`${l.taxa ?? 0}%, meta de ${faixaMin}% a ${faixaMax}%`} className="relative col-span-2 h-2 rounded-full bg-muted md:col-span-1">
-                          <span className="absolute inset-y-0 rounded-sm bg-emerald-400/35" style={{ left: `${faixaMin}%`, right: `${100 - faixaMax}%` }} />
+                        <span role="img" aria-label={faixaMin != null ? `${l.taxa ?? 0}%, meta de ${faixaMin}% a ${faixaMax}%` : `${l.taxa ?? 0}%`} className="relative col-span-2 h-2 rounded-full bg-muted md:col-span-1">
+                          {faixaMin != null && <span className="absolute inset-y-0 rounded-sm bg-emerald-400/35" style={{ left: `${faixaMin}%`, right: `${100 - faixaMax}%` }} />}
                           <i className="relative block h-full rounded-full bg-brand-600" style={{ width: `${Math.min(100, l.taxa ?? 0)}%` }} />
                         </span>
                         <span className="num text-[13px]"><b>{l.umaPresenca}</b> com 1 presença</span>

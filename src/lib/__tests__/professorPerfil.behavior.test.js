@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-// O perfil do professor (plano 2026-11-25, Tarefa 11): só o gestor vê a
-// câmera e o "Trocar nível", a aba mora no endereço, as pílulas recortam a
-// carteira, o aviso de CPF conta quem não tem CPF, salvar o nível grava o
+// O perfil do professor pela trilha (plano 2026-11-27, PR 3): só o gestor vê
+// a câmera e o "Trilha e nível", a aba mora no endereço, as pílulas recortam a
+// carteira, o aviso de CPF conta quem não tem CPF, salvar grava a trilha, o
 // nível e a data, e o professor que não existe mostra o aviso. As contas são
 // as de src/lib/professor/ (testadas à parte); aqui elas vêm prontas.
 import { act, createElement as h, useEffect } from 'react';
@@ -20,6 +20,10 @@ vi.mock('../../hooks/useNpsDados.js', () => ({
 }));
 vi.mock('../npsWrites.js', () => ({ gerarNovoLink: vi.fn(async () => 'novo') }));
 vi.mock('../../hooks/useProfessoresDados.js', () => ({ useProfessoresDados: () => s.dados }));
+vi.mock('../../hooks/useCarreira.js', async () => {
+  const { trilhasDe } = await import('../carreira/trilhas.js');
+  return { useCarreira: () => ({ carreira: { doc: null }, trilhas: trilhasDe(null) }) };
+});
 vi.mock('../firebase.js', () => ({ appId: 'acad', db: {}, auth: {}, storage: {}, PROFESSORS_PATH: 'stronix_professores' }));
 vi.mock('firebase/firestore', async (importOriginal) => ({
   ...(await importOriginal()),
@@ -47,7 +51,7 @@ const { updateDoc } = await import('firebase/firestore');
 const { gerarNovoLink } = await import('../npsWrites.js');
 const { somarResposta } = await import('../professor/nps.js');
 const { hrefFor } = await import('../routes.js');
-const { METAS_PADRAO } = await import('../professor/metas.js');
+const { GeneralConfigContext } = await import('../../contexts/GeneralConfigContext.jsx');
 const { ToastContext } = await import('../../contexts/ToastContext.jsx');
 const { ProfessorPerfilView } = await import('../../views/professores/ProfessorPerfilView.jsx');
 
@@ -91,7 +95,7 @@ beforeEach(() => {
     contratos: [],
     clientes: [],
     aulas: [],
-    metas: METAS_PADRAO,
+    presencas: [],
   };
   s.nps = { carregando: false, erro: null, pesquisas: [], totais: [] };
   s.respostas = [];
@@ -116,7 +120,7 @@ afterEach(() => {
 
 const render = async (entry, appUser = GESTOR) => {
   await act(async () => {
-    root.render(h(MemoryRouter, { initialEntries: [entry] }, h(ToastContext.Provider, { value: toast }, h(Screen, { appUser }))));
+    root.render(h(MemoryRouter, { initialEntries: [entry] }, h(ToastContext.Provider, { value: toast }, h(GeneralConfigContext.Provider, { value: { professores: s.dados.professores, modalities: [] } }, h(Screen, { appUser })))));
   });
 };
 const byLabel = (label) => document.body.querySelector(`[aria-label="${label}"]`);
@@ -135,34 +139,43 @@ const pilula = (comeco) => [...document.body.querySelectorAll('button[aria-press
 const alunos = () => [...document.body.querySelectorAll('[aria-label="Carteira do professor"] li')].map((li) => li.querySelector('.truncate').textContent);
 
 describe('o que cada papel vê', () => {
-  it('o gestor vê o Voltar, a câmera e o Trocar nível', async () => {
-    await render('/acad/professores/perfil/p2');
+  it('o gestor vê o Voltar, a câmera e o Trilha e nível', async () => {
+    await render('/acad/carreira/professor/p2');
     expect(document.querySelector('h1').textContent).toBe('Bruno Carvalho');
     expect(document.body.textContent).toContain('Júnior desde 01/12/2026');
-    expect(byLabel('Voltar para Professores').getAttribute('href')).toBe('/acad/professores');
+    expect(byLabel('Voltar para Carreira').getAttribute('href')).toBe('/acad/carreira');
     expect(byLabel('Trocar a foto do professor')).toBeTruthy();
-    expect(button('Trocar nível')).toBeTruthy();
+    expect(button('Trilha e nível')).toBeTruthy();
+    expect(document.body.textContent).toContain('Trilha Professor');
     expect(document.body.textContent).not.toContain('Você está vendo o seu perfil');
     expect(document.body.textContent).toContain('Onde Bruno está no plano de carreira');
   });
 
-  it('o professor vê a faixa de leitura, sem Voltar, câmera nem Trocar nível', async () => {
-    await render('/acad/professores/perfil/p2', PROFESSOR);
-    expect(document.body.textContent).toContain('Você está vendo o seu perfil. Só o gestor muda o nível e a foto.');
-    expect(byLabel('Voltar para Professores')).toBeNull();
+  it('o professor vê a faixa de leitura, sem Voltar, câmera nem Trilha e nível', async () => {
+    await render('/acad/carreira/professor/p2', PROFESSOR);
+    expect(document.body.textContent).toContain('Só leitura. Quem troca trilha, nível e metas é o gestor.');
+    expect(byLabel('Voltar para Carreira')).toBeNull();
     expect(byLabel('Trocar a foto do professor')).toBeNull();
-    expect(button('Trocar nível')).toBeUndefined();
+    expect(button('Trilha e nível')).toBeUndefined();
     expect(document.body.textContent).toContain('Onde você está no plano de carreira');
   });
 
+  it('o placar mostra a trilha, o nível e a linha do próximo nível', async () => {
+    await render('/acad/carreira/professor/p2');
+    const placar = byLabel('Números do plano de carreira');
+    expect(placar.textContent).toContain('Trilha Professor, Júnior');
+    expect(placar.textContent).toMatch(/Para Pleno: /);
+  });
+
   it('o placar mostra a renovação e a conversão, e NPS e aderência sem dados', async () => {
-    await render('/acad/professores/perfil/p2');
-    const placar = byLabel('Critérios do plano de carreira');
+    await render('/acad/carreira/professor/p2');
+    const placar = byLabel('Números do plano de carreira');
     expect(placar.textContent).toContain('6 de 9 contratos renovaram');
-    // Júnior com 67% contra a média de 45%: bateu, como na lista.
-    expect(placar.textContent).toContain('Bateu a média do nível');
+    // Júnior com 67% contra a meta de 45%, e conversão de 53% contra a
+    // academia (45%): os dois na meta.
+    expect(placar.textContent).toContain('Na meta do Júnior');
     expect(placar.textContent).toContain('8 de 15 pessoas se matricularam');
-    expect(placar.textContent).toContain('Acima da academia');
+    expect(placar.textContent).not.toContain('Abaixo da meta');
     expect(placar.textContent).toContain('Sem pesquisa ainda');
     expect(placar.textContent).toContain('Sem dados ainda');
   });
@@ -170,23 +183,23 @@ describe('o que cada papel vê', () => {
 
 describe('as abas', () => {
   it('trocar de aba troca o endereço com replace e leva o ciclo', async () => {
-    await render('/acad/professores/perfil/p2?ciclo=2026');
+    await render('/acad/carreira/professor/p2?ciclo=2026');
     expect(aba('Carteira').getAttribute('aria-selected')).toBe('true');
     await mousedown(aba('Aulas experimentais'));
-    expect(nav.location.pathname).toBe('/acad/professores/perfil/p2/aulas');
+    expect(nav.location.pathname).toBe('/acad/carreira/professor/p2/aulas');
     expect(nav.location.search).toBe('?ciclo=2026');
     expect(nav.type).toBe('REPLACE');
     expect(aba('Aulas experimentais').getAttribute('aria-selected')).toBe('true');
     expect(document.body.textContent).toContain('Nos últimos 30 dias');
     expect(document.body.textContent).toContain('ainda não conta na conversão');
     await mousedown(aba('Carteira'));
-    expect(nav.location.pathname).toBe('/acad/professores/perfil/p2');
+    expect(nav.location.pathname).toBe('/acad/carreira/professor/p2');
   });
 });
 
 describe('a carteira', () => {
   it('as pílulas recortam a lista e contam cada situação', async () => {
-    await render('/acad/professores/perfil/p2');
+    await render('/acad/carreira/professor/p2');
     expect(pilula('Todos').textContent).toBe('Todos 5');
     expect(pilula('A vencer').textContent).toBe('A vencer 3');
     expect(alunos()).toHaveLength(5);
@@ -198,17 +211,17 @@ describe('a carteira', () => {
     expect(document.body.textContent).toContain('Clube+ Move');
   });
 
-  it('conversão igual à da academia não passa, e o selo diz que empatou', async () => {
+  it('conversão igual à da academia não passa', async () => {
     s.conversao = { professor: { vieram: 7, matricularam: 2, taxa: 29 }, academia: { vieram: 21, matricularam: 6, taxa: 29 }, passa: false, incompleto: false };
-    await render('/acad/professores/perfil/p2');
-    const placar = byLabel('Critérios do plano de carreira');
-    expect(placar.textContent).toContain('Empatou com a academia');
-    expect(placar.textContent).not.toContain('Abaixo da academia');
+    await render('/acad/carreira/professor/p2');
+    const placar = byLabel('Números do plano de carreira');
+    expect(placar.textContent).toContain('7 pessoas');
+    expect(placar.textContent).toContain('Abaixo da meta do Júnior');
   });
 
   it('o trancado mostra Trancado, e não um vencimento que já passou', async () => {
     s.carteira = [{ ...linha('t1', 'Tânia Lopes', 'vencer'), estado: 'trancado', vence: new Date(2026, 10, 10) }];
-    await render('/acad/professores/perfil/p2');
+    await render('/acad/carreira/professor/p2');
     const li = document.body.querySelector('[aria-label="Carteira do professor"] li');
     expect(li.textContent).toContain('Trancado');
     expect(li.textContent).toContain('O fim previsto, 10/11/2026, anda com o trancamento');
@@ -217,7 +230,7 @@ describe('a carteira', () => {
   });
 
   it('o aviso conta quem não tem CPF e mostra só essas pessoas', async () => {
-    await render('/acad/professores/perfil/p2');
+    await render('/acad/carreira/professor/p2');
     expect(document.body.textContent).toContain('2 alunos não têm CPF no cadastro e não conseguem responder o NPS.');
     await click(button('Ver quem são'));
     expect(alunos()).toEqual(['Gustavo Rangel', 'Sabrina Rocha']);
@@ -230,18 +243,26 @@ describe('a carteira', () => {
 
   it('sem ninguém sem CPF, o aviso não aparece', async () => {
     s.carteira = [linha('l4', 'Camila Duarte', 'renovou')];
-    await render('/acad/professores/perfil/p2');
+    await render('/acad/carreira/professor/p2');
     expect(document.body.textContent).not.toContain('não têm CPF');
     expect(button('Ver quem são')).toBeUndefined();
   });
 });
 
-describe('o nível', () => {
-  it('salvar grava o nível e a data no professor', async () => {
-    await render('/acad/professores/perfil/p2');
-    await click(button('Trocar nível'));
-    const pleno = [...document.body.querySelectorAll('[role="radio"]')].find((r) => r.textContent === 'Pleno');
-    await click(pleno);
+describe('a trilha e o nível', () => {
+  const radio = (t) => [...document.body.querySelectorAll('[role="radio"]')].find((el) => el.textContent.includes(t));
+  const pressionar = async (el) => {
+    expect(el).toBeTruthy();
+    await act(async () => {
+      el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+  };
+
+  it('salvar grava a trilha, o nível e a data no professor', async () => {
+    await render('/acad/carreira/professor/p2');
+    await click(button('Trilha e nível'));
+    await pressionar([...document.body.querySelectorAll('[role="radio"]')].find((r) => r.textContent === 'Pleno'));
     const data = document.body.querySelector('input[type="date"]');
     expect(data.value).toBe('2027-02-10');
     const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
@@ -249,23 +270,33 @@ describe('o nível', () => {
       set.call(data, '2027-01-15');
       data.dispatchEvent(new Event('input', { bubbles: true }));
     });
-    await click(button('Salvar nível'));
+    await click(button('Salvar'));
     expect(updateDoc).toHaveBeenCalledTimes(1);
     const [ref, patch] = updateDoc.mock.calls[0];
     expect(ref.path).toBe('artifacts/acad/public/data/stronix_professores/p2');
-    expect(Object.keys(patch).sort()).toEqual(['nivel', 'nivelDesde']);
+    expect(Object.keys(patch).sort()).toEqual(['nivel', 'nivelDesde', 'trilhaId']);
+    expect(patch.trilhaId).toBe('professor');
     expect(patch.nivel).toBe('pleno');
     expect(patch.nivelDesde.toDate()).toEqual(new Date(2027, 0, 15));
-    expect(toast.success).toHaveBeenCalledWith('Nível salvo.');
+    expect(toast.success).toHaveBeenCalledWith('Trilha e nível salvos.');
+  });
+
+  it('o gestor salva outra trilha e o nível dela', async () => {
+    await render('/acad/carreira/professor/p2');
+    await click(button('Trilha e nível'));
+    await pressionar(radio('Estagiário'));
+    await pressionar(radio('Estagiário II'));
+    await act(async () => { document.querySelector('form').requestSubmit(); });
+    expect(updateDoc).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ trilhaId: 'estagiario', nivel: 'estagiario2' }));
   });
 });
 
 describe('professor que não existe', () => {
-  it('mostra o aviso e, para o gestor, o link para Professores', async () => {
-    await render('/acad/professores/perfil/zz');
+  it('mostra o aviso e, para o gestor, o link para Carreira', async () => {
+    await render('/acad/carreira/professor/zz');
     expect(document.body.textContent).toContain('Não achamos esse professor.');
-    expect([...document.body.querySelectorAll('a')].some((a) => a.getAttribute('href') === '/acad/professores')).toBe(true);
-    expect(byLabel('Critérios do plano de carreira')).toBeNull();
+    expect([...document.body.querySelectorAll('a')].some((a) => a.getAttribute('href') === '/acad/carreira' && a.textContent === 'Ver a lista da equipe')).toBe(true);
+    expect(byLabel('Números do plano de carreira')).toBeNull();
   });
 });
 
@@ -284,29 +315,29 @@ describe('a pesquisa dos alunos no perfil', () => {
   };
 
   it('o gestor lê todos os totais; o professor, só os dele', async () => {
-    await render('/acad/professores/perfil/p2');
+    await render('/acad/carreira/professor/p2');
     expect(s.npsArgs.professorId).toBeNull();
-    await render('/acad/professores/perfil/p2', PROFESSOR);
+    await render('/acad/carreira/professor/p2', PROFESSOR);
     expect(s.npsArgs.professorId).toBe('p2');
   });
 
   it('o placar mostra a nota do ano e os promotores', async () => {
     comPesquisa();
-    await render('/acad/professores/perfil/p2');
-    const placar = byLabel('Critérios do plano de carreira');
+    await render('/acad/carreira/professor/p2');
+    const placar = byLabel('Números do plano de carreira');
     expect(placar.textContent).toContain('9,33');
     expect(placar.textContent).toContain('83% deram 9 ou 10');
-    expect(placar.textContent).toContain('Nota de promotor');
+    expect(placar.textContent).toContain('Na meta do Júnior');
   });
 
   it('a aba NPS: o gestor vê quem respondeu; o professor, só os totais', async () => {
     comPesquisa();
-    await render('/acad/professores/perfil/p2/nps');
+    await render('/acad/carreira/professor/p2/nps');
     expect(document.body.textContent).toContain('Quem respondeu');
     expect(document.body.textContent).toContain('Ana Lima');
     expect(document.body.textContent).toContain('Aula ótima.');
     expect(byLabel('Pergunta principal').textContent).toContain('9,33');
-    await render('/acad/professores/perfil/p2/nps', PROFESSOR);
+    await render('/acad/carreira/professor/p2/nps', PROFESSOR);
     expect(document.body.textContent).not.toContain('Quem respondeu');
     expect(document.body.textContent).not.toContain('Aula ótima.');
     expect(byLabel('Pergunta principal').textContent).toContain('9,33');
@@ -316,21 +347,21 @@ describe('a pesquisa dos alunos no perfil', () => {
     s.dados.professores[0].npsCode = 'k7q2mx9pla';
     const writeText = vi.fn(async () => {});
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
-    await render('/acad/professores/perfil/p2');
+    await render('/acad/carreira/professor/p2');
     expect(document.body.textContent).toContain('/avaliar/acad/k7q2mx9pla');
     await click(button('Copiar link'));
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining('/avaliar/acad/k7q2mx9pla'));
     expect(button('Gerar novo link')).toBeTruthy();
-    await render('/acad/professores/perfil/p2', PROFESSOR);
+    await render('/acad/carreira/professor/p2', PROFESSOR);
     expect(button('Copiar link')).toBeTruthy();
     expect(button('Gerar novo link')).toBeUndefined();
   });
 
   it('sem link, o gestor gera e o professor lê o aviso', async () => {
-    await render('/acad/professores/perfil/p2');
+    await render('/acad/carreira/professor/p2');
     await click(button('Gerar link'));
     expect(gerarNovoLink).toHaveBeenCalledWith({}, 'p2');
-    await render('/acad/professores/perfil/p2', PROFESSOR);
+    await render('/acad/carreira/professor/p2', PROFESSOR);
     expect(document.body.textContent).toContain('O gestor ainda não gerou o link.');
   });
 });
@@ -346,10 +377,10 @@ describe('a aderência no perfil', () => {
       { leadId: 'l9', semana: '2027-01-18', presencas: 1 }, { leadId: 'l8', semana: '2027-01-18', presencas: 2 },
       { leadId: 'l8', semana: '2027-01-25', presencas: 2 },
     ];
-    await render('/acad/professores/perfil/p2/aderencia');
-    const placar = byLabel('Critérios do plano de carreira');
+    await render('/acad/carreira/professor/p2/aderencia');
+    const placar = byLabel('Números do plano de carreira');
     expect(placar.textContent).toContain('67%');
-    expect(placar.textContent).toContain('Semestre em andamento');
+    expect(placar.textContent).toContain('Período em andamento');
     expect(document.body.textContent).toContain('25/01 a 29/01');
     expect(document.body.textContent).toContain('1º semestre, janeiro a junho');
     await click(button('Ver quem chamar'));
@@ -358,7 +389,7 @@ describe('a aderência no perfil', () => {
   });
 
   it('antes da primeira importação, sem dados', async () => {
-    await render('/acad/professores/perfil/p2/aderencia');
+    await render('/acad/carreira/professor/p2/aderencia');
     expect(document.body.textContent).toContain('Sem dados ainda.');
   });
 });

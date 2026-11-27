@@ -10,13 +10,12 @@ import { deleteProfessorPhoto, uploadProfessorPhoto } from '../../lib/professorP
 import { npsLinkDe } from '../../lib/npsLink.js';
 import { gerarNovoLink } from '../../lib/npsWrites.js';
 import { baixarQr } from '../../lib/qrPng.js';
-import { npsDoCiclo } from '../../lib/professor/pesquisas.js';
-import { cicloDe, limitesDoCiclo, semestresDoCiclo } from '../../lib/professor/ciclo.js';
-import { conversaoDoCiclo, pessoasDasAulas } from '../../lib/professor/conversao.js';
-import { carteiraDoCiclo, renovacaoDoCiclo } from '../../lib/professor/renovacao.js';
-import { aderenciaPorSemana, aderenciaResumo } from '../../lib/professor/aderencia.js';
+import { trilhaDaPessoa, trilhaSugerida } from '../../lib/carreira/trilhas.js';
+import { placarDe, tempoNoNivel } from '../../lib/carreira/placar.js';
+import { contasDoProfessor, periodoDaPessoa } from '../../lib/carreira/professor.js';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 import { useToast } from '../../contexts/ToastContext.jsx';
+import { useCarreira } from '../../hooks/useCarreira.js';
 import { useProfessoresDados } from '../../hooks/useProfessoresDados.js';
 import { useNpsDados } from '../../hooks/useNpsDados.js';
 import { useScreenParams } from '../../hooks/useScreenParams.js';
@@ -27,51 +26,51 @@ import { AulasTab } from './AulasTab.jsx';
 import { CarteiraTab } from './CarteiraTab.jsx';
 import { NpsTab } from './NpsTab.jsx';
 import { PerfilCabecalho } from './PerfilCabecalho.jsx';
-import { PlacarDoCiclo } from './PlacarDoCiclo.jsx';
+import { PlacarDaCarreira } from './PlacarDaCarreira.jsx';
 import { TAB_CONTAGEM, TAB_TRIGGER } from './ProfessoresComum.jsx';
 
-// O perfil do professor (mockups B de 24/11/2026): cabeçalho, placar do ciclo
-// e as abas Carteira, Aulas experimentais, NPS e Aderência. O gestor abre qualquer perfil e é
-// o único que troca a foto e o nível; o professor logado só chega ao próprio
-// (a rota garante) e vê tudo só para leitura. O ciclo mora no endereço
-// (`ciclo`) e a aba é a sub-tela, que o App troca com replace.
+// O perfil do professor (mockups B de 24/11/2026 e "Trilha e nível" de
+// 26/11/2026): cabeçalho, placar do período da trilha e as abas Carteira, Aulas
+// experimentais, NPS e Aderência. O gestor abre qualquer perfil e é o único
+// que troca a foto, a trilha e o nível; o professor logado só chega ao próprio
+// (a rota garante) e vê tudo só para leitura. O período mora no endereço
+// (`ciclo`, a chave do período da trilha) e a aba é a sub-tela, que o App
+// troca com replace.
 const LINK = 'rounded outline-none focus-visible:anel-foco';
 
 export function ProfessorPerfilView({ db, appUser, tenantId, profId, tab, onTab, listenersActive }) {
   const toast = useToast();
-  // Um relógio só por montagem: as contas do ciclo cortam no mesmo instante.
+  // Um relógio só por montagem: as contas do período cortam no mesmo instante.
   const [agora] = useState(() => new Date());
-  const ctx = useMemo(() => ({ cicloAtual: cicloDe(agora) }), [agora]);
+  const { professores: professoresDoApp, modalities } = useGeneralConfig();
+  const prof = useMemo(() => (professoresDoApp || []).find((p) => p.id === profId) ?? null, [professoresDoApp, profId]);
+  const { carreira, trilhas } = useCarreira({ db, listenersActive });
+  const trilhasDeProfessor = useMemo(() => (trilhas || []).filter((t) => t.base === 'professor'), [trilhas]);
+  // Sem o professor (ainda não chegou, ou não existe), vale a trilha Professor,
+  // para a janela de leitura existir e o "Não achamos" aparecer depois dela.
+  const trilha = useMemo(() => trilhaDaPessoa(prof, trilhasDeProfessor, { professor: true }), [prof, trilhasDeProfessor]);
+
+  const ctx = useMemo(() => ({ trilha, agora }), [trilha, agora]);
   const [{ ciclo }, setParams] = useScreenParams('professorPerfil', ctx);
-  const { carregando, erro, professores, planos, contratos, clientes, aulas, presencas, metas, trilhaProfessor } = useProfessoresDados({ db, ciclo, listenersActive });
-  const { modalities } = useGeneralConfig();
+  const periodo = useMemo(() => (trilha ? periodoDaPessoa(trilha, ciclo, agora) : null), [trilha, ciclo, agora]);
+
+  const { carregando, erro, planos, contratos, clientes, aulas, presencas } = useProfessoresDados({
+    db, inicioMs: periodo?.inicio.getTime() ?? null, fimMs: periodo?.fim.getTime() ?? null, listenersActive,
+  });
 
   const pode = isGestor(appUser);
   const professorLogado = isProfessor(appUser);
   // O professor só lê os próprios totais: a consulta dele vem filtrada, que é
   // o que a regra aceita.
   const nps = useNpsDados({ db, professorId: professorLogado ? appUser?.professorId ?? null : null, listenersActive });
-  const prof = useMemo(() => (professores || []).find((p) => p.id === profId) ?? null, [professores, profId]);
   const planosById = useMemo(() => new Map((planos || []).map((p) => [p.id, p])), [planos]);
   const clientesPorId = useMemo(() => new Map((clientes || []).map((l) => [l.id, l])), [clientes]);
 
   const contas = useMemo(() => {
-    if (carregando || !metas || !prof || nps.carregando) return null;
-    const { janelaDias, tolerancia } = metas.conversao;
-    const periodo = limitesDoCiclo(ciclo);
-    const base = { leads: clientes, contratos, planos, professor: prof, periodo, asOf: agora };
-    const daAula = { aulas, contratos, professorId: prof.id, periodo, asOf: agora, janelaDias };
-    const semanas = aderenciaPorSemana({ presencas, leads: clientes, contratos, planos, professor: prof, asOf: agora, barra: metas.aderencia.barra });
-    return {
-      renovacao: renovacaoDoCiclo(base),
-      carteira: carteiraDoCiclo(base),
-      conversao: conversaoDoCiclo({ ...daAula, tolerancia }),
-      pessoas: pessoasDasAulas(daAula),
-      semanas,
-      aderencia: aderenciaResumo(semanas, semestresDoCiclo(ciclo), agora),
-      nps: npsDoCiclo({ pesquisas: nps.pesquisas, totais: nps.totais, professorId: prof.id, trilha: trilhaProfessor, chave: String(ciclo), meta: metas.nps.meta }),
-    };
-  }, [carregando, metas, prof, clientes, contratos, planos, aulas, presencas, ciclo, agora, nps.carregando, nps.pesquisas, nps.totais, trilhaProfessor]);
+    if (carregando || carreira === null || !prof || !trilha || !periodo || nps.carregando) return null;
+    const c = contasDoProfessor({ trilha, periodo, prof, clientes, contratos, planos, aulas, presencas, nps, agora });
+    return { ...c, placar: placarDe(trilha, prof.nivel, c.resultados) };
+  }, [carregando, carreira, prof, trilha, periodo, clientes, contratos, planos, aulas, presencas, nps, agora]);
 
   const [fotoAberta, setFotoAberta] = useState(false);
   const [fotoOcupada, setFotoOcupada] = useState(false);
@@ -110,15 +109,15 @@ export function ProfessorPerfilView({ db, appUser, tenantId, profId, tab, onTab,
     }
   };
 
-  const salvarNivel = async ({ nivel, desde }) => {
+  const salvarTrilhaENivel = async ({ trilhaId, nivel, desde }) => {
     if (!pode) return false;
     try {
-      await updateDoc(profRef(), { nivel, nivelDesde: Timestamp.fromDate(desde) });
-      toast.success('Nível salvo.');
+      await updateDoc(profRef(), { trilhaId, nivel, nivelDesde: Timestamp.fromDate(desde) });
+      toast.success('Trilha e nível salvos.');
       return true;
     } catch (e) {
-      console.error('Erro ao salvar o nível do professor:', e);
-      toast.error('Não deu para salvar o nível. Tente de novo.');
+      console.error('Erro ao salvar a trilha e o nível do professor:', e);
+      toast.error('Não deu para salvar. Tente de novo.');
       return false;
     }
   };
@@ -154,8 +153,8 @@ export function ProfessorPerfilView({ db, appUser, tenantId, profId, tab, onTab,
   };
 
   const voltar = pode && (
-    <AppLink to={hrefFor(tenantId, 'professores')} aria-label="Voltar para Professores" className={`${LINK} mb-3.5 inline-flex items-center gap-1 font-medium text-muted-foreground hover:text-brand-700 dark:hover:text-brand-300`}>
-      <ChevronLeft size={16} aria-hidden="true" />Professores
+    <AppLink to={hrefFor(tenantId, 'professores')} aria-label="Voltar para Carreira" className={`${LINK} mb-3.5 inline-flex items-center gap-1 font-medium text-muted-foreground hover:text-brand-700 dark:hover:text-brand-300`}>
+      <ChevronLeft size={16} aria-hidden="true" />Carreira
     </AppLink>
   );
 
@@ -169,7 +168,7 @@ export function ProfessorPerfilView({ db, appUser, tenantId, profId, tab, onTab,
             <p className="m-0 font-semibold">Não achamos esse professor.</p>
             {pode && (
               <AppLink to={hrefFor(tenantId, 'professores')} className={`${LINK} mt-2 inline-block font-semibold text-brand-700 hover:underline dark:text-brand-300`}>
-                Ver a lista de professores
+                Ver a lista da equipe
               </AppLink>
             )}
           </div>
@@ -189,7 +188,7 @@ export function ProfessorPerfilView({ db, appUser, tenantId, profId, tab, onTab,
       {professorLogado && (
         <p className="mb-3.5 flex items-center gap-2 text-[13px] text-muted-foreground">
           <Eye size={16} aria-hidden="true" className="flex-none" />
-          Você está vendo o seu perfil. Só o gestor muda o nível e a foto.
+          Só leitura. Quem troca trilha, nível e metas é o gestor.
         </p>
       )}
 
@@ -199,7 +198,11 @@ export function ProfessorPerfilView({ db, appUser, tenantId, profId, tab, onTab,
         pode={pode}
         fotoOcupada={fotoOcupada}
         onFoto={() => setFotoAberta(true)}
-        onSalvarNivel={salvarNivel}
+        trilhas={trilhasDeProfessor}
+        trilha={trilha}
+        sugeridaId={trilhaSugerida({ base: 'professor', modalidadeIds: prof.modalidadeIds }, trilhasDeProfessor)?.id ?? null}
+        tempo={trilha ? tempoNoNivel(trilha, prof, agora) : null}
+        onSalvarTrilha={salvarTrilhaENivel}
         link={link}
         onCopiar={copiarLink}
         onBaixarQr={baixarQrCode}
@@ -209,22 +212,20 @@ export function ProfessorPerfilView({ db, appUser, tenantId, profId, tab, onTab,
 
       {erro && <p role="alert" className="mt-3 text-[13px] font-semibold text-rose-700 dark:text-rose-300">Não deu para carregar tudo. Recarregue a página.</p>}
 
-      {!contas ? (
-        <p className="mt-4 text-[13px] text-muted-foreground">Carregando os números do ciclo…</p>
+      {trilhas && !trilha ? (
+        <p className="mt-4 text-[13px] text-muted-foreground">Sem trilha. Defina a trilha e o nível no cabeçalho.</p>
+      ) : !contas ? (
+        <p className="mt-4 text-[13px] text-muted-foreground">Carregando os números do período…</p>
       ) : (
         <>
-          <PlacarDoCiclo
+          <PlacarDaCarreira
             titulo={professorLogado ? 'Onde você está no plano de carreira' : `Onde ${primeiroNome} está no plano de carreira`}
-            ciclo={ciclo}
-            cicloAtual={ctx.cicloAtual}
-            onCiclo={(c) => setParams({ ciclo: c })}
-            prof={prof}
-            metas={metas}
-            renovacao={contas.renovacao}
-            conversao={contas.conversao}
-            nps={contas.nps}
-            aderencia={contas.aderencia}
-            modalidadesTexto={modalidadesTexto}
+            trilha={trilha}
+            periodo={periodo}
+            agora={agora}
+            onChave={(c) => setParams({ ciclo: c })}
+            placar={contas.placar}
+            detalhes={{ renovacao: contas.renovacao, conversao: contas.conversao, nps: contas.nps, aderencia: contas.aderencia, barra: trilha.ajustes.barra ?? 2 }}
           />
 
           <Tabs value={aba} onValueChange={(id) => onTab?.(id === 'carteira' ? null : id)} className="mt-7 gap-4">
@@ -250,12 +251,12 @@ export function ProfessorPerfilView({ db, appUser, tenantId, profId, tab, onTab,
               />
             </TabsContent>
             <TabsContent value="aulas" tabIndex={-1}>
-              <AulasTab conversao={contas.conversao} pessoas={contas.pessoas} janelaDias={metas.conversao.janelaDias} nome={professorLogado ? 'você' : primeiroNome} />
+              <AulasTab conversao={contas.conversao} pessoas={contas.pessoas} janelaDias={trilha.ajustes.janelaDias ?? 30} nome={professorLogado ? 'você' : primeiroNome} />
             </TabsContent>
             <TabsContent value="nps" tabIndex={-1}>
               <NpsTab
                 nps={contas.nps}
-                metaNps={metas.nps.meta}
+                metaNps={contas.metaNps}
                 pode={pode}
                 professorLogado={professorLogado}
                 primeiroNome={primeiroNome}
@@ -271,7 +272,10 @@ export function ProfessorPerfilView({ db, appUser, tenantId, profId, tab, onTab,
               <AderenciaTab
                 linhas={contas.semanas}
                 resumo={contas.aderencia}
-                metas={metas}
+                barra={trilha.ajustes.barra ?? 2}
+                meta={contas.placar.itens.find((i) => i.id === 'aderencia')?.meta ?? null}
+                faixaMax={trilha.ajustes.faixaMax ?? 70}
+                semestral={trilha.frequencia === 'semestral'}
                 leadsById={clientesPorId}
                 professorLogado={professorLogado}
                 primeiroNome={primeiroNome}
