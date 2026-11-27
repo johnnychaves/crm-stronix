@@ -17,7 +17,7 @@ export function OutcomeCards({ question, options, value, onChange }) {
   return (
     <div>
       <PopupLabel id={labelId}>{question}</PopupLabel>
-      <RadioGroup value={value} onValueChange={onChange} aria-labelledby={labelId} className={cn('grid gap-2', options.length > 2 ? 'grid-cols-3' : 'grid-cols-2')}>
+      <RadioGroup value={value} onValueChange={onChange} aria-labelledby={labelId} className={cn('grid gap-2', options.length === 3 ? 'grid-cols-3' : 'grid-cols-2')}>
         {options.map(({ id, label, desc, Icon, tone }) => {
           const on = id === value;
           return (
