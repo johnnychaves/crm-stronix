@@ -135,6 +135,16 @@ export function visitorOf(lead, now = new Date()) {
   return { ...fp, shortText: freepassShortText(fp, now), longText: freepassLongText(fp, now) };
 }
 
+// O freepass da aula marcada no lead, para as leituras do agendamento (coluna
+// Passe livre, "A seguir", Meta). A aula avulsa de outra modalidade não mostra
+// o freepass que corre em outra.
+export function appointmentFreepassOf(lead, now = new Date()) {
+  const v = visitorOf(lead, now);
+  if (!v) return null;
+  const mod = lead.appointmentModality;
+  return !mod || !v.modalidadeName || fold(mod) === fold(v.modalidadeName) ? v : null;
+}
+
 // O andamento para a etiqueta: "faltam 3 dias", "termina hoje", "1 de 2 aulas".
 export function freepassShortText(fp, now = new Date()) {
   if (fp.kind === FREEPASS_KINDS.AULAS) return `${fp.aulas ?? 0} de ${fp.total} aulas`;

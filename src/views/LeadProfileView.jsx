@@ -8,7 +8,7 @@ import { useLeadFreepasses } from '../hooks/useLeadFreepasses.js';
 import { useLeadAulas } from '../hooks/useLeadAulas.js';
 import { FreepassLaunchModal } from '../modals/FreepassLaunchModal.jsx';
 import { FreepassAulaModal } from '../modals/FreepassAulaModal.jsx';
-import { FREEPASS_INTERACTION_TYPE, activeFreepassesOf, freepassChoiceFor, freepassPickMatches, freepassSummaryPatch, launchCheck, visitorOf } from '../lib/visitante.js';
+import { FREEPASS_INTERACTION_TYPE, activeFreepassesOf, freepassChoiceFor, freepassPickMatches, freepassSummaryPatch, freepassTagOf, launchCheck } from '../lib/visitante.js';
 import { writeFreepassEnd, writeFreepassLaunch } from '../lib/freepassWrites.js';
 import { extraAulaRecords, freepassLaunchParts, freepassScheduleWrites, leadAppointmentFor, reusablePendingAula, writeFreepassAulaMove } from '../lib/freepassAgendaWrites.js';
 import { AULA_STATUS } from '../lib/aulas.js';
@@ -1209,7 +1209,13 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   const bandNow = new Date();
   // Com os docs chegados, o chip sai deles (o resumo do lead pode estar velho).
   const running = freepasses ? activeFreepassesOf(lead, freepasses, bandNow) : null;
-  const visitor = visitorOf(running ? { ...lead, ...freepassSummaryPatch(running, bandNow) } : lead, bandNow);
+  // Aluno com contrato valendo (ativo, a vencer, trancado ou agendado) que faz
+  // freepass de outra modalidade está num Upgrade; o resto é Visitante.
+  const freepassTag = freepassTagOf({
+    lead: running ? { ...lead, ...freepassSummaryPatch(running, bandNow) } : lead,
+    contractActive: ['cliente_ativo', 'a_vencer', 'trancado', 'agendado'].includes(profileState.key),
+    now: bandNow,
+  });
   const band = {
     next: nextStepCell(lead, bandNow),
     mid: isClient
@@ -1304,9 +1310,14 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                   <span className={cn('size-1.5 rounded-full', profileTone.strong)} aria-hidden="true" />
                   {stateChipText(profileState.label)}
                 </span>
-                {freepassOn && visitor && (
+                {freepassOn && freepassTag?.label === 'Upgrade' && (
+                  <span className="inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full bg-violet-100 px-2.5 text-[12.5px] font-semibold text-violet-800 dark:bg-violet-500/10 dark:text-violet-300">
+                    <TrendingUp size={13} aria-hidden="true" />Upgrade · {freepassTag.text}
+                  </span>
+                )}
+                {freepassOn && freepassTag?.label === 'Visitante' && (
                   <span className="inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full bg-teal-100 px-2.5 text-[12.5px] font-semibold text-teal-700 dark:bg-teal-500/10 dark:text-teal-300">
-                    <span className="size-1.5 rounded-full bg-teal-500" aria-hidden="true" />Visitante · {visitor.shortText}
+                    <span className="size-1.5 rounded-full bg-teal-500" aria-hidden="true" />Visitante · {freepassTag.text}
                   </span>
                 )}
                 {upgradeStage && (
