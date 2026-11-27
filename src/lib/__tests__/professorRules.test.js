@@ -21,7 +21,9 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { buildSchedulePatch, appointmentTaskOwnerFor } from '../schedulePatch.js';
 import { planProfileNote } from '../profileNote.js';
+import { freepassSummaryPatch } from '../visitante.js';
 import {
+  FREEPASS_SUMMARY_FIELDS,
   SCHEDULE_TYPE_LABELS,
   LEAD_BUMP_FIELDS,
   SCHEDULE_PATCH_FIELDS,
@@ -159,7 +161,20 @@ describe('as listas do professorWrites saem dos montadores de verdade', () => {
       SCHEDULE_TYPE_LABELS.flatMap((typeLabel) => Object.keys(buildSchedulePatch({ ...cheio, typeLabel })))
     );
     expect(ordenado(SCHEDULE_PATCH_FIELDS)).toEqual(ordenado(chaves));
-    expect(ordenado(PROFESSOR_LEAD_FIELDS)).toEqual(ordenado(new Set([...chaves, ...LEAD_BUMP_FIELDS])));
+    expect(ordenado(PROFESSOR_LEAD_FIELDS)).toEqual(ordenado(new Set([...chaves, ...LEAD_BUMP_FIELDS, ...FREEPASS_SUMMARY_FIELDS])));
+  });
+
+  // O Agendar de aula dentro de um freepass grava o resumo inteiro, com o
+  // freepass correndo ou sem nenhum (o vazio).
+  it('o resumo do freepass, correndo ou vazio, tem as chaves de FREEPASS_SUMMARY_FIELDS', () => {
+    const fp = {
+      id: 'f1', kind: 'aulas', total: 2, typeName: 'Duas aulas', modalidadeName: 'Pilates',
+      startsAt: new Date(2026, 10, 27), endsAt: null, aulas: 1, status: 'correndo', contractAtStart: null,
+    };
+    const now = new Date(2026, 10, 27, 10, 0);
+    expect(ordenado(Object.keys(freepassSummaryPatch([fp], now)))).toEqual(ordenado(FREEPASS_SUMMARY_FIELDS));
+    expect(ordenado(Object.keys(freepassSummaryPatch([], now)))).toEqual(ordenado(FREEPASS_SUMMARY_FIELDS));
+    expect(FREEPASS_SUMMARY_FIELDS.every((campo) => campo.startsWith('freepass'))).toBe(true);
   });
 
   it('o desfecho são os três campos appointmentOutcome*, e o Agendar sempre os grava vazios', () => {
@@ -269,10 +284,9 @@ describe('as ações do professor na ficha passam pelo logInteraction', () => {
   });
 
   // O lead recebe o patch do buildSchedulePatch e, quando a gravação mexe no
-  // freepass, o resumo dele (freepassSummaryPatch, pelo freepassScheduleWrites).
-  // Os campos freepass* ainda não estão na professorLeadFields(): o Agendar do
-  // professor que usa um freepass é recusado até a regra acompanhar (Tarefa 9
-  // do plano da entrega 2 do Visitante).
+  // freepass, o resumo dele (freepassSummaryPatch, pelo freepassScheduleWrites),
+  // que está na professorLeadFields(). No freepass, o professor só reconta
+  // aulas e fim (ver o freepassRules.test.js).
   // O agendamento do lead fica como está (`{}`) quando a aula da vez é a que
   // ele já tem, ou quando a aula a mais (fresh) não toma o lugar do
   // agendamento dele (leadAppointmentFor devolve 'keep').
