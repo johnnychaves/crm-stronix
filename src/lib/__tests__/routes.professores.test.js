@@ -124,6 +124,11 @@ describe('decisão de rota', () => {
 
   // As metas moram em Configurações → Plano de carreira (plano
   // 2026-11-26-plano-de-carreira-02, tarefa 10).
+  it('o perfil antigo sem id que serve vai para a lista', () => {
+    expect(decide(`/${T}/professores/perfil`, gestor)).toMatchObject({ kind: 'redirect', to: `/${T}/carreira` });
+    expect(decide(`/${T}/professores/perfil/__x__`, gestor)).toMatchObject({ kind: 'redirect', to: `/${T}/carreira` });
+  });
+
   it('/professores/metas leva à trilha Professor nas Configurações', () => {
     expect(decide(`/${T}/professores/metas`, gestor)).toMatchObject({
       kind: 'redirect',
