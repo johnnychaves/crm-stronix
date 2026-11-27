@@ -18,6 +18,13 @@ export const TRILHA_CONSULTOR = 'consultor';
 export const VINCULOS = Object.freeze(['qualquer', 'formado', 'estagio']);
 
 const texto = (v) => (typeof v === 'string' ? v.trim() : '');
+
+// A marca de quem o gestor tirou do plano de carreira (Configurações → Plano
+// de carreira, aba Pessoas). Ela vai no trilhaId porque o professor sem trilha
+// cai na Professor: com a marca, o trilhaDaPessoa não acha trilha nenhuma, a
+// contagem por nível deixa a pessoa de fora, e a lista Carreira a esconde.
+export const FORA_DO_PLANO = 'fora-do-plano';
+export const foraDoPlano = (pessoa) => texto(pessoa?.trilhaId) === FORA_DO_PLANO;
 const porNivel = (niveis, f) => Object.fromEntries(niveis.map((n) => [n.id, f(n)]));
 
 const NIVEIS_PROFESSOR = [

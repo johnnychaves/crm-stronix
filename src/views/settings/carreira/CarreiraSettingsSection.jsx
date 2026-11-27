@@ -8,9 +8,9 @@ import { AppLink } from '../../../components/nav/AppLink.jsx';
 import { useToast } from '../../../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../../../contexts/GeneralConfigContext.jsx';
 import { useCarreira } from '../../../hooks/useCarreira.js';
-import { salvarTrilha } from '../../../lib/carreiraWrites.js';
+import { gravarTrilhaDaPessoa, salvarTrilha, tirarDoPlano } from '../../../lib/carreiraWrites.js';
 import { numerosDaBase } from '../../../lib/carreira/numeros.js';
-import { novaTrilha, pessoasPorNivel, totalDePessoas } from '../../../lib/carreira/rascunho.js';
+import { novaTrilha, pessoasDaTrilha, pessoasPorNivel, totalDePessoas } from '../../../lib/carreira/rascunho.js';
 import { hrefFor } from '../../../lib/routes.js';
 import {
   BASE_UI, BOTAO_PRIMARIO, maiuscula, numerosContamTexto, paraQuemTexto, pessoasTexto, quandoTexto,
@@ -115,6 +115,29 @@ export function CarreiraSettingsSection({ db, appUser, usersList, listenersActiv
     toast.error(err?.paraTela ? err.message : texto);
   };
 
+  // A aba Pessoas grava no cadastro da pessoa, na hora. Devolvem se gravou,
+  // como o onSalvar do balão "Trilha e nível" espera.
+  const gravarPessoa = async (pessoa, dados) => {
+    try {
+      await gravarTrilhaDaPessoa(db, pessoa, dados);
+      toast.success('Trilha e nível salvos.');
+      return true;
+    } catch (err) {
+      falhou(err, 'Não deu para salvar. Tente de novo.');
+      return false;
+    }
+  };
+  const tirarPessoa = async (pessoa) => {
+    try {
+      await tirarDoPlano(db, pessoa);
+      toast.success(`${pessoa.nome || 'A pessoa'} saiu do plano de carreira.`);
+      return true;
+    } catch (err) {
+      falhou(err, 'Não deu para tirar do plano. Tente de novo.');
+      return false;
+    }
+  };
+
   if (aberta) {
     const pessoas = pessoasDe(gravada ?? aberta);
     const salvar = (rascunho) => salvarTrilha(db, {
@@ -138,7 +161,10 @@ export function CarreiraSettingsSection({ db, appUser, usersList, listenersActiv
           gravada={gravada}
           outras={outrasDe(aberta.id)}
           pessoas={pessoas}
-          aba={trilhaAba === 'regras' ? 'regras' : 'metas'}
+          aba={trilhaAba === 'regras' || (trilhaAba === 'pessoas' && gravada) ? trilhaAba : 'metas'}
+          equipe={gravada ? pessoasDaTrilha(gravada, { professores, usuarios: usersList }) : null}
+          onGravarPessoa={gravarPessoa}
+          onTirarPessoa={tirarPessoa}
           onAba={(a) => onAba(aberta.id, a)}
           voltarHref={listaHref}
           modalities={modalities}

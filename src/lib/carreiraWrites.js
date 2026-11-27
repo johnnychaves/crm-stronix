@@ -5,10 +5,20 @@
 // em trilhas diferentes não se apagarem. O documento que ainda não existe
 // nasce com setDoc e merge. As regras do Firestore já deixam o gestor gravar
 // stronix_config.
-import { doc, FieldPath, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
-import { appId, CONFIG_PATH } from './firebase.js';
+import { doc, FieldPath, serverTimestamp, setDoc, Timestamp, updateDoc } from 'firebase/firestore';
+import { appId, CONFIG_PATH, PROFESSORS_PATH, USERS_PATH } from './firebase.js';
 import { MOTIVO_DO_ARQUIVAR, trilhaParaGravar } from './carreira/rascunho.js';
+import { FORA_DO_PLANO } from './carreira/trilhas.js';
 import { podeArquivar, problemaDaTrilha } from './carreira/validacao.js';
+
+// A trilha e o nível de uma pessoa (a do pessoasDaTrilha): no professor, em
+// stronix_professores; no consultor, em stronix_users, pelo ramo isAdmin das
+// regras (a carreiraKept() barra a própria pessoa).
+const refPessoa = (db, p) => doc(db, 'artifacts', appId, 'public', 'data', p.tipo === 'professor' ? PROFESSORS_PATH : USERS_PATH, p.id);
+export const gravarTrilhaDaPessoa = (db, pessoa, { trilhaId, nivel, desde }) =>
+  updateDoc(refPessoa(db, pessoa), { trilhaId, nivel, nivelDesde: Timestamp.fromDate(desde) });
+export const tirarDoPlano = (db, pessoa) =>
+  updateDoc(refPessoa(db, pessoa), { trilhaId: FORA_DO_PLANO, nivel: null, nivelDesde: null });
 
 const refCarreira = (db) => doc(db, 'artifacts', appId, 'public', 'data', CONFIG_PATH, 'carreira');
 // Erro com texto para a tela (o aviso mostra a mensagem), como no npsWrites.
