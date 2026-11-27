@@ -184,6 +184,25 @@ export const ROUTINE_MARKS_PATH = 'stronix_rotina_marcas';
 export const NPS_PESQUISAS_PATH = 'stronix_nps_pesquisas';
 export const NPS_RESPOSTAS_PATH = 'stronix_nps_respostas';
 export const NPS_TOTAIS_PATH = 'stronix_nps_totais';
-// Presenças na aula de funcional, por aluno e semana (aderência, PR 6). Só o
-// script de importação grava.
+// Módulo Professor e faltosos (src/lib/modules.js e a spec
+// docs/superpowers/specs/2026-10-02-professor-e-faltosos-design.md, "Os
+// dados"). As regras só deixam ler e gravar estas coleções com o módulo
+// `faltosos` ligado: sem ele, a leitura vem com permission-denied, então
+// quem lê confere o hasModule antes.
+// Estado de cada aluno faltando. 1 doc por aluno, id = leadId.
+export const FALTOSOS_PATH = 'stronix_faltosos';
+// Presenças vindas do relatório Presenças da Next Fit, gravadas pela
+// importação. 1 doc por aluno e mês, id = `${leadId}_${AAAA-MM}`. A aderência
+// do perfil do professor soma os dias por semana (presencasPorSemana, em
+// src/lib/professor/aderencia.js).
 export const PRESENCAS_PATH = 'stronix_presencas';
+// Registro de cada importação das planilhas da Next Fit, com id tirado das
+// datas dos arquivos (idDaImportacao, em src/lib/faltosos/planoImportacao.js).
+// Só o gestor lê.
+export const IMPORTACOES_NEXTFIT_PATH = 'stronix_importacoes_nextfit';
+// O nome com que cada aluno aparece na Next Fit, ligado ao lead. id = nomeChave
+// (src/lib/faltosos/ligacaoAlunos.js). Só o gestor lê e grava.
+export const NEXTFIT_ALUNOS_PATH = 'stronix_nextfit_alunos';
+// Configuração do módulo, um doc dentro de CONFIG_PATH: marcos, janela do
+// urgente, professores da Next Fit e a última importação. Todo membro lê.
+export const CONFIG_FALTOSOS_ID = 'faltosos';

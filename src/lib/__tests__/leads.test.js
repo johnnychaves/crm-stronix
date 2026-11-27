@@ -15,6 +15,7 @@ import {
   isRegistrationNote,
   isRegistrationInteraction,
   ZAP_SIGNUP_TYPE,
+  PRESENCE_RETURN_TYPE,
   ZAP_SIGNAL_TYPE,
   isZapSignalInteraction,
   hasActiveInteractionToday,
@@ -652,5 +653,24 @@ describe('isZapSignalInteraction', () => {
     expect(isZapSignalInteraction({ type: 'note', text: 'zap_signal' })).toBe(false);
     expect(isZapSignalInteraction(null)).toBe(false);
     expect(isZapSignalInteraction(undefined)).toBe(false);
+  });
+});
+
+describe('volta a treinar da importação da Next Fit (type presence_return)', () => {
+  const VOLTA = { leadId: 'l1', type: 'presence_return', text: 'Voltou a treinar em 03/10', createdAt: TODAY_10H };
+
+  it('o tipo tem nome fixo: é o que fica gravado na interação', () => {
+    expect(PRESENCE_RETURN_TYPE).toBe('presence_return');
+  });
+
+  it('não acende o "Já interagido hoje": a planilha não é contato com a pessoa', () => {
+    expect(hasActiveInteractionToday({ id: 'l1' }, [VOLTA], TODAY_START)).toBe(false);
+    // Um contato de verdade no mesmo dia continua contando.
+    const nota = { leadId: 'l1', type: 'note', text: 'Ligou', createdAt: TODAY_10H };
+    expect(hasActiveInteractionToday({ id: 'l1' }, [VOLTA, nota], TODAY_START)).toBe(true);
+  });
+
+  it('não é registro do cadastro', () => {
+    expect(isRegistrationInteraction(VOLTA)).toBe(false);
   });
 });

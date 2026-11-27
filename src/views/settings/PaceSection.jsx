@@ -11,10 +11,13 @@ import { useToast } from '../../contexts/ToastContext.jsx';
 import { SettingsPanel, SettingsSectionHeader } from '../../components/ui/SettingsCard.jsx';
 import { DialogField, FIELD_INPUT, FormDialog, PanelNote, SettingsBtn } from './settingsBits.jsx';
 import { DG_WEEKDAY_NAMES } from '../DailyGoalView.jsx';
+import { FaltososPanel } from './FaltososPanel.jsx';
 
-// Metas & ritmo — as regras que decidem o que aparece na Meta Diária e quando
+// Metas & ritmo: as regras que decidem o que aparece na Meta Diária e quando
 // um lead vira urgente. Três blocos de configuração da academia (dias, SLA e
-// marcos de renovação) mais o piso individual de prospecção.
+// marcos de renovação) mais o piso individual de prospecção. Com o módulo
+// Professor e faltosos, entra no fim o bloco Faltosos (FaltososPanel), que
+// grava outro documento, o stronix_config/faltosos.
 
 // Cor de cada marco na régua do contrato: azul → violeta → âmbar, e rosa
 // reservado ao vencimento (o marco 0, que não é configurável).
@@ -73,7 +76,7 @@ function CycleRuler({ checkpoints }) {
   );
 }
 
-function PaceSection({ db, usersList, metaWeekdays }) {
+function PaceSection({ db, usersList, metaWeekdays, appUser }) {
   const toast = useToast();
   const { slaOverdueDays, renewalCheckpoints = [90, 60, 30], renewalGraceDays } = useGeneralConfig();
   const [checkpointOpen, setCheckpointOpen] = useState(false);
@@ -364,6 +367,10 @@ function PaceSection({ db, usersList, metaWeekdays }) {
           </div>
         </div>
       </SettingsPanel>
+
+      {/* Bloco Faltosos: só aparece para o gestor, com o módulo Professor e
+          faltosos ligado e com a configuração dele já lida (FaltososPanel). */}
+      <FaltososPanel db={db} appUser={appUser} />
 
       <FormDialog
         open={checkpointOpen}

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { normalizeContracts } from '../operacional/base.js';
-import { aderenciaDoAno, aderenciaDoSemestre, aderenciaPorSemana, aderenciaResumo, aderenciaSomada } from '../professor/aderencia.js';
+import { aderenciaDoAno, aderenciaDoSemestre, aderenciaPorSemana, aderenciaResumo, aderenciaSomada, presencasPorSemana } from '../professor/aderencia.js';
 import { pecasDaAderencia } from '../carreira/periodo.js';
 
 const semestresDoCiclo = (ciclo) => pecasDaAderencia({ inicio: new Date(ciclo - 1, 11, 1), fim: new Date(ciclo, 11, 1) });
@@ -144,6 +144,59 @@ describe('aderência com outro calendário', () => {
     ];
     expect(aderenciaDoAno(linhas, pecas, new Date('2028-03-05T12:00:00')).nota).toBe(70);
     expect(aderenciaResumo(linhas, pecas, new Date('2027-05-10T12:00:00'))).toMatchObject({ taxa: 60, emAndamento: true });
+  });
+});
+
+describe('presencasPorSemana (os documentos por mês da importação da Next Fit)', () => {
+  const dia = (hora = '07:00', origens = ['catraca']) => ({ hora, origens, modalidades: [] });
+  const ordenar = (lista) => [...lista].sort((a, b) => `${a.leadId}_${a.semana}`.localeCompare(`${b.leadId}_${b.semana}`));
+
+  it('cada dia de segunda a sexta conta uma vez, pela catraca ou pela agenda', () => {
+    const docs = [{ leadId: 'l1', mes: '2027-01', dias: {
+      '2027-01-11': dia(), '2027-01-12': dia('18:00', ['agenda']), '2027-01-13': dia('07:00', ['catraca', 'agenda']),
+      '2027-01-18': dia(),
+    } }];
+    expect(ordenar(presencasPorSemana(docs))).toEqual([
+      { leadId: 'l1', semana: '2027-01-11', presencas: 3 },
+      { leadId: 'l1', semana: '2027-01-18', presencas: 1 },
+    ]);
+  });
+
+  it('sábado e domingo não contam, e a semana só com eles não aparece', () => {
+    const docs = [{ leadId: 'l1', mes: '2027-01', dias: { '2027-01-16': dia(), '2027-01-17': dia(), '2027-01-22': dia() } }];
+    expect(presencasPorSemana(docs)).toEqual([{ leadId: 'l1', semana: '2027-01-18', presencas: 1 }]);
+  });
+
+  it('a semana que atravessa o fim do mês junta os dois documentos', () => {
+    const docs = [
+      { leadId: 'l1', mes: '2026-11', dias: { '2026-11-30': dia() } },
+      { leadId: 'l1', mes: '2026-12', dias: { '2026-12-01': dia(), '2026-12-03': dia() } },
+    ];
+    expect(presencasPorSemana(docs)).toEqual([{ leadId: 'l1', semana: '2026-11-30', presencas: 3 }]);
+  });
+
+  it('cada aluno tem a sua linha, e documento sem lead ou sem dias é ignorado', () => {
+    const docs = [
+      { leadId: 'l1', mes: '2027-01', dias: { '2027-01-11': dia() } },
+      { leadId: 'l2', mes: '2027-01', dias: { '2027-01-11': dia(), '2027-01-14': dia() } },
+      { mes: '2027-01', dias: { '2027-01-11': dia() } },
+      { leadId: 'l3', mes: '2027-01' },
+      null,
+    ];
+    expect(ordenar(presencasPorSemana(docs))).toEqual([
+      { leadId: 'l1', semana: '2027-01-11', presencas: 1 },
+      { leadId: 'l2', semana: '2027-01-11', presencas: 2 },
+    ]);
+  });
+
+  it('a saída é a entrada do aderenciaPorSemana', () => {
+    const docs = [{ leadId: 'l1', mes: '2027-01', dias: { '2027-01-18': dia(), '2027-01-19': dia() } }];
+    const contratos = normalizeContracts([contrato('l1')]);
+    const [linha] = aderenciaPorSemana({
+      presencas: presencasPorSemana(docs), leads: [{ id: 'l1', professorId: 'p1' }], contratos, planos: PLANOS,
+      professor: PROF, asOf: new Date('2027-02-01T12:00:00'),
+    });
+    expect(linha).toMatchObject({ semana: '2027-01-18', contam: 1, aderentes: 1 });
   });
 });
 

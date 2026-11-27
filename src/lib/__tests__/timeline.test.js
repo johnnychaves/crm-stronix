@@ -841,3 +841,34 @@ describe('parseAppointment: o texto do freepass não é agendamento', () => {
     expect(parseAppointment({ text: 'Freepass encerrado: Muscu 7 dias.' })).toBeNull();
   });
 });
+
+describe('volta a treinar (type presence_return)', () => {
+  // Gravada pela importação das planilhas da Next Fit
+  // (src/lib/faltosos/lotesImportacao.js).
+  const VOLTA = {
+    type: 'presence_return',
+    text: 'Voltou a treinar entre 26/09 e 06/10',
+    consultantName: 'Johnny',
+    createdAt: new Date(2026, 9, 6, 9, 12)
+  };
+
+  it('tem bucket próprio, decidido pelo type', () => {
+    expect(classifyInteraction(VOLTA)).toBe('presence');
+    // Nem um texto que lembra conversa ou contrato leva a linha para outro bucket.
+    expect(classifyInteraction({ ...VOLTA, text: '📲 Mensagem WhatsApp enviada: voltou' })).toBe('presence');
+    expect(classifyInteraction({ ...VOLTA, text: 'Voltou a treinar em 03/10, matrícula ativa' })).toBe('presence');
+  });
+
+  it('entra em Marcos e em Tudo, e não é sistema: aparece com o interruptor desligado', () => {
+    expect(TIMELINE_FILTERS.find((f) => f.id === 'milestone').kinds).toContain('presence');
+    expect(matchesTimelineFilter('presence', 'milestone')).toBe(true);
+    expect(matchesTimelineFilter('presence', 'all')).toBe(true);
+    expect(matchesTimelineFilter('presence', 'conversation')).toBe(false);
+    expect(matchesTimelineFilter('presence', 'note')).toBe(false);
+    expect(classifyInteraction(VOLTA)).not.toBe('system');
+  });
+
+  it("rótulo da coluna: 'Presença'", () => {
+    expect(timelineTypeLabel({ ...VOLTA, _kind: 'presence' })).toBe('Presença');
+  });
+});

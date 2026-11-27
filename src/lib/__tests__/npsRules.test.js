@@ -60,10 +60,4 @@ describe('regras da pesquisa de NPS', () => {
     expect(allow(totais, 'write')).toBe('if false');
   });
 
-  it('presenças: quem é da academia lê com o módulo, ninguém grava pelo navegador', () => {
-    const presencas = blocoDe('stronix_presencas');
-    expect(allow(presencas, 'read')).toContain("hasModule(appId, 'faltosos')");
-    expect(allow(presencas, 'read')).not.toContain('isAdmin');
-    expect(allow(presencas, 'write')).toBe('if false');
-  });
 });

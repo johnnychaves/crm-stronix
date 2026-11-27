@@ -63,6 +63,13 @@ const REVISADOS = {
   'api/admin-users.js': 'papel da equipe',
   'api/invite-accept.js': 'convite de professor',
   'api/invite-create.js': 'convite de professor',
+  // Faltosos (Professor e faltosos, PR 2A): o professor do aluno no estado
+  // dos faltosos e nas ligações da Next Fit. Nenhum deles grava o lead.
+  'src/lib/faltosos/ligacaoProfessores.js': 'ligação dos professores da Next Fit, guardada em stronix_config/faltosos',
+  'src/lib/faltosos/planoImportacao.js': 'estado de cada faltoso (stronix_faltosos), não o lead',
+  'src/lib/faltosos/lotesImportacao.js': 'gravação de stronix_faltosos, nunca de stronix_leads',
+  'src/lib/faltosos/passosImportacao.js': 'escolhas da ligação dos professores na janela',
+  'src/lib/faltosos/configuracoes.js': 'troca da ligação de um professor da Next Fit',
 };
 
 const comChave = [...arquivosDeCodigo(join(RAIZ, 'src')), ...arquivosDeCodigo(join(RAIZ, 'api'))]
