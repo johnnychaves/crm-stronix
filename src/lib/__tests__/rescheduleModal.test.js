@@ -7,6 +7,14 @@ import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest
 import { createElement as h, act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ToastContext } from '../../contexts/ToastContext.jsx';
+import { GeneralConfigContext } from '../../contexts/GeneralConfigContext.jsx';
+
+// A leitura dos freepass e dos registros (só com o módulo); a regra é a de verdade.
+const fpRead = vi.hoisted(() => ({ data: null, calls: 0 }));
+vi.mock('../../lib/freepassMetaWrites.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  readMetaFreepassData: async () => { fpRead.calls += 1; return fpRead.data; },
+}));
 
 const { RescheduleModal } = await import('../../modals/RescheduleModal.jsx');
 
@@ -16,15 +24,16 @@ const toast = { show: vi.fn(), success: vi.fn(), error: vi.fn(), info: vi.fn(), 
 const lead = { id: 'l1', name: 'Mateus Brandão', appointmentType: 'visita' };
 
 let root = null;
-async function montar(currentDate, extra = {}) {
+async function montar(currentDate, extra = {}, config = null) {
   const onConfirm = vi.fn(async () => {});
   const onClose = vi.fn();
   const container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
+  const modal = h(RescheduleModal, { lead, categorySlug: 'visita_hoje', currentDate, currentType: 'visita', onConfirm, onClose, ...extra });
   await act(async () => {
     root.render(h(ToastContext.Provider, { value: toast },
-      h(RescheduleModal, { lead, categorySlug: 'visita_hoje', currentDate, currentType: 'visita', onConfirm, onClose, ...extra })));
+      config ? h(GeneralConfigContext.Provider, { value: config }, modal) : modal));
   });
   return { onConfirm, onClose };
 }
@@ -149,5 +158,67 @@ describe('RescheduleModal', () => {
       document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     });
     expect(onClose).toHaveBeenCalled();
+  });
+
+  // Com o módulo Stronix 2.0, o freepass diz quantas aulas são: o "Aulas
+  // previstas" sai e entra a linha do que a aula faz com o freepass.
+  describe('com o freepass', () => {
+    const config = {
+      modalities: [{ id: 'm1', name: 'Pilates' }], trialClassOptions: [1, 2, 3], professores: [],
+      freepassTypes: [{ id: 't1', name: 'Pilates 2 aulas', modalidadeId: 'm1', kind: 'aulas', quantity: 2, padrao: true, ativo: true }],
+    };
+    const aulaLead = { id: 'l1', name: 'Rafaela Souza', appointmentType: 'aula_experimental', appointmentModality: 'Pilates', currentAulaId: 'a1', appointmentScheduledFor: new Date(2026, 9, 16, 16, 30) };
+    const fp = (over = {}) => ({ id: 'f1', kind: 'aulas', total: 2, aulas: 1, typeName: 'Pilates 2 aulas', modalidadeId: 'm1', status: 'correndo', startsAt: new Date(2026, 9, 10), endsAt: null, contractAtStart: null, ...over });
+    const abrir = (appUser = { id: 'u1', role: 'consultant' }) => montar(new Date(2026, 9, 16, 16, 30),
+      { lead: aulaLead, categorySlug: 'aula_hoje', currentType: 'aula_experimental', db: {}, appUser, freepassOn: true }, config);
+    const linha = () => document.querySelector('[data-slot="freepass-line"]')?.textContent;
+    afterEach(() => { fpRead.data = null; fpRead.calls = 0; });
+
+    it('a aula pendente continua no freepass, sem "Aulas previstas", e a gravação vai sem quantidade', async () => {
+      fpRead.data = { freepasses: [fp({ aulas: 2 })], records: [{ id: 'a1', type: 'aula', status: 'agendada', freepassId: 'f1', scheduledFor: new Date(2026, 9, 16, 16, 30) }] };
+      const { onConfirm } = await abrir();
+      expect(fpRead.calls).toBe(1);
+      expect(linha()).toBe('Continua no freepass Pilates 2 aulas');
+      expect(document.body.textContent).toContain('Pilates · sem professorAlterar');
+      await clicar('Alterar');
+      expect(document.body.textContent).not.toContain('Aulas previstas');
+      expect(document.querySelectorAll('select')).toHaveLength(2);
+      await clicar('Remarcar');
+      expect(onConfirm.mock.calls[0][4]).toBeNull();
+    });
+
+    it('sem freepass na modalidade, nasce o do tipo padrão; para o professor, aula avulsa', async () => {
+      fpRead.data = { freepasses: [], records: [] };
+      await abrir();
+      expect(linha()).toBe('Nasce o freepass Pilates 2 aulas');
+      await act(async () => { root.unmount(); });
+      document.body.innerHTML = '';
+      await abrir({ id: 'p1', role: 'professor' });
+      expect(linha()).toBe('Aula avulsa: só o consultor lança freepass');
+    });
+
+    it('já teve freepass de Pilates: aula avulsa', async () => {
+      fpRead.data = { freepasses: [fp({ status: 'encerrado' })], records: [] };
+      await abrir();
+      expect(linha()).toBe('Aula avulsa: já teve freepass de Pilates em 10/10');
+    });
+
+    it('mostra que está conferindo até a leitura chegar', async () => {
+      let solta;
+      fpRead.data = new Promise((r) => { solta = r; });
+      await abrir();
+      expect(linha()).toBe('Conferindo o freepass…');
+      await act(async () => { solta({ freepasses: [], records: [] }); });
+      expect(linha()).toBe('Nasce o freepass Pilates 2 aulas');
+    });
+
+    it('sem o módulo, o pop-up é o de antes e não lê nada', async () => {
+      await montar(new Date(2026, 9, 16, 16, 30), { lead: aulaLead, categorySlug: 'aula_hoje', currentType: 'aula_experimental', db: {} }, config);
+      expect(fpRead.calls).toBe(0);
+      expect(linha()).toBeUndefined();
+      expect(document.body.textContent).toContain('1 aula');
+      await clicar('Alterar');
+      expect(document.body.textContent).toContain('Aulas previstas');
+    });
   });
 });
