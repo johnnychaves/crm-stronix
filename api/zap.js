@@ -40,7 +40,7 @@ import {
 import {
   SCHEDULE_LIMIT, ZAP_SCHEDULE_MESSAGES, unitsView, readScheduleOptionsBody, buildScheduleOptions,
   readScheduleBody, readStatusBody, scheduleWithStoredNames, checkScheduleCatalog, checkFuture, leadBelongsToNumber,
-  hasSameAppointment,
+  hasSameAppointment, sameOpenAula, aulaDetailOf,
   scheduleRecordChanges, freepassPlan, buildScheduleWrites, appointmentDetailOf, alreadyScheduledBody, scheduleRefusal
 } from './_zapSchedule.js';
 import { contactOf } from '../src/lib/guardian.js';
@@ -635,8 +635,11 @@ async function handleSchedule(req, res) {
     // dois cliques, duas pessoas ou o "Tentar de novo" depois de uma resposta
     // perdida gravam uma vez só e dão um ponto só na Meta. Só o pedido idêntico
     // ao agendamento em aberto, sem desfecho, é o repetido: mudar unidade,
-    // professor, modalidade ou quantidade, ou escrever uma anotação diferente
-    // da do lead, no mesmo horário, é remarcação e grava. Agendamento com
+    // professor, modalidade ou (sem o módulo Stronix 2.0) quantidade, ou
+    // escrever uma anotação diferente da do lead, no mesmo horário, é
+    // remarcação e grava. Com o módulo, a quantidade não conta, e o pedido que
+    // bate com outra aula em aberto do lead também é o repetido
+    // (sameOpenAula). Agendamento com
     // desfecho marcado (compareceu ou não compareceu) também grava, e o
     // desfecho sai. Pedido sem anotação nunca conta como mudança, porque o
     // balão do Stronizap não recebe a anotação que o lead já tem
@@ -645,7 +648,9 @@ async function handleSchedule(req, res) {
       const leadSnap = await tx.get(leadRef);
       const lead = leadSnap.exists ? leadDoDoc(leadSnap) : null;
       if (!leadBelongsToNumber(lead, matchKey, agora)) return { notTheLead: true };
-      if (hasSameAppointment(lead, { type: schedule.type, at, schedule })) return { repeated: lead };
+      if (hasSameAppointment(lead, { type: schedule.type, at, schedule, freepassOn: Boolean(freepassCol) })) {
+        return { repeated: lead };
+      }
 
       // Os registros do lead em stronix_aulas, lidos antes de qualquer
       // gravação. Deles sai o que o assistente da ficha faria
@@ -656,6 +661,8 @@ async function handleSchedule(req, res) {
       // aula só reaproveita o registro do currentAulaId se ele for mesmo uma
       // aula deste lead (isOpenAulaRecord); senão, nasce outro.
       const records = docsOf(await tx.get(aulas.where('leadId', '==', lead.id)));
+      const twin = freepassCol && schedule.type === 'aula_experimental' ? sameOpenAula(lead, records, { at, schedule }) : null;
+      if (twin) return { repeated: lead, repeatedAula: twin };
       // Os freepass do lead também são lidos antes de qualquer gravação.
       const freepasses = freepassCol ? docsOf(await tx.get(freepassCol.where('leadId', '==', lead.id))) : null;
       const { close, openRecordId } = scheduleRecordChanges({ lead, schedule, at, records });
@@ -682,7 +689,10 @@ async function handleSchedule(req, res) {
       tx.create(interactionRef, writes.interaction);
       if (writes.launchInteraction) tx.create(interactions.doc(), writes.launchInteraction);
       tx.update(leadRef, writes.leadPatch);
-      return { scheduled: { ...lead, ...writes.leadPatch } };
+      // Com a aula da vez, o lead aponta para outra aula: a resposta descreve a
+      // pedida, porque é dela que o Stronizap monta a confirmação.
+      const requestedAula = freepass?.daVez ? { ...(writes.record.update || writes.record.create) } : null;
+      return { scheduled: { ...lead, ...writes.leadPatch }, requestedAula };
     });
 
     if (outcome.notTheLead) {
@@ -691,9 +701,15 @@ async function handleSchedule(req, res) {
     const units = unitsView(catalogs.units);
     const card = await cardFor(tenantId, matchKey, { strictWards: true });
     if (outcome.repeated) {
-      return res.status(409).json(alreadyScheduledBody({ card, appointment: appointmentDetailOf(outcome.repeated, units) }));
+      const appointment = outcome.repeatedAula
+        ? aulaDetailOf(outcome.repeated, outcome.repeatedAula)
+        : appointmentDetailOf(outcome.repeated, units);
+      return res.status(409).json(alreadyScheduledBody({ card, appointment }));
     }
-    return res.status(201).json({ card, appointment: appointmentDetailOf(outcome.scheduled, units) });
+    const appointment = outcome.requestedAula
+      ? aulaDetailOf(outcome.scheduled, outcome.requestedAula)
+      : appointmentDetailOf(outcome.scheduled, units);
+    return res.status(201).json({ card, appointment });
   } catch (e) {
     throw scrubbedError('schedule', e);
   }

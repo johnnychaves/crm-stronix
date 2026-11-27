@@ -776,17 +776,19 @@ describe('hasSameAppointment: o pedido idêntico ao agendamento que o lead já t
     ['outro professor', { professorId: 'p2' }],
     ['"Treina sozinho" no lugar do professor', { professorId: null, soloTraining: true }],
     ['outra modalidade', { modality: 'Musculação' }],
+    ['outra quantidade de aulas', { quantity: 3 }],
     ['outra anotação', { note: 'Traz tênis.' }]
   ])('aula no mesmo horário com %s é remarcação', (_, extra) => {
     expect(hasSameAppointment(PEDRO, pedidoAula(extra))).toBe(false);
   });
 
-  // Desde o freepass, quem diz quantas aulas são é ele. O Stronizap ainda manda
-  // a quantidade, e ela não muda o agendamento, com o lead tendo a quantidade
-  // gravada ou não.
-  it('a quantidade de aulas não conta: outra quantidade, ou o lead sem ela, é o mesmo agendamento', () => {
-    expect(hasSameAppointment(PEDRO, pedidoAula({ quantity: 3 }))).toBe(true);
-    expect(hasSameAppointment({ ...PEDRO, trialClassesPlanned: null }, pedidoAula({ quantity: 1 }))).toBe(true);
+  // Com o módulo Stronix 2.0, quem diz quantas aulas são é o freepass. O
+  // Stronizap ainda manda a quantidade, e ela não muda o agendamento, com o
+  // lead tendo a quantidade gravada ou não. Sem o módulo, continua contando.
+  it('com o módulo, a quantidade de aulas não conta: outra quantidade, ou o lead sem ela, é o mesmo agendamento', () => {
+    expect(hasSameAppointment(PEDRO, { ...pedidoAula({ quantity: 3 }), freepassOn: true })).toBe(true);
+    expect(hasSameAppointment({ ...PEDRO, trialClassesPlanned: null }, { ...pedidoAula({ quantity: 1 }), freepassOn: true })).toBe(true);
+    expect(hasSameAppointment({ ...PEDRO, trialClassesPlanned: null }, pedidoAula({ quantity: 1 }))).toBe(false);
   });
 
   it('quem treinava sozinho e agora tem professor é remarcação', () => {
@@ -1377,7 +1379,7 @@ describe('buildScheduleWrites com o freepass', () => {
     expect(w.launchInteraction).toEqual({
       batchSeq: 1, leadId: 'L1', leadName: 'Mariana Lima', consultantName: 'Ana Souza', leadConsultantId: 'u-ana', leadConsultantAuthUid: 'auth-ana',
       actorId: 'u-ana', actorAuthUid: 'auth-ana', createdAt: HORA, type: 'freepass',
-      text: 'Freepass lançado: Pilates 2 aulas (Pilates), 2 aulas para agendar.', freepassId: 'fp-novo',
+      text: 'Freepass lançado: Pilates 2 aulas (Pilates), 1 aula marcada, 1 para agendar.', freepassId: 'fp-novo',
       via: 'stronizap', zapChannelName: 'Recepção', byAi: true
     });
     expect(w.leadPatch).toMatchObject({

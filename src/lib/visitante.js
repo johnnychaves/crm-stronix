@@ -202,8 +202,14 @@ export function freepassLaunchText(fp) {
   const head = `Freepass lançado: ${fp.typeName} (${fp.modalidadeName})`;
   if (fp.kind === FREEPASS_KINDS.AULAS) {
     const qtd = freepassQuantityText({ kind: fp.kind, quantity: fp.total });
-    // Pelo Agendar, as aulas nascem marcadas; pela aba Contratos, ficam para agendar.
-    if ((fp.aulas ?? 0) >= fp.total) return `${head}, ${qtd} ${fp.total === 1 ? 'marcada' : 'marcadas'}.`;
+    // Pelo Agendar, as aulas nascem marcadas; pela aba Contratos, ficam para
+    // agendar; pelo Stronizap, nasce só a aula pedida.
+    const aulas = fp.aulas ?? 0;
+    if (aulas >= fp.total) return `${head}, ${qtd} ${fp.total === 1 ? 'marcada' : 'marcadas'}.`;
+    if (aulas > 0) {
+      const marcadas = `${freepassQuantityText({ kind: fp.kind, quantity: aulas })} ${aulas === 1 ? 'marcada' : 'marcadas'}`;
+      return `${head}, ${marcadas}, ${fp.total - aulas} para agendar.`;
+    }
     return `${head}, ${qtd} para agendar.`;
   }
   return `${head}, de ${ddmm(getSafeDateOrNull(fp.startsAt))} a ${ddmm(getSafeDateOrNull(fp.endsAt))}.`;

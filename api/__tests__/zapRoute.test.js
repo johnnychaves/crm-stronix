@@ -2991,7 +2991,7 @@ describe('POST /api/zap com action schedule: a aula dentro do freepass', () => {
       }),
       expect.objectContaining({
         batchSeq: 1, type: 'freepass', freepassId: fp.id, byAi: true, actorId: 'u-ana', leadConsultantId: 'u-ana',
-        text: 'Freepass lançado: Pilates 2 aulas (Pilates), 2 aulas para agendar.', via: 'stronizap'
+        text: 'Freepass lançado: Pilates 2 aulas (Pilates), 1 aula marcada, 1 para agendar.', via: 'stronizap'
       })
     ]);
     expect(leadDaAcademia('L1')).toMatchObject({
@@ -3075,8 +3075,27 @@ describe('POST /api/zap com action schedule: a aula dentro do freepass', () => {
     expect(leadDaAcademia('L1')).toMatchObject({
       currentAulaId: 'a2', appointmentScheduledFor: SEGUNDA_9H, appointmentProfessorId: 'p2', appointmentProfessorName: 'Rafael Moura'
     });
-    expect(res.body.appointment).toMatchObject({ at: SEGUNDA_9H.toISOString(), professorName: 'Rafael Moura' });
+    // A resposta descreve a aula pedida, de onde o Stronizap monta a
+    // confirmação; o cartão segue o lead, na aula da vez.
+    expect(res.body.appointment).toEqual({
+      leadId: 'L1', leadName: 'Mariana Souza', type: 'aula_experimental', at: '2026-10-06T22:00:00.000Z',
+      unit: null, unitAddress: null, modality: 'Pilates', professorName: 'Carla Dias', soloTraining: false, quantity: null, outcome: null
+    });
+    expect(res.body.card.appointment).toMatchObject({ at: SEGUNDA_9H.toISOString() });
     expect(interacoesDaAcademia()[0].text).toBe('🔔 Aula Experimental agendada (Pilates) · Carla Dias p/ 06/10/2026, 19:00.');
+
+    // O "Tentar de novo" do mesmo pedido bate com a aula pedida, que não é a da
+    // vez: é o repetido, e a aula da vez não é movida para o mesmo horário.
+    const gravacoes = banco.gravacoes.length;
+    const retry = resposta();
+    await handler(pedidoAgenda({ schedule: { ...AULA_DA_CARLA, date: '2026-10-06' } }), retry);
+
+    expect(retry.statusCode).toBe(409);
+    expect(retry.body.error).toBe('ja_agendado');
+    expect(retry.body.appointment).toEqual(res.body.appointment);
+    expect(banco.gravacoes).toHaveLength(gravacoes);
+    expect(aulasDaAcademia().find((a) => a.id === 'a2').scheduledFor.toDate()).toEqual(SEGUNDA_9H);
+    expect(leadDaAcademia('L1').currentAulaId).toBe('a2');
   });
 
   it('a quantidade não é mais escolha: o mesmo agendamento com outra quantidade é o repetido', async () => {

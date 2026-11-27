@@ -428,9 +428,9 @@ export function leadBelongsToNumber(lead, matchKey, now = new Date()) {
 // de unidade, modalidade e professor, com o agendamento ainda em aberto, sem
 // desfecho. É o pedido repetido (dois cliques, duas pessoas, o "Tentar de novo"
 // depois de uma resposta perdida). Mudou uma dessas escolhas no mesmo horário: é
-// remarcação, e grava, como o assistente da ficha. A quantidade de aulas não
-// conta: desde o freepass (entrega 2 do Visitante) quem diz quantas aulas são é
-// o freepass, e o Stronizap ainda manda o número só por costume.
+// remarcação, e grava, como o assistente da ficha. A quantidade de aulas só
+// conta sem o módulo Stronix 2.0 (`freepassOn`): com ele, quem diz quantas aulas
+// são é o freepass, o lead fica sem a quantidade e o Stronizap ainda manda 1.
 //
 // Agendamento com desfecho (compareceu ou não compareceu) nunca é o mesmo. O
 // desfecho pode ser marcado no mesmo dia, antes do horário (Agenda de hoje,
@@ -449,7 +449,7 @@ export function leadBelongsToNumber(lead, matchKey, now = new Date()) {
 // trouxer), como no assistente. Com um contato (mensagem ou ligação) marcado na
 // ficha depois do compromisso, a anotação do lead é a do contato, e a
 // comparação é com ela.
-export function hasSameAppointment(lead, { type, at, schedule }) {
+export function hasSameAppointment(lead, { type, at, schedule, freepassOn = false }) {
   const current = appointmentDetailOf(lead);
   if (!current || current.outcome || current.type !== type || current.at !== at.toISOString()) return false;
   const note = schedule.note || null;
@@ -457,7 +457,31 @@ export function hasSameAppointment(lead, { type, at, schedule }) {
   if (type === 'visita') return current.unit === (schedule.unit || null);
   return current.modality === (schedule.modality || null)
     && (lead.appointmentProfessorId || null) === (schedule.professorId || null)
-    && current.soloTraining === Boolean(schedule.soloTraining);
+    && current.soloTraining === Boolean(schedule.soloTraining)
+    && (freepassOn || current.quantity === (schedule.quantity || null));
+}
+
+// Com o freepass, o lead aponta para a aula da vez, que pode não ser a pedida.
+// O "Tentar de novo" de um pedido que já gravou bate então com outra aula em
+// aberto do lead, e não com o agendamento dele: é o repetido, e não pode mover
+// a aula da vez para o mesmo horário. A anotação não conta, porque o registro
+// não a guarda. A aula do currentAulaId fica com o hasSameAppointment.
+export function sameOpenAula(lead, records, { at, schedule }) {
+  return (records || []).find((r) => r.id !== lead.currentAulaId && isOpenAulaRecord(r, lead.id)
+    && getSafeDateOrNull(r.scheduledFor)?.getTime() === at.getTime()
+    && (r.modality || null) === (schedule.modality || null)
+    && (r.professorId || null) === (schedule.professorId || null)
+    && Boolean(r.soloTraining) === Boolean(schedule.soloTraining)) || null;
+}
+
+// O AppointmentDetail de um registro de aula do lead (a aula pedida, quando o
+// lead aponta para outra aula da vez), com a regra do appointmentDetailOf.
+export function aulaDetailOf(lead, record) {
+  return appointmentDetailOf({
+    id: lead.id, name: lead.name, appointmentType: 'aula_experimental',
+    appointmentScheduledFor: getSafeDateOrNull(record.scheduledFor), appointmentModality: record.modality,
+    appointmentProfessorName: record.professorName, appointmentSoloTraining: record.soloTraining, trialClassesPlanned: null
+  });
 }
 
 // ---------------------------------------------------------------------------

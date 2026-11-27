@@ -240,6 +240,11 @@ describe('textos da linha do tempo', () => {
       .toBe('Freepass lançado: Pilates 2 aulas (Pilates), 2 aulas marcadas.');
     expect(freepassLaunchText({ typeName: 'Pilates 1 aula', modalidadeName: 'Pilates', kind: 'aulas', total: 1, aulas: 1 }))
       .toBe('Freepass lançado: Pilates 1 aula (Pilates), 1 aula marcada.');
+    // Pelo Stronizap, nasce só a aula pedida.
+    expect(freepassLaunchText({ typeName: 'Pilates 2 aulas', modalidadeName: 'Pilates', kind: 'aulas', total: 2, aulas: 1 }))
+      .toBe('Freepass lançado: Pilates 2 aulas (Pilates), 1 aula marcada, 1 para agendar.');
+    expect(freepassLaunchText({ typeName: 'Pilates 3 aulas', modalidadeName: 'Pilates', kind: 'aulas', total: 3, aulas: 2 }))
+      .toBe('Freepass lançado: Pilates 3 aulas (Pilates), 2 aulas marcadas, 1 para agendar.');
     expect(freepassEndText({ typeName: 'Pilates 2 aulas' })).toBe('Freepass encerrado: Pilates 2 aulas.');
     expect(FREEPASS_INTERACTION_TYPE).toBe('freepass');
   });
