@@ -119,6 +119,14 @@
 .v3 .ctt .acts{flex-direction:column}
 .v3 .ctt .acts > *{justify-content:center;width:100%}
 .v3 .pi{margin-top:12px;display:flex;justify-content:space-between;align-items:center}
+/* troca de aluno no Agora: o novo entra, quem saiu acende na fila */
+@keyframes entra{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes borda{0%{border-left-color:var(--blue)}100%{}}
+@keyframes voltou{0%{background:#dbe6ff}100%{background:#fff}}
+.agora.entra > *{animation:entra .22s ease-out both}
+.agora.entra{animation:borda .6s ease-out}
+.fl.voltou{animation:voltou 1.1s ease-out}
+@media (prefers-reduced-motion:reduce){.agora.entra > *,.agora.entra,.fl.voltou{animation:none}}
 @media (max-width:1080px){.grid{grid-template-columns:1fr}}
 @media (max-width:700px){.v3 .cols{grid-template-columns:1fr}}
 @media (max-width:560px){.ag-c{grid-template-columns:1fr}.fl{grid-template-columns:auto minmax(0,1fr)}.fl .n,.fl .tk{display:none}}
@@ -194,9 +202,17 @@ document.addEventListener('click', (e) => {
   const v = e.target.closest('[data-v]');
   if (v) { versao = Number(v.dataset.v); render(); return; }
   const a = e.target.closest('[data-ag]');
-  if (a) { agoraId = a.dataset.ag; render(); return; }
-  if (e.target.closest('[data-pular]')) { const f = MP.pendentes(); const i = f.findIndex((x) => x.id === agoraId); agoraId = f[(i + 1) % f.length]?.id; render(); }
+  if (a) { trocar(a.dataset.ag); return; }
+  if (e.target.closest('[data-pular]')) { const f = MP.pendentes(); const i = f.findIndex((x) => x.id === agoraId); trocar(f[(i + 1) % f.length]?.id); }
 });
+// Troca o aluno do Agora com os dois efeitos: o novo entra e quem saiu acende na fila.
+function trocar(id) {
+  const saiu = agoraId;
+  agoraId = id;
+  render();
+  document.querySelector('.agora')?.classList.add('entra');
+  document.querySelector(`.fl[data-ag="${saiu}"]`)?.classList.add('voltou');
+}
 MP.ligar(render);
 render();
 </script></body></html>
