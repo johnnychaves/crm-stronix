@@ -43,6 +43,7 @@ const REVISADOS = {
   'src/lib/slotPatch.js': 'o lead aponta para um registro de aula ou visita (appointmentProfessorId, pelo buildSchedulePatch)',
   'src/components/profile/ScheduleWizard.jsx': 'escolha do professor da aula',
   'src/views/LeadProfileView.jsx': 'registro da aula do assistente',
+  'src/views/MetaDiariaRoute.jsx': 'Meta do professor, só lê os faltosos dele (professorId na consulta, nunca grava no lead)',
   'src/views/DailyGoalView.jsx': 'registro da aula do Remarcar',
   'api/_zapSchedule.js': 'registro da aula do agendamento pelo Stronizap',
   // Só mostram ou contam.

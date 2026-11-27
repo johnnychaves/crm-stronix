@@ -32,7 +32,7 @@ describe('tabela de parâmetros', () => {
     expect(SCREEN_PARAM_NAMES.leads).toEqual(['funil', 'fase', 'resp', 'origem', 'ordem']);
     expect(SCREEN_PARAM_NAMES.aulas).toEqual(['dia', 'de', 'ate', 'resp', 'prof']);
     expect(SCREEN_PARAM_NAMES.visitas).toEqual(['dia', 'de', 'ate', 'resp']);
-    expect(SCREEN_PARAM_NAMES.dailyGoal).toEqual(['cat']);
+    expect(SCREEN_PARAM_NAMES.dailyGoal).toEqual(['cat', 'prof']);
     const proibidos = ['invite', 't', 'ref'];
     for (const nomes of Object.values(SCREEN_PARAM_NAMES)) {
       for (const n of nomes) expect(proibidos, n).not.toContain(n);
@@ -54,7 +54,7 @@ describe('tabela de parâmetros', () => {
   it('endereço limpo devolve o padrão de cada tela', () => {
     expect(ler('dashOperacional', '', dash)).toEqual({ monthKey: HOJE, compareOn: true, compareKey: null, person: 'all' });
     expect(ler('clientes', '', { users, situacoes, podeResp: true, respPadrao: [] })).toEqual({ status: [], resp: [] });
-    expect(ler('dailyGoal', '', {})).toEqual({ cat: 'all' });
+    expect(ler('dailyGoal', '', {})).toEqual({ cat: 'all', prof: null });
   });
 
   it('o padrão nunca é escrito no endereço', () => {
@@ -342,7 +342,7 @@ describe('ida e volta de tudo', () => {
   });
 
   it('nome que a tela não conhece é ignorado, e some na próxima montagem', () => {
-    expect(ler('dailyGoal', '?cat=vencido&mes=2026-08&invite=x', {})).toEqual({ cat: 'vencido' });
+    expect(ler('dailyGoal', '?cat=vencido&mes=2026-08&invite=x', {})).toEqual({ cat: 'vencido', prof: null });
     expect(volta('dailyGoal', '?cat=vencido&mes=2026-08&invite=x', {})).toBe('?cat=vencido');
   });
 });
@@ -540,8 +540,8 @@ describe('contrato do contexto de Todos os leads e da Meta', () => {
   });
 
   it('a Meta guarda só a categoria no endereço, e parâmetro desconhecido cai no padrão', () => {
-    expect(SCREEN_PARAM_NAMES.dailyGoal).toEqual(['cat']);
-    expect(ler('dailyGoal', '?visao=equipe&dia=14', {})).toEqual({ cat: 'all' });
+    expect(SCREEN_PARAM_NAMES.dailyGoal).toEqual(['cat', 'prof']);
+    expect(ler('dailyGoal', '?visao=equipe&dia=14', {})).toEqual({ cat: 'all', prof: null });
   });
 });
 
@@ -722,7 +722,7 @@ describe('categoria da Meta (Foco em)', () => {
   });
 
   it('o ?meta=nova da fase de testes não é mais lido e some ao escrever', () => {
-    expect(ler('dailyGoal', '?meta=nova&cat=atrasado', {})).toEqual({ cat: 'atrasado' });
+    expect(ler('dailyGoal', '?meta=nova&cat=atrasado', {})).toEqual({ cat: 'atrasado', prof: null });
     expect(volta('dailyGoal', '?meta=nova&cat=atrasado', {})).toBe('?cat=atrasado');
     expect(volta('dailyGoal', '?meta=nova', {})).toBe('');
   });
@@ -776,5 +776,18 @@ describe('Equipe & acessos', () => {
     expect(v).toEqual({ situacao: 'desligados', funcao: 'professor', vinculo: 'estagio', acesso: 'sem' });
     expect(screenParamsQuery('settings', v)).toBe(q);
     expect(screenParamsQuery('settings', { situacao: 'ativos', funcao: null, vinculo: null, acesso: null })).toBe('');
+  });
+});
+
+describe('dailyGoal: prof', () => {
+  const ctx = { podeVerProf: true, professoresAtivos: [{ id: 'p1' }, { id: 'p2' }] };
+  it('lê só professor ativo, e só para quem pode ver', () => {
+    expect(ler('dailyGoal', '?prof=p1', ctx).prof).toBe('p1');
+    expect(ler('dailyGoal', '?prof=xx', ctx).prof).toBe(null);
+    expect(ler('dailyGoal', '?prof=p1', { ...ctx, podeVerProf: false }).prof).toBe(null);
+  });
+  it('a Meta do próprio gestor não se escreve', () => {
+    expect(montar('dailyGoal', { cat: 'all', prof: null }, ctx)).toBe('');
+    expect(montar('dailyGoal', { cat: 'all', prof: 'p2' }, ctx)).toBe('?prof=p2');
   });
 });

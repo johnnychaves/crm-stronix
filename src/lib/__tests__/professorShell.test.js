@@ -126,8 +126,9 @@ describe('casca do App para o professor', () => {
     expect(app).toMatch(/const ticketsOn = [^;]*&& can\(appUser, ACTIONS\.SUPORTE_ABRIR\);/);
   });
 
-  it('a Meta diária do professor é o ProfessorGoalPlaceholder, e a do resto da equipe continua a DailyGoalView', () => {
-    expect(app).toMatch(/activeTab === 'dailyGoal' && \(isProfessor\(appUser\)\s*\?\s*<ProfessorGoalPlaceholder appUser=\{appUser\} \/>\s*:\s*<DailyGoalView /);
+  it('a Meta diária passa pela MetaDiariaRoute, que decide entre a do professor e a DailyGoalView', () => {
+    expect(app).toMatch(/activeTab === 'dailyGoal' && \(\s*<MetaDiariaRoute/);
+    expect(app).not.toMatch(/ProfessorGoalPlaceholder/);
   });
 
   it('só quem vende tem a Meta do consultor no selo do menu e nas consultas de renovação e de contato de hoje', () => {

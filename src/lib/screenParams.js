@@ -234,6 +234,11 @@ const dataDoPeriodo = (campo) => param(
   (v) => (DIA_RE.test(v || '') ? v : null),
 );
 
+// Professor visto pelo gestor na Meta diária (Meta do professor, 2B). Ausente é
+// a Meta do próprio gestor e nunca se escreve.
+const ativoNaMeta = (ctx, id) => Boolean(ctx.podeVerProf && id && (ctx.professoresAtivos || []).some((p) => p?.id === id));
+const profMeta = param('prof', (raw, ctx) => (ativoNaMeta(ctx, raw) ? raw : null), (v, ctx) => (ativoNaMeta(ctx, v) ? v : null));
+
 const cat = param(
   'cat',
   (raw) => (own(CAT_FOCO_POR_CODIGO, raw) ? CAT_FOCO_POR_CODIGO[raw] : 'all'),
@@ -408,7 +413,7 @@ const TABELA = {
   leads: { funil: funilDaTela, fase, resp, origem, ordem: ordemDosLeads },
   aulas: { dia, de: dataDoPeriodo('de'), ate: dataDoPeriodo('ate'), resp, prof },
   visitas: { dia, de: dataDoPeriodo('de'), ate: dataDoPeriodo('ate'), resp },
-  dailyGoal: { cat },
+  dailyGoal: { cat, prof: profMeta },
   professores: { trilha: trilhaDaLista, ciclo },
   professorPerfil: { ciclo },
   consultorPerfil: { ciclo },
