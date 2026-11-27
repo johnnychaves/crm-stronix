@@ -81,6 +81,7 @@ import { sidebarNav, professorAccessOff } from './lib/sidebarNav.js';
 import { ToastProvider } from './contexts/ToastContext.jsx';
 import { GeneralConfigContext } from './contexts/GeneralConfigContext.jsx';
 import { LeadProfileContext } from './contexts/LeadProfileContext.jsx';
+import { normalizeFreepassTypes } from './lib/visitante.js';
 import { normalizeTrialClassOptions, normalizeMetaWeekdays, normalizeSlaOverdueDays, normalizeDailyVolumeTarget, normalizeRenewalCheckpoints } from './lib/leadStatus.js';
 import { normalizeRenewalGraceDays } from './lib/renewalGoal.js';
 import { IMPERSONATION_KEY, readImpersonation } from './lib/superadmin.js';
@@ -354,6 +355,8 @@ function AppInner() {
   // Configurações Gerais da academia: modalidades + opções de quantidade de aulas + unidades.
   const [modalities, setModalities] = useState([]);
   const [trialClassOptions, setTrialClassOptions] = useState([1, 2, 3]);
+  // Tipos de freepass (spec 2026-11-26), em stronix_config/general.freepassTypes.
+  const [freepassTypes, setFreepassTypes] = useState([]);
   const [units, setUnits] = useState([]);
   const [professores, setProfessores] = useState([]);
   // Dias da semana em que a Meta Diária vale para a equipe (0=dom..6=sáb).
@@ -377,8 +380,8 @@ function AppInner() {
   // Valor do GeneralConfigContext (declarado aqui, antes de qualquer early return,
   // para respeitar as regras dos hooks).
   const generalConfigValue = useMemo(
-    () => ({ modalities, trialClassOptions, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget, planos, contratos, contractThresholdDays, renewalCheckpoints, renewalGraceDays, professores, dores }),
-    [modalities, trialClassOptions, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget, planos, contratos, contractThresholdDays, renewalCheckpoints, renewalGraceDays, professores, dores]
+    () => ({ modalities, trialClassOptions, freepassTypes, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget, planos, contratos, contractThresholdDays, renewalCheckpoints, renewalGraceDays, professores, dores }),
+    [modalities, trialClassOptions, freepassTypes, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget, planos, contratos, contractThresholdDays, renewalCheckpoints, renewalGraceDays, professores, dores]
   );
   // Seleção de funil persistida POR ACADEMIA (savedFunnelKey). Começa vazia: a
   // academia só é conhecida no login, e é lá que o funil salvo é lido
@@ -876,6 +879,7 @@ useEffect(() => {
     (snap) => {
       const data = snap.exists() ? snap.data() : null;
       setTrialClassOptions(normalizeTrialClassOptions(data?.trialClassOptions, data?.maxTrialClasses));
+      setFreepassTypes(normalizeFreepassTypes(data?.freepassTypes));
       setMetaWeekdays(normalizeMetaWeekdays(data?.metaWeekdays));
       setSlaOverdueDays(normalizeSlaOverdueDays(data?.slaOverdueDays));
       setDailyVolumeTarget(normalizeDailyVolumeTarget(data?.dailyVolumeTarget));
@@ -890,7 +894,7 @@ useEffect(() => {
       // pela tela.
       setSetupFlags(setupFlagsFromConfig(configTenant, data));
     },
-    () => { setTrialClassOptions([1, 2, 3]); setMetaWeekdays([1, 2, 3, 4, 5]); setSlaOverdueDays(3); setDailyVolumeTarget(0); setContractThresholdDays(30); setRenewalCheckpoints([90, 60, 30]); }
+    () => { setTrialClassOptions([1, 2, 3]); setFreepassTypes([]); setMetaWeekdays([1, 2, 3, 4, 5]); setSlaOverdueDays(3); setDailyVolumeTarget(0); setContractThresholdDays(30); setRenewalCheckpoints([90, 60, 30]); }
   );
 
   let unsubUsers = () => {};
@@ -1965,7 +1969,7 @@ useEffect(() => {
               {/* Relatórios (spec 2026-10-09): o submenu vem do endereço (sub), e
                   trocar de submenu leva o período e os filtros junto. */}
               {activeTab === 'relatorios' && <RelatoriosView db={db} appUser={appUser} tenantName={tenantDisplayName} usersList={usersList} funnels={funnels} sources={sources} liveLeads={metaLeads} interactions={interactions} listenersActive={listenersActive} section={sub} onSection={(id, query) => goToSub('relatorios', id, undefined, query)} />}
-              {activeTab === 'settings' && isGestor(appUser) && <SettingsView section={sub} onSection={(id) => goToSub('settings', id)} trilhaId={trilhaId} trilhaAba={trilhaAba} onCarreiraAba={(id, aba) => goToSub('settings', 'carreira', { trilhaId: id, trilhaAba: aba })} listenersActive={listenersActive} sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} dores={dores} funnels={funnels} modalities={modalities} planos={planos} trialClassOptions={trialClassOptions} units={units} metaWeekdays={metaWeekdays} />}
+              {activeTab === 'settings' && isGestor(appUser) && <SettingsView section={sub} onSection={(id) => goToSub('settings', id)} trilhaId={trilhaId} trilhaAba={trilhaAba} onCarreiraAba={(id, aba) => goToSub('settings', 'carreira', { trilhaId: id, trilhaAba: aba })} listenersActive={listenersActive} sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} dores={dores} funnels={funnels} modalities={modalities} planos={planos} trialClassOptions={trialClassOptions} freepassTypes={freepassTypes} units={units} metaWeekdays={metaWeekdays} />}
               {activeTab === 'rotinas' && isGestor(appUser) && (
                 <RotinasView
                   db={db}

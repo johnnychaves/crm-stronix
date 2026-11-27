@@ -4,15 +4,17 @@
 // As ações recebem o CONTRATO em que agem, porque com renovação marcada o
 // card é o contrato em uso, e não o último.
 // Mockup: docs/superpowers/specs/mockups/2026-09-30-aba-contratos-em-uso.html
-import { Ban, FileText, UserPlus } from 'lucide-react';
+import { Ban, FileText, Ticket, UserPlus } from 'lucide-react';
 import { CONTRACT_STATUS, CONTRACT_STATUS_LABEL, isRenewalNotStarted } from '../../../lib/contracts.js';
 import { contractFactsOf, contractHeroOf, contractTimelineOf, heroActionsOf, heroCountdownOf, joinTextOf } from '../../../lib/contractsTab.js';
 import { contractVigencia, missedCheckpointsLabel, vigenciaRefDate } from '../../../lib/renewal.js';
 import { getSafeDateOrNull } from '../../../lib/dates.js';
+import { activeFreepassesOf } from '../../../lib/visitante.js';
 import { fmtBRL } from '../../../lib/format.js';
 import { cn } from '../../../lib/utils.js';
 import { Btn } from '../../ui/Btn.jsx';
 import { CONTRACT_TONE } from './tone.js';
+import { FreepassCard } from './FreepassCard.jsx';
 import { ContractTimeline } from './ContractTimeline.jsx';
 import { ContractHeroCard } from './ContractHeroCard.jsx';
 import { NextContractStrip } from './NextContractStrip.jsx';
@@ -20,18 +22,31 @@ import { ContractHistoryTable } from './ContractHistoryTable.jsx';
 
 const fmtDia = (d) => (d ? d.toLocaleDateString('pt-BR') : '—');
 
-// Lead ou cliente sem contrato vigente: matrícula.
-function EmptyState({ firstName, isReadOnly, loading, onEnroll }) {
+// Lead ou cliente sem contrato vigente. O lead lança o freepass aqui e se
+// matricula pelo Marcar venda do cabeçalho (spec 2026-11-26). O cliente sem
+// contrato não tem Marcar venda, então continua com Matricular agora.
+function EmptyState({ firstName, isReadOnly, loading, onEnroll, isClient, freepassOn, canFreepass, onLaunchFreepass, lost, experimenting }) {
+  const freepass = freepassOn && !isClient;
   return (
     <section className="rounded-2xl border border-dashed border-slate-300 dark:border-white/[0.1] bg-card p-8 text-center">
       <div className="size-[46px] rounded-[14px] grid place-items-center mx-auto mb-3 bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-300"><FileText size={20} /></div>
       <h3 className="font-display text-[16px] font-bold tracking-tight">Ainda não é cliente</h3>
-      <p className="text-[12.5px] leading-[1.5] text-muted-foreground mt-1.5 max-w-[300px] mx-auto text-pretty">
-        Quando {firstName} fechar, registre plano, valor e vigência. A renovação passa a ser acompanhada por aqui.
+      <p className="text-[12.5px] leading-[1.5] text-muted-foreground mt-1.5 max-w-[320px] mx-auto text-pretty">
+        {freepass && lost
+          ? `${firstName} está em Perda. Reative o lead no alto da ficha para lançar o freepass.`
+          : freepass && experimenting
+          ? `${firstName} está experimentando a academia. A matrícula é pelo Marcar venda, no alto da ficha.`
+          : freepass
+          ? `Quando ${firstName} aceitar experimentar a academia, lance o freepass aqui. A matrícula é pelo Marcar venda, no alto da ficha.`
+          : `Quando ${firstName} fechar, registre plano, valor e vigência. A renovação passa a ser acompanhada por aqui.`}
       </p>
       {!isReadOnly && (
         <div className="mt-4 flex items-center justify-center">
-          <Btn kind="enroll" icon={<UserPlus size={15} />} onClick={onEnroll} disabled={loading}>Matricular agora</Btn>
+          {freepass
+            ? canFreepass && !lost && (experimenting
+              ? <Btn kind="secondary" icon={<Ticket size={15} />} onClick={onLaunchFreepass} disabled={loading}>Lançar outro freepass</Btn>
+              : <Btn kind="visit" icon={<Ticket size={15} />} onClick={onLaunchFreepass} disabled={loading}>Lançar freepass</Btn>)
+            : <Btn kind="enroll" icon={<UserPlus size={15} />} onClick={onEnroll} disabled={loading}>Matricular agora</Btn>}
         </div>
       )}
     </section>
@@ -39,7 +54,7 @@ function EmptyState({ firstName, isReadOnly, loading, onEnroll }) {
 }
 
 // Vencido ou cancelado, sem próximo: o card encolhe e a ação vira nova matrícula.
-function ClosedCard({ hero, facts, status, vigencia, isReadOnly, loading, onEnroll }) {
+function ClosedCard({ hero, facts, status, vigencia, isReadOnly, loading, freepassesLoading, onEnroll, canFreepass, onLaunchFreepass }) {
   const cancelled = status === CONTRACT_STATUS.CANCELADO;
   const tone = CONTRACT_TONE[status];
   const pct = vigencia ? vigencia.elapsedPct : 100;
@@ -71,6 +86,7 @@ function ClosedCard({ hero, facts, status, vigencia, isReadOnly, loading, onEnro
       </div>
       <div className="flex items-center gap-2 flex-wrap px-5 py-3 bg-slate-50 dark:bg-white/[0.03]">
         {!isReadOnly && <Btn kind="enroll" icon={<UserPlus size={14} />} onClick={onEnroll} disabled={loading}>Nova matrícula</Btn>}
+        {!isReadOnly && canFreepass && <Btn kind="visit" icon={<Ticket size={14} />} onClick={onLaunchFreepass} disabled={loading || freepassesLoading}>Lançar freepass</Btn>}
         <span className="text-[12.5px] text-muted-foreground">
           {cancelled ? `Interrompido a ${pct}% da vigência.` : 'O cliente conta como inativo até renovar.'}
         </span>
@@ -81,9 +97,12 @@ function ClosedCard({ hero, facts, status, vigencia, isReadOnly, loading, onEnro
 
 export function ContractsTab({
   lead, leadContracts, firstName, isReadOnly, loading, contractThresholdDays, renewalCheckpoints,
-  onEnroll, onRenew, onEditContract, onContractAction, onActivate
+  onEnroll, onRenew, onEditContract, onContractAction, onActivate,
+  isClient, freepasses = [], freepassesLoading = false, freepassOn = false, canFreepass = false, onLaunchFreepass, onEndFreepass
 }) {
   const now = new Date();
+  // Sem o módulo Stronix 2.0 a aba ignora freepass por inteiro.
+  const running = freepassOn ? activeFreepassesOf(lead, freepasses, now) : [];
   // A aba lê o CONTRATO, não as marcas de cliente: quando as marcas estavam
   // erradas, a aba dizia "Ainda não é cliente" com o contrato gravado.
   // Com próximo contrato, o destaque é o contrato em uso, e no último dia dele
@@ -125,10 +144,13 @@ export function ContractsTab({
   return (
     <div className="flex flex-col gap-4">
       <ContractTimeline timeline={timeline} />
+      {running.map(fp => (
+        <FreepassCard key={fp.id} freepass={fp} now={now} canFreepass={canFreepass && !isReadOnly} loading={loading} onEnd={onEndFreepass} />
+      ))}
       {!hasContract ? (
-        <EmptyState firstName={firstName} isReadOnly={isReadOnly} loading={loading} onEnroll={onEnroll} />
+        <EmptyState freepassOn={freepassOn} firstName={firstName} isReadOnly={isReadOnly} loading={loading || freepassesLoading} lost={lead.status === 'Perda'} experimenting={running.length > 0} onEnroll={onEnroll} isClient={isClient} canFreepass={canFreepass} onLaunchFreepass={onLaunchFreepass} />
       ) : closed ? (
-        <ClosedCard hero={hero} facts={heroFacts} status={status} vigencia={vigencia} isReadOnly={isReadOnly} loading={loading} onEnroll={onEnroll} />
+        <ClosedCard hero={hero} facts={heroFacts} status={status} vigencia={vigencia} isReadOnly={isReadOnly} loading={loading} freepassesLoading={freepassesLoading} onEnroll={onEnroll} canFreepass={freepassOn && canFreepass} onLaunchFreepass={onLaunchFreepass} />
       ) : (
         <ContractHeroCard
           lead={lead}

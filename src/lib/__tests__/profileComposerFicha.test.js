@@ -15,6 +15,7 @@ vi.mock('../firebase.js', () => ({
   appId: 'acad', LEADS_PATH: 'leads', INTERACTIONS_PATH: 'inter', CONTRACTS_PATH: 'contratos',
   db: {}, auth: {}, storage: {},
 }));
+vi.mock('../../hooks/useLeadFreepasses.js', () => ({ useLeadFreepasses: () => [] }));
 vi.mock('../../hooks/useLeadTimeline.js', () => ({ useLeadTimeline: () => [] }));
 const logInteraction = vi.fn(async () => {});
 vi.mock('../interactions.js', () => ({ logInteraction: (...args) => logInteraction(...args) }));

@@ -17,6 +17,7 @@ vi.mock('../firebase.js', () => ({
   appId: 'acad', LEADS_PATH: 'leads', INTERACTIONS_PATH: 'inter', CONTRACTS_PATH: 'contratos',
   db: {}, auth: {}, storage: {},
 }));
+vi.mock('../../hooks/useLeadFreepasses.js', () => ({ useLeadFreepasses: () => [] }));
 let timeline = [];
 vi.mock('../../hooks/useLeadTimeline.js', () => ({ useLeadTimeline: () => timeline }));
 // A ficha de cliente conta as indicações no Firestore.

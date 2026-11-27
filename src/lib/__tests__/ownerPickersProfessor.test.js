@@ -19,6 +19,7 @@ vi.mock('../firebase.js', () => ({
   appId: 'acad', LEADS_PATH: 'leads', INTERACTIONS_PATH: 'inter', CONTRACTS_PATH: 'contratos',
   db: {}, auth: {}, storage: {},
 }));
+vi.mock('../../hooks/useLeadFreepasses.js', () => ({ useLeadFreepasses: () => [] }));
 vi.mock('../../hooks/useLeadTimeline.js', () => ({ useLeadTimeline: () => [] }));
 
 const { LeadProfileView } = await import('../../views/LeadProfileView.jsx');

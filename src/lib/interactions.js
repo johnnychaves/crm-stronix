@@ -32,7 +32,9 @@ export async function logInteraction(db, lead, appUser, interactionPayload, lead
 // ou nada. É o caso do desfecho que grava a nota do motivo e a marca do dia.
 // Em duas gravações, uma falha entre elas deixava o lead mudado e a tarefa
 // fora da Meta sem a marca, e a nova tentativa repetia a nota.
-export async function logInteractions(db, lead, appUser, interactionPayloads, leadPatch = null) {
+// extra (opcional): (batch) => void, para gravar outro documento no MESMO lote,
+// como o freepass (src/lib/freepassWrites.js). Tudo grava ou nada grava.
+export async function logInteractions(db, lead, appUser, interactionPayloads, leadPatch = null, extra = null) {
   const batch = writeBatch(db);
 
   // Todas saem com a mesma hora do servidor. Com mais de uma, batchSeq guarda a
@@ -69,6 +71,8 @@ export async function logInteractions(db, lead, appUser, interactionPayloads, le
     },
     { merge: true }
   );
+
+  if (extra) extra(batch);
 
   await batch.commit();
   return ids;
