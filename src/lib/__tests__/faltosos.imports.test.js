@@ -53,6 +53,7 @@ const MODULOS = [
 // Puros que o plano da importação não alcança (a Meta do professor).
 const MODULOS_DA_META = [
   'src/lib/faltosos/metaProfessor.js',
+  'src/lib/faltosos/contatoDeFalta.js',
 ];
 
 describe('o motor dos faltosos é puro', () => {
