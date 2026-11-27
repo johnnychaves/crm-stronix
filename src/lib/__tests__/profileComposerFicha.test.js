@@ -18,7 +18,12 @@ vi.mock('../firebase.js', () => ({
 vi.mock('../../hooks/useLeadFreepasses.js', () => ({ useLeadFreepasses: () => [] }));
 vi.mock('../../hooks/useLeadTimeline.js', () => ({ useLeadTimeline: () => [] }));
 const logInteraction = vi.fn(async () => {});
-vi.mock('../interactions.js', () => ({ logInteraction: (...args) => logInteraction(...args) }));
+// O Agendar grava pelo logInteractions (o lançamento do freepass vai no mesmo lote).
+const logInteractions = vi.fn(async () => []);
+vi.mock('../interactions.js', () => ({
+  logInteraction: (...args) => logInteraction(...args),
+  logInteractions: (...args) => logInteractions(...args),
+}));
 
 const { LeadProfileView } = await import('../../views/LeadProfileView.jsx');
 
@@ -58,6 +63,7 @@ afterEach(async () => {
   document.body.innerHTML = '';
   root = null;
   logInteraction.mockClear();
+  logInteractions.mockClear();
   toast.success.mockClear();
 });
 
@@ -245,8 +251,12 @@ describe('o compositor grava pela ficha', () => {
     await clicar(comeca('Mensagem'));
     await clicar(comeca('Hoje'));
     await clicar(botao('Confirmar agendamento'));
-    expect(logInteraction).toHaveBeenCalledTimes(1);
-    const [, , , payload, patch] = logInteraction.mock.calls[0];
+    expect(logInteractions).toHaveBeenCalledTimes(1);
+    const [, , , payloads, patch, extra] = logInteractions.mock.calls[0];
+    // Sem o módulo do freepass, uma interação e nada mais no lote.
+    expect(payloads).toHaveLength(1);
+    expect(extra).toBeNull();
+    const [payload] = payloads;
     expect(payload.text).toMatch(/^🔔 Mensagem agendada p\/ 21\/10\/2026.*18:00\.$/);
     expect(payload).toMatchObject({ type: 'note', volumeKind: 'mensagem' });
     expect(patch.nextFollowUp.getHours()).toBe(18);

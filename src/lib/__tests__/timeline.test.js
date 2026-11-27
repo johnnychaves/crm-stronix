@@ -682,6 +682,14 @@ describe('parseAppointment: de quem é a tarefa', () => {
     expect(parseAppointment(i)).toMatchObject({ kind: 'class', when: new Date(2026, 9, 2, 19, 0), note: null, taskOwner: 'Ana Souza' });
   });
 
+  // Com o freepass (módulo Stronix 2.0) o texto da aula não leva mais "N aulas".
+  it('aula do freepass, só com a modalidade', () => {
+    const i = agendamento(`🔔 Aula Experimental agendada (Pilates) · Carla Dias p/ 02/10/2026, 19:00${taskOwnerText('Ana Souza')}.`);
+    expect(parseAppointment(i)).toEqual({
+      kind: 'class', label: 'Aula experimental', when: new Date(2026, 9, 2, 19, 0), location: null, note: null, taskOwner: 'Ana Souza'
+    });
+  });
+
   it('contato delegado', () => {
     const i = agendamento(`🔔 Mensagem agendada p/ 08/10/2026, 10:00${taskOwnerText('Bia')}.`);
     expect(parseAppointment(i)).toMatchObject({ kind: 'message', when: new Date(2026, 9, 8, 10, 0), taskOwner: 'Bia' });

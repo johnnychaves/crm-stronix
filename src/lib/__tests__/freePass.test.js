@@ -82,3 +82,27 @@ describe('getTrialPassNote', () => {
     expect(note.cls).toContain('slate');
   });
 });
+
+// Com o resumo do freepass no lead (entrega 2 do Visitante), o passe é o freepass.
+describe('passe pelo freepass', () => {
+  const FP = {
+    freepassId: 'f1', freepassStatus: 'correndo', freepassModalidadeName: 'Pilates', freepassContractAtStart: null,
+    appointmentScheduledFor: new Date(2026, 6, 13), appointmentModality: 'Pilates'
+  };
+  it('por aulas mostra quantas foram marcadas, sem precisar do trialClassesPlanned', () => {
+    const lead = { ...FP, freepassKind: 'aulas', freepassTotal: 2, freepassAulas: 1 };
+    expect(getTrialPassNote(lead, NOW)).toEqual({ text: 'freepass · 1 de 2 aulas', cls: expect.stringContaining('slate') });
+    expect(isPassActive(lead, NOW)).toBe(true);
+  });
+  it('por dias conta até o fim gravado, e não pela quantidade antiga', () => {
+    const lead = { ...FP, freepassKind: 'dias', freepassTotal: 7, freepassStartsAt: new Date(2026, 6, 10), freepassEndsAt: new Date(2026, 6, 16), trialClassesPlanned: 30 };
+    expect(getTrialPassNote(lead, NOW)).toEqual({ text: 'até 16/07 · falta 1 dia', cls: expect.stringContaining('amber') });
+  });
+  it('freepass encerrado e aula de outra modalidade voltam à conta antiga', () => {
+    const fechado = { ...FP, freepassKind: 'aulas', freepassTotal: 2, freepassAulas: 1, freepassStatus: 'encerrado', trialClassesPlanned: 9 };
+    expect(getTrialPassNote(fechado, NOW).text).toBe('até 21/07 · faltam 6 dias');
+    const outra = { ...FP, freepassKind: 'aulas', freepassTotal: 2, freepassAulas: 1, appointmentModality: 'Funcional' };
+    expect(getTrialPassNote(outra, NOW)).toBeNull();
+    expect(isPassActive(outra, NOW)).toBe(false);
+  });
+});

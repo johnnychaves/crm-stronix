@@ -5,9 +5,10 @@ import { readFileSync } from 'node:fs';
 const src = readFileSync(new URL('../../views/LeadProfileView.jsx', import.meta.url), 'utf8');
 
 describe('ficha e Visitante', () => {
-  it('a etiqueta sai do visitorOf', () => {
-    expect(src).toMatch(/visitorOf\(running \? \{ \.\.\.lead, \.\.\.freepassSummaryPatch\(running, bandNow\) \} : lead, bandNow\)/);
-    expect(src).toMatch(/Visitante · \{visitor\.shortText\}/);
+  it('a etiqueta sai do freepassTagOf, com os docs quando chegaram', () => {
+    expect(src).toMatch(/lead: running \? \{ \.\.\.lead, \.\.\.freepassSummaryPatch\(running, bandNow\) \} : lead,/);
+    expect(src).toMatch(/Visitante · \{freepassTag\.text\}/);
+    expect(src).toMatch(/Upgrade · \{freepassTag\.text\}/);
   });
   it('lançar e encerrar passam pela ação e pelas gravações do freepass', () => {
     expect(src).toMatch(/freepassOn && can\(appUser, ACTIONS\.FREEPASS_LANCAR\)/);
@@ -26,7 +27,7 @@ describe('ficha e Visitante', () => {
   });
   it('tudo depende do módulo Stronix 2.0', () => {
     expect(src).toMatch(/const freepassOn = hasModule\(appUser\?\.tenantModules, MODULES\.FALTOSOS\);/);
-    expect(src).toMatch(/\{freepassOn && visitor && \(/);
+    expect(src).toMatch(/\{freepassOn && freepassTag\?\.label === 'Visitante' && \(/);
     expect(src).toMatch(/freepassOn=\{freepassOn\}/);
   });
 });

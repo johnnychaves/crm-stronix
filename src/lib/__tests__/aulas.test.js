@@ -71,6 +71,13 @@ describe('aulaRecordFields', () => {
   });
 });
 
+describe('aulaRecordFields: freepassId', () => {
+  it('padrão null e grava o id quando vem', () => {
+    expect(aulaRecordFields({ leadId: 'L1' }).freepassId).toBeNull();
+    expect(aulaRecordFields({ leadId: 'L1', freepassId: 'fp1' }).freepassId).toBe('fp1');
+  });
+});
+
 describe('isAulaRecord', () => {
   it('type ausente conta como aula (documento histórico)', () => {
     expect(isAulaRecord({ id: 'a', status: 'attended' })).toBe(true);

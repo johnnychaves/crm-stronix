@@ -46,6 +46,7 @@ function StepDot({ state, n, tone }) {
 }
 
 // steps: [{ key, title, value, state: 'done' | 'active' | 'locked', onEdit }].
+// Passo feito sem onEdit fica travado: aparece feito, sem botão.
 // O passo concluído é um botão (clicar edita), e traz o título pequeno e o valor
 // escolhido. O atual e o bloqueado mostram só o título.
 export function WizardStepper({ steps, label, tone }) {
@@ -67,7 +68,7 @@ export function WizardStepper({ steps, label, tone }) {
         );
         return (
           <li key={s.key} aria-current={s.state === 'active' ? 'step' : undefined} className={cn('flex min-w-0 items-center', !last && 'flex-1')}>
-            {s.state === 'done' ? (
+            {s.state === 'done' && s.onEdit ? (
               <button
                 type="button"
                 onClick={s.onEdit}
