@@ -10,14 +10,14 @@
 // composer, e o Agendar. As quatro passam pelo logInteraction
 // (src/lib/interactions.js), que soma lastInteractionAt e interactionsCount no
 // lead, e só o Agendar manda patch, o do buildSchedulePatch. O "Registrar
-// contato" da Meta do professor (absence_contact) entra no PR 3, aqui e na
-// regra juntos.
+// contato" da Meta do professor (absence_contact) já está nas duas listas.
 //
 // Puro: nada de firebase.js aqui, para o teste rodar em node.
 
 import { buildSchedulePatch } from './schedulePatch.js';
 import { planProfileNote } from './profileNote.js';
 import { FREEPASS_SUMMARY_EMPTY } from './visitante.js';
+import { ABSENCE_CONTACT_TYPE } from './leads.js';
 
 const sortedUnique = (xs) => Object.freeze([...new Set(xs)].sort());
 
@@ -64,4 +64,4 @@ export const PROFESSOR_TASK_OWNER_FIELDS = sortedUnique(
 // Os tipos de interação que o professor cria. A Anotação sai do
 // planProfileNote; o WhatsApp, a Ligação e a nota do Agendar gravam 'note'
 // direto na LeadProfileView, e o teste varre esses handlers.
-export const PROFESSOR_INTERACTION_TYPES = sortedUnique([planProfileNote('-').type, 'note']);
+export const PROFESSOR_INTERACTION_TYPES = sortedUnique([planProfileNote('-').type, 'note', ABSENCE_CONTACT_TYPE]);
