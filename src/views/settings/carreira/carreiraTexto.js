@@ -11,10 +11,6 @@ import { mesesDaAvaliacao } from '../../../lib/carreira/periodo.js';
 export const MESES = Object.freeze(['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']);
 export const maiuscula = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
-// A trava do calendário da trilha Professor mora no validacao.js, que a
-// confere ao gravar. O PR 3 tira a trava.
-export { AVISO_CALENDARIO_PROFESSOR } from '../../../lib/carreira/validacao.js';
-
 // O desenho de cada base: o ícone e os tons do ícone grande, do degrau e do
 // quadrado de cada número.
 export const BASE_UI = Object.freeze({
