@@ -117,10 +117,11 @@ const LEAD_PATH_RE = /(\/ficha\/)[^/?#\s"'<>]+/gi;
 // O id do modelo de rotina também sai do endereço, como pede o CLAUDE.md para
 // todo segmento novo com id.
 const MODEL_PATH_RE = /(\/rotinas\/modelos\/)[^/?#\s"'<>]+/gi;
-// E o id da pessoa do perfil de carreira (/carreira/professor/<id>, e o
-// endereço de antes, /professores/perfil/<id>). Fora de /configuracoes, onde
-// /carreira/professor é a trilha Professor (TRILHA_PATH_RE).
-const PROF_PATH_RE = /((?<!\/configuracoes)\/(?:carreira\/professor|professores\/perfil)\/)[^/?#\s"'<>]+/gi;
+// E o id da pessoa do perfil de carreira (/carreira/professor/<id>,
+// /carreira/consultor/<id> e o endereço de antes, /professores/perfil/<id>).
+// Fora de /configuracoes, onde /carreira/professor e /carreira/consultor são
+// trilhas (TRILHA_PATH_RE).
+const PROF_PATH_RE = /((?<!\/configuracoes)\/(?:carreira\/(?:professor|consultor)|professores\/perfil)\/)[^/?#\s"'<>]+/gi;
 // E o id da trilha do plano de carreira (/configuracoes/carreira/<id>).
 const TRILHA_PATH_RE = /(\/configuracoes\/carreira\/)[^/?#\s"'<>]+/gi;
 

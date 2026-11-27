@@ -14,7 +14,7 @@
 //   (src/lib/tenantSlug.js). O tenantSlug.test.js quebra se faltar.
 
 import { TENANT_SLUG_READ_RE, isReservedTenantSlug } from './tenantSlug.js';
-import { canOpenScreen, isGestor, isProfessor } from './acesso.js';
+import { canOpenScreen, isGestor, isMetaParticipant, isProfessor } from './acesso.js';
 import { MODULES, hasModule } from './modules.js';
 
 const own = (obj, key) => typeof key === 'string' && Object.prototype.hasOwnProperty.call(obj, key);
@@ -86,6 +86,14 @@ export const PERFIL_TABS = Object.freeze({
   nps: 'nps',
   aderencia: 'aderencia',
 });
+// Abas do perfil do consultor, em /carreira/consultor/<id>/<aba> (plano de
+// carreira, PR 4).
+export const CONSULTOR_TABS = Object.freeze({
+  vendas: 'vendas',
+  renovacao: 'renovacao',
+  conversao: 'conversao',
+  meta: 'meta-diaria',
+});
 // Submenus dos Relatórios (spec 2026-10-09). Hoje só o relatório de Leads, com
 // os cinco submenus. O id é também o segmento, e a lista ao lado
 // (src/lib/relatoriosRail.js) usa os mesmos ids.
@@ -117,6 +125,9 @@ export const SCREENS = Object.freeze({
   // /professores e o accessRedirect leva ao endereço novo (antigo).
   professores: tela(['carreira'], 'Carreira', { gestor: true, modulo: MODULES.FALTOSOS, subs: PROFESSORES_SUBS, subPadrao: 'lista' }),
   professorPerfil: tela(['carreira', 'professor'], 'Carreira', { modulo: MODULES.FALTOSOS, subs: PERFIL_TABS, subPadrao: 'carteira' }),
+  // O perfil do consultor (PR 4): o gestor abre qualquer um, e o consultor
+  // abre o dele (canAccess e accessRedirect).
+  consultorPerfil: tela(['carreira', 'consultor'], 'Carreira', { modulo: MODULES.FALTOSOS, subs: CONSULTOR_TABS, subPadrao: 'vendas' }),
   leads: tela(['leads'], 'Leads'),
   aulas: tela(['leads', 'aulas'], 'Aulas'),
   visitas: tela(['leads', 'visitas'], 'Visitas'),
@@ -160,7 +171,7 @@ export const FIRST_LEVEL_SEGMENTS = Object.freeze([
 // a vaga da entrega 2: /configuracoes/equipe, /ficha/<id>/contratos).
 // GROUPS: o segundo segmento escolhe a tela, e filho desconhecido é endereço
 // desconhecido, para erro de digitação não cair calado na tela-mãe.
-const SPECIAL = new Set(['ficha', 'superadmin', 'rotinas', 'professores', 'professorPerfil']);
+const SPECIAL = new Set(['ficha', 'superadmin', 'rotinas', 'professores', 'professorPerfil', 'consultorPerfil']);
 const LEAVES = {};
 const GROUPS = {};
 for (const [id, def] of Object.entries(SCREENS)) {
@@ -225,6 +236,13 @@ function readScreen(segs, out) {
       out.profId = isValidLeadId(segs[2]) ? segs[2] : null;
       out.rest = segs.slice(3);
       readSub('professorPerfil', out.rest, out);
+      return;
+    }
+    if (!antigo && lower(segs[1]) === 'consultor') {
+      out.screen = 'consultorPerfil';
+      out.profId = isValidLeadId(segs[2]) ? segs[2] : null;
+      out.rest = segs.slice(3);
+      readSub('consultorPerfil', out.rest, out);
       return;
     }
     out.screen = 'professores';
@@ -392,6 +410,10 @@ export function hrefFor(tenantId, screen, opts = {}) {
     const id = isValidLeadId(profId) ? encode(profId) : null;
     return id === null ? null : `${base}/carreira/professor/${id}${trecho}`;
   }
+  if (screen === 'consultorPerfil') {
+    const id = isValidLeadId(profId) ? encode(profId) : null;
+    return id === null ? null : `${base}/carreira/consultor/${id}${trecho}`;
+  }
   if (screen === 'settings' && sub === 'carreira') {
     // Id que não serve cai na lista das trilhas, como o modelo de rotina.
     const tid = isValidLeadId(trilhaId) ? encode(trilhaId) : null;
@@ -434,6 +456,9 @@ export function canAccess(screen, appUser) {
   const def = SCREENS[screen];
   if (def.modulo && !hasModule(appUser?.tenantModules, def.modulo)) return false;
   if (screen === 'professorPerfil' && !isProfessor(appUser)) return isGestor(appUser);
+  // O consultor abre o próprio perfil (o accessRedirect leva ao dele); o
+  // gestor abre qualquer um.
+  if (screen === 'consultorPerfil') return isGestor(appUser) || isMetaParticipant(appUser);
   if (def.gestor) return isGestor(appUser);
   if (def.superAdmin) return appUser?.superAdmin === true;
   return true;
@@ -480,7 +505,7 @@ function blockedNotice(screen, appUser) {
   if (def.modulo && !hasModule(appUser?.tenantModules, def.modulo)) {
     return homeScreenFor(appUser) === HOME_SCREEN ? 'nao-encontrada' : 'nao-encontrada-meta';
   }
-  return def.gestor || screen === 'professorPerfil' ? 'so-gestor' : null;
+  return def.gestor || screen === 'professorPerfil' || screen === 'consultorPerfil' ? 'so-gestor' : null;
 }
 
 // Regras 6, 7 e 8, sobre um endereço que já é da academia da sessão. A trava de
@@ -507,6 +532,12 @@ function accessRedirect(route, appUser, home, { tenantId = null, search = '' } =
     const dele = hrefFor(tenantId, 'professorPerfil', { profId: appUser.professorId, sub: route.sub });
     if (!dele) return redirectTo(home, { notice: 'nao-liberada' });
     if (route.profId !== appUser.professorId) return redirectTo(dele, { search, notice: 'nao-liberada' });
+  }
+  // O consultor abre só o próprio perfil de carreira: o de outro leva ao dele.
+  if (route.screen === 'consultorPerfil' && !isGestor(appUser)) {
+    const dele = hrefFor(tenantId, 'consultorPerfil', { profId: appUser?.id, sub: route.sub });
+    if (!dele) return redirectTo(home, { notice: 'nao-liberada' });
+    if (route.profId !== appUser.id) return redirectTo(dele, { search, notice: 'nao-liberada' });
   }
   // O endereço de antes do menu Carreira leva ao novo, com a query, sem aviso.
   if (route.antigo) {
@@ -567,8 +598,8 @@ function sessionPathFor(route, tenantId, base, home) {
   if (route.pessoaId) return joinPath(base, ['configuracoes', SETTINGS_SECTIONS.team]);
   // A trilha de carreira também é dado de lá: cai na lista das trilhas.
   if (route.trilhaId) return joinPath(base, [...SCREENS.settings.segs, SETTINGS_SECTIONS.carreira]);
-  // O perfil é de um professor da outra academia: cai na lista da sessão.
-  if (route.screen === 'professorPerfil') return joinPath(base, SCREENS.professores.segs);
+  // O perfil é de alguém da outra academia: cai na lista da sessão.
+  if (route.screen === 'professorPerfil' || route.screen === 'consultorPerfil') return joinPath(base, SCREENS.professores.segs);
   return joinPath(base, raw.slice(1));
 }
 
@@ -647,6 +678,7 @@ export function screenKey(route) {
   if (screen === 'ficha') return `ficha:${route.leadId}`;
   if (screen === 'rotinas' && route.modelId) return `rotinas:${route.modelId}`;
   if (screen === 'professorPerfil') return `professorPerfil:${route.profId ?? ''}`;
+  if (screen === 'consultorPerfil') return `consultorPerfil:${route.profId ?? ''}`;
   if (screen === HOME_SCREEN || screen === 'dashOperacional') return 'dashOperacional';
   return screen || 'dashboard';
 }

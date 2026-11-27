@@ -11,7 +11,7 @@
 // permissões (ACTIONS.SUPORTE_ABRIR). Configurações e Organizações continuam no
 // bloco Administração do App, com as travas de gestor e de super-admin.
 import { canAccess } from './routes.js';
-import { ACTIONS, can, isProfessor } from './acesso.js';
+import { ACTIONS, can, isMetaParticipant, isProfessor } from './acesso.js';
 import { MODULES, hasModule } from './modules.js';
 
 export function sidebarNav(appUser) {
@@ -26,10 +26,11 @@ export function sidebarNav(appUser) {
     relatorios: tela('relatorios'),
     suporte: can(appUser, ACTIONS.SUPORTE_ABRIR),
     // Carreira (lista e pesquisas) é do gestor com o módulo. O Minha carreira
-    // é o perfil de professor de quem está logado, e só existe com o cadastro
-    // de professor ligado (appUser.professorId). O do consultor vem no PR 4.
+    // é o perfil de quem está logado: o do professor, com o cadastro de
+    // professor ligado (appUser.professorId), e o do consultor.
     professores: tela('professores'),
-    meuPerfil: isProfessor(appUser) && Boolean(appUser?.professorId) && tela('professorPerfil'),
+    meuPerfil: (isProfessor(appUser) && Boolean(appUser?.professorId) && tela('professorPerfil'))
+      || (isMetaParticipant(appUser) && tela('consultorPerfil')),
   });
 }
 

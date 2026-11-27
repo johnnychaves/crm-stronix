@@ -18,7 +18,7 @@ const IDS_DIFICEIS = ['Ab12', 'João Silva', 'ação', '100%', '%41', 'a%2Fb', '
 const TELAS = [
   'dashboard', 'dashOperacional', 'dashCrm', 'dashGerencial', 'kanban', 'clientes', 'dailyGoal',
   'leads', 'aulas', 'visitas', 'settings', 'profile', 'billing', 'superadmin', 'ficha', 'rotinas', 'relatorios',
-  'professores', 'professorPerfil',
+  'professores', 'professorPerfil', 'consultorPerfil',
 ];
 
 describe('SCREENS', () => {
@@ -231,7 +231,7 @@ describe('hrefFor', () => {
 describe('ida e volta hrefFor e parseAppPath', () => {
   it('toda tela volta como ela mesma (o Operacional volta como a tela inicial)', () => {
     for (const screen of TELAS) {
-      const extra = screen === 'ficha' ? { leadId: 'Ab12' } : (screen === 'professorPerfil' ? { profId: 'Ab12' } : {});
+      const extra = screen === 'ficha' ? { leadId: 'Ab12' } : (screen === 'professorPerfil' || screen === 'consultorPerfil' ? { profId: 'Ab12' } : {});
       const href = hrefFor(T, screen, extra);
       const volta = parseAppPath(href);
       expect(volta.tenantSlug, href).toBe(T);
@@ -491,7 +491,7 @@ describe('sub-tela no caminho', () => {
 
   it('nenhuma outra tela tem sub-tela nesta entrega', () => {
     const comSub = Object.keys(SCREENS).filter((id) => SCREENS[id].subs);
-    expect(comSub.sort()).toEqual(['ficha', 'professorPerfil', 'professores', 'relatorios', 'rotinas', 'settings']);
+    expect(comSub.sort()).toEqual(['consultorPerfil', 'ficha', 'professorPerfil', 'professores', 'relatorios', 'rotinas', 'settings']);
   });
 });
 
