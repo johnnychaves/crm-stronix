@@ -18,13 +18,27 @@ import { GeneralConfigContext } from '../../contexts/GeneralConfigContext.jsx';
 
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }));
 
+// O que as leituras do bloco devolvem: estados sem professor, leads por id e o
+// registro da última importação.
+const lido = vi.hoisted(() => ({ faltosos: [], leads: [], registro: null }));
+const docsDe = (lista) => ({ docs: lista.map((d) => ({ id: d.id, data: () => d })) });
+
 vi.mock('../firebase.js', () => ({
   appId: 'academia-teste',
   CONFIG_PATH: 'stronix_config',
   CONFIG_FALTOSOS_ID: 'faltosos',
+  FALTOSOS_PATH: 'stronix_faltosos',
+  LEADS_PATH: 'stronix_leads',
+  IMPORTACOES_NEXTFIT_PATH: 'stronix_importacoes_nextfit',
 }));
 vi.mock('firebase/firestore', () => ({
   doc: (_db, ...caminho) => ({ caminho: caminho.join('/') }),
+  collection: (_db, ...caminho) => ({ caminho: caminho.join('/') }),
+  query: (ref) => ref,
+  where: () => ({}),
+  documentId: () => 'id',
+  getDocs: vi.fn(async (ref) => docsDe(ref.caminho.endsWith('stronix_faltosos') ? lido.faltosos : lido.leads)),
+  getDoc: vi.fn(async () => ({ exists: () => Boolean(lido.registro), data: () => lido.registro })),
   setDoc: vi.fn(async () => {}),
   serverTimestamp: () => 'agora',
 }));
@@ -83,6 +97,7 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-10-06T15:00:00Z'));
   setDoc.mockClear();
+  lido.faltosos = []; lido.leads = []; lido.registro = null;
   for (const fn of Object.values(toast)) fn.mockClear();
 });
 afterEach(async () => {
@@ -343,5 +358,27 @@ describe('bloco Faltosos: professores da Next Fit', () => {
   it('os textos da tela não têm travessão nem aspas curvas', async () => {
     await montar();
     expect(document.body.textContent).not.toMatch(/[—–“”‘’]/);
+  });
+});
+
+describe('bloco Faltosos: sem professor e não achados', () => {
+  const COM_IMPORTACAO = { ...CONFIG, ultimaImportacao: { id: 'f2026-10-06', importadoEm: new Date('2026-10-06T12:00:00Z') } };
+
+  it('lista quem ficou sem professor e o que a importação não achou', async () => {
+    lido.faltosos = [{ id: 'l1', status: 'faltando', professorId: null }, { id: 'l2', status: 'voltou', professorId: null }];
+    lido.leads = [{ id: 'l1', name: 'Jéssica Lemos' }];
+    lido.registro = { naoLigados: [{ nome: 'JOAO PEDRO S. LIMA', telefone: '51996345519', relatorio: 'faltantes' }] };
+    await montar({ valor: { professores: PROFESSORES, faltosos: COM_IMPORTACAO } });
+    expect(document.body.textContent).toContain('Sem professor');
+    expect(document.body.textContent).toContain('Jéssica Lemos');
+    expect(document.querySelectorAll('#faltosos-sem-professor + * li, [aria-labelledby="faltosos-sem-professor"] li')).toHaveLength(1);
+    expect(document.body.textContent).toContain('Não achados');
+    expect(document.body.textContent).toContain('JOAO PEDRO S. LIMA');
+  });
+
+  it('sem nenhum dos dois, as seções não aparecem', async () => {
+    await montar({ valor: { professores: PROFESSORES, faltosos: COM_IMPORTACAO } });
+    expect(document.querySelector('#faltosos-sem-professor')).toBeNull();
+    expect(document.querySelector('#faltosos-nao-achados')).toBeNull();
   });
 });
