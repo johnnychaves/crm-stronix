@@ -1,6 +1,6 @@
 import {
   ArrowRightLeft, ArrowUpRight, Building2, CalendarClock, CreditCard, FileSpreadsheet, Gauge,
-  Handshake, Kanban, Library, ListChecks, PlugZap, Target, Users, Wrench,
+  Handshake, Kanban, Library, ListChecks, PlugZap, Target, TrendingUp, Users, Wrench,
 } from 'lucide-react';
 
 // O ícone de cada destino do trilho das Configurações, pelo id do item, e o de
@@ -13,6 +13,7 @@ export const SETTINGS_ITEM_ICONS = Object.freeze({
   profile: Building2,
   billing: CreditCard,
   team: Users,
+  carreira: TrendingUp,
   pace: Target,
   sched: CalendarClock,
   rotinas: ListChecks,

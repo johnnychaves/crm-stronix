@@ -27,9 +27,13 @@ const tela = (segs, title, trava = {}) => Object.freeze({ segs: Object.freeze(se
 // Sub-telas: id interno para o segmento em português. Molde da subaba do
 // super-admin (SUPER_TABS, abaixo). Elas NÃO entram na screenKey nem no molde
 // do Sentry: trocar de seção ou de aba não pode remontar a tela.
+// `carreira` é o Plano de carreira (spec 2026-11-26-plano-de-carreira-
+// configuravel), só com o módulo faltosos (settingsSection). A trilha aberta e
+// a aba dela são lidas à parte no readScreen.
 export const SETTINGS_SECTIONS = Object.freeze({
   overview: 'visao-geral',
   team: 'equipe',
+  carreira: 'carreira',
   transfer: 'transferencia',
   'referral-owners': 'indicacoes',
   import: 'importacao',
@@ -61,12 +65,13 @@ export const ROTINAS_TABS = Object.freeze({
   hoje: 'hoje',
 });
 // Sub-telas de Professores (spec 2026-11-24-perfil-do-professor, PR 3): a
-// lista e as metas. A lista é o endereço curto /<academia>/professores. O PR 4
-// acrescenta as pesquisas.
+// lista e as pesquisas. A lista é o endereço curto /<academia>/professores. As
+// metas saíram para Configurações → Plano de carreira (plano
+// 2026-11-26-plano-de-carreira-02): /professores/metas é lido à parte
+// (metasAntigas) e leva à trilha Professor.
 export const PROFESSORES_SUBS = Object.freeze({
   lista: 'lista',
   pesquisas: 'pesquisas',
-  metas: 'metas',
 });
 // Abas do perfil do professor, em /professores/perfil/<id>/<aba>, lido à parte
 // em readScreen. O PR 4 acrescenta a NPS e o PR 6 a Aderência.
@@ -211,6 +216,10 @@ function readScreen(segs, out) {
     }
     out.screen = 'professores';
     out.rest = segs.slice(1);
+    if (out.rest.length === 1 && lower(out.rest[0]) === 'metas') {
+      out.metasAntigas = true;
+      return;
+    }
     readSub('professores', out.rest, out);
     return;
   }
@@ -237,6 +246,23 @@ function readScreen(segs, out) {
     }
     return;
   }
+  if (head === 'configuracoes') {
+    // A trilha do plano de carreira e a aba dela, no molde do modelo de rotina:
+    // /configuracoes/carreira/<id> (Níveis e metas) e /<id>/regras. O resto
+    // segue a tabela de seções.
+    out.screen = 'settings';
+    out.rest = segs.slice(1);
+    const [secao, id, aba, ...sobra] = out.rest;
+    if (lower(secao) === SETTINGS_SECTIONS.carreira && isValidLeadId(id) && sobra.length === 0
+      && (aba === undefined || lower(aba) === 'regras')) {
+      out.sub = 'carreira';
+      out.trilhaId = id;
+      out.trilhaAba = aba === undefined ? 'metas' : 'regras';
+      return;
+    }
+    readSub('settings', out.rest, out);
+    return;
+  }
   if (own(GROUPS, head)) {
     const { alone, children } = GROUPS[head];
     const child = lower(segs[1]);
@@ -258,6 +284,10 @@ function readScreen(segs, out) {
 // parseAppPath('/stronix-crm-app/ficha/AbC') →
 //   { pathname, tenantSlug, screen, leadId, superTab, rest, unknown }
 //   (mais `modelId`, só quando existe: /rotinas/modelos/<id>)
+// - trilhaId e trilhaAba: a trilha aberta do plano de carreira
+//   (/configuracoes/carreira/<id>, aba 'metas', ou /<id>/regras, aba
+//   'regras'), com sub 'carreira'. Como o modelId, só existem quando o id passa
+//   no isValidLeadId e não vem segmento a mais.
 // - raiz: tudo null e unknown false;
 // - tenantSlug: o 1º segmento em minúsculas quando tem formato de academia e
 //   não é palavra reservada. Senão fica null e o 1º segmento é lido como tela
@@ -309,7 +339,7 @@ const encode = (s) => {
 // montar (sem academia, ficha sem id válido): quem chama não navega. Tela
 // desconhecida vira a inicial.
 export function hrefFor(tenantId, screen, opts = {}) {
-  const { leadId, superTab, sub, modelId, profId } = opts || {};
+  const { leadId, superTab, sub, modelId, profId, trilhaId, trilhaAba } = opts || {};
   if (typeof tenantId !== 'string' || tenantId === '') return null;
   const t = encode(tenantId);
   if (t === null) return null;
@@ -329,6 +359,11 @@ export function hrefFor(tenantId, screen, opts = {}) {
   if (screen === 'professorPerfil') {
     const id = isValidLeadId(profId) ? encode(profId) : null;
     return id === null ? null : `${base}/professores/perfil/${id}${trecho}`;
+  }
+  if (screen === 'settings' && sub === 'carreira') {
+    // Id que não serve cai na lista das trilhas, como o modelo de rotina.
+    const tid = isValidLeadId(trilhaId) ? encode(trilhaId) : null;
+    if (tid !== null) return `${base}/configuracoes/carreira/${tid}${trilhaAba === 'regras' ? '/regras' : ''}`;
   }
   if (screen === 'rotinas') {
     // Como na ficha: id aceito pelo isValidLeadId que o encode recusa (metade de
@@ -389,7 +424,7 @@ function redirectTo(path, { search = '', notice = null } = {}) {
   const r = parseAppPath(path);
   // O `sub` vai no alvo junto com a tela: sem ele, a correção de academia
   // desenharia a seção padrão por um render antes de saltar para a certa.
-  return { kind: 'redirect', to: path + search, target: { screen: r.screen, leadId: r.leadId, superTab: r.superTab, sub: r.sub, ...(r.modelId ? { modelId: r.modelId } : {}), ...(r.profId ? { profId: r.profId } : {}) }, notice };
+  return { kind: 'redirect', to: path + search, target: { screen: r.screen, leadId: r.leadId, superTab: r.superTab, sub: r.sub, ...(r.modelId ? { modelId: r.modelId } : {}), ...(r.profId ? { profId: r.profId } : {}), ...(r.trilhaId ? { trilhaId: r.trilhaId, trilhaAba: r.trilhaAba } : {}) }, notice };
 }
 
 const joinPath = (base, raw) => (raw.length ? `${base}/${raw.join('/')}` : base);
@@ -418,6 +453,13 @@ function accessRedirect(route, appUser, home, { tenantId = null, search = '' } =
     // caem. Quem não abre a Visão geral vai para a tela inicial dele sem aviso.
     if (route.screen === HOME_SCREEN) return redirectTo(home);
     return redirectTo(home, { notice: blockedNotice(route.screen, appUser) });
+  }
+  // O endereço antigo das metas leva à trilha Professor em Configurações →
+  // Plano de carreira. Depois da trava de tela: sem o módulo, ou sem ser
+  // gestor, o aviso é o da tela Professores.
+  if (route.metasAntigas) {
+    const destino = hrefFor(tenantId, 'settings', { sub: 'carreira', trilhaId: 'professor' });
+    if (destino) return redirectTo(destino);
   }
   // O professor abre só o próprio perfil: o de outro leva ao dele, na mesma
   // aba, com o aviso de tela não liberada (spec 2026-11-24); sem cadastro de
@@ -473,6 +515,8 @@ function sessionPathFor(route, tenantId, base, home) {
   const keepsScreen = route.screen && route.screen !== 'ficha' && route.screen !== 'superadmin';
   if (!keepsScreen) return home;
   if (route.modelId) return joinPath(base, SCREENS[route.screen].segs);
+  // A trilha de carreira também é dado de lá: cai na lista das trilhas.
+  if (route.trilhaId) return joinPath(base, [...SCREENS.settings.segs, SETTINGS_SECTIONS.carreira]);
   // O perfil é de um professor da outra academia: cai na lista da sessão.
   if (route.screen === 'professorPerfil') return joinPath(base, SCREENS.professores.segs);
   return joinPath(base, raw.slice(1));
