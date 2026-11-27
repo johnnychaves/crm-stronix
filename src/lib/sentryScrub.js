@@ -118,10 +118,16 @@ const LEAD_PATH_RE = /(\/ficha\/)[^/?#\s"'<>]+/gi;
 const MODEL_PATH_RE = /(\/rotinas\/modelos\/)[^/?#\s"'<>]+/gi;
 // E o id do professor do perfil (/professores/perfil/<id>).
 const PROF_PATH_RE = /(\/professores\/perfil\/)[^/?#\s"'<>]+/gi;
+// E o id da trilha do plano de carreira (/configuracoes/carreira/<id>).
+const TRILHA_PATH_RE = /(\/configuracoes\/carreira\/)[^/?#\s"'<>]+/gi;
 
 export function scrubLeadPath(text) {
   if (typeof text !== 'string' || !text) return text;
-  return text.replace(LEAD_PATH_RE, '$1:leadId').replace(MODEL_PATH_RE, '$1:modelId').replace(PROF_PATH_RE, '$1:profId');
+  return text
+    .replace(LEAD_PATH_RE, '$1:leadId')
+    .replace(MODEL_PATH_RE, '$1:modelId')
+    .replace(PROF_PATH_RE, '$1:profId')
+    .replace(TRILHA_PATH_RE, '$1:trilhaId');
 }
 
 // Rede final: troca o id da ficha e o do modelo de rotina em qualquer texto do

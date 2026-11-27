@@ -92,7 +92,6 @@ beforeEach(() => {
     clientes: [],
     aulas: [],
     metas: METAS_PADRAO,
-    salvarMetas: vi.fn(),
   };
   s.nps = { carregando: false, erro: null, pesquisas: [], totais: [] };
   s.respostas = [];

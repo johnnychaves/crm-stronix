@@ -17,7 +17,8 @@ import { SETTINGS_GROUP_ICONS, SETTINGS_ITEM_ICONS, EXTERNAL_ICON } from '../../
 
 const T = 'stronix-crm-app';
 const own = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
-const idsDo = (canImport) => settingsRailGroups(canImport).flatMap((g) => g.items.map((i) => i.id));
+const MOD = ['faltosos'];
+const idsDo = (canImport, modulos = MOD) => settingsRailGroups(canImport, modulos).flatMap((g) => g.items.map((i) => i.id));
 const todosOsItens = SETTINGS_RAIL_GROUPS.flatMap((g) => g.items);
 
 describe('trilho das Configurações', () => {
@@ -69,11 +70,11 @@ describe('trilho das Configurações', () => {
   it('Importar clientes só aparece na sessão assumida', () => {
     expect(idsDo(true)).toContain('import');
     expect(idsDo(false)).not.toContain('import');
-    expect(settingsRailGroups(true)).toBe(SETTINGS_RAIL_GROUPS);
+    expect(settingsRailGroups(true, MOD)).toBe(SETTINGS_RAIL_GROUPS);
     // O trilho da sessão comum continua com todos os outros destinos.
     expect(idsDo(false)).toEqual(todosOsItens.map((i) => i.id).filter((id) => id !== 'import'));
     // Importar clientes é o único item que some, e o grupo dele continua com os outros dois.
-    expect(settingsRailGroups(false).find((g) => g.id === 'base').items.map((i) => i.id)).toEqual(['transfer', 'referral-owners']);
+    expect(settingsRailGroups(false, MOD).find((g) => g.id === 'base').items.map((i) => i.id)).toEqual(['transfer', 'referral-owners']);
   });
 
   it('o item de Migrar leads mantém o rótulo que a recusa de carteira do professor cita', () => {
@@ -91,6 +92,23 @@ describe('trilho das Configurações', () => {
     for (const id of grupos) expect(SETTINGS_GROUP_ICONS[id], id).toBeTruthy();
     for (const id of Object.keys(SETTINGS_GROUP_ICONS)) expect(grupos, id).toContain(id);
     expect(EXTERNAL_ICON).toBeTruthy();
+  });
+
+  // O plano de carreira mora atrás do módulo da STRONIX (Stronix 2.0, chave
+  // faltosos), como as telas de professores.
+  it('Plano de carreira só aparece com o módulo, logo depois de Equipe & acessos', () => {
+    const equipe = (modulos) => settingsRailGroups(false, modulos).find((g) => g.id === 'equipe').items.map((i) => i.label);
+    expect(equipe(MOD)).toEqual(['Equipe & acessos', 'Plano de carreira']);
+    expect(equipe([])).toEqual(['Equipe & acessos']);
+    expect(equipe(undefined)).toEqual(['Equipe & acessos']);
+    expect(idsDo(true, [])).not.toContain('carreira');
+    expect(hrefFor(T, 'settings', { sub: 'carreira' })).toBe(`/${T}/configuracoes/carreira`);
+  });
+
+  it('sem o módulo, /configuracoes/carreira desenha a seção padrão', () => {
+    expect(settingsSection('carreira', false, [])).toBe(SETTINGS_DEFAULT_SECTION);
+    expect(settingsSection('carreira', true)).toBe(SETTINGS_DEFAULT_SECTION);
+    expect(settingsSection('carreira', false, MOD)).toBe('carreira');
   });
 
   it('sem a sessão assumida, /configuracoes/importacao desenha a seção padrão', () => {

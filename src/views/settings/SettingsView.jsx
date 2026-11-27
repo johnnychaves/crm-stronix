@@ -19,6 +19,7 @@ import { FunnelsSection } from './FunnelsSection.jsx';
 import { CatalogsSection } from './CatalogsSection.jsx';
 import { ImportClientsSection } from './ImportClientsSection.jsx';
 import { ZapIntegrationSection } from './ZapIntegrationSection.jsx';
+import { CarreiraSettingsSection } from './carreira/CarreiraSettingsSection.jsx';
 import { GymProfileTab } from './GymProfileTab.jsx';
 import { PlanInvoicesTab } from './PlanInvoicesTab.jsx';
 import { SettingsRail } from './SettingsRail.jsx';
@@ -27,10 +28,11 @@ import { hrefFor, parseAppPath } from '../../lib/routes.js';
 import { leadFunnelsOf } from '../../lib/crm/scope.js';
 
 // ==========================================
-// CONFIGURAÇÕES — doze seções em sete blocos
+// CONFIGURAÇÕES — treze seções em sete blocos
 //
 // Redesign 2026-10 (mockup A, trilho em grupos): Visão geral, Academia (perfil e
-// plano), Equipe, Dia a dia, Funil, Conexões e Manutenção da base. O trilho é
+// plano), Equipe (com o Plano de carreira, só com o módulo faltosos), Dia a dia,
+// Funil, Conexões e Manutenção da base. O trilho é
 // recolhível, cada item é um link, e o número ao lado de um item diz quantos
 // itens dele pedem ação.
 //
@@ -43,7 +45,8 @@ import { leadFunnelsOf } from '../../lib/crm/scope.js';
 
 function SettingsView({
   section, onSection, db, statuses, sources, usersList, appUser, tags, lossReasons,
-  dores, funnels, modalities, planos, trialClassOptions, freepassTypes, units, metaWeekdays
+  dores, funnels, modalities, planos, trialClassOptions, freepassTypes, units, metaWeekdays,
+  trilhaId, trilhaAba, onCarreiraAba, listenersActive
 }) {
   // Fonte de leads das Configurações (G1-flip): TODOS os buckets por query
   // própria em vez do prop global (que virou só 'ativo' no flip). As seções
@@ -103,8 +106,8 @@ function SettingsView({
   const canImport = Boolean(appUser?.impersonating) || import.meta.env.DEV;
   // Seção que a tela realmente desenha e trilho desta sessão, os dois de
   // src/lib/settingsRail.js.
-  const secao = settingsSection(section, canImport);
-  const groups = settingsRailGroups(canImport);
+  const secao = settingsSection(section, canImport, appUser?.tenantModules);
+  const groups = settingsRailGroups(canImport, appUser?.tenantModules);
 
   // O número de cada item do trilho é quanto dele pede ação, e o resumo de cada
   // grupo diz o que há nele (src/lib/settingsSetup.js).
@@ -169,6 +172,12 @@ function SettingsView({
           <TeamAccessSection
             db={db} appUser={appUser} usersList={usersList} leads={leads}
             focusId={focus} onFocusHandled={clearFocus} onLeadsChanged={reloadLeads}
+          />
+        )}
+        {secao === 'carreira' && (
+          <CarreiraSettingsSection
+            db={db} appUser={appUser} usersList={usersList} listenersActive={listenersActive}
+            tenantSlug={tenantSlug} trilhaId={trilhaId} trilhaAba={trilhaAba} onAba={onCarreiraAba}
           />
         )}
         {secao === 'transfer' && (

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // A tela Professores do gestor (plano 2026-11-25, Tarefa 10): a lista mostra
-// só os ativos, cada linha leva ao perfil, o ciclo mora no endereço, e as
-// metas recusam a faixa invertida e gravam o documento inteiro.
+// só os ativos, cada linha leva ao perfil e o ciclo mora no endereço. As metas
+// saíram para Configurações → Plano de carreira (plano 2026-11-26, PR 2).
 import { act, createElement as h, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { MemoryRouter, useLocation, useNavigate, useNavigationType } from 'react-router';
@@ -44,7 +44,7 @@ function Screen() {
     nav.location = location;
     nav.type = type;
   });
-  const tab = location.pathname.endsWith('/professores/metas') ? 'metas' : 'lista';
+  const tab = location.pathname.endsWith('/professores/pesquisas') ? 'pesquisas' : 'lista';
   // O mesmo que o goToSub do App faz com a tela já aberta.
   const onTab = (subId) => navigate(hrefFor('acad', 'professores', { sub: subId }), { replace: true, state: location.state });
   return h(ProfessoresView, { db: {}, appUser: { id: 'g1', role: 'admin' }, tenantId: 'acad', tab, onTab, listenersActive: true });
@@ -65,7 +65,6 @@ beforeEach(() => {
     clientes: [],
     aulas: [],
     metas: METAS_PADRAO,
-    salvarMetas: vi.fn(async () => {}),
   };
   s.args = null;
   container = document.createElement('div');
@@ -88,14 +87,6 @@ const button = (label) => [...document.body.querySelectorAll('button')].find((b)
 const click = async (el) => {
   expect(el).toBeTruthy();
   await act(async () => { el.click(); });
-};
-const setValue = async (el, v) => {
-  expect(el).toBeTruthy();
-  const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-  await act(async () => {
-    set.call(el, v);
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-  });
 };
 const linhas = () => [...document.body.querySelectorAll('li a')];
 
@@ -147,40 +138,11 @@ describe('a lista de professores', () => {
 });
 
 describe('as metas', () => {
-  it('faixa invertida mostra o erro no campo e desliga o Salvar', async () => {
-    await render('/acad/professores/metas');
-    const min = document.getElementById('meta-aderencia-faixaMin');
-    await setValue(min, '80');
-    const erro = document.getElementById('meta-aderencia-erro');
-    expect(erro.textContent).toBe('O começo da faixa precisa ser menor que o fim.');
-    expect(min.getAttribute('aria-invalid')).toBe('true');
-    expect(min.getAttribute('aria-describedby')).toBe('meta-aderencia-erro');
-    expect(button('Salvar metas').disabled).toBe(true);
-    await setValue(min, '60');
-    expect(erro.textContent).toBe('');
-    expect(button('Salvar metas').disabled).toBe(false);
-  });
-
-  it('salvar grava o documento inteiro e avisa que salvou', async () => {
-    await render('/acad/professores/metas');
-    await setValue(document.getElementById('meta-renovacao-junior'), '50');
-    await click(button('Salvar metas'));
-    expect(s.dados.salvarMetas).toHaveBeenCalledWith({
-      renovacao: { junior: 50, pleno: 55, senior: 65 },
-      nps: { meta: 9 },
-      conversao: { tolerancia: 0, janelaDias: 30 },
-      aderencia: { barra: 2, faixaMin: 60, faixaMax: 70 },
-    });
-    expect(document.body.querySelector('[role="status"]').textContent).toBe('Metas salvas.');
-  });
-
-  it('a falha ao salvar vira aviso', async () => {
-    s.dados.salvarMetas = vi.fn(async () => { throw new Error('rede'); });
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-    await render('/acad/professores/metas');
-    await click(button('Salvar metas'));
-    expect(toast.error).toHaveBeenCalledWith('Não deu para salvar as metas. Tente de novo.');
-    expect(document.body.querySelector('[role="status"]').textContent).toBe('');
+  it('saíram da tela: a aba não existe e o link leva à trilha Professor nas Configurações', async () => {
+    await render('/acad/professores');
+    expect([...document.body.querySelectorAll('[role="tab"]')].map((t) => t.textContent)).toEqual(['Professores2', 'Pesquisas']);
+    const link = [...document.body.querySelectorAll('a')].find((a) => a.textContent === 'Metas da trilha');
+    expect(link.getAttribute('href')).toBe('/acad/configuracoes/carreira/professor');
   });
 });
 

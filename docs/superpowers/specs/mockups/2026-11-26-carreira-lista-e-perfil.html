@@ -1,0 +1,241 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Carreira · Lista e perfil do consultor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="2026-11-26-carreira-base.css">
+<style>
+.wrap{max-width:1240px;width:100%;margin:0 auto;padding:20px 28px 80px;display:flex;flex-direction:column;gap:16px}
+.crumb2{display:inline-flex;align-items:center;gap:4px;color:var(--muted);font-weight:500;font-size:13px;border-radius:6px;width:max-content}
+.crumb2 svg{width:15px;height:15px}
+.pesq{display:flex;align-items:center;gap:10px;padding:8px 8px 8px 14px;border-radius:12px;background:var(--paper);font-size:13px}
+.pesq i{width:8px;height:8px;border-radius:50%;background:var(--green)}
+/* lista */
+.tb{overflow:hidden}
+.th,.tr{display:grid;grid-template-columns:minmax(220px,1.4fr) minmax(150px,1fr) minmax(190px,1.2fr) minmax(230px,1.4fr) 20px;gap:18px;align-items:center;padding:0 20px}
+.th{height:44px;border-bottom:1px solid var(--rule);color:var(--muted);font-size:12.5px;font-weight:500}
+.tr{min-height:66px;border-bottom:1px solid var(--rule)}
+.tr:last-child{border-bottom:0}
+.tr:hover{background:#f8faff}
+.who{display:flex;align-items:center;gap:12px;min-width:0}
+.who b{font-weight:600;display:block}
+.who small{display:block;font-size:12.5px;color:var(--muted)}
+.av.p{background:var(--violet50);color:var(--violet700)}
+.av.c{background:var(--slate50);color:var(--ink2)}
+.av.e{background:var(--amber50);color:var(--amber700)}
+.nv small{display:block;font-size:12px;color:var(--muted);margin-top:3px}
+.tmp{font-size:13px}
+.tmp small{display:block;color:var(--muted);font-size:12px}
+.tbar{position:relative;display:block;height:6px;border-radius:999px;background:var(--rule);margin:6px 0 4px;max-width:180px}
+.tbar i{position:absolute;left:0;top:0;bottom:0;border-radius:999px;background:var(--blue)}
+.tbar.ok i{background:var(--green)}
+.nums{display:flex;align-items:center;gap:10px;font-size:13px}
+.dots{display:flex;gap:4px}
+.dots i{width:10px;height:10px;border-radius:3px;background:#cbd5e1}
+.dots i.ok{background:var(--green)}.dots i.bx{background:var(--rose)}.dots i.nm{background:transparent;border:1.5px dashed #94a3b8}
+.nums small{display:block;color:var(--muted);font-size:12px}
+.go{color:var(--faint)}
+.go svg{width:18px;height:18px}
+.semtrilha{color:var(--amber700);font-weight:600;font-size:13px}
+/* perfil */
+.hd{display:flex;justify-content:space-between;align-items:center;gap:16px 24px;flex-wrap:wrap;padding:18px 22px}
+.id{display:flex;gap:14px;align-items:center;min-width:0}
+.id .av{width:52px;height:52px;font-size:17px}
+.id h1{font:700 24px 'Space Grotesk';letter-spacing:-.02em;line-height:1.15}
+.meta{display:flex;gap:8px 10px;align-items:center;flex-wrap:wrap;margin-top:6px}
+.tnl{min-width:240px}
+.tnl b{font:700 15px 'Space Grotesk'}
+.tnl small{display:block;color:var(--muted);font-size:12.5px}
+.tnl .tbar{max-width:none;width:240px}
+.pop{position:absolute;z-index:40;top:calc(100% + 8px);left:0;width:320px;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 20px 40px -16px rgba(14,26,64,.35);padding:16px;display:grid;gap:14px;text-align:left}
+.pop h4{font:700 14px 'Space Grotesk';margin:0}
+.pop .lb{margin-bottom:6px}
+.pop .sug{display:inline-block;font-size:11.5px;font-weight:600;color:var(--green700);background:var(--green50);border-radius:999px;padding:1px 7px;margin-left:4px}
+.rel{position:relative;display:inline-block}
+.sc .nx{display:flex;align-items:center;gap:6px;color:rgba(255,255,255,.62);font-size:12.5px;margin-top:8px}
+.sc .nx i{width:12px;height:12px;border-radius:50%;border:2px dashed rgba(255,255,255,.75);flex:none}
+.ruler .tk.nx{background:transparent;border-left:2px dashed rgba(255,255,255,.8);width:0;margin-left:-1px}
+.ruler .tl.nx{color:#fff;top:-14px;font-weight:600}
+.sc .ruler{height:52px;margin-top:34px}
+.sc .v.sm{font-size:42px;margin:20px 0 6px}
+.sc .fl{margin-top:4px;font-size:12.5px}
+.flag.quiet2{background:rgba(255,255,255,.1);color:rgba(255,255,255,.75)}
+.ro{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13px}
+.ro svg{width:16px;height:16px;flex:none}
+.ro b{color:var(--ink);font-weight:600}
+.tabs{margin:12px 0 0}
+.tbl2{overflow:hidden}
+.vh,.vr{display:grid;grid-template-columns:96px minmax(180px,1.4fr) 120px minmax(150px,1fr) 120px;gap:16px;align-items:center;padding:0 22px}
+.vh{height:44px;border-bottom:1px solid var(--rule);color:var(--muted);font-size:12.5px;font-weight:500}
+.vr{min-height:52px;border-bottom:1px solid var(--rule);font-size:13.5px}
+.vr:last-child{border-bottom:0}
+.vr .nm{font-weight:600;border-radius:4px}
+.vr .nm:hover{color:var(--blue700);text-decoration:underline}
+.vr .val{text-align:right;font-weight:600}
+.vh span:last-child{text-align:right}
+.pill2{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:7px;font-size:12px;font-weight:600}
+.pill2.mat{background:var(--blue50);color:var(--blue700)}
+.pill2.ren{background:var(--green50);color:var(--green700)}
+.sumv{display:flex;gap:28px;flex-wrap:wrap;align-items:flex-end;padding:18px 22px;border-bottom:1px solid var(--rule)}
+.sumv b{display:block;font:700 26px 'Space Grotesk';letter-spacing:-.02em}
+.sumv span{color:var(--muted);font-size:13px}
+@media (max-width:980px){.sg{grid-template-columns:1fr 1fr;row-gap:30px}.sc:nth-child(3){border-left:0;padding-left:0}}
+@media (max-width:860px){.th{display:none}.tr{grid-template-columns:1fr auto;gap:8px 12px;padding:14px 16px}.tr .tmp,.tr .nums{grid-column:1/-1}.tr .go{display:none}
+ .vh{display:none}.vr{grid-template-columns:1fr auto;gap:4px 12px;padding:12px 16px}}
+@media (max-width:560px){.wrap{padding:16px 16px 80px}.sg{grid-template-columns:1fr}.sc,.sc:nth-child(3){border-left:0;padding:16px 0;border-top:1px solid rgba(255,255,255,.1)}.sc:first-child{border-top:0}.tnl .tbar{width:100%}}
+</style></head><body>
+<div class="states" role="group" aria-label="Estados do mockup">
+ <button type="button" data-s="lista">Lista Carreira</button>
+ <button type="button" data-s="perfil">Perfil do consultor</button>
+ <button type="button" data-s="trocar">Trilha e nível</button>
+ <button type="button" data-s="branco">Metas em branco</button>
+ <button type="button" data-s="minha">Minha carreira</button>
+</div>
+<div class="app">
+ <nav class="side" aria-label="Menu"><span class="logo"></span><i></i><i></i><i></i><i class="on"></i><i></i><i></i></nav>
+ <div class="main">
+  <header class="top"><b id="ttl">Carreira</b><span>STRONIX</span></header>
+  <div class="wrap" id="content"></div>
+ </div>
+</div>
+<div class="tag">Lista Carreira e perfil do consultor</div>
+<script>
+const svg = (p) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+const I = { back: svg('<path d="m15 18-6-6 6-6"/>'), next: svg('<path d="m9 18 6-6-6-6"/>'), search: svg('<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>'), eye: svg('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>') };
+
+// Pessoas fictícias. n = estado de cada número: ok (na meta), bx (abaixo), sd (sem dados), nm (sem meta).
+const P = [
+  { ini: 'BC', nome: 'Bruno Carvalho', t: 'Professor', k: 'p', nv: 'Júnior', desde: '01/12/2025', tempo: '1 ano', de: 'de 1 ano', pct: 100, falta: '', prox: 'Pleno', n: ['ok', 'ok', 'ok', 'bx'] },
+  { ini: 'LM', nome: 'Larissa Mendes', t: 'Professor', k: 'p', nv: 'Pleno', desde: '01/12/2025', tempo: '1 ano', de: 'de 2 anos', pct: 50, falta: 'Falta 1 ano para Sênior', prox: 'Sênior', n: ['ok', 'sd', 'bx', 'ok'] },
+  { ini: 'TR', nome: 'Tiago Rocha', t: 'Estagiário', k: 'e', nv: 'Estagiário I', desde: '01/06/2026', tempo: '5 meses', de: 'de 6 meses', pct: 83, falta: 'Falta 1 mês para Estagiário II', prox: 'Estagiário II', n: ['ok', 'sd', 'ok', 'ok'] },
+  { ini: 'CD', nome: 'Camila Duarte', t: 'Consultor', k: 'c', nv: 'Júnior', desde: '01/03/2026', tempo: '8 meses', de: 'de 1 ano', pct: 67, falta: 'Faltam 4 meses para Pleno', prox: 'Pleno', n: ['ok', 'ok', 'ok', 'ok'] },
+  { ini: 'RF', nome: 'Rafael Fontes', t: 'Consultor', k: 'c', nv: 'Pleno', desde: '01/12/2025', tempo: '1 ano', de: 'de 2 anos', pct: 50, falta: 'Falta 1 ano para Sênior', prox: 'Sênior', n: ['bx', 'ok', 'bx', 'ok'] },
+  { ini: 'JP', nome: 'Júlia Prado', t: null, k: 'c', func: 'Consultor' },
+];
+const DOT = { ok: 'na meta', bx: 'abaixo da meta', sd: 'sem dados', nm: 'sem meta' };
+const resumo = (n) => {
+  const bx = n.filter((x) => x === 'bx').length;
+  const sd = n.filter((x) => x === 'sd').length;
+  if (!bx && !sd) return 'Todos na meta';
+  return [bx && `${bx} abaixo`, sd && `${sd} sem dados`].filter(Boolean).join(', ');
+};
+
+function lista() {
+  const cont = (t) => P.filter((p) => !t || p.t === t).length;
+  const rows = P.map((p) => {
+    if (!p.t) return `<div class="tr"><span class="who"><span class="av ${p.k}">${p.ini}</span><span><b>${p.nome}</b><small>${p.func}</small></span></span><span class="semtrilha">Sem trilha</span><span class="tmp mut">Sem nível ainda</span><span><button type="button" class="lnk">Definir trilha e nível</button></span><span></span></div>`;
+    const okN = p.n.filter((x) => x === 'ok').length;
+    return `<a href="#" class="tr" data-go="perfil">
+     <span class="who"><span class="av ${p.k}">${p.ini}</span><span><b>${p.nome}</b><small>${p.t}</small></span></span>
+     <span class="nv"><span class="lvl"><i></i>${p.nv}</span><small>desde ${p.desde}</small></span>
+     <span class="tmp">${p.tempo} <span class="mut">${p.de}</span><span class="tbar${p.pct >= 100 ? ' ok' : ''}"><i style="width:${p.pct}%"></i></span><small>${p.pct >= 100 ? 'Tempo mínimo cumprido' : p.falta}</small></span>
+     <span class="nums"><span class="dots" aria-hidden="true">${p.n.map((x) => `<i class="${x}" title="${DOT[x]}"></i>`).join('')}</span><span><b class="num">${okN} de ${p.n.length}</b> na meta do ${p.nv}<small>${resumo(p.n)}</small></span></span>
+     <span class="go">${I.next}</span></a>`;
+  }).join('');
+  return `
+  <div class="shead"><div class="grow"><h1>Carreira</h1><p>Em que nível cada pessoa está e como estão os números do período, cada um na própria trilha.</p></div>
+   <div class="pesq"><i></i><span>Pesquisa de junho aberta até 20/06</span><a href="#" class="btn sm">Pesquisas</a></div></div>
+  <div class="filters">
+   <button type="button" class="fp on" aria-pressed="true">Todas as trilhas <small class="num">${cont()}</small></button>
+   <button type="button" class="fp" aria-pressed="false">Professor <small class="num">${cont('Professor')}</small></button>
+   <button type="button" class="fp" aria-pressed="false">Estagiário <small class="num">${cont('Estagiário')}</small></button>
+   <button type="button" class="fp" aria-pressed="false">Consultor <small class="num">${cont('Consultor')}</small></button>
+   <span style="flex:1"></span><span class="search">${I.search}Buscar pelo nome</span>
+  </div>
+  <div class="card tb" role="table" aria-label="Equipe por trilha">
+   <div class="th" role="row"><span>Pessoa</span><span>Nível</span><span>Tempo no nível</span><span>Números do período</span><span></span></div>
+   ${rows}
+  </div>
+  <p class="mut" style="font-size:12.5px">Verde é número na meta do nível, vermelho é abaixo, cinza é sem dados no período e tracejado é número sem meta.</p>`;
+}
+
+// O placar do consultor: valor, a meta do nível atual (traço laranja) e a do próximo (traço tracejado).
+const NUM = [
+  { l: 'Conversão em matrícula', v: '31%', s: '22 de 71 leads se matricularam', ok: 'Acima da academia (27%)', nx: 'Para Pleno: 3 pontos acima da academia, 30%', r: { min: 0, max: 60, me: 27, nx: 30, val: 31, l: ['Júnior', 'Pleno'] } },
+  { l: 'Vendas', v: 'R$ 14,2 mil', s: 'por mês, de dezembro a novembro', ok: 'Na meta do Júnior', nx: 'Para Pleno: R$ 18 mil por mês', r: { min: 0, max: 25, me: 12, nx: 18, val: 14.2, l: ['Júnior', 'Pleno'], fmt: (x) => `R$ ${x} mil` } },
+  { l: 'Renovação da carteira', v: '52%', s: '13 de 25 contratos renovaram', ok: 'Na meta do Júnior', nx: 'Para Pleno: 60%', r: { min: 30, max: 80, me: 50, nx: 60, val: 52, l: ['Júnior', 'Pleno'] } },
+  { l: 'Meta diária batida', v: '81%', s: '172 de 213 dias de meta', ok: 'Na meta do Júnior', nx: 'Para Pleno: 85%', r: { min: 50, max: 100, me: 75, nx: 85, val: 81, l: ['Júnior', 'Pleno'] } },
+];
+const pos = (r, x) => ((x - r.min) / (r.max - r.min)) * 100;
+
+function placar(branco, minha) {
+  const cells = NUM.map((n) => {
+    const r = n.r;
+    const f = r.fmt || ((x) => `${x}%`);
+    return `<div class="sc"><div class="l">${n.l}</div><div class="v d num${n.v.length > 6 ? ' sm' : ''}">${n.v}</div><div class="s num">${n.s}</div>
+     <div class="ruler" role="img" aria-label="${n.v}. ${branco ? 'Sem meta definida.' : `${n.ok}. ${n.nx}.`}">
+      <div class="trk"></div>
+      ${branco ? '' : `<div class="tk me" style="left:${pos(r, r.me)}%"></div><div class="tl me" style="left:${pos(r, r.me)}%">${r.l[0]}<br>${f(r.me)}</div>
+      <div class="tk nx" style="left:${pos(r, r.nx)}%"></div><div class="tl nx" style="left:${pos(r, r.nx)}%">${r.l[1]} ${f(r.nx)}</div>`}
+      <div class="dot" style="left:${pos(r, r.val)}%"></div>
+     </div>
+     <div class="fl">${branco ? '<span class="flag quiet2">Sem meta definida</span>' : `<span class="flag green">${n.ok}</span>`}</div>
+     ${branco ? '' : `<div class="nx"><i></i>${n.nx}</div>`}</div>`;
+  }).join('');
+  return `<section class="sb" aria-label="Números do plano de carreira">
+   <div class="sb-h"><div><h2 class="d">${minha ? 'Onde você está no plano de carreira' : 'Onde a Camila está no plano de carreira'}</h2><p>Trilha Consultor, período de 1º de dezembro de 2025 a 30 de novembro de 2026.</p></div>
+    <div class="period dk" role="group" aria-label="Período"><button type="button" aria-label="Período anterior">${I.back}</button><span>2026</span><button type="button" disabled aria-label="Próximo período">${I.next}</button></div></div>
+   <div class="sg">${cells}</div>
+   ${branco ? '<div class="lgnd"><span>O gestor ainda não definiu as metas desta trilha. Os números aparecem sem dizer se bateram.</span></div>' : '<div class="lgnd"><span><i></i>Meta do nível atual</span><span><i class="w"></i>Resultado</span><span><i class="h"></i>Meta do próximo nível</span></div>'}
+  </section>`;
+}
+
+const VENDAS = [
+  ['24/11', 'Mariana Lopes', 'Matrícula', 'Clube+ Start', 'R$ 1.308'], ['21/11', 'Diego Martins', 'Renovação', 'Clube+ Flow', 'R$ 2.988'],
+  ['19/11', 'Sofia Ribeiro', 'Matrícula', 'No Limit', 'R$ 1.788'], ['14/11', 'Pedro Antunes', 'Renovação', 'Clube+ Move', 'R$ 2.388'],
+  ['12/11', 'Helena Costa', 'Matrícula', 'Clube+ Start', 'R$ 1.308'],
+];
+
+function popover() {
+  return `<div class="pop" role="dialog" aria-label="Trilha e nível">
+   <h4>Trilha e nível da Camila</h4>
+   <div><div class="lb">Trilha</div><div class="opts" role="radiogroup" aria-label="Trilha">
+    <button type="button" class="opt" role="radio" aria-checked="true"><i class="dot"></i><span><b>Consultor<span class="sug">sugerida</span></b><span>Júnior, Pleno e Sênior</span></span></button>
+   </div></div>
+   <div><div class="lb">Nível</div><div class="chips" role="radiogroup" aria-label="Nível">
+    <button type="button" class="ch" role="radio" aria-checked="true">Júnior</button><button type="button" class="ch" role="radio" aria-checked="false">Pleno</button><button type="button" class="ch" role="radio" aria-checked="false">Sênior</button></div></div>
+   <label class="f"><span class="lb">Desde</span><input class="in" type="date" value="2026-03-01"></label>
+   <div style="display:flex;align-items:center;gap:10px"><span class="mut" style="font-size:12.5px;flex:1">Vale da data em diante e não muda nada do passado.</span><button type="button" class="btn pri sm">Salvar</button></div>
+  </div>`;
+}
+
+function perfil(s) {
+  const minha = s === 'minha';
+  const branco = s === 'branco';
+  return `
+  ${minha ? `<p class="ro">${I.eye}<span><b>Só leitura.</b> Quem troca trilha, nível e metas é o gestor.</span></p>` : `<a href="#" class="crumb2" data-go="lista">${I.back}Carreira</a>`}
+  <header class="card hd">
+   <div class="id"><span class="av c">CD</span>
+    <div><h1>Camila Duarte</h1>
+     <div class="meta"><span class="lvl"><i></i>Júnior desde 01/03/2026</span><span class="mod">Trilha Consultor</span>
+     ${minha ? '' : `<span class="rel"><button type="button" class="lnk" data-go="trocar">Trilha e nível</button>${s === 'trocar' ? popover() : ''}</span>`}</div></div>
+   </div>
+   <div class="tnl"><b>8 meses no Júnior</b><span class="tbar"><i style="width:67%"></i></span><small>O mínimo para subir a Pleno é 1 ano. Faltam 4 meses.</small></div>
+  </header>
+  ${placar(branco, minha)}
+  <div class="tabs" role="tablist" aria-label="Detalhes dos números">
+   <button type="button" class="tab" role="tab" aria-selected="true">Vendas <span class="n num">68</span></button>
+   <button type="button" class="tab" role="tab" aria-selected="false">Renovação <span class="n num">25</span></button>
+   <button type="button" class="tab" role="tab" aria-selected="false">Conversão <span class="n num">71</span></button>
+   <button type="button" class="tab" role="tab" aria-selected="false">Meta diária</button>
+  </div>
+  <div class="card tbl2" role="table" aria-label="Vendas do período">
+   <div class="sumv"><div><b class="num">68 vendas</b><span>41 matrículas e 27 renovações</span></div><div><b class="num">R$ 170,4 mil</b><span>valor dos contratos, não o que entrou no caixa</span></div></div>
+   <div class="vh" role="row"><span>Data</span><span>Cliente</span><span>Tipo</span><span>Plano</span><span>Valor</span></div>
+   ${VENDAS.map((v) => `<div class="vr" role="row"><span class="mut num">${v[0]}</span><a href="#" class="nm">${v[1]}</a><span><span class="pill2 ${v[2] === 'Matrícula' ? 'mat' : 'ren'}">${v[2]}</span></span><span>${v[3]}</span><span class="val num">${v[4]}</span></div>`).join('')}
+  </div>`;
+}
+
+function render(s) {
+  document.querySelectorAll('.states button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.s === s)));
+  document.getElementById('ttl').textContent = s === 'minha' ? 'Minha carreira' : 'Carreira';
+  document.getElementById('content').innerHTML = s === 'lista' ? lista() : perfil(s);
+}
+document.addEventListener('click', (e) => {
+  const st = e.target.closest('.states button');
+  if (st) return render(st.dataset.s);
+  const go = e.target.closest('[data-go]');
+  if (go) { e.preventDefault(); render(go.dataset.go); }
+});
+render('lista');
+</script>
+</body></html>
