@@ -12,6 +12,7 @@ import { ToastContext } from '../../contexts/ToastContext.jsx';
 import { GeneralConfigContext } from '../../contexts/GeneralConfigContext.jsx';
 import { LeadProfileContext } from '../../contexts/LeadProfileContext.jsx';
 import { hrefFor } from '../routes.js';
+import { PROFESSOR_LEAD_FIELDS } from '../professorWrites.js';
 
 const m = vi.hoisted(() => ({ freepasses: [], aulas: [], records: [], n: 0, lotes: [] }));
 vi.mock('../firebase.js', () => ({
@@ -252,13 +253,44 @@ describe('aba Contratos com as aulas do freepass', () => {
     expect(lista.querySelector('.line-through').textContent).toBe('qua 14/10 às 18:00 · Prof. Leonardo');
   });
 
-  it('o professor vê as aulas, sem Remarcar e sem Agendar', async () => {
+  // O professor agenda pelo cartão: as regras dele aceitam no lead só o patch do
+  // Agendar e o resumo do freepass (PROFESSOR_LEAD_FIELDS), com o dono da tarefa
+  // vazio, e no freepass só aulas e endsAt.
+  const soDoProfessor = (patch) => {
+    expect(Object.keys(patch).filter((k) => !PROFESSOR_LEAD_FIELDS.includes(k))).toEqual([]);
+    if ('appointmentOwnerId' in patch) expect(patch).toMatchObject({ appointmentOwnerId: null, appointmentOwnerName: null });
+  };
+
+  it('o professor remarca uma aula pelo diálogo, gravando só o que a regra dele aceita', async () => {
+    m.freepasses = [FP];
+    m.aulas = [aulaRec('a1', new Date(2026, 9, 19, 18, 0)), aulaRec('a2', new Date(2026, 9, 23, 18, 0))];
+    m.records = m.aulas;
+    await montar({ ...LEAD, currentAulaId: 'a1', appointmentType: 'aula_experimental', appointmentScheduledFor: new Date(2026, 9, 19, 18, 0) }, PROFESSOR);
+    await clicar(document.querySelector('button[aria-label="Remarcar a aula 2"]'));
+    await clicar([...dialogo().querySelector('fieldset').querySelectorAll('button')].find((b) => b.textContent === 'Hoje'));
+    await clicar(comeca('Remarcar', dialogo().querySelector('[data-slot="dialog-footer"]')));
+    const [lote] = m.lotes;
+    expect(Object.keys(lote[1][2]).sort()).toEqual(['aulas', 'endsAt']);
+    expect(lote[2][2]).toMatchObject({ currentAulaId: 'a2' });
+    soDoProfessor(lote[2][2]);
+    expect(logInteractions).not.toHaveBeenCalled();
+  });
+
+  it('o professor agenda a vaga livre: uma nota no próprio nome, o freepass só com aulas e fim', async () => {
     m.freepasses = [{ ...FP, aulas: 1 }];
     m.aulas = [aulaRec('a1', new Date(2026, 9, 19, 18, 0))];
+    m.records = [...m.aulas];
     await montar({ ...LEAD, currentAulaId: 'a1', appointmentType: 'aula_experimental', appointmentScheduledFor: new Date(2026, 9, 19, 18, 0) }, PROFESSOR);
-    const lista = document.querySelector('ul[aria-label^="Aulas do freepass"]');
-    expect(lista.textContent).toContain('Aula 2 · ainda sem dia');
-    expect(lista.querySelectorAll('button')).toHaveLength(0);
+    await agendarVaga();
+    const [, , quem, payloads, patch, extra] = logInteractions.mock.calls[0];
+    expect(quem).toBe(PROFESSOR);
+    expect(payloads.map((p) => p.type)).toEqual(['note']);
+    expect(patch).toMatchObject({ currentAulaId: 'auto1' });
+    soDoProfessor(patch);
+    const b = fakeBatch();
+    extra(b);
+    const noFreepass = b.calls.filter(([, path]) => path.includes('stronix_freepass'));
+    expect(noFreepass.map(([op, , data]) => [op, Object.keys(data).sort()])).toEqual([['update', ['aulas', 'endsAt']]]);
   });
 
   it('remarcar uma aula futura que não é a da vez: muda o registro, reconta o fim e o lead passa a ela quando fica mais cedo', async () => {

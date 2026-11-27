@@ -16,7 +16,7 @@ import { useReferrals } from '../hooks/useReferrals.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { planStageMove, planLoss, planUpgradeMove, planUpgradeDecline, stageMoveBlockMessage, withStageEntered, reactivationFunnels, REACTIVATED_NOTE } from '../lib/stageMove.js';
 import { canEditLead, isLeadConverted } from '../lib/leads.js';
-import { ACTIONS, can, isGestor, isProfessor, isSeller } from '../lib/acesso.js';
+import { ACTIONS, can, isGestor, isSeller } from '../lib/acesso.js';
 import { MODULES, hasModule } from '../lib/modules.js';
 import { normalizeAppointmentType, getSafeDateOrNull } from '../lib/dates.js';
 // firstName vira contactFirstName: o arquivo já tem um firstName local, do próprio lead.
@@ -392,9 +392,10 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // O cartão do freepass: a aula da vez remarca pelo Agendar da ficha (move a
   // pendente), outra aula agendada pelo diálogo, e a vaga livre agenda uma aula
   // a mais pelo Agendar preso ao freepass. Quem pode é quem agenda
-  // (canTimeline); o professor fica de fora até as regras dele acompanharem
-  // (Tarefa 9 da entrega 2 do Visitante).
-  const canCardSchedule = canTimeline && !isProfessor(appUser);
+  // (canTimeline), o professor incluído: os três caminhos gravam no lead só o
+  // patch do Agendar e o resumo do freepass, e no freepass só aulas e endsAt,
+  // que é o que as regras dele aceitam. Lançar continua só com canFreepass.
+  const canCardSchedule = canTimeline;
   const [aulaMove, setAulaMove] = useState(null);
   const openScheduleFromCard = (start) => {
     if (!canCardSchedule) { toast.warning('Você não tem permissão para agendar neste lead.'); return; }

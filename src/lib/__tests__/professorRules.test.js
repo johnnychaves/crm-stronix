@@ -298,6 +298,25 @@ describe('as ações do professor na ficha passam pelo logInteraction', () => {
     expect(corpo).toContain('const freepassLead = fpSide ? fpSide.leadPatch : {};');
   });
 
+  // O Remarcar do cartão do freepass, que o professor também usa, não passa
+  // pelo logInteraction: o writeFreepassAulaMove grava num lote só o registro
+  // da aula, o freepass (freepassAulasPatch: aulas e endsAt) e o lead (o resumo
+  // do freepass e, quando a aula passa a ser a da vez, o patch do Agendar), sem
+  // interação e sem o toque. O comportamento com o professor está no
+  // fichaFreepassContratos.test.js.
+  it('o Remarcar do cartão (saveAulaMove) grava só pelo writeFreepassAulaMove, sem interação', () => {
+    const corpo = corpoDe(ficha, 'saveAulaMove');
+    expect(corpo).toContain('await writeFreepassAulaMove({');
+    expect(corpo).not.toMatch(/logInteractions?\(|\b(updateDoc|setDoc|addDoc|writeBatch|runTransaction|commit[A-Z]\w*)\(/);
+    const lib = ler('../freepassAgendaWrites.js');
+    const move = lib.slice(lib.indexOf('export async function writeFreepassAulaMove'), lib.indexOf('\n}\n', lib.indexOf('export async function writeFreepassAulaMove')));
+    expect(move).toMatch(/const leadPatch = \{\s*\.\.\.freepassSummaryPatch\(running, now\),\s*\.\.\.\(toNext && buildSchedulePatch\(\{/);
+    expect(move).toContain('const owner = toNext ? appointmentTaskOwnerFor({ scheduler: appUser, lead }) : null;');
+    expect(move).toContain('batch.update(doc(freepassCol(db), freepass.id), after.patch);');
+    expect(move).not.toMatch(/logInteractions?\(|lastInteractionAt|interactionsCount/);
+    expect(ler('../freepassAgendaWrites.js')).toContain('const patch = freepassAulasPatch({ freepass, records });');
+  });
+
   // A segunda interação (o lançamento) soma dois no lead, o que a regra do
   // professor recusa. O lançamento só passa com canFreepass, que o professor não tem.
   it('o Agendar só lança freepass com canFreepass', () => {
