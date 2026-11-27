@@ -5,7 +5,7 @@
 // conta como encerrada sem ninguém gravar nada.
 import { getSafeDateOrNull } from '../dates.js';
 import { dayKeyOf } from '../operacional/month.js';
-import { cicloDe } from './ciclo.js';
+import { chaveDaPesquisa } from '../carreira/periodo.js';
 import { carteiraAt } from './carteira.js';
 import { npsDe, npsDoAno, RESPOSTAS_MINIMAS } from './nps.js';
 import { pct } from '../crm/stats.js';
@@ -23,18 +23,10 @@ function diaDe(texto) {
   return dt.getFullYear() === a && dt.getMonth() === m - 1 && dt.getDate() === d ? dt : null;
 }
 
-// Os ciclos que a pesquisa pode contar: o do ano do início (o padrão, a de
-// dezembro de 2027 conta para o ciclo de 2027) e o ciclo em que o início cai.
-export function ciclosDaPesquisa(inicio) {
-  const d = diaDe(inicio);
-  return d ? [...new Set([d.getFullYear(), cicloDe(d)])] : [];
-}
-
 export const novaPesquisa = () => ({
   nome: '',
   inicio: '',
   fim: '',
-  ciclo: null,
   perguntas: [{ texto: PERGUNTA_PRINCIPAL_PADRAO, principal: true }],
 });
 
@@ -44,7 +36,6 @@ export function problemaDaPesquisa(f) {
   if (!diaDe(f.inicio)) return { campo: 'inicio', texto: 'Escolha o dia em que a pesquisa começa.' };
   if (!diaDe(f.fim)) return { campo: 'fim', texto: 'Escolha o dia em que a pesquisa termina.' };
   if (f.fim < f.inicio) return { campo: 'fim', texto: 'O fim vem antes do começo.' };
-  if (!ciclosDaPesquisa(f.inicio).includes(f.ciclo)) return { campo: 'ciclo', texto: 'Escolha o ciclo da pesquisa.' };
   const perguntas = f.perguntas || [];
   if (perguntas.length < 1 || perguntas.length > MAX_PERGUNTAS) return { campo: 'perguntas', texto: 'A pesquisa tem de 1 a 5 perguntas.' };
   const vazia = perguntas.findIndex((p) => !String(p?.texto || '').trim());
@@ -61,7 +52,9 @@ export function paraGravar(f) {
     nome: f.nome.trim(),
     inicio: f.inicio,
     fim: f.fim,
-    ciclo: f.ciclo,
+    // Ninguém lê: a pesquisa conta pela data em que abre (chaveDaPesquisa). O
+    // campo fica porque a regra da pesquisa encerrada compara o ciclo.
+    ciclo: Number(f.inicio.slice(0, 4)),
     perguntas: f.perguntas.map((p, i) => ({ id: `p${i + 1}`, texto: p.texto.trim(), principal: Boolean(p.principal) })),
   };
 }
@@ -129,14 +122,15 @@ export function progressoDaTurma(turma, respostas) {
   return { pct: pct(r, t) ?? 0, vale: t > 0 && r >= precisa, faltam: Math.max(0, precisa - r), nuncaVale: t < RESPOSTAS_MINIMAS };
 }
 
-// O NPS do professor no ciclo: as pesquisas do ciclo que já abriram e têm turma
-// dele, cada uma com o npsDe (a turma é a da pesquisa), a nota do ano e a
+// O NPS do professor no período: as pesquisas que contam na avaliação da
+// chave (pela data em que abrem, chaveDaPesquisa), que já abriram e têm turma
+// dele, cada uma com o npsDe (a turma é a da pesquisa), a nota do período e a
 // porcentagem de promotores da principal, somada das pesquisas válidas.
 // `totais` é a lista de stronix_nps_totais ({ pesquisaId, professorId, ... }).
-export function npsDoCiclo({ pesquisas, totais, professorId, ciclo, meta = 9 }) {
+export function npsDoCiclo({ pesquisas, totais, professorId, trilha, chave, meta = 9 }) {
   const porId = new Map((totais || []).map((t) => [`${t.pesquisaId}_${t.professorId}`, t]));
   const itens = (pesquisas || [])
-    .filter((p) => p.ciclo === ciclo && p.situacao !== 'rascunho' && !nuncaRecebeu(p) && Number(p.turmas?.[professorId]) > 0)
+    .filter((p) => chaveDaPesquisa(trilha, p.inicio) === chave && p.situacao !== 'rascunho' && !nuncaRecebeu(p) && Number(p.turmas?.[professorId]) > 0)
     .sort((a, b) => String(a.inicio).localeCompare(String(b.inicio)))
     .map((pesquisa) => {
       const t = porId.get(`${pesquisa.id}_${professorId}`) ?? null;

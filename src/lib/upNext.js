@@ -31,6 +31,7 @@
 import { getSafeDateOrNull, normalizeAppointmentType } from './dates.js';
 import { getLeadAppointmentDate, getLeadAppointmentType, isClientLead } from './leads.js';
 import { isAppointmentEcho } from './outcomeCorrection.js';
+import { appointmentFreepassOf } from './visitante.js';
 
 const join = (parts) => parts.filter(Boolean).join(' · ');
 const taskOf = (name, when, today) => (name && when >= today ? `Tarefa de ${name}` : '');
@@ -43,10 +44,12 @@ function appointmentItem(lead, type, when, now, today) {
   // depois a sobrescreve. Só vale enquanto o próximo contato ainda é o compromisso.
   const note = normalizeAppointmentType(lead.nextFollowUpType) ? lead.nextFollowUpNote : '';
   const quantity = Number(lead.trialClassesPlanned) || 0;
+  // Com freepass, quem diz quantas aulas são é ele: o detalhe mostra o andamento.
+  const fp = isAula ? appointmentFreepassOf(lead, now) : null;
   const aula = [
     lead.appointmentModality,
     lead.appointmentProfessorName || (lead.appointmentSoloTraining ? 'Treina sozinho' : ''),
-    quantity ? `${quantity} ${quantity === 1 ? 'aula' : 'aulas'}` : ''
+    fp ? `Freepass, ${fp.shortText}` : quantity ? `${quantity} ${quantity === 1 ? 'aula' : 'aulas'}` : ''
   ];
   const visita = [lead.appointmentUnit ? `Unidade ${lead.appointmentUnit}` : ''];
   return {

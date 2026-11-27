@@ -44,6 +44,21 @@ describe('upNextOf', () => {
     expect(upNextOf(lead, AGORA)[0].detail).toBe('Pilates · Treina sozinho · 1 aula');
   });
 
+  it('com freepass, a aula mostra o andamento dele no lugar da quantidade', () => {
+    const base = {
+      appointmentType: 'aula_experimental', appointmentScheduledFor: D(10, 20, 18), appointmentModality: 'Pilates',
+      appointmentProfessorName: 'Leonardo', trialClassesPlanned: 2,
+      freepassId: 'f1', freepassStatus: 'correndo', freepassModalidadeName: 'Pilates', freepassContractAtStart: null
+    };
+    expect(upNextOf({ ...base, freepassKind: 'aulas', freepassTotal: 2, freepassAulas: 1 }, AGORA)[0].detail)
+      .toBe('Pilates · Leonardo · Freepass, 1 de 2 aulas');
+    expect(upNextOf({ ...base, freepassKind: 'dias', freepassTotal: 7, freepassStartsAt: D(10, 14), freepassEndsAt: D(10, 20) }, AGORA)[0].detail)
+      .toBe('Pilates · Leonardo · Freepass, faltam 4 dias');
+    // A aula avulsa de outra modalidade fica como antes.
+    expect(upNextOf({ ...base, appointmentModality: 'Funcional', freepassKind: 'aulas', freepassTotal: 2, freepassAulas: 1 }, AGORA)[0].detail)
+      .toBe('Funcional · Leonardo · 2 aulas');
+  });
+
   it('a visita agendada por outro consultor diz de quem é a tarefa', () => {
     const lead = {
       appointmentType: 'visita', appointmentScheduledFor: D(10, 21, 19), appointmentOwnerName: 'Bianca Torres'

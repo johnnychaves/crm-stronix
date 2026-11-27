@@ -47,8 +47,8 @@ describe('SCREENS', () => {
 
   it('primeiro segmento de cada tela, sem repetição', () => {
     expect([...FIRST_LEVEL_SEGMENTS].sort()).toEqual([
-      'clientes', 'configuracoes', 'ficha', 'leads', 'meta-diaria', 'perfil-da-academia',
-      'pipeline', 'plano-e-faturas', 'professores', 'relatorios', 'rotinas', 'super-admin', 'visao-geral',
+      'carreira', 'clientes', 'configuracoes', 'ficha', 'leads', 'meta-diaria', 'perfil-da-academia',
+      'pipeline', 'plano-e-faturas', 'relatorios', 'rotinas', 'super-admin', 'visao-geral',
     ]);
     expect(Object.isFrozen(FIRST_LEVEL_SEGMENTS)).toBe(true);
   });

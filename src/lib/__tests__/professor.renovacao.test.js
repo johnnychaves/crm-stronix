@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { normalizeContracts } from '../operacional/base.js';
 import { renewalCohort, summarizeCohort } from '../operacional/renewal.js';
 import { renovacaoDoCiclo } from '../professor/renovacao.js';
-import { limitesDoCiclo } from '../professor/ciclo.js';
+const limitesDoCiclo = (ciclo) => ({ inicio: new Date(ciclo - 1, 11, 1), fim: new Date(ciclo, 11, 1) });
 
 const ts = (iso) => ({ toDate: () => new Date(iso) });
 const PROF = { id: 'p1', modalidadeIds: ['func'] };
@@ -20,7 +20,7 @@ const renovacao = (id, de, over = {}) => contrato(id, {
   createdAt: new Date('2027-03-01T12:00:00'), ...over,
 });
 const conta = ({ raw, leads, ciclo = 2027, asOf = ASOF }) => renovacaoDoCiclo({
-  leads, contratos: normalizeContracts(raw), planos: PLANOS, professor: PROF, ciclo, asOf,
+  leads, contratos: normalizeContracts(raw), planos: PLANOS, professor: PROF, periodo: limitesDoCiclo(ciclo), asOf,
 });
 const lead = (id, over = {}) => ({ id, professorId: 'p1', ...over });
 

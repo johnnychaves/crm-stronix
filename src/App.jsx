@@ -62,6 +62,7 @@ import { recordGoalHit as recordGoalHitDoc, goalHitKeyToRecord } from './lib/dai
 import { useRenewalClients } from './hooks/useRenewalClients.js';
 import { useClientsWithContactToday } from './hooks/useClientsWithContactToday.js';
 import { useDayAgenda } from './hooks/useDayAgenda.js';
+import { useFreepassAdvance } from './hooks/useFreepassAdvance.js';
 import { useRouteScroll } from './hooks/useRouteScroll.js';
 import { useActivityGate } from './hooks/useActivityGate.js';
 import { useReloadOnUpdate } from './hooks/useReloadOnUpdate.js';
@@ -70,7 +71,7 @@ import { planReferralSetupOps } from './lib/referrals.js';
 import { planDefaultFunnel, planNegociacaoStages } from './lib/funnelSetup.js';
 import { tenantCol, tenantDoc, writeSetupWrites, writeSetupPlan } from './lib/funnelSetupWrites.js';
 import { IDLE_RUN, runStatusFor, settleRun, EMPTY_SETUP_FLAGS, setupFlagsFromConfig, setupFlagFor } from './lib/setupRun.js';
-import { normalizeModules } from './lib/modules.js';
+import { hasModule, MODULES, normalizeModules } from './lib/modules.js';
 import { parseAppPath, routeDecision, hrefFor, screenKey, documentTitle } from './lib/routes.js';
 import { funnelFromSearch } from './lib/screenParams.js';
 import {
@@ -227,7 +228,7 @@ function AppInner() {
   // `sub` é a seção das Configurações ou a aba da ficha, já com o padrão da
   // tela quando o endereço não traz segmento. Ela NÃO entra na screenKey: o
   // AppErrorBoundary e a rolagem não podem remontar a cada troca de seção.
-  const { fichaOpen, profileLeadId, activeTab, resolvedTab, superTab, sub, modelId, profId, pessoaId, pessoaAba } = screenState(shown, location.state, appUser);
+  const { fichaOpen, profileLeadId, activeTab, resolvedTab, superTab, sub, modelId, profId, pessoaId, pessoaAba, trilhaId, trilhaAba } = screenState(shown, location.state, appUser);
   // As três abas da Visão geral. O grupo do menu fica aberto enquanto uma
   // delas está ativa; fora delas, vale o toggle do usuário.
   const isDashTab = resolvedTab === 'dashOperacional' || resolvedTab === 'dashCrm' || resolvedTab === 'dashGerencial';
@@ -1517,6 +1518,15 @@ useEffect(() => {
   const { items: dayAgendaLeads, loading: dayAgendaLoading } = useDayAgenda({
     db, enabled: listenersActive && !tenantBlock && isSeller(appUser), dayKey: `${sessionKey}:${dayKey}`
   });
+  // O compromisso pendente de hoje (aula ou visita, com ou sem freepass) entra
+  // no agendamento do lead no dia dele (useFreepassAdvance), só com o módulo:
+  // uma vez por dia e por aba, por quem vende. A Agenda de hoje acima é ao vivo
+  // e vê o agendamento novo sozinha.
+  useFreepassAdvance({
+    db,
+    enabled: listenersActive && !tenantBlock && isSeller(appUser) && hasModule(appUser?.tenantModules, MODULES.FALTOSOS),
+    dayKey: `${sessionKey}:${dayKey}`,
+  });
   // A base da Meta (o selo, o título da aba e a tela). Os painéis continuam
   // com o metaLeads.
   const goalLeads = useMemo(() => withDayAgendaLeads(metaLeads, dayAgendaLeads), [metaLeads, dayAgendaLeads]);
@@ -1700,7 +1710,7 @@ useEffect(() => {
                 {nav.kanban && <SidebarItem icon={<Kanban className="w-[18px] h-[18px]" />} label="Pipeline" href={menuHref('kanban')} onNavigate={closeDrawer} active={activeTab === 'kanban'} />}
                 {nav.clientes && <SidebarItem icon={<GraduationCap className="w-[18px] h-[18px]" />} label="Clientes" badge={clientsAVencer > 0 ? clientsAVencer : null} href={menuHref('clientes')} onNavigate={closeDrawer} active={activeTab === 'clientes'} />}
                 {nav.dailyGoal && <SidebarItem icon={<Target className="w-[18px] h-[18px]" />} label="Meta diária" badge={dailyGoalPending > 0 ? dailyGoalPending : null} href={menuHref('dailyGoal')} onNavigate={closeDrawer} active={activeTab === 'dailyGoal'} />}
-                {nav.meuPerfil && <SidebarItem icon={<IdCard className="w-[18px] h-[18px]" />} label="Meu perfil" href={menuHref('professorPerfil', { profId: appUser.professorId })} onNavigate={closeDrawer} active={activeTab === 'professorPerfil'} />}
+                {nav.meuPerfil && <SidebarItem icon={<IdCard className="w-[18px] h-[18px]" />} label="Minha carreira" href={menuHref('professorPerfil', { profId: appUser.professorId })} onNavigate={closeDrawer} active={activeTab === 'professorPerfil'} />}
                 {nav.leads && (
                   <SidebarGroup
                     icon={<Users className="w-[18px] h-[18px]" />}
@@ -1728,7 +1738,7 @@ useEffect(() => {
               <div className={`px-2.5 mt-6 mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-gray-400 dark:text-neutral-500 whitespace-nowrap ${SIDEBAR_EXPANDED_ONLY}`}>Administração</div>
               <div className="space-y-1">
                 {nav.professores && (
-                  <SidebarItem icon={<Award className="w-[18px] h-[18px]" />} label="Professores" href={menuHref('professores')} onNavigate={closeDrawer} active={activeTab === 'professores' || activeTab === 'professorPerfil'} />
+                  <SidebarItem icon={<Award className="w-[18px] h-[18px]" />} label="Carreira" href={menuHref('professores')} onNavigate={closeDrawer} active={activeTab === 'professores' || activeTab === 'professorPerfil'} />
                 )}
                 {/* O balão "Novo" das Rotinas, em vermelho, fica no item do
                     menu até o ROTINAS_NOVO_ATE (mockup 2026-10-08, opção C).
@@ -1798,8 +1808,8 @@ useEffect(() => {
               {activeTab === 'clientes' && 'Clientes'}
               {activeTab === 'dailyGoal' && 'Sua Meta Diária'}
               {activeTab === 'rotinas' && 'Rotinas'}
-              {activeTab === 'professores' && 'Professores'}
-              {activeTab === 'professorPerfil' && (isProfessor(appUser) ? 'Meu perfil' : 'Professores')}
+              {activeTab === 'professores' && 'Carreira'}
+              {activeTab === 'professorPerfil' && (isProfessor(appUser) ? 'Minha carreira' : 'Carreira')}
               {activeTab === 'leads' && 'Todos os Leads'}
               {activeTab === 'aulas' && 'Aulas Experimentais'}
               {activeTab === 'visitas' && 'Visitas'}
@@ -1969,7 +1979,7 @@ useEffect(() => {
               {/* Relatórios (spec 2026-10-09): o submenu vem do endereço (sub), e
                   trocar de submenu leva o período e os filtros junto. */}
               {activeTab === 'relatorios' && <RelatoriosView db={db} appUser={appUser} tenantName={tenantDisplayName} usersList={usersList} funnels={funnels} sources={sources} liveLeads={metaLeads} interactions={interactions} listenersActive={listenersActive} section={sub} onSection={(id, query) => goToSub('relatorios', id, undefined, query)} />}
-              {activeTab === 'settings' && isGestor(appUser) && <SettingsView section={sub} listenersActive={listenersActive} pessoaId={pessoaId} pessoaAba={pessoaAba} onSection={(id) => goToSub('settings', id)} sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} dores={dores} funnels={funnels} modalities={modalities} planos={planos} trialClassOptions={trialClassOptions} freepassTypes={freepassTypes} units={units} metaWeekdays={metaWeekdays} />}
+              {activeTab === 'settings' && isGestor(appUser) && <SettingsView section={sub} onSection={(id) => goToSub('settings', id)} trilhaId={trilhaId} trilhaAba={trilhaAba} onCarreiraAba={(id, aba) => goToSub('settings', 'carreira', { trilhaId: id, trilhaAba: aba })} listenersActive={listenersActive} pessoaId={pessoaId} pessoaAba={pessoaAba} sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} dores={dores} funnels={funnels} modalities={modalities} planos={planos} trialClassOptions={trialClassOptions} freepassTypes={freepassTypes} units={units} metaWeekdays={metaWeekdays} />}
               {activeTab === 'rotinas' && isGestor(appUser) && (
                 <RotinasView
                   db={db}

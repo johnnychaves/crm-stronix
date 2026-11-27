@@ -2,9 +2,14 @@ import { useState, useMemo } from 'react';
 import { BookOpen, Building2, Calendar, Check, Clock, Dumbbell, GraduationCap, MessageCircle, Phone, UserRound } from 'lucide-react';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 import { SOLO_TRAINING, SOLO_TRAINING_LABEL, professorsForModality, professorNameById } from '../../lib/professores.js';
+import { FREEPASS_KINDS } from '../../lib/visitante.js';
 import { Btn } from '../ui/Btn.jsx';
 import { cn } from '@/lib/utils';
 import { WizardFrame, WizardStepper, StageHead, WizardSummary, WizardProgress, WizardNote } from './WizardLayout.jsx';
+import { AulasPlanner } from './AulasPlanner.jsx';
+import { FreepassStep } from './FreepassStep.jsx';
+import { WZ_TONES } from './wizardTones.js';
+import { aulasCountText, aulasForConfirm, aulasProblem, aulasRangeText, dayOptions as wzDayOptions, emptyAulaRows, resolveAulaRows } from '../../lib/aulasPlan.js';
 
 // ScheduleWizard: o Agendar da ficha. Tipos Mensagem, Ligação, Visita e Aula,
 // passos liberados em sequência, confirmar só quando completo. Desenho A2
@@ -14,18 +19,24 @@ import { WizardFrame, WizardStepper, StageHead, WizardSummary, WizardProgress, W
 // Configurações (useGeneralConfig). `initialTypeId` abre já com o tipo
 // escolhido.
 //
+// Freepass (módulo Stronix 2.0, `freepassOn`): a aula perde o passo "Quantas
+// aulas" e, depois da modalidade, ganha o passo Freepass, que mostra a escolha
+// que a ficha calcula (`freepassChoice(modalidade)`: usar o que corre, lançar um
+// tipo, ou aula avulsa). O tipo por aulas troca professor e dia pelo "Marcar as
+// aulas" (AulasPlanner). `freepassChoice` null (lead em Perda) tira o passo.
+// `initialModalidade` abre a aula já na modalidade, e `freshFreepassId` (o
+// "Agendar" do cartão do freepass) cria uma aula a mais sem remarcar a
+// pendente, só nesse freepass: o tipo e a modalidade ficam travados, a aula
+// avulsa some e o freepass vai com `fresh`.
+//
 // CONTRATO: onConfirm devolve { typeId, typeLabel, date, modalidade, professorId,
-// soloTraining, quantidade, unidade, note, contactOwnerId, contactOwnerName } —
-// consumido por handleWizardConfirm
-// na LeadProfileView.
+// soloTraining, quantidade, unidade, note, contactOwnerId, contactOwnerName,
+// freepass } — consumido por handleWizardConfirm na LeadProfileView. `freepass`
+// é null sem o módulo (e fora da aula) e, com ele, { kind: 'avulsa' | 'use' |
+// 'launch', freepassId?, moving?, typeId?, aulas?, fresh? }; no lançamento por aulas,
+// `aulas` são [{ date, professorId, soloTraining }] em ordem de data, e date,
+// professorId e soloTraining são os da primeira.
 
-const WZ_TONES = {
-  brand:   { text:'text-brand-700',   soft:'bg-brand-50',   strong:'bg-brand-600',   ring:'ring-brand-300',   darkText:'dark:text-brand-300',   darkSoft:'dark:bg-brand-500/10',   darkRing:'dark:ring-brand-500/40' },
-  emerald: { text:'text-emerald-700', soft:'bg-emerald-50', strong:'bg-emerald-500', ring:'ring-emerald-300', darkText:'dark:text-emerald-300', darkSoft:'dark:bg-emerald-500/10', darkRing:'dark:ring-emerald-500/40' },
-  amber:   { text:'text-amber-700',   soft:'bg-amber-50',   strong:'bg-amber-500',   ring:'ring-amber-300',   darkText:'dark:text-amber-300',   darkSoft:'dark:bg-amber-500/10',   darkRing:'dark:ring-amber-500/40' },
-  violet:  { text:'text-violet-700',  soft:'bg-violet-50',  strong:'bg-violet-500',  ring:'ring-violet-300',  darkText:'dark:text-violet-300',  darkSoft:'dark:bg-violet-500/10',  darkRing:'dark:ring-violet-500/40' },
-  teal:    { text:'text-teal-700',    soft:'bg-teal-50',    strong:'bg-teal-500',    ring:'ring-teal-300',    darkText:'dark:text-teal-300',    darkSoft:'dark:bg-teal-500/10',    darkRing:'dark:ring-teal-500/40' },
-};
 
 // followUpLabel = rótulo do tipo p/ follow-up (espelha o contrato).
 const WZ_TYPES = [
@@ -50,30 +61,21 @@ const WZ_STEP_INFO = {
   unidade:    { title:'Unidade',          hint:'Onde a visita vai acontecer?' },
   responsavel:{ title:'Responsável',      hint:'Quem vai fazer esse contato?' },
   datahora:   { title:'Dia e horário',    hint:'Quando vai ser?' },
+  freepass:   { title:'Freepass',         hint:'' },
+  aulas:      { title:'Marcar as aulas',  hint:'' },
 };
 
-// Dias sugeridos: DISTINTOS e consecutivos (não repete "Amanhã"). Começa em
-// HOJE quando ainda dá tempo no dia (antes das 18h); à noite começa direto em
-// AMANHÃ. Rótulos: Hoje / Amanhã / dia da semana (Terça-feira, Quarta-feira…).
-function wzDayOptions(count = 5, metaWeekdays = null) {
-  // metaWeekdays = dias da semana programados na Meta Diária (getDay(): 0=dom..6=sáb).
-  // Definido → os cards rápidos só sugerem dias PROGRAMADOS (ex.: seg–sex). Limite de
-  // 90 dias de busca p/ evitar laço infinito caso a lista venha vazia/estranha.
-  const onMeta = (d) => !metaWeekdays || metaWeekdays.length === 0 || metaWeekdays.includes(d.getDay());
-  const startOff = new Date().getHours() >= 18 ? 1 : 0;
-  const out = [];
-  for (let k = 0; out.length < count && k < 90; k++) {
-    const off = startOff + k;
-    const d = new Date(); d.setDate(d.getDate() + off); d.setHours(0, 0, 0, 0);
-    if (!onMeta(d)) continue;
-    let label;
-    if (off === 0) label = 'Hoje';
-    else if (off === 1) label = 'Amanhã';
-    else { label = d.toLocaleDateString('pt-BR', { weekday: 'long' }); label = label.charAt(0).toUpperCase() + label.slice(1); }
-    out.push({ off, label, date: d });
-  }
-  return out;
+// O título do "Marcar as aulas" (o do passo Freepass mora no FreepassStep).
+function aulasHead(values, firstName) {
+  const nome = firstName || 'O lead';
+  const n = values.freepass?.quantity || 1;
+  return n === 1
+    ? { title: `Marque a aula de ${nome}`, hint: 'Escolha o dia, o horário e o professor.' }
+    : { title: `Marque as ${n} aulas de ${nome}`, hint: 'Cada aula tem dia, horário e professor. A seguinte já vem igual à anterior, uma semana depois.' };
 }
+
+const aulasRowsOf = (values) => values.aulas || emptyAulaRows(values.freepass?.quantity || 1);
+
 const wzSameDay = (a, b) => a instanceof Date && b instanceof Date && a.toDateString() === b.toDateString();
 // Aplica HH:MM ao dia de `cur` (ou hoje, se ainda não escolheu o dia).
 function wzWithTime(cur, hhmm) {
@@ -141,7 +143,7 @@ const WzPill = ({ label, hint, selected, color = 'brand', badge, onClick, index 
   );
 };
 
-const WzStepBody = ({ stepId, values, set, color, modalities, units, qtyOptions, professores, ownerOptions, leadOwnerName }) => {
+const WzStepBody = ({ stepId, values, set, color, modalities, units, qtyOptions, professores, ownerOptions, leadOwnerName, firstName }) => {
   // Dias da Meta Diária (ex.: [1,2,3,4,5] = seg–sex) filtram os cards rápidos de dia.
   const { metaWeekdays } = useGeneralConfig();
   // Horário por-card do passo "Dia e horário" (off → 'HH:MM'); fallback no default.
@@ -185,6 +187,11 @@ const WzStepBody = ({ stepId, values, set, color, modalities, units, qtyOptions,
         </div>
       );
     }
+    case 'aulas':
+      return (
+        <AulasPlanner rows={aulasRowsOf(values)} onChange={(rows) => set('aulas', rows)} days={wzDayOptions(5, metaWeekdays)}
+          professors={professorsForModality(professores, modalities, values.modalidade)} tone={WZ_TONES[color] || WZ_TONES.brand} firstName={firstName} />
+      );
     case 'quantidade':
       return (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
@@ -293,9 +300,11 @@ const WzStepBody = ({ stepId, values, set, color, modalities, units, qtyOptions,
   }
 };
 
-function wzSummary(stepId, values, professores, ownerOptions) {
+function wzSummary(stepId, values, professores, ownerOptions, planned) {
   switch (stepId) {
     case 'modalidade': return values.modalidade || null;
+    case 'freepass':   return values.freepass?.label || null;
+    case 'aulas':      return planned ? aulasCountText(planned.length) : null;
     case 'professor':
       if (values.professor === SOLO_TRAINING) return SOLO_TRAINING_LABEL;
       return values.professor ? (professorNameById(professores, values.professor) || 'Professor selecionado') : null;
@@ -313,11 +322,12 @@ function wzSummary(stepId, values, professores, ownerOptions) {
   }
 }
 
-const WzSummaryCard = ({ type, values, complete, professores }) => {
+const WzSummaryCard = ({ type, values, complete, professores, aulasStep, planned }) => {
   if (!type) return null;
   const t = WZ_TONES[type.color] || WZ_TONES.brand;
   const parts = [];
   if (values.modalidade) parts.push(values.modalidade);
+  if (values.freepass) parts.push(values.freepass.kind === 'avulsa' ? 'Aula avulsa' : `Freepass ${values.freepass.label}`);
   if (values.professor === SOLO_TRAINING) parts.push(SOLO_TRAINING_LABEL);
   else if (values.professor) {
     const p = (professores || []).find((x) => x.id === values.professor);
@@ -328,7 +338,17 @@ const WzSummaryCard = ({ type, values, complete, professores }) => {
   return (
     <WizardSummary tone={t} Icon={type.Icon} label="Resumo do agendamento" title={type.label} complete={complete}>
       {parts.length > 0 && <p className="mt-px text-[13px] text-slate-600 dark:text-slate-300">{parts.join(', ')}</p>}
-      {values.datahora ? (
+      {aulasStep ? (
+        planned ? (
+          <span className={cn('mt-2 inline-flex items-center gap-1.5 text-[13px] font-semibold', t.text, t.darkText)}>
+            <Calendar size={13} aria-hidden="true" /> {aulasRangeText(planned)}
+          </span>
+        ) : (
+          <span className="mt-2 inline-flex items-center gap-1.5 text-[13px] text-muted-foreground">
+            <Clock size={12} aria-hidden="true" /> Falta marcar as aulas
+          </span>
+        )
+      ) : values.datahora ? (
         <span className={cn('mt-2 inline-flex items-center gap-1.5 text-[13px] font-semibold', t.text, t.darkText)}>
           <Calendar size={13} aria-hidden="true" /> {wzFmtDateTime(values.datahora)}
         </span>
@@ -341,13 +361,20 @@ const WzSummaryCard = ({ type, values, complete, professores }) => {
   );
 };
 
-function ScheduleWizard({ onConfirm, onCancel, submitting = false, usersList = [], leadOwnerName = null, leadOwnerId = null, initialTypeId = null }) {
+function ScheduleWizard({ onConfirm, onCancel, submitting = false, usersList = [], leadOwnerName = null, leadOwnerId = null, initialTypeId = null, initialModalidade = null, freshFreepassId = null, freepassOn = false, freepassChoice = null, leadFirstName = '' }) {
   const { modalities, trialClassOptions, units, professores } = useGeneralConfig();
   // O tipo pode vir escolhido (o Remarcar do A seguir abre já na visita ou na aula).
   const [typeId, setTypeId] = useState(WZ_TYPES.some((tp) => tp.id === initialTypeId) ? initialTypeId : null);
-  const [values, setValues] = useState({});
+  const [values, setValues] = useState(() => (
+    initialTypeId === 'aula' && (modalities || []).some((m) => m.name === initialModalidade) ? { modalidade: initialModalidade } : {}
+  ));
+  // O modo vale para o assistente montado: a ficha remonta a cada abertura (key).
+  const [freshId] = useState(freshFreepassId);
+  const fresh = Boolean(freshId);
   const [editing, setEditing] = useState(null);
   const [note, setNote] = useState('');
+  // Só redesenha: o Confirmar que achou aula no passado mostra o aviso do passo.
+  const [, setRecheck] = useState(0);
 
   const type = WZ_TYPES.find(t => t.id === typeId) || null;
 
@@ -361,23 +388,33 @@ function ScheduleWizard({ onConfirm, onCancel, submitting = false, usersList = [
   // A etapa "Responsável" só entra no fluxo em mensagem/ligação E quando há
   // alguém para escolher além do dono do lead. Sem candidato, a etapa seria um
   // clique obrigatório com uma opção só.
+  // Com o freepass, a aula não tem "Quantas aulas"; o tipo por aulas marca
+  // todas as aulas de uma vez, no lugar de professor e dia.
+  const launchAulas = values.freepass?.kind === 'launch' && values.freepass.typeKind === FREEPASS_KINDS.AULAS;
   const flow = useMemo(() => {
     if (!type) return [];
     if (isContactType(type.id) && ownerOptions.length > 0) return ['responsavel', ...type.flow];
+    if (type.id === 'aula' && freepassOn) {
+      if (!freepassChoice) return ['modalidade', 'professor', 'datahora'];
+      return launchAulas ? ['modalidade', 'freepass', 'aulas'] : ['modalidade', 'freepass', 'professor', 'datahora'];
+    }
     return type.flow;
-  }, [type, ownerOptions]);
+  }, [type, ownerOptions, freepassOn, freepassChoice, launchAulas]);
   const color = type ? type.color : 'brand';
   const qtyOptions = (trialClassOptions && trialClassOptions.length ? trialClassOptions : [1]);
+  const choice = flow.includes('freepass') && values.modalidade ? freepassChoice(values.modalidade, freshId) : null;
+  const aulasStep = flow.includes('aulas');
+  const resolvedAulas = aulasStep ? resolveAulaRows(aulasRowsOf(values)) : null;
+  const aulasIssue = aulasStep ? aulasProblem(resolvedAulas) : null;
+  const planned = aulasStep && !aulasIssue ? aulasForConfirm(resolvedAulas) : null;
 
-  const firstIncomplete = useMemo(() => {
-    for (const s of flow) { if (values[s] == null || values[s] === '') return s; }
-    return null;
-  }, [flow, values]);
+  const firstIncomplete = flow.find((s) => (s === 'aulas' ? Boolean(aulasIssue) : values[s] == null || values[s] === '')) ?? null;
 
-  // O passo aberto embaixo. O último (dia e horário) nunca fecha: com tudo
-  // preenchido ele continua aberto, para a pessoa ajustar o horário.
-  const active = !type ? 'tipo' : (editing || firstIncomplete || 'datahora');
+  // O passo aberto embaixo. O último (dia e horário, ou as aulas) nunca fecha:
+  // com tudo preenchido ele continua aberto, para a pessoa ajustar.
+  const active = !type ? 'tipo' : (editing || firstIncomplete || flow[flow.length - 1]);
   const complete = Boolean(type) && firstIncomplete === null;
+  const head = active === 'aulas' ? aulasHead(values, leadFirstName) : WZ_STEP_INFO[active];
 
   const setVal = (key, val) => {
     setValues(v => {
@@ -394,23 +431,39 @@ function ScheduleWizard({ onConfirm, onCancel, submitting = false, usersList = [
 
   const t = WZ_TONES[color] || WZ_TONES.brand;
   const steps = [
-    { key: 'tipo', title: 'Tipo', value: type ? type.label : '', onEdit: () => { setTypeId(null); setValues({}); setEditing(null); } },
-    ...flow.map((k) => ({ key: k, title: WZ_STEP_INFO[k].title, value: wzSummary(k, values, professores, ownerOptions) || '', onEdit: () => setEditing(k) })),
+    { key: 'tipo', title: 'Tipo', value: type ? type.label : '', onEdit: fresh ? null : () => { setTypeId(null); setValues({}); setEditing(null); } },
+    ...flow.map((k) => ({ key: k, title: WZ_STEP_INFO[k].title, value: wzSummary(k, values, professores, ownerOptions, planned) || '', onEdit: fresh && k === 'modalidade' ? null : () => setEditing(k) })),
   ].map((s) => ({ ...s, state: s.key === active ? 'active' : s.value ? 'done' : 'locked' }));
   const doneCount = steps.filter((s) => s.value).length;
   const totalCount = steps.length;
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (!complete || !type) return;
+    // O horário das aulas é conferido de novo no relógio de agora: a tela pode
+    // ter ficado aberta até a aula passar. O redesenho mostra o aviso no passo.
+    if (aulasStep && aulasProblem(resolvedAulas, new Date())) { setRecheck((n) => n + 1); return; }
     const escolhido = values.responsavel && values.responsavel !== WZ_OWNER_LEAD ? values.responsavel : null;
-    onConfirm({
+    const isAula = type.id === 'aula';
+    // Sem o passo (lead em Perda), a aula do módulo é avulsa.
+    const fp = isAula && freepassOn ? (values.freepass || { kind: 'avulsa' }) : null;
+    const first = planned?.[0] || null;
+    // A ficha devolve false quando recusa antes de gravar (freepass mudou, dados
+    // carregando): o assistente fica como está, para a pessoa conferir.
+    const ok = await onConfirm({
       typeId: type.id,
       typeLabel: type.followUpLabel,
-      date: values.datahora,
-      modalidade: type.id === 'aula' ? (values.modalidade || null) : null,
-      professorId: type.id === 'aula' && values.professor !== SOLO_TRAINING ? (values.professor || null) : null,
-      soloTraining: type.id === 'aula' && values.professor === SOLO_TRAINING,
-      quantidade: type.id === 'aula' ? (values.quantidade || null) : null,
+      date: first ? first.date : values.datahora,
+      modalidade: isAula ? (values.modalidade || null) : null,
+      professorId: first ? first.professorId : (isAula && values.professor !== SOLO_TRAINING ? (values.professor || null) : null),
+      soloTraining: first ? first.soloTraining : (isAula && values.professor === SOLO_TRAINING),
+      quantidade: isAula && !freepassOn ? (values.quantidade || null) : null,
+      freepass: fp && {
+        kind: fp.kind,
+        ...(fp.kind === 'use' && { freepassId: fp.freepassId, moving: fp.moving }),
+        ...(fp.kind === 'launch' && { typeId: fp.typeId }),
+        ...(planned && { aulas: planned }),
+        ...(fresh && { fresh: true }),
+      },
       unidade: type.id === 'visita' ? (values.unidade || null) : null,
       note: note.trim(),
       // Só o contato tem dono de tarefa escolhido aqui. Na visita e na aula,
@@ -420,7 +473,7 @@ function ScheduleWizard({ onConfirm, onCancel, submitting = false, usersList = [
       contactOwnerId: escolhido,
       contactOwnerName: escolhido ? (ownerOptions.find(u => u.id === escolhido)?.name || null) : null,
     });
-    resetAll();
+    if (ok !== false) resetAll();
   };
 
   return (
@@ -435,17 +488,19 @@ function ScheduleWizard({ onConfirm, onCancel, submitting = false, usersList = [
             ))}
           </div>
         </>
+      ) : active === 'freepass' ? (
+        <FreepassStep key="freepass" choice={choice} values={values} set={setVal} tone={t} firstName={leadFirstName} allowAvulsa={!fresh} />
       ) : (
         <>
-          <StageHead key={`head-${active}`} title={WZ_STEP_INFO[active].title} hint={WZ_STEP_INFO[active].hint} />
+          <StageHead key={`head-${active}`} title={head.title} hint={head.hint} />
           <WzStepBody key={active} stepId={active} values={values} set={setVal} color={color}
             modalities={modalities} units={units} qtyOptions={qtyOptions} professores={professores}
-            ownerOptions={ownerOptions} leadOwnerName={leadOwnerName}/>
+            ownerOptions={ownerOptions} leadOwnerName={leadOwnerName} firstName={leadFirstName}/>
         </>
       )}
       aside={(
         <>
-          {type ? <WzSummaryCard type={type} values={values} complete={complete} professores={professores}/> : (
+          {type ? <WzSummaryCard type={type} values={values} complete={complete} professores={professores} aulasStep={aulasStep} planned={planned}/> : (
             <div className="rounded-2xl border border-dashed border-border p-5 text-center">
               <div className="mx-auto mb-2 grid size-10 place-items-center rounded-full bg-slate-100 text-slate-400 dark:bg-white/[0.05]"><Calendar size={18} aria-hidden="true"/></div>
               <p className="text-[12.5px] text-muted-foreground">Escolha o tipo de agendamento para começar.</p>
@@ -456,7 +511,7 @@ function ScheduleWizard({ onConfirm, onCancel, submitting = false, usersList = [
             <WizardNote id="wz-note" label="Anotação (opcional)" placeholder="O que precisa ser tratado nesse contato?" value={note} onChange={setNote} />
           )}
           <div className="mt-auto flex flex-col gap-2">
-            <Btn kind="brand" icon={<Check size={14}/>} disabled={!complete || submitting} onClick={handleConfirm}>{submitting ? 'Salvando...' : complete ? 'Confirmar agendamento' : 'Complete os passos'}</Btn>
+            <Btn kind="brand" icon={<Check size={14}/>} disabled={!complete || submitting} onClick={handleConfirm}>{submitting ? 'Salvando...' : !complete ? 'Complete os passos' : planned ? `Agendar ${aulasCountText(planned.length)}` : 'Confirmar agendamento'}</Btn>
             <Btn kind="soft" onClick={()=>{ resetAll(); onCancel && onCancel(); }}>Cancelar</Btn>
           </div>
         </>

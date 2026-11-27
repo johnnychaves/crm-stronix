@@ -135,6 +135,16 @@ export function visitorOf(lead, now = new Date()) {
   return { ...fp, shortText: freepassShortText(fp, now), longText: freepassLongText(fp, now) };
 }
 
+// O freepass da aula marcada no lead, para as leituras do agendamento (coluna
+// Passe livre, "A seguir", Meta). A aula avulsa de outra modalidade não mostra
+// o freepass que corre em outra.
+export function appointmentFreepassOf(lead, now = new Date()) {
+  const v = visitorOf(lead, now);
+  if (!v) return null;
+  const mod = lead.appointmentModality;
+  return !mod || !v.modalidadeName || fold(mod) === fold(v.modalidadeName) ? v : null;
+}
+
 // O andamento para a etiqueta: "faltam 3 dias", "termina hoje", "1 de 2 aulas".
 export function freepassShortText(fp, now = new Date()) {
   if (fp.kind === FREEPASS_KINDS.AULAS) return `${fp.aulas ?? 0} de ${fp.total} aulas`;
@@ -200,8 +210,175 @@ export function buildFreepassDoc({ lead, type, modalidadeName, startsAt, appUser
 
 export function freepassLaunchText(fp) {
   const head = `Freepass lançado: ${fp.typeName} (${fp.modalidadeName})`;
-  if (fp.kind === FREEPASS_KINDS.AULAS) return `${head}, ${freepassQuantityText({ kind: fp.kind, quantity: fp.total })} para agendar.`;
+  if (fp.kind === FREEPASS_KINDS.AULAS) {
+    const qtd = freepassQuantityText({ kind: fp.kind, quantity: fp.total });
+    // Pelo Agendar, as aulas nascem marcadas; pela aba Contratos, ficam para
+    // agendar; pelo Stronizap, nasce só a aula pedida.
+    const aulas = fp.aulas ?? 0;
+    if (aulas >= fp.total) return `${head}, ${qtd} ${fp.total === 1 ? 'marcada' : 'marcadas'}.`;
+    if (aulas > 0) {
+      const marcadas = `${freepassQuantityText({ kind: fp.kind, quantity: aulas })} ${aulas === 1 ? 'marcada' : 'marcadas'}`;
+      return `${head}, ${marcadas}, ${fp.total - aulas} para agendar.`;
+    }
+    return `${head}, ${qtd} para agendar.`;
+  }
   return `${head}, de ${ddmm(getSafeDateOrNull(fp.startsAt))} a ${ddmm(getSafeDateOrNull(fp.endsAt))}.`;
 }
 
 export const freepassEndText = (fp) => `Freepass encerrado: ${fp.typeName}.`;
+
+// Status do registro de aula, os mesmos de AULA_STATUS em src/lib/aulas.js
+// (aqui literais, porque este arquivo só pode importar dates.js).
+const AULA_AGENDADA = 'agendada';
+const AULA_CANCELADA = 'cancelled';
+
+const fpModalidadeOf = (fps, modalidadeId) => (fps || []).filter(fp => fp.modalidadeId === modalidadeId);
+
+// O que o Agendar faz com o freepass da modalidade. Ordem de decisão: usa o que
+// corre (ou avulsa se por aulas já está cheio), avulsa se já teve, avulsa se a
+// modalidade não tem tipo, avulsa se quem agenda não lança, senão lança.
+export function freepassChoiceFor({ lead, freepasses, types, modalidadeId, canLaunch, movingFreepassId = null, now = new Date() }) {
+  const runningHere = activeFreepassesOf(lead, fpModalidadeOf(freepasses, modalidadeId), now);
+  // O Agendar de aula move a aula pendente: ela já ocupa uma vaga do freepass e a vaga volta a ser livre.
+  const moving = movingFreepassId && runningHere.find(fp => fp.id === movingFreepassId);
+  if (moving) {
+    const aulasLeft = moving.kind === FREEPASS_KINDS.AULAS ? moving.total - (moving.aulas ?? 0) + 1 : null;
+    return { kind: 'use', freepass: moving, aulasLeft, moving: true };
+  }
+  const running = runningHere[0];
+  if (running) {
+    const aulasLeft = running.kind === FREEPASS_KINDS.AULAS ? running.total - (running.aulas ?? 0) : null;
+    if (aulasLeft !== null && aulasLeft <= 0) return { kind: 'avulsa', reason: 'full', freepass: running };
+    return { kind: 'use', freepass: running, aulasLeft };
+  }
+  const had = fpModalidadeOf(freepasses, modalidadeId);
+  if (had.length) {
+    const ms = (fp) => getSafeDateOrNull(fp.startsAt)?.getTime() ?? 0;
+    const latest = had.slice().sort((a, b) => ms(b) - ms(a))[0];
+    return { kind: 'avulsa', reason: 'repeated', since: getSafeDateOrNull(latest.startsAt) };
+  }
+  const ativos = (types || []).filter(t => t.modalidadeId === modalidadeId && t.ativo !== false);
+  if (!ativos.length) return { kind: 'avulsa', reason: 'noType' };
+  if (lead?.status === 'Perda') return { kind: 'avulsa', reason: 'lost' };
+  if (!canLaunch) return { kind: 'avulsa', reason: 'noLaunch' };
+  return { kind: 'launch', types: [...ativos.filter(t => t.padrao), ...ativos.filter(t => !t.padrao)] };
+}
+
+// Para quem não escolhe tipo (Remarcar, Stronizap, IA): o lançamento sai com o
+// tipo padrão da modalidade, e sem padrão a aula é avulsa.
+export function autoFreepassFor(args) {
+  const c = freepassChoiceFor(args);
+  if (c.kind !== 'launch') return c;
+  const type = c.types.find(t => t.padrao);
+  return type ? { kind: 'launch', type } : { kind: 'avulsa', reason: 'noType' };
+}
+
+// A escolha feita no passo Freepass ainda vale com os dados de agora? A aula
+// avulsa vale sempre; usar pede o mesmo freepass correndo e com vaga; lançar
+// pede o mesmo tipo entre os que ainda podem nascer.
+export function freepassPickMatches(pick, choice) {
+  if (pick?.kind === 'avulsa') return true;
+  if (pick?.kind === 'use') return choice?.kind === 'use' && choice.freepass?.id === pick.freepassId;
+  if (pick?.kind === 'launch') return choice?.kind === 'launch' && choice.types.some(t => t.id === pick.typeId);
+  return false;
+}
+
+// A linha do Remarcar e o aviso do passo do Agendar.
+export function freepassChoiceText(choice, modalidadeName) {
+  switch (choice.kind) {
+    case 'use': {
+      const { freepass: fp } = choice;
+      if (choice.moving) return `Continua no freepass ${fp.typeName}`;
+      const head = `Entra no freepass ${fp.typeName}`;
+      return fp.kind === FREEPASS_KINDS.AULAS ? `${head} (${(fp.aulas ?? 0) + 1} de ${fp.total})` : head;
+    }
+    case 'launch': return `Nasce o freepass ${(choice.type || choice.types[0]).name}`;
+    case 'avulsa':
+      if (choice.reason === 'repeated') return `Aula avulsa: já teve freepass de ${modalidadeName} em ${ddmm(choice.since)}`;
+      if (choice.reason === 'full') {
+        const n = choice.freepass.total;
+        return `Aula avulsa: o freepass já tem ${n === 1 ? 'a 1 aula' : `as ${n} aulas`}`;
+      }
+      if (choice.reason === 'noType') return `Aula avulsa: ${modalidadeName} não tem freepass cadastrado`;
+      if (choice.reason === 'lost') return 'Aula avulsa: lead em Perda não vira Visitante';
+      return 'Aula avulsa: só o consultor lança freepass';
+    default: return '';
+  }
+}
+
+// O contador de aulas do freepass e, quando por aulas completa, o fim: o começo
+// do dia da última aula. Por dias não mexe no fim.
+export function freepassAulasPatch({ freepass, records }) {
+  const mine = (records || []).filter(r => r.freepassId === freepass.id && r.status !== AULA_CANCELADA);
+  const aulas = mine.length;
+  if (freepass.kind !== FREEPASS_KINDS.AULAS) return { aulas, endsAt: freepass.endsAt };
+  if (aulas < freepass.total) return { aulas, endsAt: null };
+  const last = Math.max(...mine.map(r => getSafeDateOrNull(r.scheduledFor)?.getTime() ?? -Infinity));
+  return { aulas, endsAt: Number.isFinite(last) ? startOfLocalDay(new Date(last)) : null };
+}
+
+// O compromisso pendente para onde o agendamento do lead aponta (decisão do
+// Johnny, 27/11/2026): o lead guarda um agendamento só, e mostra sempre o
+// pendente mais cedo, com ou sem freepass. `records` são os registros de
+// stronix_aulas do lead (aula e visita); `freepasses`, quando vem, tira os
+// registros de freepass que não existe ou não corre para o lead. Devolve o
+// registro para onde o lead deve apontar, ou null para ficar como está:
+// - fica o agendamento de hoje com desfecho (a Agenda de hoje não perde a
+//   aula marcada; quem troca é o avanço do dia seguinte, slotToAdvance);
+// - fica o atrasado sem desfecho, que segura a cobrança na Meta;
+// - fica o pendente de hoje em diante que é o mais cedo (ou empata).
+// `daysBetween` troca a conta de dias (a ponte conta no dia de Brasília).
+const AULA_RECORD = 'aula';
+const VISITA_RECORD = 'visita';
+const recordKindOf = (r) => ((r?.type ?? AULA_RECORD) === VISITA_RECORD ? 'visita' : 'aula_experimental');
+const normalizeKind = (t) => (t === 'visita' || t === 'aula_experimental' ? t : null);
+
+function pendingRecordsOf({ lead, records, freepasses, now }) {
+  const live = freepasses ? new Set(activeFreepassesOf(lead, freepasses, now).map((fp) => fp.id)) : null;
+  return (records || [])
+    .filter((r) => r.status === AULA_AGENDADA && (!r.freepassId || !live || live.has(r.freepassId)))
+    .map((r) => ({ r, at: getSafeDateOrNull(r.scheduledFor) }))
+    .filter((x) => x.at)
+    .sort((a, b) => a.at - b.at);
+}
+
+export function leadSlotFor({ lead, records, freepasses = null, now = new Date(), daysBetween = calendarDaysBetween }) {
+  const cur = getSafeDateOrNull(lead?.appointmentScheduledFor);
+  const d = cur ? daysBetween(now, cur) : null;
+  if (cur && (lead.appointmentOutcome ? d === 0 : d < 0)) return null;
+  const next = pendingRecordsOf({ lead, records, freepasses, now }).find((x) => daysBetween(now, x.at) >= 0);
+  if (!next) return null;
+  if (cur && d >= 0 && cur <= next.at) return null;
+  return next.r;
+}
+
+// O avanço do dia (useFreepassAdvance): o registro pendente de hoje para onde
+// o lead anda, ou null. Só anda quando o agendamento atual não é um
+// compromisso pendente de hoje (é de antes, tem desfecho ou não existe), e
+// nunca para o próprio registro do agendamento atual (a visita com desfecho
+// continua 'agendada' no registro).
+export function slotToAdvance({ lead, records, freepasses = null, now = new Date() }) {
+  const cur = getSafeDateOrNull(lead?.appointmentScheduledFor);
+  if (cur && !lead.appointmentOutcome && calendarDaysBetween(now, cur) === 0) return null;
+  return pendingRecordsOf({ lead, records, freepasses, now })
+    .find((x) => calendarDaysBetween(now, x.at) === 0 && !leadPointsTo(lead, x.r))?.r || null;
+}
+
+// O agendamento do lead já é este registro? Aula pelo currentAulaId; visita
+// pelo tipo e pelo horário (o lead não guarda o id da visita).
+export function leadPointsTo(lead, record) {
+  const kind = normalizeKind(lead?.appointmentType);
+  if (record?.id && record.id === lead?.currentAulaId && kind !== 'visita') return true;
+  const cur = getSafeDateOrNull(lead?.appointmentScheduledFor);
+  const at = getSafeDateOrNull(record?.scheduledFor);
+  return Boolean(cur && at && kind === recordKindOf(record) && cur.getTime() === at.getTime());
+}
+
+// A etiqueta da ficha e das listas: quem já é aluno com contrato ativo e faz
+// freepass de outra modalidade está num upgrade, não visitando.
+export function freepassTagOf({ lead, contractActive, now = new Date() }) {
+  const v = visitorOf(lead, now);
+  if (!v) return null;
+  if (contractActive) return { label: 'Upgrade', text: `${v.modalidadeName}, ${v.shortText}` };
+  return { label: 'Visitante', text: v.shortText };
+}

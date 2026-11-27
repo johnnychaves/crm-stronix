@@ -1,0 +1,179 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Plano de carreira B · Escada</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="2026-11-26-carreira-base.css">
+<style>
+.crumb2{display:inline-flex;align-items:center;gap:4px;color:var(--muted);font-weight:500;font-size:13px;border-radius:6px;margin-bottom:4px}
+.crumb2 svg{width:15px;height:15px}
+/* a frase que diz para quem é e quando avalia */
+.frase{font-size:15.5px;line-height:2.3;color:var(--ink2);max-width:880px}
+.pick{display:inline-flex;align-items:center;gap:4px;height:32px;padding:0 10px 0 11px;border-radius:9px;border:1px solid var(--blue200);background:var(--blue50);color:var(--blue700);font-weight:600;font-size:14.5px;vertical-align:middle;line-height:1}
+.pick svg{width:14px;height:14px}
+.pick.lock{border-color:var(--line);background:var(--slate50);color:var(--ink2);cursor:default}
+.sub{font-size:12.5px;color:var(--muted);margin-top:4px}
+/* números que contam */
+.nums{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.nchip{display:inline-flex;align-items:center;gap:9px;height:38px;padding:0 14px 0 8px;border-radius:999px;border:1px solid var(--line);background:#fff;font-size:13.5px;font-weight:600;color:var(--ink2)}
+.nchip .sw{width:30px;height:18px;border-radius:999px;background:#cbd5e1;position:relative;flex:none}
+.nchip .sw::after{content:"";position:absolute;left:2px;top:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:transform .15s}
+.nchip[aria-checked=true]{border-color:var(--blue200)}
+.nchip[aria-checked=true] .sw{background:var(--blue)}
+.nchip[aria-checked=true] .sw::after{transform:translateX(12px)}
+.adjs{display:flex;flex-wrap:wrap;gap:8px 22px;margin-top:12px;font-size:13px;color:var(--ink2)}
+.adjs span{display:inline-flex;align-items:center;gap:6px}
+.adjs b{font-weight:600}
+.adjs .in{width:52px;height:32px;padding:0 6px;text-align:center;border-radius:8px}
+.seg{display:inline-flex;padding:3px;border-radius:10px;background:var(--slate50);gap:2px}
+.seg button{border:0;background:none;height:26px;padding:0 10px;border-radius:7px;font-size:12px;font-weight:600;color:var(--muted)}
+.seg button[aria-checked=true]{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(14,26,64,.12)}
+/* a escada */
+.esc{position:relative;padding:22px 22px 26px;overflow-x:auto;overscroll-behavior-x:contain}
+.esc h3{font:700 15px 'Space Grotesk'}
+.esc .lead{color:var(--muted);font-size:13px;margin-top:4px}
+.steps{display:grid;grid-template-columns:repeat(var(--n),minmax(212px,1fr)) 130px;align-items:stretch;margin-top:22px;min-width:calc(var(--n)*212px + 130px)}
+.st{position:relative;display:flex;flex-direction:column}
+.st .lift{height:calc(var(--k)*54px);flex:none}
+.step{flex:1;border:1px solid var(--line);border-right:0;background:#fff;padding:14px 16px 16px}
+.st:first-child .step{border-radius:0 0 0 16px}
+.st.last .step{border-right:1px solid var(--line);border-radius:0 0 16px 0}
+.step .top{display:flex;align-items:center;gap:8px;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--rule)}
+.step .top .lvnm{flex:1;min-width:0;border:0;background:none;padding:0 2px;font:700 18px 'Space Grotesk';letter-spacing:-.015em;color:var(--ink);border-radius:6px;outline:0}
+.step .top .lvnm:focus{box-shadow:0 0 0 3px rgba(43,89,255,.16)}
+.step .pp{font-size:12px;font-weight:600;color:var(--muted);white-space:nowrap}
+.tread{height:6px;background:var(--blue);opacity:calc(.3 + var(--k2)*.7)}
+.st:first-child .tread{border-radius:6px 0 0 0}
+.st.last .tread{border-radius:0 6px 0 0}
+.st.cons .tread{background:var(--orange)}
+.mt{display:grid;gap:10px}
+.mt .m{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px}
+.mt .m span{font-size:12.5px;color:var(--ink2);line-height:1.3}
+.mt .m .v{display:flex;align-items:center;gap:5px}
+.mt .m .v small{font-size:12px;color:var(--muted)}
+.mt .in{width:52px;height:34px;padding:0 4px;text-align:center;font-weight:600;border-radius:9px}
+.mt .in.w{width:66px}
+.mt .in.blank{border-style:dashed;background:#fcfdff;font-weight:500}
+/* o tempo mínimo fica no espelho do degrau */
+.riser{position:absolute;right:0;transform:translateX(50%);z-index:2;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11.5px;color:var(--muted);text-align:center}
+.riser .pill{display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 10px;border-radius:999px;background:var(--ink);color:#fff;font-size:12.5px;font-weight:600;white-space:nowrap;box-shadow:0 6px 14px -8px rgba(14,26,64,.6)}
+.riser .pill .in{width:34px;height:22px;border-radius:6px;border:0;background:rgba(255,255,255,.16);color:#fff;text-align:center;font-weight:700;padding:0}
+.ghost{display:flex;align-items:center;justify-content:center;align-self:start;height:120px;margin:0 0 0 16px;border:1.5px dashed #cbd5e1;border-radius:16px;color:var(--muted);font-weight:600;font-size:13px;gap:6px;background:none}
+.ghost svg{width:16px;height:16px}
+.ghost:hover{border-color:var(--blue200);color:var(--blue700)}
+.bar{position:sticky;bottom:12px;background:#fff;border:1px solid var(--line);border-radius:16px;padding:12px 16px;display:flex;align-items:center;gap:12px;box-shadow:0 -10px 24px -18px rgba(14,26,64,.35)}
+@media (max-width:760px){
+ .steps{grid-template-columns:1fr;min-width:0}
+ .st .lift,.tread{display:none}
+ .step,.st:first-child .step,.st.last .step{border:1px solid var(--line);border-radius:16px;margin-top:10px}
+ .riser{position:static;transform:none;flex-direction:row;margin-top:10px;justify-content:center}
+ .ghost{margin:10px 0 0;height:56px}
+}
+</style></head><body>
+<div class="states" role="group" aria-label="Estados do mockup">
+ <button type="button" data-s="professor">Professor</button>
+ <button type="button" data-s="estagiario">Estagiário</button>
+ <button type="button" data-s="consultor">Consultor</button>
+</div>
+<div class="app">
+ <nav class="side" aria-label="Menu"><span class="logo"></span><i></i><i></i><i></i><i></i><i></i><i class="on"></i></nav>
+ <div class="main">
+  <header class="top"><b>Configurações</b><span>STRONIX</span></header>
+  <div class="body">
+   <aside class="rail" aria-label="Seções das Configurações">
+    <a href="#">Visão geral</a>
+    <div class="g">Academia</div><a href="#">Perfil da academia</a><a href="#">Plano &amp; faturas</a>
+    <div class="g">Equipe</div><a href="#">Equipe &amp; acessos</a><a href="#" class="on" aria-current="page">Plano de carreira</a>
+    <div class="g">Dia a dia</div><a href="#">Metas &amp; ritmo</a><a href="#">Agendamento</a><a href="#">Rotinas</a>
+    <div class="g">Funil</div><a href="#">Funis &amp; etapas</a><a href="#">Catálogos</a>
+    <div class="g">Conexões</div><a href="#">Stronizap</a>
+    <div class="g">Manutenção da base</div><a href="#">Migrar leads</a><a href="#">Indicações sem dono</a><a href="#">Importar clientes</a>
+   </aside>
+   <main class="content" id="content"></main>
+  </div>
+ </div>
+</div>
+<div class="tag">Mockup B · A trilha como escada</div>
+<script src="2026-11-26-carreira-dados.js"></script>
+<script>
+const D = window.CARREIRA;
+const svg = (p) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+const I = { back: svg('<path d="m15 18-6-6 6-6"/>'), down: svg('<path d="m6 9 6 6 6-6"/>'), plus: svg('<path d="M12 5v14M5 12h14"/>') };
+const pessoas = (n) => n === 0 ? 'ninguém' : n === 1 ? '1 pessoa' : `${n} pessoas`;
+const curto = { renovacao: 'Renovação', nps: 'Nota dos alunos', conversao: 'Conversão, em pontos sobre a academia', aderencia: 'Aderência', cConversao: 'Conversão, em pontos sobre a academia', vendas: 'Vendas por mês', cRenovacao: 'Renovação', meta: 'Meta diária batida' };
+
+function editor(t) {
+  const N = t.niveis.length;
+  const cons = t.base === 'consultor';
+  const todos = cons ? ['cConversao', 'vendas', 'cRenovacao', 'meta'] : ['renovacao', 'nps', 'conversao', 'aderencia'];
+  const ligados = todos.filter((k) => t.ligados.includes(k));
+  const vazias = ligados.reduce((s, k) => s + t.metas[k].filter((v) => v == null).length, 0);
+  const anual = t.freq === 'anual';
+
+  const frase = cons
+    ? `Para <span class="pick lock">consultores</span>. Avaliação <button type="button" class="pick">uma vez por ano ${I.down}</button>, em <button type="button" class="pick">dezembro ${I.down}</button>.`
+    : `Para <span class="pick lock">professores</span> com vínculo <button type="button" class="pick">${t.vinculo === 'Estágio' ? 'de estágio' : 'de formado'} ${I.down}</button>, de <button type="button" class="pick">${t.mods.join(', ')} ${I.down}</button>. Avaliação <button type="button" class="pick">${anual ? 'uma vez por ano' : 'duas vezes por ano'} ${I.down}</button>, em <button type="button" class="pick">${anual ? 'dezembro' : 'junho e dezembro'} ${I.down}</button>${anual ? '' : `, com a renovação olhando <button type="button" class="pick">12 meses ${I.down}</button>`}.`;
+
+  const meta = (k, i) => {
+    const n = D.numeros[k];
+    const v = t.metas[k][i];
+    const nome = `${n.nome}, ${t.niveis[i].n}`;
+    if (n.faixa) return `<div class="m"><span>${curto[k]}</span><span class="v"><input class="in num" value="${v[0]}" aria-label="${nome}, de"><small>a</small><input class="in num" value="${v[1]}" aria-label="${nome}, até"><small>%</small></span></div>`;
+    const vazio = v == null;
+    const un = k === 'vendas' ? 'mil' : k === 'nps' ? 'ou +' : (k === 'conversao' || k === 'cConversao') ? 'pts' : '%';
+    return `<div class="m"><span>${curto[k]}</span><span class="v">${k === 'vendas' ? '<small>R$</small>' : ''}<input class="in num${vazio ? ' blank' : ''}${k === 'vendas' ? ' w' : ''}" value="${vazio ? '' : v}" placeholder="—" aria-label="${nome}"><small>${un}</small></span></div>`;
+  };
+
+  const degraus = t.niveis.map((l, i) => `
+   <div class="st${i === N - 1 ? ' last' : ''}${cons ? ' cons' : ''}" style="--k:${N - 1 - i};--k2:${N === 1 ? 1 : i / (N - 1)}">
+    <div class="lift"></div>
+    <div class="tread"></div>
+    <div class="step">
+     <div class="top"><input class="lvnm" value="${l.n}" aria-label="Nome do nível ${i + 1}"><span class="pp num">${pessoas(l.p)}</span></div>
+     <div class="mt">${ligados.map((k) => meta(k, i)).join('')}</div>
+    </div>
+    ${i < N - 1 ? `<div class="riser" style="top:calc(${N - 1 - i}*54px - 60px)"><span class="pill">fica <input class="in num" value="${l.m}" aria-label="Meses mínimos em ${l.n}"> meses</span><span>antes de subir</span></div>` : ''}
+   </div>`).join('');
+
+  const adj = [];
+  if (t.ligados.includes('conversao')) adj.push(`<span><b>Conversão:</b> aulas dos últimos <input class="in num" value="30" aria-label="Dias de aula recente que não contam"> dias ainda não contam</span>`);
+  if (t.ligados.includes('aderencia')) adj.push(`<span><b>Aderência:</b> a semana conta com <input class="in num" value="2" aria-label="Aulas na semana para contar"> aulas ou mais</span>`);
+  if (cons) adj.push(`<span><b>Vendas:</b> contam em <span class="seg" role="radiogroup" aria-label="Vendas contam em"><button type="button" role="radio" aria-checked="true">reais</button><button type="button" role="radio" aria-checked="false">quantidade</button></span></span>`);
+
+  return `
+  <div class="shead"><div class="grow"><a href="#" class="crumb2">${I.back}Plano de carreira</a><h1>${t.nome}</h1></div>
+   <button type="button" class="btn danger" aria-disabled="true" title="Só dá para arquivar a trilha sem ninguém nela.">Arquivar trilha</button></div>
+
+  <section class="sec"><p class="frase">${frase}</p>
+   <p class="sub">${t.periodo} O sistema sugere esta trilha a quem combina com ela, e o gestor decide no perfil de cada pessoa.</p></section>
+
+  <section class="sec"><h3>Números que contam</h3>
+   <div class="nums">${todos.map((k) => `<button type="button" class="nchip" role="switch" aria-checked="${t.ligados.includes(k)}"><i class="sw"></i>${D.numeros[k].nome}</button>`).join('')}</div>
+   ${adj.length ? `<div class="adjs">${adj.join('')}</div>` : ''}
+  </section>
+
+  <section class="card esc" style="--n:${N}">
+   <h3>Os níveis</h3>
+   <p class="lead">Cada degrau é um nível, com a meta de cada número. Entre um degrau e outro, o tempo mínimo para subir.${vazias ? ' Meta em branco: o placar mostra o número sem dizer se bateu.' : ''}</p>
+   <div class="steps">${degraus}<button type="button" class="ghost">${I.plus}Nível</button></div>
+  </section>
+
+  <div class="bar">
+   <span class="status${vazias ? '' : ' ok'}"><i></i>${vazias ? `${vazias} metas em branco. A trilha salva assim.` : 'Tudo certo para salvar.'}</span>
+   <button type="button" class="btn gh">Descartar</button>
+   <button type="button" class="btn pri">Salvar trilha</button>
+  </div>`;
+}
+
+function render(s) {
+  document.querySelectorAll('.states button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.s === s)));
+  document.getElementById('content').innerHTML = editor(D.trilhas.find((x) => x.id === s));
+}
+document.addEventListener('click', (e) => {
+  const st = e.target.closest('.states button');
+  if (st) return render(st.dataset.s);
+  const n = e.target.closest('.nchip');
+  if (n) n.setAttribute('aria-checked', String(n.getAttribute('aria-checked') !== 'true'));
+});
+render('professor');
+</script>
+</body></html>

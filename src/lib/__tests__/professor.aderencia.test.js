@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { normalizeContracts } from '../operacional/base.js';
-import { aderenciaDoAno, aderenciaDoSemestre, aderenciaPorSemana, aderenciaResumo } from '../professor/aderencia.js';
+import { aderenciaDoAno, aderenciaDoSemestre, aderenciaPorSemana, aderenciaResumo, aderenciaSomada } from '../professor/aderencia.js';
+import { pecasDaAderencia } from '../carreira/periodo.js';
+
+const semestresDoCiclo = (ciclo) => pecasDaAderencia({ inicio: new Date(ciclo - 1, 11, 1), fim: new Date(ciclo, 11, 1) });
 
 const PROF = { id: 'p1', modalidadeIds: ['func'] };
 const PLANOS = [{ id: 'move', modalityIds: ['func'] }, { id: 'start', modalityIds: ['musc'] }];
@@ -88,7 +91,7 @@ describe('aderência sem presença importada para a turma', () => {
     const presencas = [{ leadId: 'ana', semana: '2027-03-01', presencas: 3 }];
     const linhas = aderenciaPorSemana({ presencas, leads, contratos, planos: PLANOS, professor: { id: 'pm', modalidadeIds: ['musc'] }, asOf: new Date('2027-03-24T12:00:00') });
     expect(linhas).toEqual([]);
-    expect(aderenciaResumo(linhas, 2027, new Date('2027-03-24T12:00:00')).taxa).toBeNull();
+    expect(aderenciaResumo(linhas, semestresDoCiclo(2027), new Date('2027-03-24T12:00:00')).taxa).toBeNull();
   });
 });
 
@@ -110,19 +113,64 @@ describe('aderenciaDoSemestre e aderenciaDoAno', () => {
   });
 
   it('nota do ano com os dois semestres fechados, na avaliação de dezembro', () => {
-    const r = aderenciaDoAno(linhas, 2027, new Date('2027-12-10T12:00:00'));
+    const r = aderenciaDoAno(linhas, semestresDoCiclo(2027), new Date('2027-12-10T12:00:00'));
     expect(r.nota).toBe(65);
     expect(r.semestres.map((s) => [s.fechado, s.taxa])).toEqual([[true, 60], [true, 70]]);
   });
 
   it('com um só semestre fechado, vale ele; sem nenhum, não há nota', () => {
-    expect(aderenciaDoAno(linhas, 2027, new Date('2027-08-10T12:00:00')).nota).toBe(60);
-    expect(aderenciaDoAno(linhas, 2027, new Date('2027-05-10T12:00:00')).nota).toBeNull();
+    expect(aderenciaDoAno(linhas, semestresDoCiclo(2027), new Date('2027-08-10T12:00:00')).nota).toBe(60);
+    expect(aderenciaDoAno(linhas, semestresDoCiclo(2027), new Date('2027-05-10T12:00:00')).nota).toBeNull();
   });
 
   it('o resumo da lista: a nota do ano, ou o semestre em andamento antes do primeiro fechar', () => {
-    expect(aderenciaResumo(linhas, 2027, new Date('2027-12-10T12:00:00'))).toMatchObject({ taxa: 65, emAndamento: false });
-    expect(aderenciaResumo(linhas, 2027, new Date('2027-05-10T12:00:00'))).toMatchObject({ taxa: 60, emAndamento: true, nota: null });
-    expect(aderenciaResumo([], 2027, new Date('2027-05-10T12:00:00'))).toMatchObject({ taxa: null, emAndamento: false });
+    expect(aderenciaResumo(linhas, semestresDoCiclo(2027), new Date('2027-12-10T12:00:00'))).toMatchObject({ taxa: 65, emAndamento: false });
+    expect(aderenciaResumo(linhas, semestresDoCiclo(2027), new Date('2027-05-10T12:00:00'))).toMatchObject({ taxa: 60, emAndamento: true, nota: null });
+    expect(aderenciaResumo([], semestresDoCiclo(2027), new Date('2027-05-10T12:00:00'))).toMatchObject({ taxa: null, emAndamento: false });
+  });
+});
+
+describe('aderência com outro calendário', () => {
+  it('a nota é a média dos pedaços fechados, quantos forem', () => {
+    const pecas = [
+      { inicio: new Date('2027-03-01T00:00:00'), fim: new Date('2027-07-01T00:00:00') },
+      { inicio: new Date('2027-07-01T00:00:00'), fim: new Date('2027-12-01T00:00:00') },
+      { inicio: new Date('2028-01-01T00:00:00'), fim: new Date('2028-03-01T00:00:00') },
+    ];
+    const linhas = [
+      { semana: '2027-04-05', contam: 10, aderentes: 6 },
+      { semana: '2027-08-02', contam: 10, aderentes: 7 },
+      { semana: '2028-01-10', contam: 10, aderentes: 8 },
+    ];
+    expect(aderenciaDoAno(linhas, pecas, new Date('2028-03-05T12:00:00')).nota).toBe(70);
+    expect(aderenciaResumo(linhas, pecas, new Date('2027-05-10T12:00:00'))).toMatchObject({ taxa: 60, emAndamento: true });
+  });
+});
+
+describe('aderência somada (semestral)', () => {
+  // Semestral de junho e dezembro, 2º período: junho (um pedaço) e julho a novembro (outro).
+  const pecas = pecasDaAderencia({ inicio: new Date(2027, 5, 1), fim: new Date(2027, 11, 1) });
+  const linhas = [
+    { semana: '2027-06-07', contam: 10, aderentes: 2 },
+    { semana: '2027-07-05', contam: 40, aderentes: 32 },
+  ];
+
+  it('soma as semanas dos pedaços, sem tirar a média deles', () => {
+    expect(pecas).toHaveLength(2);
+    const r = aderenciaSomada(linhas, pecas, new Date(2027, 11, 5));
+    expect(r.taxa).toBe(68); // 34 de 50; a média dos pedaços daria 50
+    expect(r.nota).toBe(68);
+    expect(r.emAndamento).toBe(false);
+  });
+
+  it('com o período aberto, a taxa até agora e sem nota', () => {
+    const r = aderenciaSomada(linhas, pecas, new Date(2027, 7, 1));
+    expect(r.taxa).toBe(68);
+    expect(r.nota).toBeNull();
+    expect(r.emAndamento).toBe(true);
+  });
+
+  it('sem semana, nada', () => {
+    expect(aderenciaSomada([], pecas, new Date(2027, 11, 5))).toMatchObject({ taxa: null, nota: null, emAndamento: false });
   });
 });

@@ -74,6 +74,20 @@ describe('factsOf', () => {
     ]);
   });
 
+  it('com freepass, a quantidade sai dele num fato próprio', () => {
+    const aula = {
+      id: 'a', appointmentType: 'aula_experimental', appointmentScheduledFor: at(16, 30), appointmentModality: 'Funcional', appointmentProfessorName: 'Carol',
+      freepassId: 'f1', freepassStatus: 'correndo', freepassKind: 'aulas', freepassTotal: 2, freepassAulas: 1, freepassModalidadeName: 'Funcional', freepassContractAtStart: null,
+      source: 'Google', dor: 'Condicionamento'
+    };
+    expect(factsOf(entry(aula, C.AULA_HOJE), NOW)).toEqual([
+      ['Aula', 'Funcional com Carol'],
+      ['Horário', 'hoje às 16:30'],
+      ['Freepass', '1 de 2 aulas'],
+      ['Origem', 'Google'],
+    ]);
+  });
+
   it('a renovação mostra o plano e o marco, e cliente não leva a origem', () => {
     const cliente = { id: 'r', currentPlanName: 'Anual Musculação', currentContractEndsAt: at(14, 32, 88), source: 'Instagram' };
     expect(factsOf(entry(cliente, C.RENOVACAO), NOW, { renewalCheckpoints: [90, 60, 30] })).toEqual([

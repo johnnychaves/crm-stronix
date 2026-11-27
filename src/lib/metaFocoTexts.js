@@ -9,6 +9,7 @@ import { dayRefText } from './whenPicker.js';
 import { firstName } from './guardian.js';
 import { FOCO_ESPERA, FOCO_ORDER, URGENT_WINDOW_MIN, inFoco, isAppt, rankFoco } from './metaFoco.js';
 import { esperaSince } from './metaEspera.js';
+import { appointmentFreepassOf } from './visitante.js';
 
 // Os textos da tela da Meta (Foco agora, mockup B): o motivo de cada
 // tarefa estar onde está na fila, os fatos do bloco Agora e o que a barra "Foco
@@ -129,8 +130,11 @@ export function factsOf({ slug, lead }, now, opts = {}) {
   if (slug === C.AULA_HOJE) {
     const qty = Number(lead?.trialClassesPlanned) || 1;
     const quem = lead?.appointmentProfessorName ? ` com ${lead.appointmentProfessorName}` : lead?.appointmentSoloTraining ? ', treina sozinho' : '';
-    out.push(['Aula', `${lead?.appointmentModality || 'Sem modalidade'}${quem}, ${plural(qty, 'aula', 'aulas')}`]);
+    // Com freepass, a quantidade sai dele, num fato próprio.
+    const fp = appointmentFreepassOf(lead, now);
+    out.push(['Aula', `${lead?.appointmentModality || 'Sem modalidade'}${quem}${fp ? '' : `, ${plural(qty, 'aula', 'aulas')}`}`]);
     if (apptAt) out.push(['Horário', dayRefText(apptAt, now)]);
+    if (fp) out.push(['Freepass', fp.shortText]);
   } else if (slug === C.VISITA_HOJE) {
     if (lead?.appointmentUnit) out.push(['Unidade', lead.appointmentUnit]);
     if (apptAt) out.push(['Horário', dayRefText(apptAt, now)]);

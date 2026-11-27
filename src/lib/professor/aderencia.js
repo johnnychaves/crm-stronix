@@ -17,7 +17,6 @@ import { pct } from '../crm/stats.js';
 import { fromDateInputValue } from '../dates.js';
 import { professorAt } from '../professorHistory.js';
 import { contratosDaModalidade, estadoEm } from './carteira.js';
-import { semestresDoCiclo } from './ciclo.js';
 
 export const BARRA_PADRAO = 2;
 
@@ -82,19 +81,34 @@ export function aderenciaDoSemestre(linhas, { inicio, fim }) {
   return { contam, aderentes, taxa: pct(aderentes, contam) };
 }
 
-// Os dois semestres do ciclo e a nota do ano: a média das taxas dos
-// semestres fechados (fim até o corte). Com um só fechado, vale ele.
-export function aderenciaDoAno(linhas, ciclo, asOf = new Date()) {
-  const semestres = semestresDoCiclo(ciclo).map((s) => ({ ...s, fechado: s.fim <= asOf, ...aderenciaDoSemestre(linhas, s) }));
+// Os pedaços do período (pecasDaAderencia, em src/lib/carreira/periodo.js) e
+// a nota: a média das taxas dos pedaços fechados (fim até o corte). Com um só
+// fechado, vale ele.
+export function aderenciaDoAno(linhas, pecas, asOf = new Date()) {
+  const semestres = (pecas || []).map((s) => ({ ...s, fechado: s.fim <= asOf, ...aderenciaDoSemestre(linhas, s) }));
   const taxas = semestres.filter((s) => s.fechado && s.taxa != null).map((s) => s.taxa);
   return { semestres, nota: taxas.length ? Math.round(taxas.reduce((a, b) => a + b, 0) / taxas.length) : null };
 }
 
-// O número da lista e do placar: a nota do ano quando já há semestre fechado;
-// antes disso, a taxa do semestre em andamento (emAndamento). Null sem semana.
-export function aderenciaResumo(linhas, ciclo, asOf = new Date()) {
-  const ano = aderenciaDoAno(linhas, ciclo, asOf);
+// O número da lista e do placar: a nota quando já há pedaço fechado; antes
+// disso, a taxa do pedaço em andamento (emAndamento). Null sem semana.
+export function aderenciaResumo(linhas, pecas, asOf = new Date()) {
+  const ano = aderenciaDoAno(linhas, pecas, asOf);
   if (ano.nota != null) return { ...ano, taxa: ano.nota, emAndamento: false };
   const atual = [...ano.semestres].reverse().find((sm) => sm.inicio <= asOf && sm.taxa != null) ?? null;
   return { ...ano, taxa: atual?.taxa ?? null, emAndamento: atual != null };
+}
+
+// O semestral (plano de carreira, PR 3): o período inteiro é a unidade. Soma
+// as semanas de todos os pedaços, porque no semestral de junho e dezembro o
+// segundo período tem o pedaço de junho (um mês) e o de julho a novembro, e a
+// média dos dois daria a junho o peso de cinco meses. A nota sai quando todos
+// os pedaços fecham; antes disso, a taxa até agora com `emAndamento`.
+export function aderenciaSomada(linhas, pecas, asOf = new Date()) {
+  const semestres = (pecas || []).map((s) => ({ ...s, fechado: s.fim <= asOf, ...aderenciaDoSemestre(linhas, s) }));
+  const contam = semestres.reduce((a, s) => a + s.contam, 0);
+  const aderentes = semestres.reduce((a, s) => a + s.aderentes, 0);
+  const taxa = pct(aderentes, contam);
+  const fechado = semestres.length > 0 && semestres.every((s) => s.fechado);
+  return { semestres, nota: fechado ? taxa : null, taxa, emAndamento: !fechado && taxa != null };
 }

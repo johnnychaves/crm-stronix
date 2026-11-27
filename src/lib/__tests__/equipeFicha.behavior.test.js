@@ -239,7 +239,7 @@ describe('ficha da equipe', () => {
   it('professor com o módulo tem o link Ver perfil', async () => {
     await montar();
     const a = [...document.querySelectorAll('a')].find((x) => x.textContent === 'Ver perfil');
-    expect(a.getAttribute('href')).toBe('/acad/professores/perfil/p-marina');
+    expect(a.getAttribute('href')).toBe('/acad/carreira/professor/p-marina');
   });
   it('convite pendente mostra o e-mail e a validade, sem Dar acesso', async () => {
     const p = comFicha([{ id: 'c1', nome: 'Convidada', funcao: 'consultor', convite: { email: 'conv@x.com', expiraEm: '2026-12-01T12:00:00.000Z' } }]);

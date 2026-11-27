@@ -50,7 +50,7 @@ describe('casca do App para o professor', () => {
     const menu = app.slice(app.indexOf('>Workspace</div>'), app.indexOf('>Administração</div>'));
     const itens = [
       ['overview', 'Visão geral'], ['kanban', 'Pipeline'], ['clientes', 'Clientes'],
-      ['dailyGoal', 'Meta diária'], ['meuPerfil', 'Meu perfil'], ['leads', 'Leads'], ['relatorios', 'Relatórios'], ['suporte', 'Suporte'],
+      ['dailyGoal', 'Meta diária'], ['meuPerfil', 'Minha carreira'], ['leads', 'Leads'], ['relatorios', 'Relatórios'], ['suporte', 'Suporte'],
     ];
     for (const [chave, rotulo] of itens) {
       const idx = menu.indexOf(`label="${rotulo}"`);
@@ -138,9 +138,9 @@ describe('casca do App para o professor', () => {
     expect(app).toMatch(/useClientsWithContactToday\(\{[^}]*enabled: isSeller\(appUser\) \}\)/);
   });
 
-  it('Professores fica em Administração, antes de Rotinas, pelo sidebarNav', () => {
+  it('Carreira fica em Administração, antes de Rotinas, pelo sidebarNav', () => {
     const adm = app.slice(app.indexOf('>Administração</div>'));
-    const prof = adm.indexOf('label="Professores"');
+    const prof = adm.indexOf('label="Carreira"');
     expect(prof).toBeGreaterThan(-1);
     expect(adm.lastIndexOf('{nav.professores && ', prof)).toBeGreaterThan(-1);
     expect(prof).toBeLessThan(adm.indexOf('label="Rotinas"'));

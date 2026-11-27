@@ -51,7 +51,7 @@ import { getSafeDateOrNull } from '../../src/lib/dates.js';
 //   - não há contenção nem repetição do callback: cada transação roda uma vez,
 //     em fila.
 const banco = vi.hoisted(() => ({
-  tenants: {}, leads: {}, config: {}, users: {}, catalogos: {}, interacoes: {}, aulas: {},
+  tenants: {}, leads: {}, config: {}, users: {}, catalogos: {}, interacoes: {}, aulas: {}, freepass: {},
   gravacoes: [], falhaEm: null, ultimoId: 0
 }));
 // Quem está logado no CRM (verifyRequest), se é admin (isTenantAdmin) e
@@ -94,7 +94,8 @@ vi.mock('../_firebaseAdmin.js', async () => {
   // A lista em memória de cada coleção da academia
   // (artifacts/{academia}/public/data/{coleção}).
   const LISTAS = {
-    stronix_leads: 'leads', stronix_users: 'users', stronix_interactions: 'interacoes', stronix_aulas: 'aulas'
+    stronix_leads: 'leads', stronix_users: 'users', stronix_interactions: 'interacoes', stronix_aulas: 'aulas',
+    stronix_freepass: 'freepass'
   };
   const CATALOGOS = [
     'stronix_sources', 'stronix_dores', 'stronix_modalities', 'stronix_funnels', 'stronix_statuses',
@@ -371,6 +372,7 @@ function zerarBanco() {
   banco.catalogos = {};
   banco.interacoes = {};
   banco.aulas = {};
+  banco.freepass = {};
   banco.gravacoes = [];
   banco.falhaEm = null;
   banco.ultimoId = 0;
@@ -2156,7 +2158,7 @@ describe('POST /api/zap com action schedule', () => {
     expect(rec).toEqual({
       id: expect.any(String), type: 'visita', unit: 'Centro', leadId: 'L1', leadName: 'Mariana Souza',
       professorId: null, professorName: null, soloTraining: false, modality: null, scheduledFor: QUINTA_18H,
-      status: 'agendada', outcomeAt: null, converted: false, convertedAt: null,
+      status: 'agendada', outcomeAt: null, converted: false, convertedAt: null, freepassId: null,
       consultantId: 'u-ana', consultantAuthUid: 'auth-ana', consultantName: 'Ana Souza', createdAt: HORA
     });
     expect(interacoesDaAcademia()).toEqual([{
@@ -2921,6 +2923,238 @@ describe('POST /api/zap com action schedule', () => {
   });
 });
 
+// Entrega 2 do Visitante: com o módulo Stronix 2.0, a aula pedida pelo
+// Stronizap e pela IA entra no freepass, pela escolha automática.
+const PILATES_2_AULAS = { id: 't1', name: 'Pilates 2 aulas', modalidadeId: 'm2', kind: 'aulas', quantity: 2, padrao: true, ativo: true };
+// A aula da Carla, sexta 02/10 às 19:00, e a meia-noite desse dia em Brasília.
+const AULA_DA_CARLA_AT = new Date('2026-10-02T22:00:00.000Z');
+const DIA_DA_AULA = new Date('2026-10-02T03:00:00.000Z');
+const freepassDaAcademia = () => banco.freepass[TENANT] ?? [];
+// O freepass de pilates da Mariana, com uma aula já feita, como mora no banco.
+const fpDaMariana = (extra = {}) => ({
+  id: 'fp1', leadId: 'L1', typeId: 't1', typeName: 'Pilates 2 aulas', modalidadeId: 'm2', modalidadeName: 'Pilates', kind: 'aulas',
+  total: 2, startsAt: ts(new Date('2026-09-25T03:00:00.000Z')), endsAt: null, aulas: 1, status: 'correndo', contractAtStart: null,
+  via: 'agendar', ...extra
+});
+const aulaFeita = registro('a0', {
+  type: 'aula', unit: null, modality: 'Pilates', professorId: 'p1', professorName: 'Carla Dias', status: 'attended',
+  scheduledFor: ts(new Date('2026-09-25T22:00:00.000Z')), freepassId: 'fp1'
+});
+// A Mariana com a segunda aula do freepass pendente, na quinta 01/10 às 09:00.
+const QUINTA_9H = new Date('2026-10-01T12:00:00.000Z');
+const comAulaPendente = (freepass = {}) => {
+  banco.leads[TENANT] = [marianaLead({
+    appointmentType: 'aula_experimental', appointmentScheduledFor: ts(QUINTA_9H), appointmentModality: 'Pilates',
+    appointmentProfessorId: 'p1', currentAulaId: 'a1', freepassId: 'fp1', freepassKind: 'aulas', freepassTotal: 2, freepassAulas: 2,
+    freepassStatus: 'correndo', freepassContractAtStart: null
+  })];
+  banco.aulas[TENANT] = [aulaFeita, registro('a1', {
+    type: 'aula', unit: null, modality: 'Pilates', professorId: 'p1', professorName: 'Carla Dias', scheduledFor: ts(QUINTA_9H), freepassId: 'fp1'
+  })];
+  banco.freepass[TENANT] = [fpDaMariana({ aulas: 2, endsAt: ts(new Date('2026-10-01T03:00:00.000Z')), ...freepass })];
+};
+
+describe('POST /api/zap com action schedule: a aula dentro do freepass', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(AGORA);
+    zerarBanco();
+    academiaComEquipe();
+    banco.tenants[TENANT].modules = ['faltosos'];
+    banco.config[TENANT] = { freepassTypes: [PILATES_2_AULAS] };
+    banco.leads[TENANT] = [marianaLead()];
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('sem freepass na modalidade: nasce o do tipo padrão com a aula pedida, numa gravação só, com a marca da IA', async () => {
+    const res = resposta();
+
+    await handler(pedidoAgenda({ schedule: AULA_DA_CARLA, byAi: true }), res);
+
+    expect(res.statusCode).toBe(201);
+    const [fp] = freepassDaAcademia();
+    expect(fp).toEqual({
+      id: expect.any(String), leadId: 'L1', typeId: 't1', typeName: 'Pilates 2 aulas', modalidadeId: 'm2', modalidadeName: 'Pilates',
+      kind: 'aulas', total: 2, startsAt: DIA_DA_AULA, endsAt: null, aulas: 1, status: 'correndo', contractAtStart: null,
+      consultantId: 'u-ana', consultantName: 'Ana Souza', createdById: 'u-ana', createdByName: 'Ana Souza', createdByAuthUid: 'auth-ana',
+      via: 'stronizap', byAi: true, createdAt: HORA
+    });
+    const [aula] = aulasDaAcademia();
+    expect(aula).toMatchObject({ type: 'aula', modality: 'Pilates', scheduledFor: AULA_DA_CARLA_AT, status: 'agendada', freepassId: fp.id });
+    expect(interacoesDaAcademia()).toEqual([
+      expect.objectContaining({
+        batchSeq: 0, type: 'note', volumeKind: 'aula_experimental', byAi: true,
+        text: '🔔 Aula Experimental agendada (Pilates) · Carla Dias p/ 02/10/2026, 19:00.'
+      }),
+      expect.objectContaining({
+        batchSeq: 1, type: 'freepass', freepassId: fp.id, byAi: true, actorId: 'u-ana', leadConsultantId: 'u-ana',
+        text: 'Freepass lançado: Pilates 2 aulas (Pilates), 1 aula marcada, 1 para agendar.', via: 'stronizap'
+      })
+    ]);
+    expect(leadDaAcademia('L1')).toMatchObject({
+      interactionsCount: 5, trialClassesPlanned: null, currentAulaId: aula.id, appointmentScheduledFor: AULA_DA_CARLA_AT,
+      freepassId: fp.id, freepassKind: 'aulas', freepassTotal: 2, freepassAulas: 1, freepassStatus: 'correndo'
+    });
+    expect(res.body.appointment).toMatchObject({ type: 'aula_experimental', at: '2026-10-02T22:00:00.000Z', quantity: null });
+  });
+
+  it('freepass que corre na modalidade: a aula entra nele e ele completa, com o fim no dia da aula', async () => {
+    banco.aulas[TENANT] = [aulaFeita];
+    banco.freepass[TENANT] = [fpDaMariana()];
+
+    await handler(pedidoAgenda({ schedule: AULA_DA_CARLA }), resposta());
+
+    expect(freepassDaAcademia()).toHaveLength(1);
+    expect(freepassDaAcademia()[0]).toMatchObject({ id: 'fp1', aulas: 2, endsAt: DIA_DA_AULA, via: 'agendar' });
+    const nova = aulasDaAcademia().find((a) => a.id !== 'a0');
+    expect(nova).toMatchObject({ freepassId: 'fp1', scheduledFor: AULA_DA_CARLA_AT });
+    expect(interacoesDaAcademia()).toHaveLength(1);
+    expect('batchSeq' in interacoesDaAcademia()[0]).toBe(false);
+    expect(leadDaAcademia('L1')).toMatchObject({ interactionsCount: 4, freepassId: 'fp1', freepassAulas: 2, freepassEndsAt: DIA_DA_AULA });
+  });
+
+  it('a modalidade sem tipo padrão: a aula fica avulsa, sem a quantidade e sem freepass', async () => {
+    banco.config[TENANT] = { freepassTypes: [{ ...PILATES_2_AULAS, padrao: false }] };
+
+    await handler(pedidoAgenda({ schedule: { ...AULA_DA_CARLA, quantity: 2 } }), resposta());
+
+    expect(freepassDaAcademia()).toEqual([]);
+    expect(aulasDaAcademia()[0].freepassId).toBeNull();
+    expect(interacoesDaAcademia()[0].text).toBe('🔔 Aula Experimental agendada (Pilates) · Carla Dias p/ 02/10/2026, 19:00.');
+    expect(leadDaAcademia('L1')).toMatchObject({ trialClassesPlanned: null, interactionsCount: 4 });
+    expect(leadDaAcademia('L1').freepassId).toBeUndefined();
+  });
+
+  it('a aula pendente do freepass movida para uma aula avulsa de outra modalidade: sai do freepass, e a vaga volta', async () => {
+    comAulaPendente();
+
+    await handler(pedidoAgenda({ schedule: { ...AULA_DA_CARLA, modality: 'Musculação', professorId: 'p2' } }), resposta());
+
+    expect(aulasDaAcademia().find((a) => a.id === 'a1')).toMatchObject({ modality: 'Musculação', scheduledFor: AULA_DA_CARLA_AT, freepassId: null });
+    expect(freepassDaAcademia()[0]).toMatchObject({ id: 'fp1', aulas: 1, endsAt: null });
+    expect(leadDaAcademia('L1')).toMatchObject({ currentAulaId: 'a1', freepassAulas: 1, freepassEndsAt: null });
+  });
+
+  it('a aula pendente do freepass remarcada na mesma modalidade continua nele, mesmo cheio', async () => {
+    comAulaPendente();
+
+    await handler(pedidoAgenda({ schedule: AULA_DA_CARLA }), resposta());
+
+    expect(aulasDaAcademia()).toHaveLength(2);
+    expect(aulasDaAcademia().find((a) => a.id === 'a1')).toMatchObject({ scheduledFor: AULA_DA_CARLA_AT, freepassId: 'fp1' });
+    expect(freepassDaAcademia()[0]).toMatchObject({ aulas: 2, endsAt: DIA_DA_AULA });
+  });
+
+  it('a aula pendente do freepass trocada por visita fecha como cancelada, e a vaga volta', async () => {
+    comAulaPendente();
+
+    await handler(pedidoAgenda(), resposta());
+
+    expect(aulasDaAcademia().find((a) => a.id === 'a1')).toMatchObject({ status: 'cancelled', freepassId: 'fp1' });
+    expect(freepassDaAcademia()[0]).toMatchObject({ aulas: 1, endsAt: null });
+    expect(leadDaAcademia('L1')).toMatchObject({ appointmentType: 'visita', freepassAulas: 1 });
+  });
+
+  // A aula da vez é a pendente mais cedo do freepass: a aula da vez remarcada
+  // para depois de outra aula pendente dá lugar a ela no lead.
+  it('a aula remarcada para depois de outra pendente do freepass: o lead aponta para a mais cedo', async () => {
+    comAulaPendente({ total: 3 });
+    const SEGUNDA_9H = new Date('2026-10-05T12:00:00.000Z');
+    banco.aulas[TENANT].push(registro('a2', {
+      type: 'aula', unit: null, modality: 'Pilates', professorId: 'p2', professorName: 'Rafael Moura', scheduledFor: ts(SEGUNDA_9H), freepassId: 'fp1'
+    }));
+    const res = resposta();
+
+    await handler(pedidoAgenda({ schedule: { ...AULA_DA_CARLA, date: '2026-10-06' } }), res);
+
+    expect(res.statusCode).toBe(201);
+    expect(aulasDaAcademia().find((a) => a.id === 'a1').scheduledFor).toEqual(new Date('2026-10-06T22:00:00.000Z'));
+    expect(leadDaAcademia('L1')).toMatchObject({
+      currentAulaId: 'a2', appointmentScheduledFor: SEGUNDA_9H, appointmentProfessorId: 'p2', appointmentProfessorName: 'Rafael Moura'
+    });
+    // A resposta descreve a aula pedida, de onde o Stronizap monta a
+    // confirmação; o cartão segue o lead, na aula da vez.
+    expect(res.body.appointment).toEqual({
+      leadId: 'L1', leadName: 'Mariana Souza', type: 'aula_experimental', at: '2026-10-06T22:00:00.000Z',
+      unit: null, unitAddress: null, modality: 'Pilates', professorName: 'Carla Dias', soloTraining: false, quantity: null, outcome: null
+    });
+    expect(res.body.card.appointment).toMatchObject({ at: SEGUNDA_9H.toISOString() });
+    expect(interacoesDaAcademia()[0].text).toBe('🔔 Aula Experimental agendada (Pilates) · Carla Dias p/ 06/10/2026, 19:00.');
+
+    // O "Tentar de novo" do mesmo pedido bate com a aula pedida, que não é a da
+    // vez: é o repetido, e a aula da vez não é movida para o mesmo horário.
+    const gravacoes = banco.gravacoes.length;
+    const retry = resposta();
+    await handler(pedidoAgenda({ schedule: { ...AULA_DA_CARLA, date: '2026-10-06' } }), retry);
+
+    expect(retry.statusCode).toBe(409);
+    expect(retry.body.error).toBe('ja_agendado');
+    expect(retry.body.appointment).toEqual(res.body.appointment);
+    expect(banco.gravacoes).toHaveLength(gravacoes);
+    expect(aulasDaAcademia().find((a) => a.id === 'a2').scheduledFor.toDate()).toEqual(SEGUNDA_9H);
+    expect(leadDaAcademia('L1').currentAulaId).toBe('a2');
+  });
+
+  // O caso do Johnny (27/11/2026): falta na primeira aula do freepass e a
+  // próxima tentativa avulsa, mais tarde que a segunda aula do freepass. O lead
+  // aponta para a do freepass, e a resposta descreve a avulsa pedida.
+  it('aula avulsa mais tarde que a aula pendente do freepass: o lead aponta para a do freepass', async () => {
+    comAulaPendente();
+    banco.leads[TENANT] = [marianaLead({
+      appointmentType: 'aula_experimental', appointmentScheduledFor: ts(new Date('2026-09-25T22:00:00.000Z')), appointmentOutcome: 'no_show',
+      currentAulaId: 'a0', freepassId: 'fp1', freepassKind: 'aulas', freepassTotal: 2, freepassAulas: 2, freepassStatus: 'correndo',
+      freepassContractAtStart: null
+    })];
+    banco.aulas[TENANT][0] = { ...banco.aulas[TENANT][0], status: 'no_show' };
+    const res = resposta();
+
+    await handler(pedidoAgenda({ schedule: { ...AULA_DA_CARLA, date: '2026-10-06' } }), res);
+
+    expect(res.statusCode).toBe(201);
+    const avulsa = aulasDaAcademia().find((a) => !['a0', 'a1'].includes(a.id));
+    expect(avulsa).toMatchObject({ freepassId: null, status: 'agendada', scheduledFor: new Date('2026-10-06T22:00:00.000Z') });
+    expect(leadDaAcademia('L1')).toMatchObject({ currentAulaId: 'a1', appointmentScheduledFor: QUINTA_9H, appointmentOutcome: null, nextFollowUpNote: null });
+    expect(res.body.appointment).toMatchObject({ type: 'aula_experimental', at: '2026-10-06T22:00:00.000Z' });
+  });
+
+  it('a quantidade não é mais escolha: o mesmo agendamento com outra quantidade é o repetido', async () => {
+    await handler(pedidoAgenda({ schedule: AULA_DA_CARLA }), resposta());
+    const gravacoes = banco.gravacoes.length;
+    const res = resposta();
+
+    await handler(pedidoAgenda({ schedule: { ...AULA_DA_CARLA, quantity: 2 } }), res);
+
+    expect(res.statusCode).toBe(409);
+    expect(banco.gravacoes).toHaveLength(gravacoes);
+    expect(freepassDaAcademia()).toHaveLength(1);
+  });
+
+  it('a quantidade continua conferida contra as opções da academia', async () => {
+    const res = resposta();
+
+    await handler(pedidoAgenda({ schedule: { ...AULA_DA_CARLA, quantity: 4 } }), res);
+
+    expect(res.statusCode).toBe(422);
+    expect(res.body).toMatchObject({ error: 'catalogo_mudou', field: 'quantity' });
+    expect(banco.gravacoes).toEqual([]);
+  });
+
+  it('sem o módulo, nada muda: a quantidade é gravada e nenhum freepass nasce', async () => {
+    banco.tenants[TENANT].modules = [];
+
+    await handler(pedidoAgenda({ schedule: AULA_DA_CARLA }), resposta());
+
+    expect(freepassDaAcademia()).toEqual([]);
+    expect(aulasDaAcademia()[0].freepassId).toBeNull();
+    expect(leadDaAcademia('L1')).toMatchObject({ trialClassesPlanned: 1, interactionsCount: 4 });
+    expect(leadDaAcademia('L1').freepassId).toBeUndefined();
+    expect(interacoesDaAcademia()[0].text).toBe('🔔 Aula Experimental agendada (Pilates · 1 aula) · Carla Dias p/ 02/10/2026, 19:00.');
+  });
+});
+
 const pedidoStatus = (leadIds) => ({
   method: 'POST',
   headers: { 'x-stronizap-key': chave },
@@ -3153,6 +3387,18 @@ describe('POST /api/zap: o professor', () => {
     expect(interacoesDaAcademia()).toEqual([]);
     expect(aulasDaAcademia()).toEqual([]);
     expect(banco.gravacoes).toEqual([]);
+  });
+
+  it('não lança freepass: a aula que nasceria com um fica avulsa', async () => {
+    banco.config[TENANT] = { freepassTypes: [PILATES_2_AULAS] };
+    const res = resposta();
+
+    await handler(pedidoAgenda({ actor: { email: CAIO.email, name: 'Caio' }, schedule: AULA_DA_CARLA }), res);
+
+    expect(res.statusCode).toBe(201);
+    expect(freepassDaAcademia()).toEqual([]);
+    expect(aulasDaAcademia()[0].freepassId).toBeNull();
+    expect(interacoesDaAcademia()).toHaveLength(1);
   });
 
   it('com o módulo desligado, a consultora continua agendando', async () => {
