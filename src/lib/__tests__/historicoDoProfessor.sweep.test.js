@@ -71,6 +71,9 @@ const REVISADOS = {
   'src/lib/faltosos/lotesImportacao.js': 'gravação de stronix_faltosos, nunca de stronix_leads',
   'src/lib/faltosos/passosImportacao.js': 'escolhas da ligação dos professores na janela',
   'src/lib/faltosos/configuracoes.js': 'troca da ligação de um professor da Next Fit',
+  // Leituras da Meta do professor (PR 2B): filtram por professorId, não gravam.
+  'src/hooks/useFaltososDoProfessor.js': 'leitura dos faltosos do professor, não grava',
+  'src/hooks/useAulasDeHojeDoProfessor.js': 'leitura das aulas de hoje do professor, não grava',
 };
 
 const comChave = [...arquivosDeCodigo(join(RAIZ, 'src')), ...arquivosDeCodigo(join(RAIZ, 'api'))]
