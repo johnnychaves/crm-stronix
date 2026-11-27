@@ -1518,7 +1518,8 @@ useEffect(() => {
   const { items: dayAgendaLeads, loading: dayAgendaLoading } = useDayAgenda({
     db, enabled: listenersActive && !tenantBlock && isSeller(appUser), dayKey: `${sessionKey}:${dayKey}`
   });
-  // A aula da vez do freepass anda no dia da aula seguinte (useFreepassAdvance):
+  // O compromisso pendente de hoje (aula ou visita, com ou sem freepass) entra
+  // no agendamento do lead no dia dele (useFreepassAdvance), só com o módulo:
   // uma vez por dia e por aba, por quem vende. A Agenda de hoje acima é ao vivo
   // e vê o agendamento novo sozinha.
   useFreepassAdvance({

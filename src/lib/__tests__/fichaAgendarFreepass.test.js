@@ -152,6 +152,31 @@ describe('Agendar da ficha com o freepass', () => {
     expect(b.calls).toEqual([['update', 'artifacts/acad/public/data/stronix_freepass/f1', { aulas: 2, endsAt: new Date(2026, 9, 16) }]]);
   });
 
+  // O caso do Johnny (27/11/2026): freepass de 2 aulas, falta na primeira e a
+  // próxima tentativa vira avulsa (o freepass está cheio). A segunda aula do
+  // freepass vem antes da avulsa: o lead aponta para ela, e não para a avulsa.
+  it('próxima tentativa avulsa depois da falta: o lead aponta para a aula do freepass, que é mais cedo', async () => {
+    m.freepasses = [{ ...FP, aulas: 2 }];
+    m.records = [
+      aulaRec('A', new Date(2026, 9, 13, 18, 0), { freepassId: 'f1', status: 'no_show', professorId: 'p1' }),
+      aulaRec('B', new Date(2026, 9, 19, 18, 0), { freepassId: 'f1', professorId: 'p1' }),
+      aulaRec('nova', new Date(2026, 9, 20, 18, 0), { freepassId: null, professorId: 'p1' }),
+    ];
+    m.aulas = m.records.slice(0, 2);
+    await montar({ ...LEAD, currentAulaId: 'A', appointmentType: 'aula_experimental', appointmentScheduledFor: new Date(2026, 9, 13, 18, 0), appointmentOutcome: 'no_show' });
+    await abrirAula();
+    await clicar(comeca('Aula avulsa'));
+    await clicar(comeca('Leonardo'));
+    await clicar(comeca('Terça'));
+    await clicar(comeca('Confirmar agendamento'));
+    expect(recordNewAppointment.mock.calls[0][0].fields).toMatchObject({ freepassId: null });
+    const patch = logInteractions.mock.calls[0][4];
+    expect(patch).toMatchObject({
+      currentAulaId: 'B', appointmentScheduledFor: new Date(2026, 9, 19, 18, 0), appointmentOutcome: null,
+      appointmentProfessorName: 'Leonardo', nextFollowUpNote: null,
+    });
+  });
+
   it('a aula da vez com professor leva o professor para o lead', async () => {
     m.freepasses = [FP];
     m.records = [

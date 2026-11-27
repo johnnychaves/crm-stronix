@@ -3098,6 +3098,28 @@ describe('POST /api/zap com action schedule: a aula dentro do freepass', () => {
     expect(leadDaAcademia('L1').currentAulaId).toBe('a2');
   });
 
+  // O caso do Johnny (27/11/2026): falta na primeira aula do freepass e a
+  // próxima tentativa avulsa, mais tarde que a segunda aula do freepass. O lead
+  // aponta para a do freepass, e a resposta descreve a avulsa pedida.
+  it('aula avulsa mais tarde que a aula pendente do freepass: o lead aponta para a do freepass', async () => {
+    comAulaPendente();
+    banco.leads[TENANT] = [marianaLead({
+      appointmentType: 'aula_experimental', appointmentScheduledFor: ts(new Date('2026-09-25T22:00:00.000Z')), appointmentOutcome: 'no_show',
+      currentAulaId: 'a0', freepassId: 'fp1', freepassKind: 'aulas', freepassTotal: 2, freepassAulas: 2, freepassStatus: 'correndo',
+      freepassContractAtStart: null
+    })];
+    banco.aulas[TENANT][0] = { ...banco.aulas[TENANT][0], status: 'no_show' };
+    const res = resposta();
+
+    await handler(pedidoAgenda({ schedule: { ...AULA_DA_CARLA, date: '2026-10-06' } }), res);
+
+    expect(res.statusCode).toBe(201);
+    const avulsa = aulasDaAcademia().find((a) => !['a0', 'a1'].includes(a.id));
+    expect(avulsa).toMatchObject({ freepassId: null, status: 'agendada', scheduledFor: new Date('2026-10-06T22:00:00.000Z') });
+    expect(leadDaAcademia('L1')).toMatchObject({ currentAulaId: 'a1', appointmentScheduledFor: QUINTA_9H, appointmentOutcome: null, nextFollowUpNote: null });
+    expect(res.body.appointment).toMatchObject({ type: 'aula_experimental', at: '2026-10-06T22:00:00.000Z' });
+  });
+
   it('a quantidade não é mais escolha: o mesmo agendamento com outra quantidade é o repetido', async () => {
     await handler(pedidoAgenda({ schedule: AULA_DA_CARLA }), resposta());
     const gravacoes = banco.gravacoes.length;

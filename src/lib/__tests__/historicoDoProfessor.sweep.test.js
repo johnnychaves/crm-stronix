@@ -39,9 +39,7 @@ const REVISADOS = {
   // Registro da aula em stronix_aulas, não o professor do lead.
   'src/lib/aulas.js': 'registro da aula',
   'src/lib/aulasPlan.js': 'aulas marcadas no lançamento do freepass, registro da aula',
-  'src/lib/freepassAgendaWrites.js': 'registro da aula do freepass e agendamento do lead (appointmentProfessorId, pelo buildSchedulePatch)',
-  'src/hooks/useFreepassAdvance.js': 'aula da vez do freepass no agendamento do lead (appointmentProfessorId, pelo buildSchedulePatch)',
-  'src/lib/freepassMetaWrites.js': 'próxima aula do freepass no agendamento do lead depois do Cancelou (appointmentProfessorId, pelo buildSchedulePatch)',
+  'src/lib/slotPatch.js': 'o lead aponta para um registro de aula ou visita (appointmentProfessorId, pelo buildSchedulePatch)',
   'src/components/profile/ScheduleWizard.jsx': 'escolha do professor da aula',
   'src/views/LeadProfileView.jsx': 'registro da aula do assistente',
   'src/views/DailyGoalView.jsx': 'registro da aula do Remarcar',

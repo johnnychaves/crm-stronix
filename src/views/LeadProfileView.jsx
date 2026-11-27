@@ -8,9 +8,10 @@ import { useLeadFreepasses } from '../hooks/useLeadFreepasses.js';
 import { useLeadAulas } from '../hooks/useLeadAulas.js';
 import { FreepassLaunchModal } from '../modals/FreepassLaunchModal.jsx';
 import { FreepassAulaModal } from '../modals/FreepassAulaModal.jsx';
-import { FREEPASS_INTERACTION_TYPE, activeFreepassesOf, freepassChoiceFor, freepassPickMatches, freepassSummaryPatch, freepassTagOf, launchCheck } from '../lib/visitante.js';
+import { FREEPASS_INTERACTION_TYPE, activeFreepassesOf, freepassChoiceFor, freepassPickMatches, freepassSummaryPatch, freepassTagOf, launchCheck, leadPointsTo } from '../lib/visitante.js';
 import { writeFreepassEnd, writeFreepassLaunch } from '../lib/freepassWrites.js';
-import { extraAulaRecords, freepassLaunchParts, freepassScheduleWrites, leadAppointmentFor, reusablePendingAula, writeFreepassAulaMove } from '../lib/freepassAgendaWrites.js';
+import { extraAulaRecords, freepassLaunchParts, freepassScheduleWrites, reusablePendingAula, writeFreepassAulaMove } from '../lib/freepassAgendaWrites.js';
+import { slotPatchFor } from '../lib/slotPatch.js';
 import { AULA_STATUS } from '../lib/aulas.js';
 import { useReferrals } from '../hooks/useReferrals.js';
 import { withBucket } from '../lib/leadDerived.js';
@@ -763,9 +764,10 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // entra no freepass que corre ('use'), nasce com um freepass novo ('launch')
   // ou fica avulsa ('avulsa'). Com `fresh` (o "Agendar" do cartão do freepass,
   // ou o lançamento da aba Contratos que não reaproveita a pendente), a aula é
-  // uma a mais: nasce no lote, não remarca a pendente, e o agendamento do lead
-  // segue o leadAppointmentFor, que recusa antes de gravar quando ele ficaria
-  // sem dono. Com `via: 'contratos'`, é o lançamento por aulas da aba Contratos,
+  // uma a mais: nasce no lote e não remarca a pendente. Com o módulo, o
+  // agendamento do lead segue o leadSlotFor (visitante.js): aponta para o
+  // compromisso pendente mais cedo, com ou sem freepass, e o avanço do dia põe
+  // os outros na Agenda no dia deles. Com `via: 'contratos'`, é o lançamento por aulas da aba Contratos,
   // que já conferiu o launchCheck. Devolve false quando não grava, para o
   // assistente ficar como está, e true quando grava.
   const handleWizardConfirm = async ({ typeLabel, date, modalidade, professorId, soloTraining, quantidade, unidade, note: wizNote, contactOwnerId: wizOwnerId, contactOwnerName: wizOwnerName, freepass: fpPick = null }) => {
@@ -776,7 +778,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     const isVisita = appointmentType === 'visita';
     // Com o freepass, a gravação reconta o freepass pelos registros. Sem os
     // dados (a aula, ou a visita que move ou fecha a aula pendente), espera.
-    if (freepassOn && (isAula || (isVisita && lead.currentAulaId)) && (freepasses === null || leadAulas === null)) {
+    if (freepassOn && (isAula || isVisita) && (freepasses === null || leadAulas === null)) {
       toast.warning('Ainda carregando os dados do freepass. Tente de novo em instantes.');
       return false;
     }
@@ -793,9 +795,6 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
       toast.warning('O freepass mudou enquanto você agendava. Confira o passo Freepass.');
       return false;
     }
-    // A aula a mais não pode deixar sem dono o agendamento que o lead tem.
-    const rumo = fresh ? leadAppointmentFor({ lead, records: leadAulas, at: date }) : null;
-    if (rumo?.refuse) { toast.warning(rumo.refuse); return false; }
     // Lançar freepass é do consultor e do gestor (canFreepass), nunca em lead perdido.
     const launchType = fpPick?.kind === 'launch' ? (freepassTypes || []).find((t) => t.id === fpPick.typeId) || null : null;
     if (fpPick?.kind === 'launch' && (!canFreepass || lead.status === 'Perda')) { negarAcesso(); return false; }
@@ -872,29 +871,32 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
       // A aula pendente que saiu de um freepass (para outro, para avulsa, ou
       // cancelada pela troca por visita) devolve a vaga: o freepass recalcula.
       const leftId = !fresh && (isAula || isVisita) && movingFreepassId !== targetId ? movingFreepassId : null;
-      const fpSide = launch || (freepasses && (targetId || leftId))
-        ? await freepassScheduleWrites({ db, lead, freepasses: freepasses || [], targetId, leftId, launch, extras: freshAula, currentAulaId })
-        : null;
-      // A aula da vez é a mais cedo do freepass (freepassAulaDaVez). Quando é
-      // outra aula, a anotação fica só no texto da interação, e o lead que já
-      // aponta para ela não tem o agendamento mexido.
-      const vez = fpSide?.daVez;
-      const da = vez
-        ? { date: getSafeDateOrNull(vez.scheduledFor), modalidade: vez.modality || null, professorId: vez.professorId || null, soloTraining: Boolean(vez.soloTraining), currentAulaId: vez.id }
-        : { date, modalidade, professorId, soloTraining, currentAulaId };
-
       // Patch em src/lib/schedulePatch.js: mensagem e ligação mexem SÓ no
       // próximo contato; visita e aula mexem no contato E no compromisso. Vive
       // fora da view porque foi solto aqui dentro que o bug de 18/08/2026
       // nasceu, sem teste possível.
       const up = buildSchedulePatch({
-        typeLabel, ...da, professorName: profName(da.professorId),
-        quantidade, unidade, note: vez ? '' : noteStr,
+        typeLabel, date, modalidade, professorId, professorName: profName(professorId), soloTraining, currentAulaId,
+        quantidade, unidade, note: noteStr,
         contactOwnerId: wizOwnerId || null, contactOwnerName: wizOwnerName || null,
         appointmentOwnerId: apptOwner?.id || null, appointmentOwnerName: apptOwner?.name || null,
       });
-      // A aula a mais (fresh) não tira do lead um agendamento mais cedo nem a aula de hoje com desfecho.
-      const leadAppt = (vez && lead.currentAulaId === vez.id) || rumo === 'keep' ? {} : up;
+      // Com o módulo, o freepass reconta pelos registros e o lead aponta para o
+      // compromisso pendente mais cedo (leadSlotFor). O Agendar que remarca
+      // parte do lead com o agendamento pedido; a aula a mais (fresh) parte do
+      // lead como está, e não tira dele um agendamento mais cedo nem a aula de
+      // hoje com desfecho. Quando o mais cedo é outro, a anotação fica só no
+      // texto da interação.
+      const leadAfter = fresh ? lead : { ...lead, ...up };
+      const fpSide = freepassOn && (isAula || isVisita)
+        ? await freepassScheduleWrites({ db, lead, leadAfter, freepasses, targetId, leftId, launch, extras: freshAula, currentAulaId })
+        : null;
+      // O lead que já aponta para o mais cedo não tem o agendamento mexido.
+      const slot = fpSide?.slot;
+      const leadAppt = !slot ? (fresh ? {} : up)
+        : slot.id === currentAulaId && isAula ? up
+          : leadPointsTo(lead, slot) ? {}
+            : slotPatchFor({ lead: leadAfter, record: { ...slot, professorName: profName(slot.professorId) }, taskOwner: apptOwner });
       // O resumo do freepass no lead (freepassSummaryPatch), quando a gravação mexe no freepass.
       const freepassLead = fpSide ? fpSide.leadPatch : {};
 
@@ -1321,7 +1323,8 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                     <span className="size-1.5 rounded-full bg-teal-500" aria-hidden="true" />Visitante · {freepassTag.text}
                   </span>
                 )}
-                {upgradeStage && (
+                {/* Com a etiqueta Upgrade do freepass, a do funil não repete: a do freepass diz mais. */}
+                {upgradeStage && !(freepassOn && freepassTag?.label === 'Upgrade') && (
                   <span className="inline-flex h-6 shrink-0 items-center gap-1 rounded-full bg-violet-50 px-2.5 text-[12.5px] font-semibold text-violet-700 dark:bg-violet-500/10 dark:text-violet-300">
                     <TrendingUp size={11} aria-hidden="true" /> Upgrade · {upgradeStage.name}
                   </span>

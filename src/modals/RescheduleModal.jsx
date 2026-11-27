@@ -89,16 +89,18 @@ export function RescheduleModal({ lead, categorySlug, currentDate, currentType, 
     ? (apptAt ? `Não compareceu ${dayRefText(apptAt, now)}` : 'Não compareceu')
     : (apptAt ? `${typeText} marcada para ${dayRefText(apptAt, now)}` : 'Sem horário marcado');
   const hint = whenIsFuture(when, nowMs) ? '' : 'Escolha um dia e horário futuros.';
+  // O mesmo nome que a gravação usa (aparado), para a linha não dizer outra coisa.
+  const modalityName = modality.trim();
   const fpChoice = freepassOn && isAula && fpData && !fpData.error
     ? metaFreepassChoice({
         lead, freepasses: fpData.freepasses, records: fpData.records, types: freepassTypes, modalities,
-        modalidadeName: modality || null, appUser, at: whenInstant(when), afterNoShow: isAfterNoShow, now,
+        modalidadeName: modalityName || null, appUser, at: whenInstant(when), afterNoShow: isAfterNoShow, now,
       }).choice
     : null;
   const fpLine = !freepassOn || !isAula ? null
     : fpData === null ? { text: 'Conferindo o freepass…', tone: 'muted' }
       : fpData.error ? { text: 'Não deu para conferir o freepass. A remarcação confere de novo ao gravar.', tone: 'muted' }
-        : { text: freepassChoiceText(fpChoice, modality || 'a modalidade'), tone: fpChoice.kind === 'avulsa' ? 'muted' : 'teal' };
+        : { text: freepassChoiceText(fpChoice, modalityName || 'a modalidade'), tone: fpChoice.kind === 'avulsa' ? 'muted' : 'teal' };
 
   const handleConfirm = async () => {
     if (hint || submitting) return;
@@ -113,7 +115,7 @@ export function RescheduleModal({ lead, categorySlug, currentDate, currentType, 
     const professorName = chosenProfessorId ? professorNameById(professores, chosenProfessorId) : null;
     setSubmitting(true);
     try {
-      await onConfirm(newDate, note, apptType, isAula ? (modality || '').trim() : null, isAula && showQty ? finalQty : null, chosenProfessorId, professorName, isAula && isSolo);
+      await onConfirm(newDate, note, apptType, isAula ? modalityName : null, isAula && showQty ? finalQty : null, chosenProfessorId, professorName, isAula && isSolo);
     } finally {
       setSubmitting(false);
     }

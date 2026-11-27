@@ -52,7 +52,7 @@ const CONFIG = {
 const profile = { openProfile: () => {}, leadHref: (leadId) => hrefFor('acad', 'ficha', { leadId }), from: null };
 
 let root = null;
-async function montar(lead, appUser = CONSULTOR) {
+async function montar(lead, appUser = CONSULTOR, extra = {}) {
   const c = document.createElement('div');
   document.body.appendChild(c);
   root = createRoot(c);
@@ -63,7 +63,7 @@ async function montar(lead, appUser = CONSULTOR) {
           h(GeneralConfigContext.Provider, { value: CONFIG },
             h(LeadProfileView, {
               lead, tab: 'timeline', onTab: () => {}, onBack: () => {}, appUser,
-              statuses: [], tags: [], lossReasons: [], usersList: [appUser], db: {}, funnels: [],
+              statuses: [], tags: [], lossReasons: [], usersList: [appUser], db: {}, funnels: [], ...extra,
             }))))));
   });
 }
@@ -113,6 +113,27 @@ describe('etiqueta do freepass no cabeçalho da ficha', () => {
     await montar({ ...ALUNO, currentContractStatus: 'ativo', currentContractStartsAt: new Date(2025, 0, 10), currentContractEndsAt: new Date(2026, 0, 10) });
     expect(etiqueta('Visitante')?.textContent).toBe('Visitante · faltam 3 dias');
     expect(etiqueta('Upgrade')).toBeNull();
+  });
+
+  it('aluno no funil Upgrade com freepass: uma pílula de Upgrade só, a do freepass', async () => {
+    m.freepasses = [fpDoc('c1')];
+    const extra = {
+      funnels: [{ id: 'up', name: 'Upgrade', systemKind: 'upgrade' }],
+      statuses: [{ id: 's1', name: 'Interesse', funnelId: 'up', isEntry: true, order: 0 }],
+    };
+    await montar({ ...ALUNO, upgradeStageId: 's1' }, CONSULTOR, extra);
+    const pilulas = [...document.querySelectorAll('span')].filter((s) => s.textContent.trim().startsWith('Upgrade · '));
+    expect(pilulas.map((s) => s.textContent.trim())).toEqual(['Upgrade · Pilates, faltam 3 dias']);
+  });
+
+  it('sem freepass, a pílula do funil Upgrade continua', async () => {
+    const extra = {
+      funnels: [{ id: 'up', name: 'Upgrade', systemKind: 'upgrade' }],
+      statuses: [{ id: 's1', name: 'Interesse', funnelId: 'up', isEntry: true, order: 0 }],
+    };
+    await montar({ ...ALUNO, upgradeStageId: 's1' }, CONSULTOR, extra);
+    const pilulas = [...document.querySelectorAll('span')].filter((s) => s.textContent.trim().startsWith('Upgrade · '));
+    expect(pilulas.map((s) => s.textContent.trim())).toEqual(['Upgrade · Interesse']);
   });
 
   it('sem o módulo, nenhuma etiqueta de freepass', async () => {

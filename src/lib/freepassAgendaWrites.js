@@ -3,11 +3,12 @@
 import { collection, doc, getDocs, query, where, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { appId, AULAS_PATH, FREEPASS_PATH, LEADS_PATH } from './firebase.js';
 import { AULA_STATUS, APPOINTMENT_RECORD_TYPES, aulaRecordFields } from './aulas.js';
-import { calendarDaysBetween, getSafeDateOrNull } from './dates.js';
-import { appointmentTaskOwnerFor, buildSchedulePatch } from './schedulePatch.js';
+import { getSafeDateOrNull } from './dates.js';
+import { appointmentTaskOwnerFor } from './schedulePatch.js';
+import { slotPatchFor } from './slotPatch.js';
 import {
-  activeFreepassesOf, buildFreepassDoc, freepassAulaDaVez, freepassAulasPatch, freepassLaunchText,
-  freepassSummaryPatch, nextFreepassAula, FREEPASS_INTERACTION_TYPE
+  activeFreepassesOf, buildFreepassDoc, freepassAulasPatch, freepassLaunchText,
+  freepassSummaryPatch, leadSlotFor, FREEPASS_INTERACTION_TYPE
 } from './visitante.js';
 
 const aulasCol = (db) => collection(db, 'artifacts', appId, 'public', 'data', AULAS_PATH);
@@ -56,14 +57,18 @@ export function freepassLaunchParts({ db, lead, appUser, type, modalidadeName, a
   return { ref, data, extras: extraAulaRecords({ db, lead, freepassId: ref.id, aulas: fresh ? aulas : aulas.slice(1) }) };
 }
 
-// O lado do freepass de um agendamento da ficha, depois do registro gravado
-// (recordNewAppointment). Relê os registros do lead, recalcula o contador do
-// freepass de destino (targetId) e do que a aula deixou (leftId), e diz para
-// onde o agendamento do lead aponta (a aula da vez é a mais cedo). Não grava:
-// devolve o resumo para o lead, a aula da vez (null fica na gravada), as notas
-// a mais e o gancho extra do logInteractions, que grava tudo no mesmo lote.
-// `extras` são registros novos que vão no lote (a aula a mais do modo 'new').
-export async function freepassScheduleWrites({ db, lead, freepasses, targetId = null, leftId = null, launch = null, extras = [], currentAulaId, now = new Date() }) {
+// O lado do freepass de um agendamento (a ficha e a Meta), depois do registro
+// gravado (recordNewAppointment). Relê os registros do lead, recalcula o
+// contador do freepass de destino (targetId) e do que a aula deixou (leftId), e
+// diz para onde o agendamento do lead aponta (leadSlotFor: o compromisso
+// pendente mais cedo, com ou sem freepass). Não grava: devolve o resumo para o
+// lead (vazio quando nenhum freepass mudou), o `slot` (o registro para onde o
+// lead aponta, ou null para ficar como `leadAfter`), as notas a mais e o gancho
+// extra do logInteractions, que grava tudo no mesmo lote.
+// `leadAfter` é o lead como fica com o patch de quem chama (o agendamento
+// pedido); sem ele, o lead de agora. `extras` são registros novos que vão no
+// lote (a aula a mais do modo 'new').
+export async function freepassScheduleWrites({ db, lead, leadAfter = lead, freepasses, targetId = null, leftId = null, launch = null, extras = [], currentAulaId, now = new Date() }) {
   const novos = [...(launch?.extras || []), ...extras];
   const pending = novos.map((e) => ({ id: e.ref.id, ...e.data }));
   const records = [...(await readLeadAulas(db, lead.id)), ...pending];
@@ -82,10 +87,10 @@ export async function freepassScheduleWrites({ db, lead, freepasses, targetId = 
   });
   const launched = launch ? after.find((fp) => fp.id === launch.ref.id) : null;
   return {
-    leadPatch: freepassSummaryPatch(activeFreepassesOf(lead, after, now), now),
-    daVez: targetId ? freepassAulaDaVez({ records, freepassId: targetId, currentAulaId, now }) : null,
+    leadPatch: ids.size || launched ? freepassSummaryPatch(activeFreepassesOf(lead, after, now), now) : {},
+    slot: leadSlotFor({ lead: leadAfter, records, freepasses: after, now }),
     notes: launched ? [{ type: FREEPASS_INTERACTION_TYPE, text: freepassLaunchText(launched), freepassId: launched.id }] : [],
-    extra: (batch) => {
+    extra: !launched && !novos.length && !patches.size ? null : (batch) => {
       if (launched) {
         const { id: _id, ...data } = launched;
         batch.set(launch.ref, { ...data, createdAt: serverTimestamp() });
@@ -96,43 +101,12 @@ export async function freepassScheduleWrites({ db, lead, freepasses, targetId = 
   };
 }
 
-const ddmm = (d) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-
-// Para onde vai o agendamento do lead quando nasce ou muda uma aula de freepass
-// sem remarcar a pendente (o "Agendar" e o "Remarcar" do cartão, e o
-// lançamento da aba Contratos com `fresh`): 'keep' fica com o atual, 'switch'
-// passa para a aula `at`, e { refuse } recusa antes de gravar, para nenhum
-// agendamento ficar sem dono no lead.
-// - Fica: o atual é no instante `at` ou antes (a aula atrasada sem desfecho
-//   também), ou tem desfecho e é de hoje em diante (quem tira essa aula do
-//   lead é a virada do dia da aula seguinte, para a Agenda de hoje não perder
-//   a aula marcada), sem ser mais tarde que `at`.
-// - Passa: não há agendamento, o desfecho é de antes de hoje, ou o atual é uma
-//   aula de freepass, que continua no cartão do freepass.
-// - Recusa: o atual é pendente, de hoje em diante, não é aula de freepass e é
-//   mais tarde que `at`.
-// `records` são os registros de stronix_aulas da pessoa.
-export function leadAppointmentFor({ lead, records, at, now = new Date() }) {
-  const cur = getSafeDateOrNull(lead?.appointmentScheduledFor);
-  const type = lead?.appointmentType || null;
-  const next = getSafeDateOrNull(at);
-  if (!cur || !type || !next) return 'switch';
-  if (lead.appointmentOutcome) return calendarDaysBetween(now, cur) >= 0 && cur <= next ? 'keep' : 'switch';
-  if (cur <= next) return 'keep';
-  const curRec = type === 'aula_experimental' ? (records || []).find((r) => r.id === lead.currentAulaId) : null;
-  if (curRec?.freepassId) return 'switch';
-  const nome = String(lead.name || '').trim().split(' ')[0] || 'O lead';
-  const oque = type === 'visita' ? 'visita' : 'aula experimental';
-  return { refuse: `${nome} tem uma ${oque} marcada para ${ddmm(cur)}. Remarque a ${oque} ou marque esta aula depois dela.` };
-}
-
 // Remarcar uma aula do freepass que não é a da vez (o diálogo do cartão): muda
 // só o dia e o professor do registro, reconta o freepass (o fim do por aulas
-// é o dia da última aula) e, quando a aula passa a ser a mais cedo, o
-// agendamento do lead aponta para ela. Um lote só, sem interação. `fields` são
-// os campos do registro: scheduledFor, professorId, professorName, soloTraining.
-// Devolve { refused } sem gravar quando a aula mudou em outra aba ou quando o
-// lead tem um agendamento que ficaria sem dono (leadAppointmentFor).
+// é o dia da última aula) e o agendamento do lead segue o leadSlotFor. Um lote
+// só, sem interação. `fields` são os campos do registro: scheduledFor,
+// professorId, professorName, soloTraining. Devolve { refused } sem gravar
+// quando a aula mudou em outra aba.
 export async function writeFreepassAulaMove({ db, lead, appUser, freepasses, aula, fields, now = new Date() }) {
   const freepass = (freepasses || []).find((fp) => fp.id === aula.freepassId);
   if (!freepass) throw new Error('writeFreepassAulaMove: freepass da aula não encontrado');
@@ -143,21 +117,16 @@ export async function writeFreepassAulaMove({ db, lead, appUser, freepasses, aul
   }
   const records = lidos.map((r) => (r.id === aula.id ? { ...r, ...fields } : r));
   const after = freepassAfterAulas({ freepass, records });
-  const running = activeFreepassesOf(lead, (freepasses || []).map((fp) => (fp.id === freepass.id ? after.freepass : fp)), now);
-  const next = nextFreepassAula({ records, freepassId: freepass.id, now });
-  // Se outra aba fez dela a aula da vez enquanto o diálogo estava aberto, o lead acompanha a mudança.
-  const leadOnIt = lead.currentAulaId === aula.id;
-  const rumo = next && !leadOnIt && next.id !== lead.currentAulaId ? leadAppointmentFor({ lead, records, at: next.scheduledFor, now }) : 'keep';
-  if (rumo?.refuse) return { refused: rumo.refuse };
-  const toNext = Boolean(next) && (leadOnIt || rumo === 'switch');
-  const owner = toNext ? appointmentTaskOwnerFor({ scheduler: appUser, lead }) : null;
+  const all = (freepasses || []).map((fp) => (fp.id === freepass.id ? after.freepass : fp));
+  // O lead que aponta para esta aula (outra aba fez dela a da vez enquanto o
+  // diálogo estava aberto) acompanha a data nova, ou vai para a mais cedo.
+  const leadOnIt = lead.currentAulaId === aula.id && lead.appointmentType === 'aula_experimental';
+  const moved = records.find((r) => r.id === aula.id);
+  const leadAfter = leadOnIt ? { ...lead, appointmentScheduledFor: getSafeDateOrNull(fields.scheduledFor), appointmentOutcome: null } : lead;
+  const slot = leadSlotFor({ lead: leadAfter, records, freepasses: all, now }) || (leadOnIt ? moved : null);
   const leadPatch = {
-    ...freepassSummaryPatch(running, now),
-    ...(toNext && buildSchedulePatch({
-      typeLabel: 'Aula Experimental', date: getSafeDateOrNull(next.scheduledFor), modalidade: next.modality || null,
-      professorId: next.professorId || null, professorName: next.professorName || null, soloTraining: Boolean(next.soloTraining),
-      currentAulaId: next.id, appointmentOwnerId: owner?.id || null, appointmentOwnerName: owner?.name || null,
-    })),
+    ...freepassSummaryPatch(activeFreepassesOf(lead, all, now), now),
+    ...(slot && slotPatchFor({ lead, record: slot, taskOwner: appointmentTaskOwnerFor({ scheduler: appUser, lead }), now })),
   };
   const batch = writeBatch(db);
   batch.update(doc(aulasCol(db), aula.id), fields);

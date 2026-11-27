@@ -259,6 +259,7 @@ export function freepassChoiceFor({ lead, freepasses, types, modalidadeId, canLa
   }
   const ativos = (types || []).filter(t => t.modalidadeId === modalidadeId && t.ativo !== false);
   if (!ativos.length) return { kind: 'avulsa', reason: 'noType' };
+  if (lead?.status === 'Perda') return { kind: 'avulsa', reason: 'lost' };
   if (!canLaunch) return { kind: 'avulsa', reason: 'noLaunch' };
   return { kind: 'launch', types: [...ativos.filter(t => t.padrao), ...ativos.filter(t => !t.padrao)] };
 }
@@ -299,6 +300,7 @@ export function freepassChoiceText(choice, modalidadeName) {
         return `Aula avulsa: o freepass já tem ${n === 1 ? 'a 1 aula' : `as ${n} aulas`}`;
       }
       if (choice.reason === 'noType') return `Aula avulsa: ${modalidadeName} não tem freepass cadastrado`;
+      if (choice.reason === 'lost') return 'Aula avulsa: lead em Perda não vira Visitante';
       return 'Aula avulsa: só o consultor lança freepass';
     default: return '';
   }
@@ -315,42 +317,61 @@ export function freepassAulasPatch({ freepass, records }) {
   return { aulas, endsAt: Number.isFinite(last) ? startOfLocalDay(new Date(last)) : null };
 }
 
-// A aula da vez do lead anda para a aula de freepass de hoje, mas só quando a
-// atual já passou (dia anterior), já tem desfecho ou não existe: a aula de hoje
-// que ainda vai acontecer não se mexe.
-export function currentAulaToAdvance({ lead, records, now = new Date() }) {
-  const appt = getSafeDateOrNull(lead?.appointmentScheduledFor);
-  const done = !appt || Boolean(lead?.appointmentOutcome) || calendarDaysBetween(now, appt) < 0;
-  if (!done) return null;
-  const today = (records || [])
-    .filter(r => r.freepassId && r.status === AULA_AGENDADA && r.id !== lead?.currentAulaId)
-    .map(r => ({ r, at: getSafeDateOrNull(r.scheduledFor) }))
-    .filter(x => x.at && calendarDaysBetween(now, x.at) === 0)
-    .sort((a, b) => a.at - b.at);
-  return today[0]?.r || null;
-}
+// O compromisso pendente para onde o agendamento do lead aponta (decisão do
+// Johnny, 27/11/2026): o lead guarda um agendamento só, e mostra sempre o
+// pendente mais cedo, com ou sem freepass. `records` são os registros de
+// stronix_aulas do lead (aula e visita); `freepasses`, quando vem, tira os
+// registros de freepass que não existe ou não corre para o lead. Devolve o
+// registro para onde o lead deve apontar, ou null para ficar como está:
+// - fica o agendamento de hoje com desfecho (a Agenda de hoje não perde a
+//   aula marcada; quem troca é o avanço do dia seguinte, slotToAdvance);
+// - fica o atrasado sem desfecho, que segura a cobrança na Meta;
+// - fica o pendente de hoje em diante que é o mais cedo (ou empata).
+// `daysBetween` troca a conta de dias (a ponte conta no dia de Brasília).
+const AULA_RECORD = 'aula';
+const VISITA_RECORD = 'visita';
+const recordKindOf = (r) => ((r?.type ?? AULA_RECORD) === VISITA_RECORD ? 'visita' : 'aula_experimental');
+const normalizeKind = (t) => (t === 'visita' || t === 'aula_experimental' ? t : null);
 
-// A aula que o lead mostra como a da vez depois de uma gravação: a mais cedo
-// do freepass, de hoje em diante.
-export function nextFreepassAula({ records, freepassId, now = new Date() }) {
+function pendingRecordsOf({ lead, records, freepasses, now }) {
+  const live = freepasses ? new Set(activeFreepassesOf(lead, freepasses, now).map((fp) => fp.id)) : null;
   return (records || [])
-    .filter(r => r.freepassId === freepassId && r.status === AULA_AGENDADA)
-    .map(r => ({ r, at: getSafeDateOrNull(r.scheduledFor) }))
-    .filter(x => x.at && calendarDaysBetween(now, x.at) >= 0)
-    .sort((a, b) => a.at - b.at)[0]?.r || null;
+    .filter((r) => r.status === AULA_AGENDADA && (!r.freepassId || !live || live.has(r.freepassId)))
+    .map((r) => ({ r, at: getSafeDateOrNull(r.scheduledFor) }))
+    .filter((x) => x.at)
+    .sort((a, b) => a.at - b.at);
 }
 
-// Para onde o agendamento do lead aponta depois de gravar aula de freepass:
-// para a nextFreepassAula, a não ser que a aula atual do lead (currentAulaId,
-// a que acabou de ser gravada) esteja pendente e seja mais cedo ou igual.
-// null quer dizer "fica na atual".
-export function freepassAulaDaVez({ records, freepassId, currentAulaId, now = new Date() }) {
-  const next = nextFreepassAula({ records, freepassId, now });
-  if (!next || next.id === currentAulaId) return null;
-  const cur = (records || []).find(r => r.id === currentAulaId && r.status === AULA_AGENDADA);
-  const curAt = getSafeDateOrNull(cur?.scheduledFor);
-  if (curAt && curAt <= getSafeDateOrNull(next.scheduledFor)) return null;
-  return next;
+export function leadSlotFor({ lead, records, freepasses = null, now = new Date(), daysBetween = calendarDaysBetween }) {
+  const cur = getSafeDateOrNull(lead?.appointmentScheduledFor);
+  const d = cur ? daysBetween(now, cur) : null;
+  if (cur && (lead.appointmentOutcome ? d === 0 : d < 0)) return null;
+  const next = pendingRecordsOf({ lead, records, freepasses, now }).find((x) => daysBetween(now, x.at) >= 0);
+  if (!next) return null;
+  if (cur && d >= 0 && cur <= next.at) return null;
+  return next.r;
+}
+
+// O avanço do dia (useFreepassAdvance): o registro pendente de hoje para onde
+// o lead anda, ou null. Só anda quando o agendamento atual não é um
+// compromisso pendente de hoje (é de antes, tem desfecho ou não existe), e
+// nunca para o próprio registro do agendamento atual (a visita com desfecho
+// continua 'agendada' no registro).
+export function slotToAdvance({ lead, records, freepasses = null, now = new Date() }) {
+  const cur = getSafeDateOrNull(lead?.appointmentScheduledFor);
+  if (cur && !lead.appointmentOutcome && calendarDaysBetween(now, cur) === 0) return null;
+  return pendingRecordsOf({ lead, records, freepasses, now })
+    .find((x) => calendarDaysBetween(now, x.at) === 0 && !leadPointsTo(lead, x.r))?.r || null;
+}
+
+// O agendamento do lead já é este registro? Aula pelo currentAulaId; visita
+// pelo tipo e pelo horário (o lead não guarda o id da visita).
+export function leadPointsTo(lead, record) {
+  const kind = normalizeKind(lead?.appointmentType);
+  if (record?.id && record.id === lead?.currentAulaId && kind !== 'visita') return true;
+  const cur = getSafeDateOrNull(lead?.appointmentScheduledFor);
+  const at = getSafeDateOrNull(record?.scheduledFor);
+  return Boolean(cur && at && kind === recordKindOf(record) && cur.getTime() === at.getTime());
 }
 
 // A etiqueta da ficha e das listas: quem já é aluno com contrato ativo e faz

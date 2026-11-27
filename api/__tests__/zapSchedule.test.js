@@ -1249,7 +1249,7 @@ describe('freepassPlan: a aula dentro do freepass', () => {
     expect(p.leadSummary).toMatchObject({
       freepassId: 'fp1', freepassKind: 'aulas', freepassTotal: 2, freepassAulas: 2, freepassEndsAt: new Date('2026-11-27T03:00:00.000Z')
     });
-    expect(p.daVez).toBeNull();
+    expect(p.slot).toBeNull();
   });
 
   it('sem freepass na modalidade, com tipo padrão: nasce o freepass por aulas com a aula pedida', () => {
@@ -1287,7 +1287,7 @@ describe('freepassPlan: a aula dentro do freepass', () => {
     ['o professor não lança', { actor: CAIO }],
     ['lead em Perda', { lead: { ...LEAD, status: 'Perda' } }]
   ])('aula avulsa (%s): nada de freepass é gravado', (_, extra) => {
-    expect(plano(extra)).toEqual({ freepassId: null, launch: null, updates: [], leadSummary: null, daVez: null });
+    expect(plano(extra)).toEqual({ freepassId: null, launch: null, updates: [], leadSummary: null, slot: null });
   });
 
   it('o consultor que não é o dono lança, e o freepass leva quem lançou', () => {
@@ -1321,23 +1321,46 @@ describe('freepassPlan: a aula dentro do freepass', () => {
     expect(p.freepassId).toBeNull();
     expect(p.updates).toEqual([{ id: 'fp1', patch: { aulas: 1, endsAt: null } }]);
     expect(p.leadSummary).toMatchObject({ freepassAulas: 1 });
-    expect(p.daVez).toBeNull();
+    expect(p.slot).toBeNull();
   });
 
-  // A aula da vez é a pendente mais cedo do freepass, de hoje em diante.
+  // O lead aponta para o compromisso pendente mais cedo, de hoje em diante.
   it('a aula movida para depois de outra aula pendente do freepass: o lead aponta para a mais cedo', () => {
     const fp3 = fp1({ total: 3, aulas: 2 });
     const records = [reg('a1'), reg('a2', { scheduledFor: ts(brt('2026-11-29T09:00')) })];
     const p = plano({ records, freepasses: [fp3], openRecordId: 'a1', at: brt('2026-11-30T19:00') });
-    expect(p.daVez).toMatchObject({ id: 'a2' });
+    expect(p.slot).toMatchObject({ id: 'a2' });
     // A aula pedida sendo a mais cedo, o lead fica nela.
-    expect(plano({ records, freepasses: [fp3], openRecordId: 'a1' }).daVez).toBeNull();
+    expect(plano({ records, freepasses: [fp3], openRecordId: 'a1' }).slot).toBeNull();
   });
 
   it('a aula pendente de ontem às 22h (01h de hoje em UTC) não vira a aula da vez', () => {
     const records = [reg('a1'), reg('a3', { scheduledFor: ts(brt('2026-11-25T22:00')) })];
     const p = plano({ records, freepasses: [fp1({ total: 3, aulas: 2 })], openRecordId: 'a1', at: brt('2026-11-30T19:00') });
-    expect(p.daVez).toBeNull();
+    expect(p.slot).toBeNull();
+  });
+
+  // O caso do Johnny (27/11/2026): a aula avulsa pedida é mais tarde que uma
+  // aula pendente do freepass, e o lead aponta para a do freepass.
+  it('aula avulsa mais tarde que a aula pendente do freepass: o lead aponta para a do freepass', () => {
+    const cheio = fp1({ aulas: 2, endsAt: ts(brt('2026-11-28T00:00')) });
+    const p = plano({ records: [A0_FEITA, reg('a1')], freepasses: [cheio], at: brt('2026-11-30T19:00') });
+    expect(p.freepassId).toBeNull();
+    expect(p.updates).toEqual([]);
+    expect(p.leadSummary).toBeNull();
+    expect(p.slot).toMatchObject({ id: 'a1' });
+  });
+
+  it('visita pedida mais tarde que a aula pendente: o lead aponta para a aula; a visita mais cedo fica', () => {
+    const VISITA = { leadId: 'L1', type: 'visita', unit: 'Centro', modality: null, professorId: null, soloTraining: false, quantity: null, note: null };
+    const records = [reg('a1')];
+    expect(plano({ schedule: VISITA, records, freepasses: [fp1()], at: brt('2026-11-30T09:00'), newRecordId: 'v-nova' }).slot).toMatchObject({ id: 'a1' });
+    expect(plano({ schedule: VISITA, records, freepasses: [fp1()], at: brt('2026-11-27T09:00'), newRecordId: 'v-nova' }).slot).toBeNull();
+  });
+
+  it('a aula pendente de freepass que não corre não puxa o lead', () => {
+    const p = plano({ records: [reg('a1')], freepasses: [fp1({ status: 'encerrado' })], at: brt('2026-11-30T19:00') });
+    expect(p.slot).toBeNull();
   });
 
   it('às 22h de Brasília do último dia, o freepass por dias ainda corre e a aula entra nele', () => {
@@ -1362,7 +1385,7 @@ describe('buildScheduleWrites com o freepass', () => {
   };
   const plano = (extra = {}) => ({
     freepassId: 'fp-novo', launch: { id: 'fp-novo', doc: LANCADO }, updates: [], leadSummary: { freepassId: 'fp-novo', freepassAulas: 1 },
-    daVez: null, ...extra
+    slot: null, ...extra
   });
   const gravar = (extra) => buildScheduleWrites({
     lead: LEAD, actor: ANA, schedule: AULA, at: atAula, professors: CATALOGOS.professors, channelName: 'Recepção',
@@ -1414,12 +1437,29 @@ describe('buildScheduleWrites com o freepass', () => {
     const vez = {
       id: 'a2', scheduledFor: { toDate: () => brt('2026-11-25T09:00') }, modality: 'Pilates', professorId: 'p2', soloTraining: false
     };
-    const w = gravar({ openRecordId: 'a1', freepass: plano({ freepassId: 'fp1', launch: null, daVez: vez }) });
+    const w = gravar({ openRecordId: 'a1', freepass: plano({ freepassId: 'fp1', launch: null, slot: vez }) });
     expect(w.leadPatch).toMatchObject({
       currentAulaId: 'a2', appointmentScheduledFor: brt('2026-11-25T09:00'), nextFollowUp: brt('2026-11-25T09:00'),
       appointmentProfessorId: 'p2', appointmentProfessorName: 'Rafael Moura', nextFollowUpNote: null
     });
     expect(w.interaction.text).toBe('🔔 Aula Experimental agendada (Pilates) · Carla Dias p/ 27/11/2026, 19:00. Obs: Traz tênis.');
+    // A resposta descreve o pedido, de onde o Stronizap monta a confirmação.
+    expect(w.requestedLead).toMatchObject({ id: 'L1', appointmentScheduledFor: atAula, currentAulaId: 'a1', appointmentProfessorId: 'p1', nextFollowUpNote: 'Traz tênis.' });
+  });
+
+  it('com uma visita pendente mais cedo, o lead aponta para ela: o patch é o de visita, com a unidade', () => {
+    const visita = { id: 'v1', type: 'visita', scheduledFor: brt('2026-11-26T09:00'), unit: 'Centro' };
+    const w = gravar({ freepass: plano({ freepassId: null, launch: null, leadSummary: null, slot: visita }) });
+    expect(w.leadPatch).toMatchObject({
+      appointmentType: 'visita', appointmentUnit: 'Centro', appointmentScheduledFor: brt('2026-11-26T09:00'),
+      // A visita não tem currentAulaId: fica o da aula pendente, que o próximo Agendar de aula remarca.
+      appointmentModality: null, nextFollowUpType: 'Visita', nextFollowUpNote: null, currentAulaId: 'rec-novo'
+    });
+    expect(w.requestedLead).toMatchObject({ appointmentType: 'aula_experimental', currentAulaId: 'rec-novo' });
+  });
+
+  it('sem slot, nada muda na resposta', () => {
+    expect(gravar({ freepass: plano() }).requestedLead).toBeNull();
   });
 
   it('sem o freepass (módulo desligado), a quantidade continua gravada e no texto, e nada de freepass sai', () => {

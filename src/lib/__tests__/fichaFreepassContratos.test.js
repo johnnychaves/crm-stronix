@@ -177,13 +177,19 @@ describe('aba Contratos com as aulas do freepass', () => {
     expect(b.calls[1]).toEqual(['set', 'artifacts/acad/public/data/stronix_aulas/auto2', expect.objectContaining({ scheduledFor: new Date(2026, 9, 26, 18, 0) })]);
   });
 
-  it('visita pendente mais tarde que a aula 1: recusa antes de gravar', async () => {
+  // O lead mostra o compromisso pendente mais cedo (leadSlotFor). A visita
+  // mais tarde continua no registro e volta ao lead no dia dela, pelo avanço.
+  const visitaRec = (at) => ({ id: 'v1', leadId: 'l1', type: 'visita', status: 'agendada', scheduledFor: at, unit: 'Centro' });
+
+  it('visita pendente mais tarde que a aula 1: grava, e o lead passa para a aula 1', async () => {
+    m.records = [visitaRec(new Date(2026, 11, 3, 9, 0))];
     await montar(visitaEm(new Date(2026, 11, 3, 9, 0)));
     await lancarPorAulas();
-    expect(toast.warning).toHaveBeenCalledWith('Rafaela tem uma visita marcada para 03/12. Remarque a visita ou marque esta aula depois dela.');
-    expect(logInteractions).not.toHaveBeenCalled();
+    expect(toast.warning).not.toHaveBeenCalled();
     expect(recordNewAppointment).not.toHaveBeenCalled();
-    expect(dialogo()).not.toBeNull();
+    expect(logInteractions.mock.calls[0][4]).toMatchObject({
+      appointmentType: 'aula_experimental', currentAulaId: 'auto2', appointmentScheduledFor: new Date(2026, 9, 16, 18, 0), freepassId: 'auto1',
+    });
   });
 
   it('visita pendente mais cedo: o freepass nasce e o lead fica com a visita', async () => {
@@ -340,17 +346,17 @@ describe('aba Contratos com as aulas do freepass', () => {
     expect(leadPatch).toMatchObject({ freepassEndsAt: new Date(2026, 9, 22) });
   });
 
-  it('remarcar para antes de uma visita pendente: recusa, sem gravar', async () => {
+  it('remarcar para antes de uma visita pendente: grava, e o lead passa para a aula remarcada', async () => {
     m.freepasses = [FP];
     m.aulas = [aulaRec('a1', new Date(2026, 9, 23, 18, 0)), aulaRec('a2', new Date(2026, 9, 27, 18, 0))];
-    m.records = m.aulas;
+    m.records = [...m.aulas, visitaRec(new Date(2026, 9, 20, 9, 0))];
     await montar(visitaEm(new Date(2026, 9, 20, 9, 0)));
     await clicar(document.querySelector('button[aria-label="Remarcar a aula 2"]'));
     await clicar([...dialogo().querySelector('fieldset').querySelectorAll('button')].find((b) => b.textContent === 'Hoje'));
     await clicar(comeca('Remarcar', dialogo().querySelector('[data-slot="dialog-footer"]')));
-    expect(toast.warning).toHaveBeenCalledWith('Rafaela tem uma visita marcada para 20/10. Remarque a visita ou marque esta aula depois dela.');
-    expect(m.lotes).toEqual([]);
-    expect(dialogo()).not.toBeNull();
+    expect(toast.warning).not.toHaveBeenCalled();
+    const lead = m.lotes[0].find(([, path]) => path.endsWith('/leads/l1'));
+    expect(lead[2]).toMatchObject({ appointmentType: 'aula_experimental', currentAulaId: 'a2', nextFollowUpNote: null });
   });
 
   it('remarcar uma aula que mudou em outra aba: recusa, sem gravar', async () => {
@@ -433,14 +439,24 @@ describe('aba Contratos com as aulas do freepass', () => {
     expect(logInteractions.mock.calls[0][4]).toMatchObject({ currentAulaId: 'auto1', appointmentOutcome: null });
   });
 
-  it('Agendar da vaga livre com uma visita pendente mais tarde: recusa antes de gravar', async () => {
+  it('Agendar da vaga livre com uma visita pendente mais tarde: grava, e o lead passa para a aula nova', async () => {
     m.freepasses = [{ ...FP, aulas: 1 }];
     m.aulas = [aulaRec('a1', new Date(2026, 9, 12, 18, 0), { status: 'attended' })];
+    m.records = [...m.aulas, visitaRec(new Date(2026, 9, 20, 9, 0))];
     await montar(visitaEm(new Date(2026, 9, 20, 9, 0)));
     await agendarVaga();
-    expect(toast.warning).toHaveBeenCalledWith('Rafaela tem uma visita marcada para 20/10. Remarque a visita ou marque esta aula depois dela.');
-    expect(logInteractions).not.toHaveBeenCalled();
-    expect(comeca('Confirmar agendamento')).not.toBeNull();
+    expect(toast.warning).not.toHaveBeenCalled();
+    expect(logInteractions.mock.calls[0][4]).toMatchObject({ appointmentType: 'aula_experimental', currentAulaId: 'auto1' });
+  });
+
+  it('Agendar da vaga livre com uma visita pendente mais cedo: o lead fica com a visita', async () => {
+    m.freepasses = [{ ...FP, aulas: 1 }];
+    m.aulas = [aulaRec('a1', new Date(2026, 9, 12, 18, 0), { status: 'attended' })];
+    m.records = [...m.aulas, visitaRec(new Date(2026, 9, 16, 12, 0))];
+    await montar(visitaEm(new Date(2026, 9, 16, 12, 0)));
+    await agendarVaga('Segunda-feira');
+    const patch = logInteractions.mock.calls[0][4];
+    expect(Object.keys(patch).every((k) => k.startsWith('freepass'))).toBe(true);
   });
 
   it('sem o módulo Stronix 2.0, nada do freepass aparece na aba', async () => {

@@ -1,4 +1,4 @@
-// A Meta Diária segue o freepass no Remarcar e no Cancelou, só com o módulo
+// A Meta Diária segue o freepass e o compromisso mais cedo no Remarcar e no Cancelou, só com o módulo
 // Stronix 2.0. A regra e a gravação estão testadas em freepassMetaWrites.test.js;
 // esta varredura confere que a view as chama no lugar certo.
 import { describe, it, expect } from 'vitest';
@@ -26,18 +26,20 @@ describe('a Meta segue o freepass', () => {
     expect(plano).toBeGreaterThan(-1);
     expect(plano).toBeLessThan(registro);
     expect(registro).toBeLessThan(lado);
-    expect(corpo).toContain('freepassOn && (isAula || lead.currentAulaId)');
+    expect(corpo).toContain('const fp = freepassOn');
     expect(corpo).toContain('...(fp && { freepassId: fp.targetId })');
-    expect(corpo).toContain('...fpSide?.leadPatch');
+    // O lead aponta para o compromisso pendente mais cedo (leadSlotFor, pelo freepassScheduleWrites).
+    expect(corpo).toContain('const leadAfter = { ...lead, ...leadUpdate };');
+    expect(corpo).toContain('Object.assign(leadUpdate, fpSide?.leadPatch, fpSide?.slot && slotPatchFor({ lead: leadAfter, record: fpSide.slot }));');
     expect(corpo).toContain('logInteractions(db, lead, appUser, [interactionPayload, ...(fpSide?.notes || [])], leadUpdate, fpSide?.extra || null)');
   });
 
-  it('o Cancelou de aula devolve a vaga depois de fechar o registro', () => {
+  it('o Cancelou de visita ou aula passa o lead adiante depois de fechar o registro', () => {
     const corpo = corpoDe('handleOutcome');
     const fecha = corpo.indexOf('applyOutcomeToAula({ db, lead, outcome })');
-    const devolve = corpo.indexOf('await writeFreepassAfterCancel({ db, lead })');
+    const devolve = corpo.indexOf('await writeSlotAfterCancel({ db, lead })');
     expect(fecha).toBeGreaterThan(-1);
     expect(fecha).toBeLessThan(devolve);
-    expect(corpo).toContain("freepassOn && outcome === 'cancelled' && outcomeAppliesToAula(categorySlug)");
+    expect(corpo).toContain("freepassOn && outcome === 'cancelled' && APPOINTMENT_GOAL_CATEGORIES.includes(categorySlug)");
   });
 });

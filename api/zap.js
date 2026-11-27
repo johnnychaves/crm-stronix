@@ -689,10 +689,9 @@ async function handleSchedule(req, res) {
       tx.create(interactionRef, writes.interaction);
       if (writes.launchInteraction) tx.create(interactions.doc(), writes.launchInteraction);
       tx.update(leadRef, writes.leadPatch);
-      // Com a aula da vez, o lead aponta para outra aula: a resposta descreve a
-      // pedida, porque é dela que o Stronizap monta a confirmação.
-      const requestedAula = freepass?.daVez ? { ...(writes.record.update || writes.record.create) } : null;
-      return { scheduled: { ...lead, ...writes.leadPatch }, requestedAula };
+      // Quando o lead aponta para outro compromisso (o pendente mais cedo), a
+      // resposta descreve o pedido, porque é dele que o Stronizap monta a confirmação.
+      return { scheduled: { ...lead, ...writes.leadPatch }, requested: writes.requestedLead };
     });
 
     if (outcome.notTheLead) {
@@ -706,9 +705,7 @@ async function handleSchedule(req, res) {
         : appointmentDetailOf(outcome.repeated, units);
       return res.status(409).json(alreadyScheduledBody({ card, appointment }));
     }
-    const appointment = outcome.requestedAula
-      ? aulaDetailOf(outcome.scheduled, outcome.requestedAula)
-      : appointmentDetailOf(outcome.scheduled, units);
+    const appointment = appointmentDetailOf(outcome.requested || outcome.scheduled, units);
     return res.status(201).json({ card, appointment });
   } catch (e) {
     throw scrubbedError('schedule', e);

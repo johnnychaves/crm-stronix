@@ -5,13 +5,14 @@
 import { collection, doc, getDocs, query, where, writeBatch } from 'firebase/firestore';
 import { appId, FREEPASS_PATH, LEADS_PATH } from './firebase.js';
 import { can, ACTIONS } from './acesso.js';
-import { AULA_STATUS, isAulaRecord, recordPlanFor } from './aulas.js';
-import { calendarDaysBetween, getSafeDateOrNull } from './dates.js';
-import { isAppointmentEcho } from './outcomeCorrection.js';
-import { buildSchedulePatch } from './schedulePatch.js';
+import { AULA_STATUS, APPOINTMENT_RECORD_TYPES, isAulaRecord, recordPlanFor } from './aulas.js';
+import { closeOpenAppointment } from './aulasWrites.js';
+import { consumedFields } from './outcomeCorrection.js';
+import { slotPatchFor } from './slotPatch.js';
 import { readLeadAulas, freepassAfterAulas, freepassLaunchParts } from './freepassAgendaWrites.js';
-import { activeFreepassesOf, autoFreepassFor, freepassSummaryPatch, nextFreepassAula } from './visitante.js';
+import { activeFreepassesOf, autoFreepassFor, freepassSummaryPatch, leadPointsTo, leadSlotFor } from './visitante.js';
 
+const fold = (v) => String(v || '').trim();
 const col = (db, path) => collection(db, 'artifacts', appId, 'public', 'data', path);
 
 export async function readLeadFreepasses(db, leadId) {
@@ -35,7 +36,7 @@ export function metaFreepassChoice({ lead, freepasses, records, types, modalitie
   const closesAula = recordPlanFor(lead, { type: 'aula_experimental', at, afterNoShow }).close?.type === 'aula';
   const choice = autoFreepassFor({
     lead, freepasses, types,
-    modalidadeId: (modalities || []).find((m) => m.name === modalidadeName)?.id || null,
+    modalidadeId: (modalities || []).find((m) => fold(m.name) === fold(modalidadeName))?.id || null,
     canLaunch: can(appUser, ACTIONS.FREEPASS_LANCAR) && lead?.status !== 'Perda',
     movingFreepassId: closesAula ? null : pendingFreepassId,
     now,
@@ -61,40 +62,35 @@ export async function metaFreepassPlan({ db, lead, appUser, types, modalities, a
   return { freepasses, targetId, launch, leftId: pendingFreepassId !== targetId ? pendingFreepassId : null };
 }
 
-// As chaves do próximo contato que o buildSchedulePatch grava com o eco.
-const NEXT_CONTACT_KEYS = ['nextFollowUp', 'nextFollowUpType', 'nextFollowUpNote', 'nextFollowUpOwnerId', 'nextFollowUpOwnerName'];
-
-// Depois do Cancelou de uma aula de freepass (o registro já fechou como
-// cancelado pelo applyOutcomeToAula): o freepass reconta pelos registros e a
-// vaga volta, e o agendamento do lead passa para a próxima aula do freepass,
-// quando houver, sem anotação e sem mexer no dono da tarefa. Um contato de
-// verdade (não o eco) de hoje em diante fica, como na virada da aula da vez.
-// `lead` é o de antes do Cancelou. Devolve a aula para onde o lead foi, ou null.
-export async function writeFreepassAfterCancel({ db, lead, now = new Date() }) {
-  const { freepasses, records } = await readMetaFreepassData(db, lead.id);
-  const cancelled = records.find((r) => r.id === lead.currentAulaId);
-  if (!cancelled?.freepassId || cancelled.status !== AULA_STATUS.CANCELLED) return null;
-  const freepass = freepasses.find((fp) => fp.id === cancelled.freepassId);
-  if (!freepass) return null;
-  const after = freepassAfterAulas({ freepass, records });
-  const all = freepasses.map((fp) => (fp.id === freepass.id ? after.freepass : fp));
-  const next = nextFreepassAula({ records, freepassId: freepass.id, now });
-  let schedule = {};
-  if (next) {
-    const { appointmentOwnerId: _o, appointmentOwnerName: _n, ...patch } = buildSchedulePatch({
-      typeLabel: 'Aula Experimental', date: getSafeDateOrNull(next.scheduledFor), modalidade: next.modality || null,
-      professorId: next.professorId || null, professorName: next.professorName || null,
-      soloTraining: Boolean(next.soloTraining), currentAulaId: next.id,
-    });
-    const contact = getSafeDateOrNull(lead.nextFollowUp);
-    if (contact && !isAppointmentEcho(lead) && calendarDaysBetween(now, contact) >= 0) {
-      for (const k of NEXT_CONTACT_KEYS) delete patch[k];
-    }
-    schedule = patch;
+// Depois do Cancelou de uma visita ou aula, só com o módulo (o registro da aula
+// já fechou como cancelado pelo applyOutcomeToAula; a visita fecha aqui, porque
+// o desfecho de visita não vai para o registro e a visita cancelada voltaria
+// pelo avanço do dia). A aula de freepass devolve a vaga (o freepass reconta),
+// e o agendamento do lead passa para o compromisso pendente mais cedo
+// (leadSlotFor), com ou sem freepass, sem anotação e sem mexer no dono da
+// tarefa. Um contato de verdade (não o eco) de hoje em diante fica.
+// `lead` é o de antes do Cancelou. Devolve o registro para onde o lead foi, ou null.
+export async function writeSlotAfterCancel({ db, lead, now = new Date() }) {
+  if (lead.appointmentType === 'visita') {
+    await closeOpenAppointment({ db, lead, type: APPOINTMENT_RECORD_TYPES.VISITA, status: AULA_STATUS.CANCELLED });
   }
+  const { freepasses, records } = await readMetaFreepassData(db, lead.id);
+  const cancelled = lead.appointmentType === 'aula_experimental' ? records.find((r) => r.id === lead.currentAulaId) : null;
+  const freepass = cancelled?.freepassId && cancelled.status === AULA_STATUS.CANCELLED
+    ? freepasses.find((fp) => fp.id === cancelled.freepassId)
+    : null;
+  const after = freepass ? freepassAfterAulas({ freepass, records }) : null;
+  const all = after ? freepasses.map((fp) => (fp.id === freepass.id ? after.freepass : fp)) : freepasses;
+  const leadAfter = { ...lead, ...consumedFields('cancelled', lead, now) };
+  // O compromisso cancelado nunca volta, mesmo que o registro dele não tenha fechado.
+  const slot = leadSlotFor({ lead: leadAfter, records: records.filter((r) => !leadPointsTo(lead, r)), freepasses: all, now });
+  if (!after && !slot) return null;
   const batch = writeBatch(db);
-  batch.update(doc(col(db, FREEPASS_PATH), freepass.id), after.patch);
-  batch.update(doc(col(db, LEADS_PATH), lead.id), { ...freepassSummaryPatch(activeFreepassesOf(lead, all, now), now), ...schedule });
+  if (after) batch.update(doc(col(db, FREEPASS_PATH), freepass.id), after.patch);
+  batch.update(doc(col(db, LEADS_PATH), lead.id), {
+    ...(after && freepassSummaryPatch(activeFreepassesOf(lead, all, now), now)),
+    ...(slot && slotPatchFor({ lead: leadAfter, record: slot, now })),
+  });
   await batch.commit();
-  return next;
+  return slot;
 }

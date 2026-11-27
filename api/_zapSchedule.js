@@ -32,12 +32,13 @@ import {
   AULA_STATUS, APPOINTMENT_RECORD_TYPES, aulaRecordFields, isAulaRecord, recordPlanFor, recordMatchesAppointment
 } from '../src/lib/aulas.js';
 import { buildSchedulePatch, appointmentTaskOwnerFor, taskOwnerText } from '../src/lib/schedulePatch.js';
+import { slotPatchFor } from '../src/lib/slotPatch.js';
 import { contactOf } from '../src/lib/guardian.js';
 import { isMetaParticipant, isProfessor, can, ACTIONS } from '../src/lib/acesso.js';
 import { MODULES, hasModule } from '../src/lib/modules.js';
 import {
-  FREEPASS_KINDS, FREEPASS_INTERACTION_TYPE, activeFreepassesOf, autoFreepassFor, buildFreepassDoc, freepassAulaDaVez,
-  freepassAulasPatch, freepassLaunchText, freepassSummaryPatch
+  FREEPASS_KINDS, FREEPASS_INTERACTION_TYPE, activeFreepassesOf, autoFreepassFor, buildFreepassDoc,
+  freepassAulasPatch, freepassLaunchText, freepassSummaryPatch, leadSlotFor
 } from '../src/lib/visitante.js';
 
 const MINUTE_MS = 60000;
@@ -461,10 +462,10 @@ export function hasSameAppointment(lead, { type, at, schedule, freepassOn = fals
     && (freepassOn || current.quantity === (schedule.quantity || null));
 }
 
-// Com o freepass, o lead aponta para a aula da vez, que pode não ser a pedida.
-// O "Tentar de novo" de um pedido que já gravou bate então com outra aula em
-// aberto do lead, e não com o agendamento dele: é o repetido, e não pode mover
-// a aula da vez para o mesmo horário. A anotação não conta, porque o registro
+// Com o módulo, o lead aponta para o compromisso pendente mais cedo, que pode
+// não ser o pedido. O "Tentar de novo" de um pedido que já gravou bate então
+// com outra aula em aberto do lead, e não com o agendamento dele: é o
+// repetido, e não pode mover a aula do lead para o mesmo horário. A anotação não conta, porque o registro
 // não a guarda. A aula do currentAulaId fica com o hasSameAppointment.
 export function sameOpenAula(lead, records, { at, schedule }) {
   return (records || []).find((r) => r.id !== lead.currentAulaId && isOpenAulaRecord(r, lead.id)
@@ -474,8 +475,8 @@ export function sameOpenAula(lead, records, { at, schedule }) {
     && Boolean(r.soloTraining) === Boolean(schedule.soloTraining)) || null;
 }
 
-// O AppointmentDetail de um registro de aula do lead (a aula pedida, quando o
-// lead aponta para outra aula da vez), com a regra do appointmentDetailOf.
+// O AppointmentDetail de um registro de aula do lead (a aula repetida, que não
+// é a do lead), com a regra do appointmentDetailOf.
 export function aulaDetailOf(lead, record) {
   return appointmentDetailOf({
     id: lead.id, name: lead.name, appointmentType: 'aula_experimental',
@@ -606,8 +607,9 @@ function freepassCount(freepass, records) {
 //   - todo freepass que ganha ou perde aula é recontado pelos registros como
 //     ficam depois desta gravação: o de destino, o da aula movida e o da aula
 //     que fecha (a troca por visita cancela a aula, e a vaga volta);
-//   - a aula da vez é a mais cedo do freepass (freepassAulaDaVez): `daVez` é o
-//     registro para onde o agendamento do lead aponta, ou null para a pedida.
+//   - o lead aponta para o compromisso pendente mais cedo, com ou sem freepass
+//     (leadSlotFor): `slot` é o registro para onde o agendamento do lead
+//     aponta, ou null para o pedido.
 // `records` e `freepasses` são os do lead, lidos na transação; `close` e
 // `openRecordId` vêm do scheduleRecordChanges; `newFreepassId()` só é chamado
 // quando o freepass nasce.
@@ -647,12 +649,14 @@ export function freepassPlan({
   }
   const freepassId = choice?.kind === 'use' ? choice.freepass.id : launch?.id || null;
   const touched = new Set([freepassId, movingFreepassId, old(close?.id)?.freepassId].filter(Boolean));
-  if (!touched.size) return { freepassId: null, launch: null, updates: [], leadSummary: null, daVez: null };
 
   // Os registros do lead como ficam depois desta gravação.
   const after = [
     ...records.filter((r) => r.id !== recordId).map((r) => (r.id === close?.id ? { ...r, status: close.status } : r)),
-    { ...old(recordId), id: recordId, status: AULA_STATUS.AGENDADA, scheduledFor: at, freepassId: isAula ? freepassId : null }
+    {
+      ...old(recordId), id: recordId, type: isAula ? APPOINTMENT_RECORD_TYPES.AULA : APPOINTMENT_RECORD_TYPES.VISITA,
+      status: AULA_STATUS.AGENDADA, scheduledFor: at, freepassId: isAula ? freepassId : null
+    }
   ];
   const updates = [];
   const all = [...freepasses, ...(launch ? [{ id: launch.id, ...launch.doc }] : [])].map((fp) => {
@@ -662,14 +666,13 @@ export function freepassPlan({
     else updates.push({ id: fp.id, patch: count });
     return { ...fp, ...count };
   });
-  // A aula da vez só olha de hoje em diante, no dia de Brasília (o filtro do
-  // visitante.js, com o `hoje` acima, já não corta nenhum destes).
-  const daVez = freepassId
-    ? freepassAulaDaVez({
-        records: after.filter((r) => diaDe(r.scheduledFor) >= diaDeBrasilia(now)), freepassId, currentAulaId: recordId, now: hoje
-      })
-    : null;
-  return { freepassId, launch, updates, leadSummary: freepassSummaryPatch(activeFreepassesOf(lead, all, hoje), hoje), daVez };
+  // O lead parte do agendamento pedido. Os dias contam no dia de Brasília.
+  const slot = leadSlotFor({
+    lead: { ...lead, appointmentType: schedule.type, appointmentScheduledFor: at, appointmentOutcome: null },
+    records: after, freepasses: all, now: hoje, daysBetween: (a, b) => diaDe(b) - diaDeBrasilia(a)
+  });
+  const leadSummary = touched.size ? freepassSummaryPatch(activeFreepassesOf(lead, all, hoje), hoje) : null;
+  return { freepassId, launch, updates, leadSummary, slot };
 }
 
 // O que a ação schedule grava numa transação só, o mesmo que o assistente
@@ -688,7 +691,10 @@ export function freepassPlan({
 //     interactionsCount, como o logInteraction.
 // Com `freepass` (o freepassPlan, só com o módulo Stronix 2.0), a quantidade de
 // aulas não é gravada nem vai no texto, o registro da aula leva o freepassId,
-// o lead aponta para a aula da vez e leva o resumo do freepass, e saem também:
+// o lead aponta para o compromisso pendente mais cedo (`slot`, pelo
+// slotPatchFor) e leva o resumo do freepass, e saem também:
+//   - requestedLead: o lead com o agendamento pedido, quando ele aponta para
+//     outro, para a resposta descrever o pedido;
 //   - freepassWrites: o freepass que nasce (create) e os recontados (update);
 //   - launchInteraction: a nota do lançamento, na mesma gravação, com o
 //     batchSeq do logInteractions (o agendamento antes). Quem chama soma 2 no
@@ -772,39 +778,32 @@ export function buildScheduleWrites({
         ...origin
       }
     : null;
-  // A aula da vez, quando não é a pedida: o lead aponta para ela, e a anotação
-  // fica só no texto da interação, como na ficha.
-  const vez = freepass?.daVez || null;
-  const appointment = vez
-    ? {
-        date: getSafeDateOrNull(vez.scheduledFor),
-        modalidade: vez.modality,
-        professorId: vez.professorId,
-        professorName: vez.professorId ? professorNameById(professors, vez.professorId) : null,
-        soloTraining: vez.soloTraining,
-        note: null,
-        currentAulaId: vez.id
-      }
-    : {
-        date: at,
-        modalidade: schedule.modality,
-        professorId: schedule.professorId,
-        professorName,
-        soloTraining: schedule.soloTraining,
-        note: schedule.note,
-        currentAulaId: isAula ? recordId : (lead.currentAulaId || null)
-      };
+  const requested = buildSchedulePatch({
+    typeLabel: TYPE_LABEL[schedule.type],
+    date: at,
+    modalidade: schedule.modality,
+    professorId: schedule.professorId,
+    professorName,
+    soloTraining: schedule.soloTraining,
+    note: schedule.note,
+    currentAulaId: isAula ? recordId : (lead.currentAulaId || null),
+    quantidade: quantity,
+    unidade: schedule.unit,
+    appointmentOwnerId: taskOwner?.id || null,
+    appointmentOwnerName: taskOwner?.name || null
+  });
+  // Com o módulo, o lead aponta para o compromisso pendente mais cedo
+  // (freepassPlan, pelo leadSlotFor). Quando é outro, a anotação fica só no
+  // texto da interação, como na ficha.
+  const slot = freepass?.slot || null;
+  const slotRecord = slot && {
+    ...slot, professorName: slot.professorId ? professorNameById(professors, slot.professorId) : null
+  };
   const leadPatch = {
     lastInteractionAt: serverTime,
     interactionsCount: increment,
-    ...buildSchedulePatch({
-      typeLabel: TYPE_LABEL[schedule.type],
-      ...appointment,
-      quantidade: quantity,
-      unidade: schedule.unit,
-      appointmentOwnerId: taskOwner?.id || null,
-      appointmentOwnerName: taskOwner?.name || null
-    }),
+    ...requested,
+    ...(slot ? slotPatchFor({ lead: { ...lead, ...requested }, record: slotRecord, taskOwner }) : {}),
     ...(freepass?.leadSummary || {})
   };
   const closed = close ? { id: close.id, update: { status: close.status, outcomeAt: serverTime } } : null;
@@ -812,7 +811,10 @@ export function buildScheduleWrites({
     ...(launch ? [{ id: launch.id, create: { ...launch.doc, createdAt: serverTime } }] : []),
     ...(freepass?.updates || []).map((u) => ({ id: u.id, update: u.patch }))
   ];
-  return { closed, record, interaction, leadPatch, launchInteraction, freepassWrites };
+  // O agendamento pedido, quando o lead aponta para outro: a resposta descreve
+  // o pedido, porque é dele que o Stronizap monta a confirmação.
+  const requestedLead = slot ? { ...lead, ...requested } : null;
+  return { closed, record, interaction, leadPatch, launchInteraction, freepassWrites, requestedLead };
 }
 
 // Resposta 409: o cartão do número e o agendamento que já existia. O

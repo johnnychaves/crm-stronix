@@ -16,7 +16,7 @@ vi.mock('firebase/firestore', () => ({
   serverTimestamp: () => 'TS',
 }));
 
-const { readLeadAulas, extraAulaRecords, freepassAfterAulas, freepassLaunchParts, freepassScheduleWrites, leadAppointmentFor, reusablePendingAula } = await import('../freepassAgendaWrites.js');
+const { readLeadAulas, extraAulaRecords, freepassAfterAulas, freepassLaunchParts, freepassScheduleWrites, reusablePendingAula } = await import('../freepassAgendaWrites.js');
 
 const lead = { id: 'L1', name: 'Rafa', consultantId: 'u1', consultantAuthUid: 'a1', consultantName: 'Ana' };
 beforeEach(() => { m.docs = []; m.n = 0; });
@@ -73,7 +73,7 @@ describe('freepassScheduleWrites', () => {
       aula('nova', new Date(2026, 11, 4, 18), { freepassId: 'f1' }),
     ];
     const r = await freepassScheduleWrites({ db: {}, lead, freepasses: [fpAulas()], targetId: 'f1', currentAulaId: 'nova', now });
-    expect(r.daVez.id).toBe('antes');
+    expect(r.slot.id).toBe('antes');
     expect(r.notes).toEqual([]);
     expect(r.leadPatch).toMatchObject({ freepassId: 'f1', freepassAulas: 2, freepassEndsAt: new Date(2026, 11, 4) });
     const b = fakeBatch();
@@ -83,8 +83,9 @@ describe('freepassScheduleWrites', () => {
 
   it('aula que sai do freepass (avulsa ou troca de freepass): o freepass antigo recalcula e volta a ter vaga', async () => {
     m.docs = [aula('movida', new Date(2026, 10, 28, 18), { freepassId: null })];
-    const r = await freepassScheduleWrites({ db: {}, lead, freepasses: [fpAulas()], targetId: null, leftId: 'f1', currentAulaId: 'movida', now });
-    expect(r.daVez).toBeNull();
+    const leadAfter = { ...lead, appointmentType: 'aula_experimental', appointmentScheduledFor: new Date(2026, 10, 28, 18), currentAulaId: 'movida' };
+    const r = await freepassScheduleWrites({ db: {}, lead, leadAfter, freepasses: [fpAulas()], targetId: null, leftId: 'f1', currentAulaId: 'movida', now });
+    expect(r.slot).toBeNull();
     const b = fakeBatch();
     r.extra(b);
     expect(b.calls).toEqual([['update', 'artifacts/acad/public/data/stronix_freepass/f1', { aulas: 0, endsAt: null }]]);
@@ -103,8 +104,9 @@ describe('freepassScheduleWrites', () => {
     expect(launch.extras[0].data).toMatchObject({ freepassId: 'auto1', scheduledFor: aulas[1].scheduledFor, professorId: 'p1' });
     // A aula 1 foi gravada pelo recordNewAppointment, com o id do freepass reservado.
     m.docs = [aula('a1', aulas[0].scheduledFor, { freepassId: 'auto1' })];
-    const r = await freepassScheduleWrites({ db: {}, lead, freepasses: [], targetId: 'auto1', launch, currentAulaId: 'a1', now });
-    expect(r.daVez).toBeNull();
+    const leadAfter = { ...lead, appointmentType: 'aula_experimental', appointmentScheduledFor: aulas[0].scheduledFor, currentAulaId: 'a1' };
+    const r = await freepassScheduleWrites({ db: {}, lead, leadAfter, freepasses: [], targetId: 'auto1', launch, currentAulaId: 'a1', now });
+    expect(r.slot).toBeNull();
     expect(r.notes).toEqual([{ type: 'freepass', text: 'Freepass lançado: Pilates 2 aulas (Pilates), 2 aulas marcadas.', freepassId: 'auto1' }]);
     expect(r.leadPatch).toMatchObject({ freepassId: 'auto1', freepassKind: 'aulas', freepassAulas: 2, freepassEndsAt: new Date(2026, 11, 4) });
     const b = fakeBatch();
@@ -149,39 +151,31 @@ describe('freepassScheduleWrites', () => {
   });
 });
 
-describe('leadAppointmentFor: para onde vai o agendamento do lead com a aula a mais', () => {
-  // Sexta, 16/10/2026, 10h; a aula nova é segunda, 19/10, 18h.
-  const now = new Date(2026, 9, 16, 10, 0);
-  const at = new Date(2026, 9, 19, 18, 0);
-  const comAppt = (type, when, over = {}) => ({ name: 'Rafaela Souza', appointmentType: type, appointmentScheduledFor: when, currentAulaId: 'cur', ...over });
-  const rec = (over = {}) => [{ id: 'cur', type: 'aula', status: 'agendada', ...over }];
+describe('freepassScheduleWrites sem freepass mexido', () => {
+  it('aula avulsa mais tarde que a aula do freepass: o lead aponta para a do freepass, e nada vai para o lote', async () => {
+    m.docs = [
+      aula('B', new Date(2026, 10, 30, 18), { freepassId: 'f1' }),
+      aula('avulsa', new Date(2026, 11, 1, 18), { freepassId: null }),
+    ];
+    const leadAfter = { ...lead, appointmentType: 'aula_experimental', appointmentScheduledFor: new Date(2026, 11, 1, 18), currentAulaId: 'avulsa' };
+    const r = await freepassScheduleWrites({ db: {}, lead, leadAfter, freepasses: [fpAulas({ aulas: 2 })], currentAulaId: 'avulsa', now });
+    expect(r.slot.id).toBe('B');
+    expect(r.leadPatch).toEqual({});
+    expect(r.extra).toBeNull();
+  });
 
-  it('sem agendamento, passa para a aula nova', () => {
-    expect(leadAppointmentFor({ lead: { name: 'Rafa' }, records: [], at, now })).toBe('switch');
+  it('visita: a aula do freepass mais cedo também ganha do agendamento pedido', async () => {
+    m.docs = [aula('B', new Date(2026, 10, 30, 18), { freepassId: 'f1' }), ['v', { leadId: 'L1', type: 'visita', status: 'agendada', scheduledFor: new Date(2026, 11, 2, 9) }]];
+    const leadAfter = { ...lead, appointmentType: 'visita', appointmentScheduledFor: new Date(2026, 11, 2, 9) };
+    const r = await freepassScheduleWrites({ db: {}, lead, leadAfter, freepasses: [fpAulas({ aulas: 2 })], now });
+    expect(r.slot.id).toBe('B');
   });
-  it('agendamento mais cedo ou no mesmo instante, fica', () => {
-    expect(leadAppointmentFor({ lead: comAppt('visita', new Date(2026, 9, 17, 9, 0)), records: [], at, now })).toBe('keep');
-    expect(leadAppointmentFor({ lead: comAppt('visita', at), records: [], at, now })).toBe('keep');
-  });
-  it('aula atrasada sem desfecho, fica', () => {
-    expect(leadAppointmentFor({ lead: comAppt('aula_experimental', new Date(2026, 9, 14, 18, 0)), records: rec(), at, now })).toBe('keep');
-  });
-  it('desfecho de antes de hoje, passa', () => {
-    expect(leadAppointmentFor({ lead: comAppt('aula_experimental', new Date(2026, 9, 14, 18, 0), { appointmentOutcome: 'attended' }), records: rec(), at, now })).toBe('switch');
-  });
-  it('desfecho de hoje, fica', () => {
-    expect(leadAppointmentFor({ lead: comAppt('aula_experimental', new Date(2026, 9, 16, 8, 0), { appointmentOutcome: 'attended' }), records: rec(), at, now })).toBe('keep');
-  });
-  it('aula de freepass mais tarde, passa (continua no cartão do freepass)', () => {
-    expect(leadAppointmentFor({ lead: comAppt('aula_experimental', new Date(2026, 9, 22, 18, 0)), records: rec({ freepassId: 'f9' }), at, now })).toBe('switch');
-  });
-  it('visita pendente mais tarde, recusa', () => {
-    expect(leadAppointmentFor({ lead: comAppt('visita', new Date(2026, 11, 3, 9, 0)), records: [], at, now }))
-      .toEqual({ refuse: 'Rafaela tem uma visita marcada para 03/12. Remarque a visita ou marque esta aula depois dela.' });
-  });
-  it('aula avulsa pendente mais tarde, recusa', () => {
-    expect(leadAppointmentFor({ lead: comAppt('aula_experimental', new Date(2026, 9, 22, 18, 0)), records: rec(), at, now }))
-      .toEqual({ refuse: 'Rafaela tem uma aula experimental marcada para 22/10. Remarque a aula experimental ou marque esta aula depois dela.' });
+
+  it('o freepass que não corre não puxa o lead', async () => {
+    m.docs = [aula('B', new Date(2026, 10, 30, 18), { freepassId: 'f1' })];
+    const leadAfter = { ...lead, appointmentType: 'visita', appointmentScheduledFor: new Date(2026, 11, 2, 9) };
+    const r = await freepassScheduleWrites({ db: {}, lead, leadAfter, freepasses: [fpAulas({ status: 'encerrado' })], now });
+    expect(r.slot).toBeNull();
   });
 });
 

@@ -3,13 +3,14 @@ import confetti from 'canvas-confetti';
 import { collection, onSnapshot, query, where, serverTimestamp } from 'firebase/firestore';
 import { appId, DAILY_GOAL_HISTORY_PATH } from '../lib/firebase.js';
 import { recordGoalHit as recordGoalHitDoc } from '../lib/dailyGoalHistory.js';
-import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, APPOINTMENT_OUTCOMES, getAppointmentOutcomeMeta, getLeadAppointmentType, getLeadAppointmentDate, goalOwnerFields, isClientLead, outcomeAppliesToAula } from '../lib/leads.js';
+import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, APPOINTMENT_OUTCOMES, getAppointmentOutcomeMeta, getLeadAppointmentType, getLeadAppointmentDate, goalOwnerFields, isClientLead, outcomeAppliesToAula, APPOINTMENT_GOAL_CATEGORIES } from '../lib/leads.js';
 import { isMetaParticipant, isSeller } from '../lib/acesso.js';
 import { awaitingEntriesOf } from '../lib/metaEspera.js';
 import { logInteraction, logInteractions } from '../lib/interactions.js';
 import { hasModule, MODULES } from '../lib/modules.js';
 import { freepassScheduleWrites } from '../lib/freepassAgendaWrites.js';
-import { metaFreepassPlan, writeFreepassAfterCancel } from '../lib/freepassMetaWrites.js';
+import { metaFreepassPlan, writeSlotAfterCancel } from '../lib/freepassMetaWrites.js';
+import { slotPatchFor } from '../lib/slotPatch.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { stageChangeFields } from '../lib/stageMove.js';
 import { DG_CATEGORY_META, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeRitmo, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, computeVolumeInRange, countMetaDaysInMonth, volumeTargetFor, tomorrowAppointmentsOf, slotTotals, newLeadHandledPatch, renewedGoalDoneInteraction } from '../lib/dailyGoal.js';
@@ -521,16 +522,17 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
       if (outcomeAppliesToAula(categorySlug)) {
         try { await applyOutcomeToAula({ db, lead, outcome }); } catch (err) { console.error('applyOutcomeToAula falhou', err); }
       }
-      // O Cancelou de uma aula de freepass devolve a vaga e passa o lead para a
-      // próxima aula do freepass (writeFreepassAfterCancel). É o único lugar que
-      // cancela: a Agenda de hoje e a ficha só marcam Compareceu e Não compareceu.
-      let proximaAula = null;
-      if (freepassOn && outcome === 'cancelled' && outcomeAppliesToAula(categorySlug)) {
+      // Com o módulo, o Cancelou de visita ou aula passa o lead para o
+      // compromisso pendente mais cedo e a aula de freepass devolve a vaga
+      // (writeSlotAfterCancel). É o único lugar que cancela: a Agenda de hoje e
+      // a ficha só marcam Compareceu e Não compareceu.
+      let proximo = null;
+      if (freepassOn && outcome === 'cancelled' && APPOINTMENT_GOAL_CATEGORIES.includes(categorySlug)) {
         try {
-          proximaAula = await writeFreepassAfterCancel({ db, lead });
+          proximo = await writeSlotAfterCancel({ db, lead });
         } catch (err) {
-          console.error('writeFreepassAfterCancel falhou', err);
-          toast.warning('O cancelamento foi salvo, mas o freepass não foi atualizado.');
+          console.error('writeSlotAfterCancel falhou', err);
+          toast.warning('O cancelamento foi salvo, mas o próximo compromisso não foi atualizado.');
         }
       }
       // Log adicional da mudança de fase para o feed do lead.
@@ -552,10 +554,10 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
       // ficaria sem follow-up futuro). A tarefa de hoje já está fechada.
       if (outcome === 'no_show') {
         setRescheduleTarget({ lead, categorySlug, flow: 'after_no_show' });
-      } else if (proximaAula) {
-        // O lead já tem o próximo passo: a próxima aula do freepass.
-        const at = getSafeDateOrNull(proximaAula.scheduledFor);
-        toast.info(`Próxima aula do freepass em ${at.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} às ${at.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}.`);
+      } else if (proximo) {
+        // O lead já tem o próximo passo: o compromisso pendente mais cedo.
+        const at = getSafeDateOrNull(proximo.scheduledFor);
+        toast.info(`${proximo.type === 'visita' ? 'Próxima visita' : 'Próxima aula'} em ${at.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} às ${at.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}.`);
       } else if (outcome === 'attended' || outcome === 'cancelled') {
         const ctx = outcome === 'attended' ? 'Comparecimento registrado' : 'Agendamento cancelado';
         setNextContactTarget({ lead, categorySlug, flow: 'after_outcome', contextLabel: ctx });
@@ -753,7 +755,7 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
       // Freepass (só com o módulo Stronix 2.0): relê os freepass e os registros
       // na hora de gravar e decide pela regra automática (metaFreepassPlan). A
       // visita que tira a aula pendente do freepass devolve a vaga (leftId).
-      const fp = freepassOn && (isAula || lead.currentAulaId)
+      const fp = freepassOn
         ? await metaFreepassPlan({
             db, lead, appUser, types: freepassTypes, modalities, afterNoShow: isAfterNoShow,
             aula: isAula
@@ -816,12 +818,6 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
         }
       }
 
-      // O freepass reconta pelos registros e diz a aula da vez. Lança erro se a
-      // aula não foi gravada no freepass de destino, e aí nada é gravado.
-      const fpSide = fp && (fp.launch || fp.targetId || fp.leftId)
-        ? await freepassScheduleWrites({ db, lead, freepasses: fp.freepasses, targetId: fp.targetId, leftId: fp.leftId, launch: fp.launch, currentAulaId })
-        : null;
-
       const leadUpdate = {
         appointmentScheduledFor: newDate,
         nextFollowUp: newDate, // keep legacy field in sync so the lead doesn't show up as "Atrasado" after rescheduling
@@ -837,21 +833,18 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
         appointmentOutcomeAt: null,
         appointmentOutcomeBy: null,
         appointmentPromotedFrom: null,
-        currentAulaId,
-        ...fpSide?.leadPatch
+        currentAulaId
       };
-      // A aula da vez é a mais cedo do freepass: o lead aponta para ela, e a
-      // anotação fica só no texto da interação.
-      const vez = fpSide?.daVez;
-      if (vez) {
-        const vezAt = getSafeDateOrNull(vez.scheduledFor);
-        Object.assign(leadUpdate, {
-          appointmentScheduledFor: vezAt, nextFollowUp: vezAt, nextFollowUpNote: null,
-          appointmentModality: vez.modality || null, appointmentProfessorId: vez.professorId || null,
-          appointmentProfessorName: vez.professorName || null, appointmentSoloTraining: Boolean(vez.soloTraining),
-          currentAulaId: vez.id,
-        });
-      }
+
+      // Com o módulo, o freepass reconta pelos registros e o lead aponta para o
+      // compromisso pendente mais cedo (leadSlotFor), com ou sem freepass: a
+      // anotação fica só no texto da interação e o dono da tarefa fica. Lança
+      // erro se a aula não foi gravada no freepass de destino, e aí nada é gravado.
+      const leadAfter = { ...lead, ...leadUpdate };
+      const fpSide = fp
+        ? await freepassScheduleWrites({ db, lead, leadAfter, freepasses: fp.freepasses, targetId: fp.targetId, leftId: fp.leftId, launch: fp.launch, currentAulaId })
+        : null;
+      Object.assign(leadUpdate, fpSide?.leadPatch, fpSide?.slot && slotPatchFor({ lead: leadAfter, record: fpSide.slot }));
 
       let baseText;
       if (isAfterNoShow) {

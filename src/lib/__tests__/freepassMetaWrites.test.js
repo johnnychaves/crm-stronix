@@ -22,7 +22,10 @@ vi.mock('firebase/firestore', () => ({
   },
 }));
 
-const { metaFreepassChoice, metaFreepassPlan, writeFreepassAfterCancel } = await import('../freepassMetaWrites.js');
+const closeOpenAppointment = vi.fn(async () => null);
+vi.mock('../aulasWrites.js', () => ({ closeOpenAppointment: (...a) => closeOpenAppointment(...a) }));
+
+const { metaFreepassChoice, metaFreepassPlan, writeSlotAfterCancel } = await import('../freepassMetaWrites.js');
 const { freepassScheduleWrites } = await import('../freepassAgendaWrites.js');
 const { freepassChoiceText } = await import('../visitante.js');
 
@@ -47,7 +50,7 @@ const choiceOf = (over) => metaFreepassChoice({
   lead: lead(), freepasses: [], records: [], types: [tipo], modalities, modalidadeName: 'Pilates', appUser: consultor, now, ...over,
 }).choice;
 
-beforeEach(() => { m.byPath = {}; m.n = 0; m.commits = []; });
+beforeEach(() => { m.byPath = {}; m.n = 0; m.commits = []; closeOpenAppointment.mockClear(); });
 
 describe('metaFreepassChoice', () => {
   it('a aula pendente do freepass cheio continua nele (moving)', () => {
@@ -149,14 +152,14 @@ describe('a gravação do Remarcar', () => {
   });
 });
 
-describe('writeFreepassAfterCancel', () => {
+describe('writeSlotAfterCancel', () => {
   it('a vaga volta e o lead passa para a próxima aula do freepass, sem trocar o dono da tarefa', async () => {
     m.byPath[FPS] = [['f1', fpAulas({ aulas: 2, endsAt: new Date(2026, 11, 3) })]];
     m.byPath[AULAS] = [
       aula('a1', new Date(2026, 10, 26, 18), { freepassId: 'f1', status: 'cancelled' }),
       aula('a2', new Date(2026, 11, 3, 18), { freepassId: 'f1', professorId: 'p1', professorName: 'Leo' }),
     ];
-    const next = await writeFreepassAfterCancel({ db: {}, lead: lead({ appointmentOwnerId: 'u7' }), now });
+    const next = await writeSlotAfterCancel({ db: {}, lead: lead({ appointmentOwnerId: 'u7' }), now });
     expect(next.id).toBe('a2');
     const [calls] = m.commits;
     expect(calls[0]).toEqual(['update', `${FPS}/f1`, { aulas: 1, endsAt: null }]);
@@ -166,30 +169,52 @@ describe('writeFreepassAfterCancel', () => {
       currentAulaId: 'a2', appointmentProfessorId: 'p1', appointmentOutcome: null, nextFollowUpNote: null,
     });
     expect(calls[1][2]).not.toHaveProperty('appointmentOwnerId');
+    expect(closeOpenAppointment).not.toHaveBeenCalled();
   });
 
-  it('sem próxima aula, só reconta; um contato de verdade marcado fica', async () => {
+  it('sem próximo compromisso, só reconta; um contato de verdade marcado fica', async () => {
     m.byPath[FPS] = [['f1', fpAulas()]];
     m.byPath[AULAS] = [aula('a1', new Date(2026, 10, 26, 18), { freepassId: 'f1', status: 'cancelled' })];
-    expect(await writeFreepassAfterCancel({ db: {}, lead: lead(), now })).toBeNull();
+    expect(await writeSlotAfterCancel({ db: {}, lead: lead(), now })).toBeNull();
     expect(m.commits[0][1][2]).not.toHaveProperty('appointmentScheduledFor');
 
     m.commits = [];
     m.byPath[AULAS].push(aula('a2', new Date(2026, 11, 3, 18), { freepassId: 'f1' }));
     const real = lead({ nextFollowUp: new Date(2026, 10, 28, 9), nextFollowUpType: 'Ligação' });
-    await writeFreepassAfterCancel({ db: {}, lead: real, now });
+    await writeSlotAfterCancel({ db: {}, lead: real, now });
     const patch = m.commits[0][1][2];
     expect(patch.currentAulaId).toBe('a2');
     expect(patch).not.toHaveProperty('nextFollowUp');
     expect(patch).not.toHaveProperty('nextFollowUpType');
   });
 
-  it('aula sem freepass, ou que não fechou como cancelada, não grava nada', async () => {
+  it('aula avulsa cancelada: o lead passa para a aula pendente mais cedo, sem freepass no lote', async () => {
     m.byPath[FPS] = [['f1', fpAulas()]];
-    m.byPath[AULAS] = [aula('a1', new Date(2026, 10, 26, 18), { status: 'cancelled' })];
-    expect(await writeFreepassAfterCancel({ db: {}, lead: lead(), now })).toBeNull();
+    m.byPath[AULAS] = [
+      aula('a1', new Date(2026, 10, 26, 18), { status: 'cancelled' }),
+      aula('B', new Date(2026, 10, 30, 18), { freepassId: 'f1' }),
+    ];
+    expect((await writeSlotAfterCancel({ db: {}, lead: lead(), now })).id).toBe('B');
+    const [calls] = m.commits;
+    expect(calls).toHaveLength(1);
+    expect(calls[0][2]).toMatchObject({ currentAulaId: 'B', appointmentType: 'aula_experimental' });
+    expect(Object.keys(calls[0][2]).some((k) => k.startsWith('freepass'))).toBe(false);
+  });
+
+  it('visita cancelada: fecha o registro dela e o lead passa para a aula pendente', async () => {
+    const vis = lead({ appointmentType: 'visita', appointmentScheduledFor: new Date(2026, 10, 26, 9), currentAulaId: null });
+    m.byPath[AULAS] = [
+      ['v1', { leadId: 'L1', type: 'visita', status: 'agendada', scheduledFor: new Date(2026, 10, 26, 9) }],
+      aula('B', new Date(2026, 10, 30, 18)),
+    ];
+    expect((await writeSlotAfterCancel({ db: {}, lead: vis, now })).id).toBe('B');
+    expect(closeOpenAppointment).toHaveBeenCalledWith(expect.objectContaining({ lead: vis, type: 'visita', status: 'cancelled' }));
+  });
+
+  it('o compromisso cancelado não volta, mesmo com o registro ainda agendado; sem outro, nada é gravado', async () => {
+    m.byPath[FPS] = [['f1', fpAulas()]];
     m.byPath[AULAS] = [aula('a1', new Date(2026, 10, 26, 18), { freepassId: 'f1' })];
-    expect(await writeFreepassAfterCancel({ db: {}, lead: lead(), now })).toBeNull();
+    expect(await writeSlotAfterCancel({ db: {}, lead: lead(), now })).toBeNull();
     expect(m.commits).toEqual([]);
   });
 });

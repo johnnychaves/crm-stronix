@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// A aula da vez do freepass anda no dia da aula seguinte (useFreepassAdvance):
+// O compromisso de hoje entra no lead no dia dele (useFreepassAdvance):
 // o plano puro (advancePlan) e o hook, com um Firestore de mentira.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createElement as h, act } from 'react';
@@ -96,6 +96,29 @@ describe('advancePlan', () => {
 
   it('registro cancelado: nada', () => {
     expect(plan({ records: [{ ...AULA, status: 'cancelled' }] })).toEqual([]);
+  });
+
+  // O compromisso de hoje entra no lead no dia dele, com ou sem freepass.
+  it('aula avulsa de hoje: passa para ela', () => {
+    const avulsa = { ...AULA, id: 'av', freepassId: null };
+    const [{ patch }] = plan({ records: [avulsa], freepassesById: new Map() });
+    expect(patch).toMatchObject({ appointmentType: 'aula_experimental', currentAulaId: 'av', appointmentScheduledFor: AULA.scheduledFor });
+  });
+
+  it('visita de hoje: o patch é o de visita, com a unidade do registro, e o currentAulaId fica', () => {
+    const visita = { id: 'v1', leadId: 'ana', type: 'visita', status: 'agendada', scheduledFor: at(0, 9), unit: 'Centro' };
+    const [{ patch }] = plan({ records: [visita], freepassesById: new Map() });
+    expect(patch).toMatchObject({
+      appointmentType: 'visita', appointmentUnit: 'Centro', appointmentScheduledFor: at(0, 9), nextFollowUpType: 'Visita',
+      appointmentModality: null, appointmentOutcome: null, currentAulaId: 'a1',
+    });
+    expect(patch).not.toHaveProperty('appointmentOwnerId');
+  });
+
+  it('a mais cedo de hoje, entre aula e visita', () => {
+    const visita = { id: 'v1', leadId: 'ana', type: 'visita', status: 'agendada', scheduledFor: at(0, 9), unit: 'Centro' };
+    const [{ patch }] = plan({ records: [AULA, visita] });
+    expect(patch.appointmentType).toBe('visita');
   });
 
   it('lead que não existe mais: nada', () => {

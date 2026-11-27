@@ -287,13 +287,14 @@ describe('as ações do professor na ficha passam pelo logInteraction', () => {
   // freepass, o resumo dele (freepassSummaryPatch, pelo freepassScheduleWrites),
   // que está na professorLeadFields(). No freepass, o professor só reconta
   // aulas e fim (ver o freepassRules.test.js).
-  // O agendamento do lead fica como está (`{}`) quando a aula da vez é a que
-  // ele já tem, ou quando a aula a mais (fresh) não toma o lugar do
-  // agendamento dele (leadAppointmentFor devolve 'keep').
+  // O agendamento do lead fica como está (`{}`) quando ele já aponta para o
+  // compromisso mais cedo, ou quando a aula a mais (fresh) não toma o lugar
+  // dele (leadSlotFor devolve null). Quando o mais cedo é outro, o patch é o do
+  // slotPatchFor, que também sai do buildSchedulePatch.
   it('o Agendar manda para o lead só o patch do buildSchedulePatch e o resumo do freepass', () => {
     const corpo = corpoDe(ficha, 'handleWizardConfirm');
     expect(corpo).toContain('const up = buildSchedulePatch({');
-    expect(corpo).toContain("const leadAppt = (vez && lead.currentAulaId === vez.id) || rumo === 'keep' ? {} : up;");
+    expect(corpo).toMatch(/const leadAppt = !slot \? \(fresh \? \{\} : up\)\s*: slot\.id === currentAulaId && isAula \? up\s*: leadPointsTo\(lead, slot\) \? \{\}\s*: slotPatchFor\(\{/);
     expect(corpo).toMatch(/\{ \.\.\.leadAppt, \.\.\.freepassLead \},\s*fpSide\?\.extra \|\| null\s*\);/);
     expect(corpo).toContain('const freepassLead = fpSide ? fpSide.leadPatch : {};');
   });
@@ -310,8 +311,8 @@ describe('as ações do professor na ficha passam pelo logInteraction', () => {
     expect(corpo).not.toMatch(/logInteractions?\(|\b(updateDoc|setDoc|addDoc|writeBatch|runTransaction|commit[A-Z]\w*)\(/);
     const lib = ler('../freepassAgendaWrites.js');
     const move = lib.slice(lib.indexOf('export async function writeFreepassAulaMove'), lib.indexOf('\n}\n', lib.indexOf('export async function writeFreepassAulaMove')));
-    expect(move).toMatch(/const leadPatch = \{\s*\.\.\.freepassSummaryPatch\(running, now\),\s*\.\.\.\(toNext && buildSchedulePatch\(\{/);
-    expect(move).toContain('const owner = toNext ? appointmentTaskOwnerFor({ scheduler: appUser, lead }) : null;');
+    expect(move).toMatch(/const leadPatch = \{\s*\.\.\.freepassSummaryPatch\(activeFreepassesOf\(lead, all, now\), now\),\s*\.\.\.\(slot && slotPatchFor\(\{/);
+    expect(move).toContain('taskOwner: appointmentTaskOwnerFor({ scheduler: appUser, lead })');
     expect(move).toContain('batch.update(doc(freepassCol(db), freepass.id), after.patch);');
     expect(move).not.toMatch(/logInteractions?\(|lastInteractionAt|interactionsCount/);
     expect(ler('../freepassAgendaWrites.js')).toContain('const patch = freepassAulasPatch({ freepass, records });');
