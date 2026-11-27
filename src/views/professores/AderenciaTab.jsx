@@ -18,14 +18,6 @@ const sextaDe = (iso) => {
   const d = fromDateInputValue(iso);
   return ddmm(toDateInputValue(new Date(d.getFullYear(), d.getMonth(), d.getDate() + 4)));
 };
-// O semestre da semana pela segunda-feira: janeiro a junho, julho a novembro,
-// e o dezembro que abre o ciclo, que fica fora da conta.
-const grupoDe = (iso) => {
-  const m = Number(iso.slice(5, 7));
-  return m <= 6 ? 0 : m <= 11 ? 1 : 2;
-};
-const GRUPOS = ['1º semestre, janeiro a junho', '2º semestre, julho a novembro', 'Dezembro, fora da conta'];
-
 function SeloDaFaixa({ taxa, min, max }) {
   if (taxa == null) return null;
   if (taxa < min) return <span className={cn(FLAG, 'bg-amber-50 text-amber-800 dark:bg-amber-400/15 dark:text-amber-200')}>Abaixo da meta</span>;
@@ -71,9 +63,12 @@ export function AderenciaTab({ linhas, resumo, barra, meta, faixaMax, semestral 
   // No semestral com o período aberto, o número é a taxa até agora, como no placar.
   const numero = semestral && resumo.nota == null ? resumo.taxa : resumo.nota;
   const andamento = semestral && resumo.nota == null && resumo.emAndamento;
-  // Do mais novo para o mais antigo, como as semanas: julho a novembro, janeiro
-  // a junho e o dezembro que abre o ciclo.
-  const grupos = [1, 0, 2].map((g) => ({ g, ls: linhas.filter((l) => grupoDe(l.semana) === g) })).filter((x) => x.ls.length);
+  // Um grupo por pedaço do período, do mais novo para o mais antigo, e no fim
+  // as semanas fora de qualquer pedaço (o dezembro), que não entram na conta.
+  const noPedaco = (l, p) => { const d = fromDateInputValue(l.semana); return d >= p.inicio && d < p.fim; };
+  const grupos = [...resumo.semestres].reverse().map((p) => ({ g: pedacoTexto(p), ls: linhas.filter((l) => noPedaco(l, p)) }));
+  grupos.push({ g: 'Fora da conta, dezembro', ls: linhas.filter((l) => !resumo.semestres.some((p) => noPedaco(l, p))) });
+  const gruposComSemana = grupos.filter((x) => x.ls.length);
   const somaDoGrupo = (ls) => ls.reduce((a, l) => ({ contam: a.contam + l.contam, aderentes: a.aderentes + l.aderentes, uma: a.uma + l.umaPresenca, zero: a.zero + l.nenhuma }), { contam: 0, aderentes: 0, uma: 0, zero: 0 });
 
   return (
@@ -112,13 +107,13 @@ export function AderenciaTab({ linhas, resumo, barra, meta, faixaMax, semestral 
           </div>
           {faixaMin != null && <p className="m-0 inline-flex items-center gap-2 text-[13px] text-muted-foreground"><span aria-hidden="true" className="inline-block h-2.5 w-4 rounded-[3px] bg-emerald-400/40" />Meta: {faixaMin}% a {faixaMax}%</p>}
         </div>
-        {grupos.map(({ g, ls }) => {
+        {gruposComSemana.map(({ g, ls }) => {
           const t = somaDoGrupo(ls);
           const taxa = t.contam ? Math.round((t.aderentes / t.contam) * 100) : null;
           return (
             <div key={g}>
               <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-y border-border bg-muted/40 px-5 py-3 text-[13px] md:px-[22px]">
-                <b className="text-[14.5px]">{GRUPOS[g]}</b>
+                <b className="text-[14.5px]">{g}</b>
                 <span className="num text-muted-foreground">{taxa == null ? '' : `${taxa}% aderentes, ${t.aderentes} de ${t.contam} aluno-semanas. `}{t.uma} com 1 presença e {t.zero} sem nenhuma.</span>
               </div>
               <ul className="m-0 list-none p-0">

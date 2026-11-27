@@ -78,3 +78,20 @@ describe('a aderência no semestral', () => {
     expect(html).not.toContain('Sem semestre fechado');
   });
 });
+
+describe('as semanas da aba Aderência', () => {
+  const lin = (semana) => ({ semana, taxa: 50, aderentes: 1, contam: 2, umaPresenca: 0, nenhuma: 1, umaIds: [], nenhumaIds: [] });
+  const pecas = [
+    { inicio: new Date(2027, 5, 1), fim: new Date(2027, 6, 1), fechado: true, taxa: 50, aderentes: 1, contam: 2 },
+    { inicio: new Date(2027, 6, 1), fim: new Date(2027, 11, 1), fechado: false, taxa: 50, aderentes: 1, contam: 2 },
+  ];
+  const html = renderToStaticMarkup(h(AderenciaTab, {
+    linhas: [lin('2027-06-07'), lin('2027-07-05'), lin('2027-12-06')],
+    resumo: { semestres: pecas, nota: null, taxa: 50, emAndamento: true },
+    barra: 2, meta: 50, faixaMax: 70, semestral: true, leadsById: new Map(), professorLogado: false, primeiroNome: 'Ana',
+  }));
+  it('agrupa pelos pedaços do período, e dezembro fica à parte, fora da conta', () => {
+    const titulos = [...html.matchAll(/<b class="text-\[14\.5px\]">([^<]*)<\/b>/g)].map((m) => m[1]);
+    expect(titulos).toEqual(['julho a novembro de 2027', 'junho de 2027', 'Fora da conta, dezembro']);
+  });
+});

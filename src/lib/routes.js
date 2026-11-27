@@ -73,7 +73,7 @@ export const PROFESSORES_SUBS = Object.freeze({
   lista: 'lista',
   pesquisas: 'pesquisas',
 });
-// Abas do perfil do professor, em /professores/perfil/<id>/<aba>, lido à parte
+// Abas do perfil do professor, em /carreira/professor/<id>/<aba>, lido à parte
 // em readScreen. O PR 4 acrescenta a NPS e o PR 6 a Aderência.
 export const PERFIL_TABS = Object.freeze({
   carteira: 'carteira',
