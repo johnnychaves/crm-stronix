@@ -16,7 +16,7 @@ vi.mock('firebase/firestore', () => ({
   serverTimestamp: () => 'TS',
 }));
 
-const { readLeadAulas, extraAulaRecords, freepassAfterAulas, freepassLaunchParts, freepassScheduleWrites } = await import('../freepassAgendaWrites.js');
+const { readLeadAulas, extraAulaRecords, freepassAfterAulas, freepassLaunchParts, freepassScheduleWrites, leadAppointmentFor, reusablePendingAula } = await import('../freepassAgendaWrites.js');
 
 const lead = { id: 'L1', name: 'Rafa', consultantId: 'u1', consultantAuthUid: 'a1', consultantName: 'Ana' };
 beforeEach(() => { m.docs = []; m.n = 0; });
@@ -146,5 +146,55 @@ describe('freepassScheduleWrites', () => {
     const b = fakeBatch();
     r.extra(b);
     expect(b.calls[0][2]).toMatchObject({ startsAt: new Date(2026, 10, 28), endsAt: new Date(2026, 11, 4), aulas: 1 });
+  });
+});
+
+describe('leadAppointmentFor: para onde vai o agendamento do lead com a aula a mais', () => {
+  // Sexta, 16/10/2026, 10h; a aula nova é segunda, 19/10, 18h.
+  const now = new Date(2026, 9, 16, 10, 0);
+  const at = new Date(2026, 9, 19, 18, 0);
+  const comAppt = (type, when, over = {}) => ({ name: 'Rafaela Souza', appointmentType: type, appointmentScheduledFor: when, currentAulaId: 'cur', ...over });
+  const rec = (over = {}) => [{ id: 'cur', type: 'aula', status: 'agendada', ...over }];
+
+  it('sem agendamento, passa para a aula nova', () => {
+    expect(leadAppointmentFor({ lead: { name: 'Rafa' }, records: [], at, now })).toBe('switch');
+  });
+  it('agendamento mais cedo ou no mesmo instante, fica', () => {
+    expect(leadAppointmentFor({ lead: comAppt('visita', new Date(2026, 9, 17, 9, 0)), records: [], at, now })).toBe('keep');
+    expect(leadAppointmentFor({ lead: comAppt('visita', at), records: [], at, now })).toBe('keep');
+  });
+  it('aula atrasada sem desfecho, fica', () => {
+    expect(leadAppointmentFor({ lead: comAppt('aula_experimental', new Date(2026, 9, 14, 18, 0)), records: rec(), at, now })).toBe('keep');
+  });
+  it('desfecho de antes de hoje, passa', () => {
+    expect(leadAppointmentFor({ lead: comAppt('aula_experimental', new Date(2026, 9, 14, 18, 0), { appointmentOutcome: 'attended' }), records: rec(), at, now })).toBe('switch');
+  });
+  it('desfecho de hoje, fica', () => {
+    expect(leadAppointmentFor({ lead: comAppt('aula_experimental', new Date(2026, 9, 16, 8, 0), { appointmentOutcome: 'attended' }), records: rec(), at, now })).toBe('keep');
+  });
+  it('aula de freepass mais tarde, passa (continua no cartão do freepass)', () => {
+    expect(leadAppointmentFor({ lead: comAppt('aula_experimental', new Date(2026, 9, 22, 18, 0)), records: rec({ freepassId: 'f9' }), at, now })).toBe('switch');
+  });
+  it('visita pendente mais tarde, recusa', () => {
+    expect(leadAppointmentFor({ lead: comAppt('visita', new Date(2026, 11, 3, 9, 0)), records: [], at, now }))
+      .toEqual({ refuse: 'Rafaela tem uma visita marcada para 03/12. Remarque a visita ou marque esta aula depois dela.' });
+  });
+  it('aula avulsa pendente mais tarde, recusa', () => {
+    expect(leadAppointmentFor({ lead: comAppt('aula_experimental', new Date(2026, 9, 22, 18, 0)), records: rec(), at, now }))
+      .toEqual({ refuse: 'Rafaela tem uma aula experimental marcada para 22/10. Remarque a aula experimental ou marque esta aula depois dela.' });
+  });
+});
+
+describe('reusablePendingAula: a pendente que o lançamento da aba Contratos reaproveita', () => {
+  const pend = { id: 'p', type: 'aula', status: 'agendada', modality: 'Pilates', freepassId: null };
+  it('aula da mesma modalidade, fora de freepass e sem desfecho', () => {
+    expect(reusablePendingAula({ lead: {}, pendingAula: pend, modalidadeName: 'Pilates' })).toBe(pend);
+  });
+  it('outra modalidade, outro freepass, visita ou lead com desfecho, não', () => {
+    expect(reusablePendingAula({ lead: {}, pendingAula: pend, modalidadeName: 'Funcional' })).toBeNull();
+    expect(reusablePendingAula({ lead: {}, pendingAula: { ...pend, freepassId: 'f1' }, modalidadeName: 'Pilates' })).toBeNull();
+    expect(reusablePendingAula({ lead: {}, pendingAula: { ...pend, type: 'visita' }, modalidadeName: 'Pilates' })).toBeNull();
+    expect(reusablePendingAula({ lead: { appointmentOutcome: 'no_show' }, pendingAula: pend, modalidadeName: 'Pilates' })).toBeNull();
+    expect(reusablePendingAula({ lead: {}, pendingAula: null, modalidadeName: 'Pilates' })).toBeNull();
   });
 });

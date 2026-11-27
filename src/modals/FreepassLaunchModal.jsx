@@ -14,20 +14,23 @@ import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { cn } from '../lib/utils.js';
 import { addDays, fromDateInputValue, getSafeDateOrNull, startOfLocalDay, toDateInputValue } from '../lib/dates.js';
 import { professorsForModality } from '../lib/professores.js';
-import { aulasForConfirm, aulasProblem, dayOptions, emptyAulaRows, resolveAulaRows, shortDay } from '../lib/aulasPlan.js';
+import { aulaRowOf, aulasForConfirm, aulasProblem, dayOptions, emptyAulaRows, resolveAulaRows, shortDay } from '../lib/aulasPlan.js';
 import { freepassQuantityText, launchCheck, launchStartRange, FREEPASS_KINDS } from '../lib/visitante.js';
 
 const ddmm = (d) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 const hhmm = (d) => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
-// pendingAula: o registro da aula experimental pendente do lead. O lançamento
-// por aulas passa pelo Agendar, que remarca a pendente como a aula 1.
-export function FreepassLaunchModal({ open, onOpenChange, firstName, types, modalities, freepasses, gestor, loading, onConfirm, pendingAula = null, now = new Date() }) {
+// reusableFor(modalidade): a aula experimental pendente do lead que o lançamento
+// por aulas reaproveita como a aula 1 (mesma modalidade, fora de freepass e sem
+// desfecho), ou null. Ela nasce na linha 1, e a data pode ser trocada ali.
+export function FreepassLaunchModal({ open, onOpenChange, firstName, types, modalities, freepasses, gestor, loading, onConfirm, reusableFor = () => null, now = new Date() }) {
   const { professores, metaWeekdays } = useGeneralConfig();
   const [typeId, setTypeId] = useState('');
   const [start, setStart] = useState(() => toDateInputValue(now));
   // As linhas do "Marcar as aulas" valem para o tipo em que foram marcadas.
   const [plan, setPlan] = useState({ typeId: '', rows: null });
+  // Só redesenha: o Lançar que achou aula no passado mostra o aviso do planner.
+  const [, setRecheck] = useState(0);
   const range = launchStartRange(now);
 
   const groups = useMemo(() => (modalities || [])
@@ -41,10 +44,15 @@ export function FreepassLaunchModal({ open, onOpenChange, firstName, types, moda
   const porDias = type?.kind === FREEPASS_KINDS.DIAS;
   const porAulas = type?.kind === FREEPASS_KINDS.AULAS;
   const endsBeforeToday = porDias && startOk && addDays(startDate, type.quantity - 1) < startOfLocalDay(now);
-  const rows = porAulas ? (plan.typeId === type.id && plan.rows) || emptyAulaRows(type.quantity) : null;
+  const reuse = porAulas ? reusableFor(modalidadeName) : null;
+  const startRows = () => {
+    const r = emptyAulaRows(type.quantity);
+    return reuse ? [aulaRowOf(reuse), ...r.slice(1)] : r;
+  };
+  const rows = porAulas ? (plan.typeId === type.id && plan.rows) || startRows() : null;
   const resolved = rows ? resolveAulaRows(rows) : null;
   const aulasIssue = resolved ? aulasProblem(resolved, now) : null;
-  const pendingAt = getSafeDateOrNull(pendingAula?.scheduledFor);
+  const pendingAt = getSafeDateOrNull(reuse?.scheduledFor);
 
   let status;
   if (!type) status = 'Escolha o freepass.';
@@ -62,7 +70,7 @@ export function FreepassLaunchModal({ open, onOpenChange, firstName, types, moda
     if (blocked || loading) return;
     if (porAulas) {
       // A tela pode ter ficado aberta até a aula passar: confere no relógio de agora.
-      if (aulasProblem(resolved, new Date())) return;
+      if (aulasProblem(resolved, new Date())) { setRecheck((n) => n + 1); return; }
       onConfirm({ type, modalidadeName, aulas: aulasForConfirm(resolved) });
       return;
     }
@@ -122,7 +130,7 @@ export function FreepassLaunchModal({ open, onOpenChange, firstName, types, moda
             />
             {pendingAt && (
               <p className="text-[12.5px] text-muted-foreground">
-                A aula experimental marcada para {shortDay(pendingAt)} às {hhmm(pendingAt)} passa a ser a aula 1 deste freepass.
+                A aula experimental de {modalidadeName} marcada para {shortDay(pendingAt)} às {hhmm(pendingAt)} vira a aula 1 deste freepass. Dá para trocar a data dela aqui.
               </p>
             )}
           </div>

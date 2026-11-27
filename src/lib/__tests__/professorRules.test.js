@@ -274,12 +274,12 @@ describe('as ações do professor na ficha passam pelo logInteraction', () => {
   // professor que usa um freepass é recusado até a regra acompanhar (Tarefa 9
   // do plano da entrega 2 do Visitante).
   // O agendamento do lead fica como está (`{}`) quando a aula da vez é a que
-  // ele já tem, ou quando a aula a mais do cartão do freepass (fresh) não toma
-  // o lugar do agendamento dele (leadKeepsAppointment).
+  // ele já tem, ou quando a aula a mais (fresh) não toma o lugar do
+  // agendamento dele (leadAppointmentFor devolve 'keep').
   it('o Agendar manda para o lead só o patch do buildSchedulePatch e o resumo do freepass', () => {
     const corpo = corpoDe(ficha, 'handleWizardConfirm');
     expect(corpo).toContain('const up = buildSchedulePatch({');
-    expect(corpo).toContain('const leadAppt = (vez && lead.currentAulaId === vez.id) || (fresh && leadKeepsAppointment(lead, da.date)) ? {} : up;');
+    expect(corpo).toContain("const leadAppt = (vez && lead.currentAulaId === vez.id) || rumo === 'keep' ? {} : up;");
     expect(corpo).toMatch(/\{ \.\.\.leadAppt, \.\.\.freepassLead \},\s*fpSide\?\.extra \|\| null\s*\);/);
     expect(corpo).toContain('const freepassLead = fpSide ? fpSide.leadPatch : {};');
   });

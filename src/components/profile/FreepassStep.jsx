@@ -31,12 +31,13 @@ const launchHint = (tp) => (tp.kind === FREEPASS_KINDS.AULAS && tp.quantity > 1
   ? `${tp.quantity} aulas, você marca todas agora`
   : freepassQuantityText(tp));
 
-export function FreepassStep({ choice, values, set, tone, firstName }) {
+// allowAvulsa falso (o "Agendar" do cartão do freepass): a aula só entra no freepass.
+export function FreepassStep({ choice, values, set, tone, firstName, allowAvulsa = true }) {
   const nome = firstName || 'O lead';
   const mod = values.modalidade || '';
   const head = headOf(choice, mod, nome);
   const isSel = (key) => values.freepass?.key === key;
-  const avulsa = (hint) => (
+  const avulsa = (hint) => allowAvulsa && (
     <WizardOption tone={tone} Icon={BookOpen} label="Aula avulsa" hint={hint} selected={isSel('avulsa')}
       onClick={() => set('freepass', { key: 'avulsa', kind: 'avulsa', label: 'Avulsa' })} />
   );

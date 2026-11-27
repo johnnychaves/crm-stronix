@@ -3,6 +3,7 @@ import { CalendarDays } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { calendarDaysBetween, fromDateInputValue, startOfLocalDay, toDateInputValue } from '../../lib/dates.js';
 import { SOLO_TRAINING, SOLO_TRAINING_LABEL } from '../../lib/professores.js';
+import { WZ_TONES } from './wizardTones.js';
 import { aulasForConfirm, aulasProblem, aulasSentence, resolveAulaRows, shortDay } from '../../lib/aulasPlan.js';
 
 // "Marcar as aulas" do Agendar (mockup A, #marcar-aulas). As contas moram em
@@ -11,14 +12,12 @@ import { aulasForConfirm, aulasProblem, aulasSentence, resolveAulaRows, shortDay
 const CHIP = 'h-8 rounded-full border px-3 text-[12.5px] font-semibold transition focus-visible:outline-none focus-visible:anel-foco';
 const FIELD = 'mt-1 h-9 w-full rounded-lg border border-border bg-card px-2.5 text-[13px] num outline-none focus-visible:anel-foco dark:[color-scheme:dark]';
 const IDLE = 'border-border bg-card hover:border-slate-300 dark:hover:border-white/15';
-// O tom da aula experimental no Agendar (WZ_TONES.teal), o padrão fora dele.
-const TEAL = { text: 'text-teal-700', soft: 'bg-teal-50', ring: 'ring-teal-300', darkText: 'dark:text-teal-300', darkSoft: 'dark:bg-teal-500/10', darkRing: 'dark:ring-teal-500/40' };
 
 // days: os cartões de dia (dayOptions, em lib/aulasPlan.js), { off, date }.
 // professors: os professores da modalidade; "Treina sozinho" vem sempre.
 // No Remarcar de uma aula do freepass: `first` é o número dela, `taken` os
 // dias das outras aulas e `doneText` a frase de quando está tudo certo.
-export function AulasPlanner({ rows, onChange, days, professors, tone = TEAL, firstName, now = new Date(), first = 1, taken = [], doneText = null }) {
+export function AulasPlanner({ rows, onChange, days, professors, tone = WZ_TONES.teal, firstName, now = new Date(), first = 1, taken = [], doneText = null }) {
   const [otherOpen, setOtherOpen] = useState(() => new Set());
   const resolved = resolveAulaRows(rows);
   const problem = aulasProblem(resolved, now, { first, taken });

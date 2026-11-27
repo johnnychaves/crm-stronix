@@ -39,7 +39,8 @@ describe('aba Contratos com freepass', () => {
   it('mostra o freepass que corre, com Encerrar', async () => {
     await montar({ lead: { id: 'L', status: 'Novo' }, isClient: false, freepasses: [fp], canFreepass: true });
     expect(texto()).toContain('Pilates 2 aulas');
-    expect(texto()).toContain('0 de 2 aulas agendadas');
+    expect(texto()).toContain('2 aulas a agendar');
+    expect(texto()).toContain('0 de 2 agendadas');
     await act(async () => { botao('Encerrar freepass').click(); });
     expect(props.onEndFreepass).toHaveBeenCalledWith(fp);
   });
@@ -69,10 +70,11 @@ describe('aba Contratos com freepass', () => {
     expect(botao('Nova matrícula')).toBeTruthy();
     expect(botao('Lançar freepass')).toBeTruthy();
   });
-  it('o card por dias mostra a data do fim embaixo e o por aulas, nenhuma ainda', async () => {
+  it('o card por dias mostra a data do fim embaixo e o por aulas, as vagas sem dia', async () => {
     const fd = { ...fp, id: 'f2', kind: 'dias', total: 7, startsAt: new Date(), endsAt: new Date(Date.now() + 6 * 86400000) };
     await montar({ lead: { id: 'L', status: 'Novo' }, isClient: false, freepasses: [fp, fd], canFreepass: true });
-    expect(texto()).toContain('nenhuma ainda');
+    expect(texto()).toContain('Aula 1 · ainda sem dia');
+    expect(texto()).toContain('Aula 2 · ainda sem dia');
     expect(texto()).toMatch(/até \d{2}\/\d{2}/);
   });
   it('sem o módulo, a aba é a de antes: Matricular agora, texto original, sem freepass', async () => {

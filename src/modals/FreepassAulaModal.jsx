@@ -18,13 +18,16 @@ const hhmm = (d) => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-
 export function FreepassAulaModal({ open, onOpenChange, aula, number, taken, firstName, loading, onConfirm }) {
   const { professores, modalities, metaWeekdays } = useGeneralConfig();
   const [rows, setRows] = useState(() => [aulaRowOf(aula)]);
+  // Só redesenha: o Remarcar que achou a aula no passado mostra o aviso.
+  const [, setRecheck] = useState(0);
   const resolved = resolveAulaRows(rows);
   const opts = { first: number, taken };
   const issue = aulasProblem(resolved, new Date(), opts);
   const planned = issue ? null : aulasForConfirm(resolved)[0];
 
   const submit = () => {
-    if (loading || aulasProblem(resolved, new Date(), opts)) return;
+    if (loading) return;
+    if (aulasProblem(resolved, new Date(), opts)) { setRecheck((n) => n + 1); return; }
     onConfirm(planned);
   };
 

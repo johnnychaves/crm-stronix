@@ -22,10 +22,15 @@ function elapsedPct(fp, now) {
 const ddmm = (d) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 const cap = (t) => t.charAt(0).toLocaleUpperCase() + t.slice(1);
 
-// A direita do card: o andamento em verde-água e, embaixo, o fim ou o que falta.
+// A direita do card: o andamento em verde-água e, embaixo, o fim ou o que
+// falta. No por aulas com vaga, o que falta agendar vem em cima (mockup A, #cartao).
 function progressOf(fp, now) {
   if (fp.kind === FREEPASS_KINDS.AULAS) {
-    return { main: `${fp.aulas || 0} de ${fp.total} aulas agendadas`, sub: fp.aulas ? '' : 'nenhuma ainda' };
+    const aulas = fp.aulas || 0;
+    const free = Math.max(0, fp.total - aulas);
+    if (free) return { main: `${aulasCountText(free)} a agendar`, sub: `${aulas} de ${fp.total} agendadas` };
+    const end = getSafeDateOrNull(fp.endsAt);
+    return { main: `${aulas} de ${fp.total} aulas agendadas`, sub: end ? `até ${ddmm(end)}` : '' };
   }
   const end = getSafeDateOrNull(fp.endsAt);
   return { main: cap(freepassShortText(fp, now)), sub: end ? `até ${ddmm(end)}` : '' };
@@ -101,13 +106,18 @@ export function FreepassCard({ freepass, now, canFreepass, loading, onEnd, aulas
               </li>
             );
           })}
-          {free > 0 && (
-            <li className="flex items-center gap-3 px-5 py-3">
-              <span aria-hidden="true" className="grid size-6 flex-none place-items-center rounded-full bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300"><CalendarPlus size={13} /></span>
-              <span className="min-w-0 flex-1 text-[13.5px]">{aulasCountText(free)} a agendar</span>
-              {canSchedule && <Btn kind="visit" icon={<CalendarPlus size={14} />} onClick={() => onAgendar(freepass)} disabled={loading}>Agendar</Btn>}
+          {Array.from({ length: free }, (_, k) => n + k + 1).map((number) => (
+            <li key={`vaga-${number}`} className="flex items-center gap-3 px-5 py-3">
+              <span aria-hidden="true" className="grid size-6 flex-none place-items-center rounded-full bg-teal-50 text-teal-800 dark:bg-teal-500/10 dark:text-teal-300 text-[12px] font-bold">{number}</span>
+              <span className="min-w-0 flex-1 text-[13.5px]"><b className="font-semibold">Aula {number} · </b>ainda sem dia</span>
+              <span className={cn(PILL, 'bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300')}>A agendar</span>
+              {canSchedule && (
+                <Btn kind="visit" icon={<CalendarPlus size={14} />} onClick={() => onAgendar(freepass)} disabled={loading}>
+                  Agendar<span className="sr-only"> a aula {number}</span>
+                </Btn>
+              )}
             </li>
-          )}
+          ))}
         </ul>
       )}
       {canFreepass && (
