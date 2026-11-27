@@ -48,9 +48,9 @@ const REVISADOS = {
   'src/components/profile/ContextCard.jsx': 'opções e valores da tela',
   'src/modals/RescheduleModal.jsx': 'id do campo no JSX',
   'src/lib/dashboardMetrics.js': 'contagem por professor',
+  'src/lib/carreira/professor.js': 'contas da carreira do professor, só passa o id às contas',
   'src/lib/professor/conversao.js': 'conversão do perfil do professor, só conta',
   'src/lib/professor/pesquisas.js': 'pesquisa de NPS do perfil do professor, só conta',
-  'src/views/professores/ProfessoresView.jsx': 'lista de professores, só conta',
   'src/views/professores/ProfessorPerfilView.jsx': 'perfil do professor, só conta (grava foto e nível no professor, nunca no lead)',
   // Cadastro da equipe (stronix_users), não o lead.
   'src/lib/teamRoles.js': 'papel da equipe',

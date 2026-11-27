@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-// A tela Professores do gestor (plano 2026-11-25, Tarefa 10): a lista mostra
-// só os ativos, cada linha leva ao perfil e o ciclo mora no endereço. As metas
-// saíram para Configurações → Plano de carreira (plano 2026-11-26, PR 2).
+// A lista Carreira do gestor (plano 2026-11-27, PR 3): só os ativos, cada
+// linha leva ao perfil, e a trilha e o período moram no endereço. A busca pelo
+// nome fica fora dele.
 import { act, createElement as h, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { MemoryRouter, useLocation, useNavigate, useNavigationType } from 'react-router';
@@ -9,13 +9,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const s = vi.hoisted(() => ({ dados: null, args: null }));
+const s = vi.hoisted(() => ({ dados: null, args: null, carreiraErro: null }));
 vi.mock('../../hooks/useProfessoresDados.js', () => ({
   useProfessoresDados: (args) => {
     s.args = args;
     return s.dados;
   },
 }));
+vi.mock('../../hooks/useCarreira.js', async () => {
+  const { trilhasDe } = await import('../carreira/trilhas.js');
+  return { useCarreira: () => ({ carreira: { doc: null, erro: s.carreiraErro }, trilhas: trilhasDe(null) }) };
+});
 vi.mock('../firebase.js', () => ({ appId: 'acad', db: {}, auth: {} }));
 vi.mock('../../hooks/useNpsDados.js', () => ({
   useNpsDados: () => ({ carregando: false, erro: null, pesquisas: [], totais: [] }),
@@ -23,16 +27,15 @@ vi.mock('../../hooks/useNpsDados.js', () => ({
 }));
 
 const { hrefFor } = await import('../routes.js');
-const { METAS_PADRAO } = await import('../professor/metas.js');
 const { ToastContext } = await import('../../contexts/ToastContext.jsx');
 const { ProfessoresView } = await import('../../views/professores/ProfessoresView.jsx');
-const { criterioRenovacao, criterioConversao } = await import('../../views/professores/criterios.js');
 
 const toast = { show: vi.fn(), success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn(), dismiss: vi.fn() };
 const PROFESSORES = [
   { id: 'p2', nome: 'Bruno Carvalho', nivel: 'junior', modalidadeIds: ['func'] },
   { id: 'p3', nome: 'Zeca Inativo', ativo: false, nivel: 'pleno', modalidadeIds: ['func'] },
-  { id: 'p1', nome: 'Ana Lima', ativo: true, modalidadeIds: ['func'] },
+  { id: 'p1', nome: 'Ana Lima', ativo: true, trilhaId: 'estagiario', nivel: 'estagiario1', modalidadeIds: ['func'] },
+  { id: 'p4', nome: 'Carla Dias', modalidadeIds: ['func'] },
 ];
 
 const nav = { location: null, type: null };
@@ -44,7 +47,7 @@ function Screen() {
     nav.location = location;
     nav.type = type;
   });
-  const tab = location.pathname.endsWith('/professores/pesquisas') ? 'pesquisas' : 'lista';
+  const tab = location.pathname.endsWith('/carreira/pesquisas') ? 'pesquisas' : 'lista';
   // O mesmo que o goToSub do App faz com a tela já aberta.
   const onTab = (subId) => navigate(hrefFor('acad', 'professores', { sub: subId }), { replace: true, state: location.state });
   return h(ProfessoresView, { db: {}, appUser: { id: 'g1', role: 'admin' }, tenantId: 'acad', tab, onTab, listenersActive: true });
@@ -64,9 +67,10 @@ beforeEach(() => {
     contratos: [],
     clientes: [],
     aulas: [],
-    metas: METAS_PADRAO,
+    presencas: [],
   };
   s.args = null;
+  s.carreiraErro = null;
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -90,73 +94,93 @@ const click = async (el) => {
 };
 const linhas = () => [...document.body.querySelectorAll('li a')];
 
-describe('a lista de professores', () => {
+describe('a lista Carreira', () => {
   it('mostra os ativos em ordem de nome, e o inativo fica de fora', async () => {
-    await render('/acad/professores');
+    await render('/acad/carreira');
     const nomes = linhas().map((a) => a.querySelector('b').textContent);
-    expect(nomes).toEqual(['Ana Lima', 'Bruno Carvalho']);
+    expect(nomes).toEqual(['Ana Lima', 'Bruno Carvalho', 'Carla Dias']);
     expect(document.body.textContent).not.toContain('Zeca Inativo');
-    expect(document.body.querySelector('[role="tab"]').textContent).toBe('Professores2');
+    expect(document.body.querySelector('[role="tab"]').textContent).toBe('Pessoas3');
   });
 
   it('cada linha leva ao perfil do professor', async () => {
-    await render('/acad/professores');
+    await render('/acad/carreira');
     expect(linhas().map((a) => a.getAttribute('href'))).toEqual([
-      '/acad/professores/perfil/p1',
-      '/acad/professores/perfil/p2',
+      '/acad/carreira/professor/p1',
+      '/acad/carreira/professor/p2',
+      '/acad/carreira/professor/p4',
     ]);
   });
 
-  it('sem nível, sem pesquisa e sem dados aparecem em texto, também para o leitor de tela', async () => {
-    await render('/acad/professores');
-    const [ana, bruno] = linhas();
-    expect(ana.textContent).toContain('Sem nível');
-    expect(ana.textContent).toContain('sem pesquisa ainda');
-    expect(ana.textContent).toContain('sem dados ainda');
-    expect(ana.getAttribute('aria-label')).toBe(
-      'Ana Lima, Sem nível. Renovação, nenhum contrato venceu. Nota dos alunos, sem pesquisa ainda. '
-      + 'Conversão, ninguém veio. Aderência, sem dados ainda. Abrir perfil',
-    );
-    expect(bruno.getAttribute('aria-label')).toMatch(/^Bruno Carvalho, Júnior\./);
+  it('mostra a trilha, o nível e o resumo das metas de cada pessoa', async () => {
+    await render('/acad/carreira');
+    const texto = document.body.textContent;
+    expect(texto).toContain('Carreira');
+    expect(texto).toContain('Estagiário I');
+    expect(texto).toContain('Júnior');
+    expect(texto).toMatch(/\d de \d na meta do Júnior/);
+    const [, bruno, carla] = linhas();
+    expect(bruno.getAttribute('aria-label')).toMatch(/^Bruno Carvalho\. trilha Professor\. Júnior\./);
+    expect(carla.textContent).toContain('Sem nível');
+    expect(carla.getAttribute('aria-label')).toMatch(/^Carla Dias\. trilha Professor\. sem nível\. Sem nível\./);
+    expect(carla.getAttribute('aria-label')).toMatch(/Abrir perfil$/);
   });
 
-  it('trocar o ciclo troca o endereço, com replace', async () => {
-    await render('/acad/professores');
-    expect(s.args.ciclo).toBe(2027);
-    expect(document.body.textContent).toContain('Ciclo dez/2026 a nov/2027');
-    expect(button('Próximo ciclo').disabled).toBe(true);
-    await click(button('Ciclo anterior'));
-    expect(nav.location.search).toBe('?ciclo=2026');
+  it('a pílula Trilha filtra e grava no endereço', async () => {
+    await render('/acad/carreira');
+    const pilula = [...document.body.querySelectorAll('button')].find((b) => b.textContent.includes('Trilha'));
+    await click(pilula);
+    const opcao = [...document.body.querySelectorAll('[role="menuitemradio"]')].find((el) => el.textContent.includes('Estagiário'));
+    await click(opcao);
+    expect(nav.location.search).toBe('?trilha=estagiario');
     expect(nav.type).toBe('REPLACE');
-    expect(s.args.ciclo).toBe(2026);
-    expect(document.body.textContent).toContain('Ciclo dez/2025 a nov/2026');
-    // 2026 é o primeiro ciclo: não há anterior.
-    expect(button('Ciclo anterior').disabled).toBe(true);
-    await click(button('Próximo ciclo'));
+    expect(linhas().map((a) => a.querySelector('b').textContent)).toEqual(['Ana Lima']);
+  });
+
+  it('a busca pelo nome fica fora do endereço', async () => {
+    await render('/acad/carreira');
+    const busca = document.body.querySelector('input[type="search"]');
+    await act(async () => {
+      const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+      set.call(busca, 'zzz');
+      busca.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(document.body.textContent).toContain('Ninguém com esse nome.');
     expect(nav.location.search).toBe('');
+  });
+
+  it('com uma trilha escolhida, trocar o período troca o endereço, com replace', async () => {
+    await render('/acad/carreira?trilha=professor');
+    expect(document.body.textContent).toContain('dez/2026 a nov/2027');
+    expect(button('Próximo período').disabled).toBe(true);
+    await click(button('Período anterior'));
+    expect(nav.location.search).toBe('?trilha=professor&ciclo=2026');
+    expect(nav.type).toBe('REPLACE');
+    expect(document.body.textContent).toContain('dez/2025 a nov/2026');
+    expect(s.args.inicioMs).toBe(new Date(2025, 11, 1).getTime());
+    // O período de 2026 é o primeiro: não há anterior.
+    expect(button('Período anterior').disabled).toBe(true);
+    await click(button('Próximo período'));
+    expect(nav.location.search).toBe('?trilha=professor');
+  });
+
+  it('a falha na leitura das trilhas aparece', async () => {
+    s.carreiraErro = new Error('negado');
+    await render('/acad/carreira');
+    expect(document.body.querySelector('[role="alert"]').textContent).toContain('Não deu para carregar tudo');
+  });
+
+  it('sem trilha escolhida, não há seletor de período', async () => {
+    await render('/acad/carreira?ciclo=2026');
+    expect(button('Período anterior')).toBeUndefined();
   });
 });
 
 describe('as metas', () => {
-  it('saíram da tela: a aba não existe e o link leva à trilha Professor nas Configurações', async () => {
-    await render('/acad/professores');
-    expect([...document.body.querySelectorAll('[role="tab"]')].map((t) => t.textContent)).toEqual(['Professores2', 'Pesquisas']);
-    const link = [...document.body.querySelectorAll('a')].find((a) => a.textContent === 'Metas da trilha');
-    expect(link.getAttribute('href')).toBe('/acad/configuracoes/carreira/professor');
-  });
-});
-
-describe('o texto de cada critério', () => {
-  it('renovação contra a média do nível: chegar nela bate, sem nível não compara', () => {
-    expect(criterioRenovacao({ taxa: 45 }, METAS_PADRAO, 'junior')).toEqual({ valor: '45%', ref: 'esperado 45%', estado: 'ok' });
-    expect(criterioRenovacao({ taxa: 54 }, METAS_PADRAO, 'pleno')).toEqual({ valor: '54%', ref: 'esperado 55%', estado: 'baixo' });
-    expect(criterioRenovacao({ taxa: 67 }, METAS_PADRAO, undefined)).toEqual({ valor: '67%', ref: 'defina o nível', estado: 'sem' });
-    expect(criterioRenovacao({ taxa: null }, METAS_PADRAO, 'senior')).toEqual({ valor: null, ref: 'nenhum contrato venceu', estado: 'sem' });
-  });
-  it('conversão segue o passa da conta e mostra a academia', () => {
-    const c = (prof, acad, passa) => ({ professor: { taxa: prof }, academia: { taxa: acad }, passa });
-    expect(criterioConversao(c(53, 45, true))).toEqual({ valor: '53%', ref: 'academia 45%', estado: 'ok' });
-    expect(criterioConversao(c(45, 45, false))).toEqual({ valor: '45%', ref: 'academia 45%', estado: 'baixo' });
-    expect(criterioConversao(c(null, 45, null))).toEqual({ valor: null, ref: 'ninguém veio', estado: 'sem' });
+  it('moram nas Configurações: o link leva ao Plano de carreira', async () => {
+    await render('/acad/carreira');
+    expect([...document.body.querySelectorAll('[role="tab"]')].map((t) => t.textContent)).toEqual(['Pessoas3', 'Pesquisas']);
+    const link = [...document.body.querySelectorAll('a')].find((a) => a.textContent === 'Configurar trilhas');
+    expect(link.getAttribute('href')).toBe('/acad/configuracoes/carreira');
   });
 });

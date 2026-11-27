@@ -3,11 +3,12 @@
 import { describe, it, expect } from 'vitest';
 import {
   readScreenParams, screenParamsQuery, funnelFromSearch, SCREEN_PARAM_NAMES, FASE_VENDA, FASE_PERDA,
-  diaAoLimparPeriodo, DIAS_PARADOS, PRIMEIRO_CICLO,
+  diaAoLimparPeriodo, DIAS_PARADOS,
 } from '../screenParams.js';
 import { CONTRACT_STATUS } from '../contracts.js';
 import { SOLO_TRAINING } from '../professores.js';
 import { FOCO_ORDER } from '../metaFoco.js';
+import { trilhasDe } from '../carreira/trilhas.js';
 
 const users = [{ id: 'u1', name: 'Ana' }, { id: 'u2', name: 'Bruno' }];
 const funis = [{ id: 'f1', name: 'Comercial' }, { id: 'f2', name: 'Vencidos' }];
@@ -727,27 +728,38 @@ describe('categoria da Meta (Foco em)', () => {
   });
 });
 
-describe('ciclo do plano de carreira (Professores e perfil)', () => {
-  const ctx = { cicloAtual: 2027 };
-  it('as duas telas têm só o ciclo', () => {
-    expect(SCREEN_PARAM_NAMES.professores).toEqual(['ciclo']);
+describe('período e trilha do plano de carreira (Carreira e perfil)', () => {
+  const [professor, estagiario] = trilhasDe(null);
+  const agora = new Date(2027, 2, 10);
+  const lista = { trilhas: [professor, estagiario], agora };
+  const perfil = { trilha: professor, agora };
+
+  it('a lista tem a trilha e o período; o perfil, só o período', () => {
+    expect(SCREEN_PARAM_NAMES.professores).toEqual(['trilha', 'ciclo']);
     expect(SCREEN_PARAM_NAMES.professorPerfil).toEqual(['ciclo']);
-    expect(PRIMEIRO_CICLO).toBe(2026);
   });
-  it('sem ciclo, vale o atual; um ciclo da janela vale ele', () => {
-    for (const tela of ['professores', 'professorPerfil']) {
-      expect(readScreenParams(tela, '', ctx)).toEqual({ ciclo: 2027 });
-      expect(readScreenParams(tela, '?ciclo=2026', ctx)).toEqual({ ciclo: 2026 });
-    }
+
+  it('no perfil, a chave válida da trilha vale; o resto fica null', () => {
+    expect(readScreenParams('professorPerfil', '?ciclo=2026', perfil)).toEqual({ ciclo: '2026' });
+    expect(readScreenParams('professorPerfil', '', perfil)).toEqual({ ciclo: null });
+    ['2025', '2028', '2027-1', 'abc'].forEach((raw) => {
+      expect(readScreenParams('professorPerfil', `?ciclo=${raw}`, perfil), raw).toEqual({ ciclo: null });
+    });
+    expect(readScreenParams('professorPerfil', '?ciclo=2026', { agora })).toEqual({ ciclo: null });
   });
-  it('antes do primeiro ciclo, depois do atual ou fora do formato vale o atual', () => {
-    for (const raw of ['2025', '2030', 'abc', '2026.5', '']) {
-      expect(readScreenParams('professores', `?ciclo=${raw}`, ctx), raw).toEqual({ ciclo: 2027 });
-    }
+
+  it('na lista, o período só vale com uma trilha escolhida', () => {
+    expect(readScreenParams('professores', '?ciclo=2026', lista)).toEqual({ trilha: null, ciclo: null });
+    expect(readScreenParams('professores', '?trilha=estagiario&ciclo=2027-1', lista)).toEqual({ trilha: 'estagiario', ciclo: '2027-1' });
+    expect(readScreenParams('professores', '?trilha=estagiario&ciclo=2026', lista)).toEqual({ trilha: 'estagiario', ciclo: null });
+    expect(readScreenParams('professores', '?trilha=sumiu', lista)).toEqual({ trilha: null, ciclo: null });
   });
-  it('o atual não se escreve', () => {
-    expect(screenParamsQuery('professores', { ciclo: 2027 }, ctx)).toBe('');
-    expect(screenParamsQuery('professorPerfil', { ciclo: 2026 }, ctx)).toBe('?ciclo=2026');
-    expect(screenParamsQuery('professores', { ciclo: 2025 }, ctx)).toBe('');
+
+  it('o período de agora e a trilha sumida não se escrevem', () => {
+    expect(screenParamsQuery('professorPerfil', { ciclo: '2027' }, perfil)).toBe('');
+    expect(screenParamsQuery('professorPerfil', { ciclo: '2026' }, perfil)).toBe('?ciclo=2026');
+    expect(screenParamsQuery('professores', { trilha: 'estagiario', ciclo: '2026-2' }, lista)).toBe('?trilha=estagiario&ciclo=2026-2');
+    expect(screenParamsQuery('professores', { trilha: null, ciclo: '2026' }, lista)).toBe('');
+    expect(screenParamsQuery('professores', { trilha: 'sumiu', ciclo: null }, lista)).toBe('');
   });
 });

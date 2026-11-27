@@ -2,35 +2,30 @@ import { useEffect, useMemo, useState } from 'react';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { appId, LEADS_PATH, PRESENCAS_PATH } from '../lib/firebase.js';
 import { clientsAllQuerySpec } from '../lib/leadQueries.js';
+import { dayKeyOf } from '../lib/operacional/month.js';
 import { normalizeContracts } from '../lib/operacional/base.js';
 import { planosDoProfessor } from '../lib/professor/carteira.js';
-import { limitesDoCiclo } from '../lib/professor/ciclo.js';
-import { metasDe } from '../lib/professor/metas.js';
-import { TRILHA_PROFESSOR } from '../lib/carreira/trilhas.js';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { useAulasInWindow } from './useAulasInWindow.js';
-import { useCarreira } from './useCarreira.js';
 import { usePagedLeads } from './usePagedLeads.js';
 
-// Os dados das telas de professores (lista, metas e perfil). Professores,
+// Os dados das telas de Carreira (lista e perfil do professor). Professores,
 // planos e contratos já chegam assinados pelo App (useGeneralConfig); os
-// contratos passam uma vez pelo normalizeContracts, como no Operacional, porque
-// a carteira e a renovação os recebem normalizados. Duas leituras novas, que não
-// são ao vivo: os clientes da academia (a mesma consulta da tela Clientes) e as
-// aulas do ciclo. As metas são uma assinatura de stronix_config/carreira.
+// contratos passam uma vez pelo normalizeContracts, como no Operacional. Três
+// leituras que não são ao vivo: os clientes da academia (a mesma consulta da
+// tela Clientes), as aulas e as presenças da janela.
 //
-// As leituras só começam com o portão de ociosidade aberto (listenersActive).
-// As duas que não são ao vivo ficam ligadas depois disso: com o portão
-// fechado, o usePagedLeads e o useAulasInWindow apagariam a lista e a releriam
-// inteira a cada volta da pausa. A assinatura das metas para com o portão e
-// guarda o último valor.
+// A janela (`inicioMs` e `fimMs`, com o fim fora) vem da tela, que a calcula
+// com as trilhas (janelaDeLeitura, em src/lib/carreira/professor.js). Sem
+// janela, as aulas e as presenças não são lidas. As trilhas não são lidas
+// aqui: a tela assina o useCarreira antes, para a janela nascer certa.
 //
-// `metas` é null até a primeira resposta, e `carregando` fica verdadeiro até
-// as três leituras responderem. As metas de hoje ficam só para leitura: quem
-// grava é Configurações → Plano de carreira, no campo `trilhas`.
+// As leituras só começam com o portão de ociosidade aberto (listenersActive) e
+// ficam ligadas depois disso: com o portão fechado, o usePagedLeads e o
+// useAulasInWindow apagariam a lista e a releriam inteira a cada volta da pausa.
 const CLIENTES_SPEC_KEY = 'professores-clientes';
 
-export function useProfessoresDados({ db, ciclo, listenersActive }) {
+export function useProfessoresDados({ db, inicioMs = null, fimMs = null, listenersActive }) {
   const { professores, planos: planosCrus, contratos: contratosCrus, modalities } = useGeneralConfig();
   const contratos = useMemo(() => normalizeContracts(contratosCrus), [contratosCrus]);
   // O Flow e o Move contam para o professor de pilates e o de funcional, não
@@ -40,56 +35,47 @@ export function useProfessoresDados({ db, ciclo, listenersActive }) {
   const [ligado, setLigado] = useState(Boolean(listenersActive));
   if (listenersActive && !ligado) setLigado(true);
   const ler = ligado && Boolean(db);
+  const temJanela = inicioMs != null && fimMs != null;
 
   const spec = useMemo(() => clientsAllQuerySpec(), []);
   const { items: clientes, ready: clientesProntos, error: clientesErro } = usePagedLeads({
     db, path: LEADS_PATH, spec, specKey: CLIENTES_SPEC_KEY, enabled: ler,
   });
 
-  const { inicio, fim } = limitesDoCiclo(ciclo);
   const { aulas, loading: aulasCarregando, error: aulasErro } = useAulasInWindow({
-    db, startMs: inicio.getTime(), endMs: fim.getTime() - 1, enabled: ler,
+    db, startMs: inicioMs ?? 0, endMs: (fimMs ?? 1) - 1, enabled: ler && temJanela,
   });
 
-  // As presenças do ciclo (aderência, PR 6): uma leitura só, pela segunda-feira
-  // da semana ('AAAA-MM-DD'), de 1º de dezembro do ano anterior a 30 de
-  // novembro, num campo só e sem índice novo. As semanas de janeiro a novembro
-  // contam; as de dezembro, que abrem o ciclo, só aparecem na aba.
-  const [presencas, setPresencas] = useState(null); // { ciclo, lista, erro }
+  // As presenças da janela: uma leitura só, pela segunda-feira da semana
+  // ('AAAA-MM-DD'), num campo só e sem índice novo.
+  const chave = temJanela ? `${inicioMs}-${fimMs}` : null;
+  const [presencas, setPresencas] = useState(null); // { chave, lista, erro }
   useEffect(() => {
-    if (!ler) return undefined;
+    if (!ler || !temJanela) return undefined;
     let vivo = true;
     const q = query(
       collection(db, 'artifacts', appId, 'public', 'data', PRESENCAS_PATH),
-      where('semana', '>=', `${ciclo - 1}-12-01`),
-      where('semana', '<=', `${ciclo}-11-30`),
+      where('semana', '>=', dayKeyOf(new Date(inicioMs))),
+      where('semana', '<', dayKeyOf(new Date(fimMs))),
     );
     getDocs(q)
-      .then((snap) => { if (vivo) setPresencas({ ciclo, lista: snap.docs.map((d) => d.data()), erro: null }); })
+      .then((snap) => { if (vivo) setPresencas({ chave: `${inicioMs}-${fimMs}`, lista: snap.docs.map((d) => d.data()), erro: null }); })
       .catch((err) => {
         console.error('useProfessoresDados presencas', err);
-        if (vivo) setPresencas({ ciclo, lista: [], erro: err });
+        if (vivo) setPresencas({ chave: `${inicioMs}-${fimMs}`, lista: [], erro: err });
       });
     return () => { vivo = false; };
-  }, [db, ler, ciclo]);
-  const presencasDoCiclo = presencas?.ciclo === ciclo ? presencas : null;
-
-  // As metas de hoje e as trilhas, do mesmo documento (useCarreira).
-  const { carreira, trilhas } = useCarreira({ db, listenersActive });
-  const metas = useMemo(() => (carreira ? metasDe(carreira.doc) : null), [carreira]);
-  const trilhaProfessor = useMemo(() => trilhas?.find((t) => t.id === TRILHA_PROFESSOR) ?? null, [trilhas]);
+  }, [db, ler, temJanela, inicioMs, fimMs]);
+  const presencasDaJanela = chave && presencas?.chave === chave ? presencas : null;
 
   return {
-    carregando: !clientesProntos || aulasCarregando || carreira === null || !presencasDoCiclo,
-    erro: clientesErro || aulasErro || carreira?.erro || presencasDoCiclo?.erro || null,
+    carregando: !temJanela || !clientesProntos || aulasCarregando || !presencasDaJanela,
+    erro: clientesErro || aulasErro || presencasDaJanela?.erro || null,
     professores,
     planos,
     contratos,
     clientes,
     aulas,
-    presencas: presencasDoCiclo?.lista ?? [],
-    metas,
-    trilhas,
-    trilhaProfessor,
+    presencas: presencasDaJanela?.lista ?? [],
   };
 }

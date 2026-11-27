@@ -20,7 +20,7 @@ Cada PR sai da `main` com o anterior já mergeado, passa por `npm run lint && np
 |---|---|---|---|
 | 1 | `2026-11-26-plano-de-carreira-01-trilhas-e-contas.md` | `src/lib/carreira/` (períodos, números, trilhas, validação), as contas do professor recebendo o período, a pesquisa de NPS contando pela data. Nenhuma tela nova, nenhum número de hoje muda | nada |
 | 2 | escrito no começo do PR 2 | Configurações → Plano de carreira: lista das trilhas e o editor do mockup A | PR 1 |
-| 3 | escrito no começo do PR 3 | Menu Carreira: rotas, lista com a pílula Trilha, "Trilha e nível", placar com as duas metas, "Minha carreira", regra `carreiraKept()` | PR 1 e PR 2 |
+| 3 | `2026-11-27-plano-de-carreira-03-menu-carreira.md` | Menu Carreira: rotas, lista com a pílula Trilha, "Trilha e nível", placar com as duas metas, "Minha carreira", regra `carreiraKept()` | PR 1 e PR 2 |
 | 4 | escrito no começo do PR 4 | Perfil do consultor: as quatro contas e a tela com as quatro abas | PR 3 |
 
 Os planos detalhados dos PRs 2 a 4 são escritos quando o PR anterior entra na `main`, contra o código que ficou, como foi feito com o perfil do professor. O que cada um precisa fazer está abaixo, com os nomes que o PR 1 cria.

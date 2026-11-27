@@ -4,12 +4,7 @@
 // gravar. Meta em branco não é problema: o placar mostra o número sem dizer se
 // bateu.
 import { AJUSTES, metaValida, NUMEROS, numerosDaBase, VENDAS_EM } from './numeros.js';
-import { MAX_NIVEIS, MESES_MAX, TRILHA_PROFESSOR } from './trilhas.js';
-
-// A trava do PR 2 (visão geral do plano de carreira): o NPS das telas de
-// professores já lê a trilha Professor, e os outros números ainda usam o ciclo
-// fixo de dezembro. A trava (este texto e a conferência abaixo) sai no PR 3.
-export const AVISO_CALENDARIO_PROFESSOR = 'O calendário da trilha Professor muda a partir do menu Carreira.';
+import { MAX_NIVEIS, MESES_MAX } from './trilhas.js';
 
 const igual = (a, b) => String(a || '').trim().toLocaleLowerCase('pt-BR') === String(b || '').trim().toLocaleLowerCase('pt-BR');
 const nomeDaBase = (base) => (base === 'consultor' ? 'consultores' : 'professores');
@@ -65,9 +60,6 @@ export function problemaDaTrilha(t, { gravada = null, outras = [], pessoasPorNiv
   }
   if (t.base === 'consultor' && t.numeros?.vendas?.ligado && !VENDAS_EM.includes(t.ajustes?.vendasEm)) {
     return { campo: 'ajuste-vendasEm', texto: 'Escolha se as vendas contam em reais ou em quantidade.' };
-  }
-  if (t.id === TRILHA_PROFESSOR && gravada && (t.frequencia !== gravada.frequencia || t.mes !== gravada.mes)) {
-    return { campo: 'frequencia', texto: AVISO_CALENDARIO_PROFESSOR };
   }
   if (gravada?.padrao && t.base !== gravada.base) {
     return { campo: 'base', texto: `A trilha ${gravada.nome} vem pronta e continua sendo de ${nomeDaBase(gravada.base)}.` };

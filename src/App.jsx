@@ -1710,7 +1710,7 @@ useEffect(() => {
                 {nav.kanban && <SidebarItem icon={<Kanban className="w-[18px] h-[18px]" />} label="Pipeline" href={menuHref('kanban')} onNavigate={closeDrawer} active={activeTab === 'kanban'} />}
                 {nav.clientes && <SidebarItem icon={<GraduationCap className="w-[18px] h-[18px]" />} label="Clientes" badge={clientsAVencer > 0 ? clientsAVencer : null} href={menuHref('clientes')} onNavigate={closeDrawer} active={activeTab === 'clientes'} />}
                 {nav.dailyGoal && <SidebarItem icon={<Target className="w-[18px] h-[18px]" />} label="Meta diária" badge={dailyGoalPending > 0 ? dailyGoalPending : null} href={menuHref('dailyGoal')} onNavigate={closeDrawer} active={activeTab === 'dailyGoal'} />}
-                {nav.meuPerfil && <SidebarItem icon={<IdCard className="w-[18px] h-[18px]" />} label="Meu perfil" href={menuHref('professorPerfil', { profId: appUser.professorId })} onNavigate={closeDrawer} active={activeTab === 'professorPerfil'} />}
+                {nav.meuPerfil && <SidebarItem icon={<IdCard className="w-[18px] h-[18px]" />} label="Minha carreira" href={menuHref('professorPerfil', { profId: appUser.professorId })} onNavigate={closeDrawer} active={activeTab === 'professorPerfil'} />}
                 {nav.leads && (
                   <SidebarGroup
                     icon={<Users className="w-[18px] h-[18px]" />}
@@ -1738,7 +1738,7 @@ useEffect(() => {
               <div className={`px-2.5 mt-6 mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-gray-400 dark:text-neutral-500 whitespace-nowrap ${SIDEBAR_EXPANDED_ONLY}`}>Administração</div>
               <div className="space-y-1">
                 {nav.professores && (
-                  <SidebarItem icon={<Award className="w-[18px] h-[18px]" />} label="Professores" href={menuHref('professores')} onNavigate={closeDrawer} active={activeTab === 'professores' || activeTab === 'professorPerfil'} />
+                  <SidebarItem icon={<Award className="w-[18px] h-[18px]" />} label="Carreira" href={menuHref('professores')} onNavigate={closeDrawer} active={activeTab === 'professores' || activeTab === 'professorPerfil'} />
                 )}
                 {/* O balão "Novo" das Rotinas, em vermelho, fica no item do
                     menu até o ROTINAS_NOVO_ATE (mockup 2026-10-08, opção C).
@@ -1808,8 +1808,8 @@ useEffect(() => {
               {activeTab === 'clientes' && 'Clientes'}
               {activeTab === 'dailyGoal' && 'Sua Meta Diária'}
               {activeTab === 'rotinas' && 'Rotinas'}
-              {activeTab === 'professores' && 'Professores'}
-              {activeTab === 'professorPerfil' && (isProfessor(appUser) ? 'Meu perfil' : 'Professores')}
+              {activeTab === 'professores' && 'Carreira'}
+              {activeTab === 'professorPerfil' && (isProfessor(appUser) ? 'Minha carreira' : 'Carreira')}
               {activeTab === 'leads' && 'Todos os Leads'}
               {activeTab === 'aulas' && 'Aulas Experimentais'}
               {activeTab === 'visitas' && 'Visitas'}

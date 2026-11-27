@@ -6,12 +6,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { NUMEROS, numerosDaBase } from '../../../lib/carreira/numeros.js';
 import { mesesDaAvaliacao } from '../../../lib/carreira/periodo.js';
 import { com, trocarAjuste, trocarBase, trocarFrequencia, trocarSugestao } from '../../../lib/carreira/rascunho.js';
-import { AVISO_CALENDARIO_PROFESSOR, BASE_UI, maiuscula, MESES, NUMERO_UI, periodoTexto } from './carreiraTexto.js';
+import { BASE_UI, maiuscula, MESES, NUMERO_UI, periodoTexto } from './carreiraTexto.js';
 import { CampoNumero } from './CampoNumero.jsx';
 
 // A aba Regras da trilha (mockup A): quem segue, quando avalia e como cada
-// número conta, com o ajuste de cada um. `calendarioTravado` é a trava da
-// trilha Professor até o PR 3 (AVISO_CALENDARIO_PROFESSOR).
+// número conta, com o ajuste de cada um.
 // w-fit com max-w-full: do tamanho das opções, e quebra linha quando não cabe.
 const SEG = 'inline-flex w-fit max-w-full flex-wrap gap-0.5 rounded-xl bg-muted p-[3px]';
 const PILULA = 'inline-flex h-8 items-center rounded-[9px] px-3.5 text-[13px] font-semibold text-muted-foreground data-[state=checked]:bg-card data-[state=checked]:text-foreground data-[state=checked]:shadow-sm';
@@ -70,7 +69,7 @@ function Ajuste({ id, trilha, onMudar }) {
   return null;
 }
 
-export function TrilhaRegras({ trilha, onMudar, totalDePessoas, modalities, calendarioTravado }) {
+export function TrilhaRegras({ trilha, onMudar, totalDePessoas, modalities }) {
   // As três que vêm prontas nunca mudam de base (problemaDaTrilha).
   const baseTravada = totalDePessoas > 0 || Boolean(trilha.padrao);
   const [primeiro] = mesesDaAvaliacao(trilha);
@@ -127,19 +126,14 @@ export function TrilhaRegras({ trilha, onMudar, totalDePessoas, modalities, cale
       </Bloco>
 
       <Bloco icone={Calendar} titulo="Quando avalia">
-        {calendarioTravado && (
-          <p className="mx-5 mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-[13px] text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
-            {AVISO_CALENDARIO_PROFESSOR}
-          </p>
-        )}
         <Regra rotulo="Frequência">
-          <RadioGroup aria-label="Frequência" value={trilha.frequencia} onValueChange={(v) => onMudar((t) => trocarFrequencia(t, v))} disabled={calendarioTravado} className={SEG}>
+          <RadioGroup aria-label="Frequência" value={trilha.frequencia} onValueChange={(v) => onMudar((t) => trocarFrequencia(t, v))} className={SEG}>
             <RadioGroupOption value="anual" className={PILULA}>Uma vez por ano</RadioGroupOption>
             <RadioGroupOption value="semestral" className={PILULA}>Duas vezes por ano</RadioGroupOption>
           </RadioGroup>
         </Regra>
         <Regra rotulo={rotuloDoMes}>
-          <Select value={String(primeiro)} onValueChange={(v) => onMudar((t) => com(t, { mes: Number(v) }))} disabled={calendarioTravado}>
+          <Select value={String(primeiro)} onValueChange={(v) => onMudar((t) => com(t, { mes: Number(v) }))}>
             <SelectTrigger aria-label={rotuloDoMes} className="h-10 w-[240px] rounded-[11px] border-border focus-visible:anel-foco focus-visible:ring-2 focus-visible:ring-ring">
               <SelectValue />
             </SelectTrigger>

@@ -93,3 +93,27 @@ export function chaveDaPesquisa(trilha, inicio) {
   if (mes < 1 || mes > 12) return null;
   return periodoDe(trilha, new Date(Number(m[1]), mes - 1, 0))?.chave ?? null;
 }
+
+// O primeiro período com dado no sistema: o que contém 1º de dezembro de
+// 2025, o começo do antigo ciclo 2026. Antes disso não há contrato.
+export const primeiroPeriodo = (trilha) => periodoDe(trilha, new Date(2025, 11, 1));
+
+// O período da chave quando ele vai do primeiro até o de agora; senão null.
+// É quem confere o `ciclo` do endereço.
+export function periodoValido(trilha, chave, agora = new Date()) {
+  if (!trilha) return null;
+  const p = periodoPorChave(trilha, chave);
+  const primeiro = primeiroPeriodo(trilha);
+  const atual = periodoDe(trilha, agora);
+  if (!p || !primeiro || !atual) return null;
+  return p.inicio >= primeiro.inicio && p.inicio <= atual.inicio ? p : null;
+}
+
+const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+const mesAno = (d) => `${MESES_CURTOS[d.getMonth()]}/${d.getFullYear()}`;
+
+// "dez/2026 a nov/2027": do mês do início ao mês antes do fim (o fim fica fora).
+export function periodoTexto(periodo) {
+  if (!periodo) return '';
+  return `${mesAno(periodo.inicio)} a ${mesAno(new Date(periodo.fim.getFullYear(), periodo.fim.getMonth() - 1, 1))}`;
+}

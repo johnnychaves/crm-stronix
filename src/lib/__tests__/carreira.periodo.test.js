@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   chaveDaPesquisa, janelaDaRenovacao, mesesDaAvaliacao, pecasDaAderencia,
   periodoAnterior, periodoDe, periodoPorChave, periodoSeguinte,
+  primeiroPeriodo, periodoValido, periodoTexto,
 } from '../carreira/periodo.js';
 
 const ANUAL_DEZ = { frequencia: 'anual', mes: 12 };
@@ -149,5 +150,37 @@ describe('chaveDaPesquisa', () => {
     expect(chaveDaPesquisa(ANUAL_DEZ, undefined)).toBeNull();
     expect(chaveDaPesquisa(ANUAL_DEZ, '2027-13-05')).toBeNull();
     expect(chaveDaPesquisa(ANUAL_DEZ, '2027-00-05')).toBeNull();
+  });
+});
+
+describe('período válido e texto do período', () => {
+  const anual = { frequencia: 'anual', mes: 12 };
+  const semestral = { frequencia: 'semestral', mes: 6 };
+  const marco = { frequencia: 'anual', mes: 3 };
+  const agora = new Date(2027, 2, 10); // 10/03/2027
+
+  it('o primeiro período é o que contém 1º de dezembro de 2025', () => {
+    expect(primeiroPeriodo(anual).chave).toBe('2026');
+    expect(primeiroPeriodo(semestral).chave).toBe('2026-1');
+    expect(primeiroPeriodo(marco).chave).toBe('2026');
+  });
+
+  it('vale do primeiro período até o de agora', () => {
+    expect(periodoValido(anual, '2026', agora)?.chave).toBe('2026');
+    expect(periodoValido(anual, '2027', agora)?.chave).toBe('2027');
+    expect(periodoValido(anual, '2025', agora)).toBeNull();
+    expect(periodoValido(anual, '2028', agora)).toBeNull();
+    expect(periodoValido(semestral, '2027-1', agora)?.chave).toBe('2027-1');
+    expect(periodoValido(semestral, '2027-2', agora)).toBeNull();
+    expect(periodoValido(semestral, '2027', agora)).toBeNull();
+    expect(periodoValido(anual, null, agora)).toBeNull();
+    expect(periodoValido(null, '2027', agora)).toBeNull();
+  });
+
+  it('o texto vai do primeiro ao último mês do período', () => {
+    expect(periodoTexto(periodoPorChave(anual, '2027'))).toBe('dez/2026 a nov/2027');
+    expect(periodoTexto(periodoPorChave(semestral, '2027-1'))).toBe('dez/2026 a mai/2027');
+    expect(periodoTexto(periodoPorChave(marco, '2027'))).toBe('mar/2026 a fev/2027');
+    expect(periodoTexto(null)).toBe('');
   });
 });

@@ -289,6 +289,16 @@ service cloud.firestore {
         && request.resource.data.get('professorId', null) == resource.data.get('professorId', null);
     }
 
+    // A trilha e o nível do plano de carreira (spec 2026-11-26-plano-de-
+    // carreira-configuravel) só mudam pelo gestor, no ramo isAdmin. Sem a
+    // trava, o consultor se promoveria pelo próprio cadastro. O `.get(campo,
+    // null)` cobre cadastro sem os campos.
+    function carreiraKept() {
+      return request.resource.data.get('trilhaId', null) == resource.data.get('trilhaId', null)
+        && request.resource.data.get('nivel', null) == resource.data.get('nivel', null)
+        && request.resource.data.get('nivelDesde', null) == resource.data.get('nivelDesde', null);
+    }
+
     // stronix_users: NÃO usa tenantActive — o login precisa ler/vincular o doc do
     // próprio usuário mesmo para conseguir mostrar a tela de bloqueio. O self-update
     // já é travado (role/tenantId imutáveis) contra escalada de privilégio, e
@@ -310,10 +320,11 @@ service cloud.firestore {
           // papel e o professor ligado
           isAdmin(appId)
           // ou o próprio usuário mexe no próprio doc (vínculo do login, "já li"
-          // do sino), sem se autopromover
+          // do sino), sem se autopromover nem trocar a própria trilha e o nível
           || (request.auth.uid == userId
               && request.resource.data.role == resource.data.role
-              && request.resource.data.tenantId == resource.data.tenantId)
+              && request.resource.data.tenantId == resource.data.tenantId
+              && carreiraKept())
         );
     }
 

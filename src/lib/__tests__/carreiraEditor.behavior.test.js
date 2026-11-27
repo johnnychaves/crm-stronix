@@ -14,7 +14,6 @@ vi.mock('../firebase.js', () => ({ appId: 'acad', db: {}, auth: {} }));
 
 const { trilhasDe } = await import('../carreira/trilhas.js');
 const { MOTIVO_DO_ARQUIVAR, novaTrilha, SEM_NIVEL } = await import('../carreira/rascunho.js');
-const { AVISO_CALENDARIO_PROFESSOR } = await import('../../views/settings/carreira/carreiraTexto.js');
 const { ToastContext } = await import('../../contexts/ToastContext.jsx');
 const { TrilhaEditor } = await import('../../views/settings/carreira/TrilhaEditor.jsx');
 
@@ -303,14 +302,12 @@ describe('arquivar e a trilha nova', () => {
 });
 
 describe('as regras da trilha', () => {
-  // A trava do PR 2: o PR 3 a tira, junto com este teste.
-  it('a trilha Professor trava a frequência e o mês, com o aviso', async () => {
+  it('a trilha Professor muda o calendário', async () => {
     await render({ inicial: PROFESSOR, gravada: PROFESSOR, pessoas: GENTE, abaInicial: 'regras' });
-    expect(document.body.textContent).toContain(AVISO_CALENDARIO_PROFESSOR);
-    expect(radio('Uma vez por ano').disabled).toBe(true);
-    expect(radio('Duas vezes por ano').disabled).toBe(true);
-    expect(document.body.querySelector('button[aria-label="Mês da avaliação"]').disabled).toBe(true);
-    expect(document.body.textContent).toContain('Os números contam de 1º de dezembro a 30 de novembro.');
+    expect(document.body.textContent).not.toContain('O calendário da trilha Professor muda a partir do menu Carreira.');
+    expect(radio('Uma vez por ano').disabled).toBe(false);
+    expect(radio('Duas vezes por ano').disabled).toBe(false);
+    expect(document.body.querySelector('button[aria-label="Mês da avaliação"]').disabled).toBe(false);
   });
 
   it('com gente na trilha, "Para quem" não muda', async () => {
@@ -330,7 +327,7 @@ describe('as regras da trilha', () => {
 
   it('as outras trilhas mudam o calendário', async () => {
     await render({ inicial: ESTAGIARIO, gravada: ESTAGIARIO, pessoas: NINGUEM, abaInicial: 'regras' });
-    expect(document.body.textContent).not.toContain(AVISO_CALENDARIO_PROFESSOR);
+    expect(document.body.textContent).not.toContain('O calendário da trilha Professor muda a partir do menu Carreira.');
     expect(radio('Uma vez por ano').disabled).toBe(false);
     expect(document.body.querySelector('button[aria-label="Meses da avaliação"]').disabled).toBe(false);
     expect(document.body.textContent).toContain('Os números contam de 1º de dezembro a 31 de maio e de 1º de junho a 30 de novembro.');
