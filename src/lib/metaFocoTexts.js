@@ -174,6 +174,61 @@ export function factsOf({ slug, lead }, now, opts = {}) {
   return out.slice(0, 4);
 }
 
+// A frase grande do bloco Agora (visual da Meta do professor, 27/11/2026): o
+// que está acontecendo, em linguagem de gente. Volta pedaços, texto ou
+// { b, u }, para a tela pôr em negrito o número que importa (u: vermelho).
+export function fraseOf({ slug, lead }, now, opts = {}) {
+  const b = (t, u = false) => ({ b: t, u });
+  if (isAppt(slug)) {
+    const at = getLeadAppointmentDate(lead);
+    const nome = slug === C.AULA_HOJE ? 'A aula experimental' : 'A visita';
+    if (!at) return [`${nome} está sem horário marcado.`];
+    if (at < now) return [`${nome} era às `, b(formatHourLabel(at), true), ' e ainda está sem desfecho.'];
+    const onde = slug === C.AULA_HOJE
+      ? (lead?.appointmentProfessorName ? `, com ${lead.appointmentProfessorName}` : '')
+      : (lead?.appointmentUnit ? `, na unidade ${lead.appointmentUnit}` : '');
+    return [`${nome} é ${calendarWord(at, now)}às `, b(formatHourLabel(at)), `${onde}.`];
+  }
+  if (slug === C.CONTATO_HOJE) {
+    const { type } = followUpChannelOf(lead);
+    const at = getSafeDateOrNull(lead?.nextFollowUp);
+    if (!at) return [`${type} combinada para hoje.`];
+    return at < now
+      ? [`${type} combinada para as `, b(formatHourLabel(at), true), ', e a hora já passou.']
+      : [`${type} combinada para hoje às `, b(formatHourLabel(at)), '.'];
+  }
+  if (slug === C.NOVO_24H) {
+    const closes = newLeadCloses(lead);
+    return closes
+      ? ['Lead novo, ainda sem contato. Sai desta lista às ', b(formatHourLabel(closes)), '.']
+      : ['Lead novo, ainda sem contato.'];
+  }
+  if (slug === C.ATRASADO) {
+    const days = overdueDaysOf(lead, now);
+    if (days === 0) return ['Passou das 24 horas de lead novo sem nenhum próximo passo.'];
+    const critico = days >= slaOf(opts);
+    return getSafeDateOrNull(lead?.nextFollowUp)
+      ? ['O contato está atrasado há ', b(plural(days, 'dia', 'dias'), critico), '.']
+      : ['Está há ', b(plural(days, 'dia', 'dias'), critico), ' sem próximo passo desde o cadastro.'];
+  }
+  if (slug === C.RENOVACAO) {
+    const d = daysToExpiryOf(lead?.currentContractEndsAt, now);
+    if (d == null) return ['O contrato está chegando ao fim.'];
+    return d <= 0 ? ['O contrato vence ', b('hoje'), '.'] : ['O contrato vence em ', b(plural(d, 'dia', 'dias')), '.'];
+  }
+  if (slug === FOCO_ESPERA) {
+    const since = esperaSince(lead);
+    return since
+      ? ['Escreveu pelo Stronizap e espera resposta há ', b(durationText(Math.max(0, now - since))), '.']
+      : ['Escreveu pelo Stronizap e espera resposta.'];
+  }
+  const endsAt = getSafeDateOrNull(lead?.currentContractEndsAt);
+  return endsAt ? ['O contrato venceu em ', b(fullDate(endsAt)), ' e não foi renovado.'] : ['O contrato venceu e não foi renovado.'];
+}
+
+// "" no dia de hoje, "amanhã " e "em 28/11 " nos outros, antes do "às".
+const calendarWord = (at, now) => dayRefText(at, now).replace(/às \d\d:\d\d$/, '').replace(/^hoje /, '');
+
 // A frase da faixa de urgência, que avisa da tarefa mais urgente que o Agora:
 // "Mateus chega em 10 min", "Bia passou do horário há 12 min, sem desfecho",
 // "Ligação para Carla em 40 min". Chegam aqui as classes 0 e 1 e a espera com

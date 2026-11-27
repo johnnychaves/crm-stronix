@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { FOCO_ESPERA, esperaDispensaKey, faixaEspera, faixaFor, inFoco, isAppt, pendingEntries, pickAgora, rankFoco, withSkipped } from '../../../lib/metaFoco.js';
 import { dgDateKey } from '../../../lib/dailyGoal.js';
 import { getLeadAppointmentDate } from '../../../lib/leads.js';
-import { CATEGORY_ONE, FOCO_LABEL, factsOf, focoTabs, morningText, urgentText, whyOf } from '../../../lib/metaFocoTexts.js';
+import { CATEGORY_ONE, FOCO_LABEL, factsOf, focoTabs, fraseOf, morningText, urgentText, whyOf } from '../../../lib/metaFocoTexts.js';
 import { useAgoraShortcuts } from '../../../hooks/useAgoraShortcuts.js';
 import { DESFAZER_MS, useConcluirComDesfazer } from '../../../hooks/useConcluirComDesfazer.js';
 import { TabsContent } from '../../ui/tabs.jsx';
@@ -264,6 +264,7 @@ export function MetaFocoScreen({
           entry={agora}
           why={whyOf(agora, now, opts)}
           facts={factsOf(agora, now, opts)}
+          frase={fraseOf(agora, now, opts)}
           now={now}
           meId={meId}
           pinned={pinned}

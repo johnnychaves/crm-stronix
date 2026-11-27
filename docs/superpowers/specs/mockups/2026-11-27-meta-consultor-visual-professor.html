@@ -1,0 +1,305 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Meta do consultor · visual do professor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="2026-11-27-meta-professor.css">
+<style>
+/* A Meta do consultor (Foco agora) com o visual da Meta do professor
+   (27/11/2026). O botão do topo troca o bloco Agora entre o visual novo
+   (claro, com a borda na cor da urgência) e o de hoje (o bloco escuro).
+   Dados inventados. Nada daqui vai para o app. */
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;margin-top:16px;align-items:start}
+/* tons: late vermelho, now azul, warn âmbar, calm cinza */
+.t-late{--c:#F43F5E;--t:var(--rose700);--bg:rgba(244,63,94,.10)}
+.t-now{--c:#2B59FF;--t:var(--blue700);--bg:var(--blue50)}
+.t-warn{--c:#F59E0B;--t:var(--amber700);--bg:rgba(245,158,11,.15)}
+.t-calm{--c:#94a3b8;--t:#475569;--bg:#eef0f5}
+
+/* topo: o cartão do professor, com a prospecção e a sequência do consultor */
+.dia{position:sticky;top:12px;z-index:30;box-shadow:0 10px 28px -14px rgba(14,26,64,.28);border:1px solid var(--line)}
+.dia-r{gap:28px}
+.prosp{min-width:170px}
+.prosp .l{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;white-space:nowrap}
+.prosp .pb i{background:var(--orange)}
+.seq{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink2);white-space:nowrap}
+.seq b{font:700 20px 'Space Grotesk',sans-serif;color:var(--ink)}
+.prosp .pb{display:block;margin-top:8px}
+
+/* barra Foco em, com o ponto da urgência */
+.fe .dot{width:7px;height:7px;border-radius:50%;background:var(--c)}
+
+/* faixa de urgência */
+.faixa{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px;padding:10px 12px 10px 16px;border-radius:14px;background:var(--bg);color:var(--t);font-size:13.5px;font-weight:600}
+.faixa .acts{margin-left:auto}
+.faixa .b2,.faixa .btn{height:32px}
+
+/* bloco Agora no visual do professor */
+.agora{margin-top:14px;padding:20px 24px;border-radius:18px;background:#fff;border:1px solid var(--line);border-left:6px solid var(--c)}
+.ag-t{display:flex;align-items:center;gap:10px 14px;flex-wrap:wrap}
+.ag-t .rot{font-size:13px;font-weight:600;color:var(--blue700)}
+.mot{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 11px;border-radius:999px;background:var(--bg);color:var(--t);font-size:12.5px;font-weight:600}
+.cat{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+.tagc{height:22px;padding:0 9px;border-radius:999px;background:#f1f5f9;color:var(--ink2);font-size:12px;font-weight:600;display:inline-flex;align-items:center}
+.esc{margin-left:auto;font-size:12.5px;color:var(--muted)}
+.esc button{border:0;background:none;padding:0;color:var(--blue700);font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.corpo{display:grid;grid-template-columns:auto minmax(0,1fr);gap:18px;align-items:start;margin-top:14px}
+.foto{display:inline-grid;padding:3px;border-radius:50%;background:var(--c)}
+.foto .av{border:3px solid #fff}
+.hd{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.hd h2{font-size:26px;font-weight:700;letter-spacing:-.02em}
+.hd a{font-size:13px;font-weight:600;color:var(--blue700)}
+.frase{margin-top:6px;font-size:17px;color:var(--ink2)}
+.frase b{color:var(--ink);font-weight:700}
+.frase b.u{color:var(--rose700)}
+.quote{margin-top:10px;padding:10px 14px;border-radius:12px;background:var(--paper);font-size:14px;color:var(--ink2)}
+.linha{display:flex;gap:6px 24px;flex-wrap:wrap;margin:14px 0 18px;font-size:13px;color:var(--muted)}
+.linha b{color:var(--ink);font-weight:600}
+.nota{margin:-6px 0 18px;font-size:13px;color:var(--ink2)}
+.nota span{color:var(--muted)}
+.ag-f{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding-top:16px;border-top:1px solid var(--rule)}
+.pular{display:inline-flex;align-items:center;gap:6px;border:0;background:none;color:var(--muted);font-weight:600;cursor:pointer}
+kbd{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;border:1px solid currentColor;border-radius:5px;font:600 11px Geist,sans-serif;opacity:.55}
+.btn kbd{opacity:.75}
+.b2.no{color:var(--rose700)}
+.prova{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:-4px 0 16px;padding:10px 14px;border-radius:12px;background:rgba(16,185,129,.10);color:#047857;font-size:13.5px;font-weight:600}
+.prova .btn{margin-left:auto;background:#059669}
+.pergunta{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.pergunta b{font-size:15px}
+
+/* bloco Agora de hoje (escuro), para comparar */
+.escuro{margin-top:14px;padding:26px 30px 20px;border-radius:22px;background:#0E1A40;color:#fff;box-shadow:0 20px 44px -26px rgba(14,26,64,.6)}
+.escuro .mot{background:rgba(255,255,255,.12);color:#fff}
+.escuro.t-late .mot{background:rgba(244,63,94,.25);color:#FFC2CC}
+.escuro.t-now .mot{background:rgba(43,89,255,.35);color:#D5E0FF}
+.escuro.t-warn .mot{background:rgba(245,158,11,.25);color:#FFDDA0}
+.escuro .cat{color:rgba(255,255,255,.7)}
+.escuro .e-h{display:flex;align-items:center;gap:18px;margin-top:22px}
+.escuro h2{font:700 36px/1.05 'Space Grotesk',sans-serif;letter-spacing:-.03em}
+.escuro .sub{margin-top:4px;color:rgba(255,255,255,.7);font-size:14px}
+.escuro .n2{margin-top:16px;padding:12px 16px;border-radius:12px;background:rgba(255,255,255,.07);font-size:14px;color:rgba(255,255,255,.85)}
+.escuro .fx{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-top:16px}
+.escuro .fx span{display:block;font-size:12px;color:rgba(255,255,255,.55)}
+.escuro .fx b{font-weight:600}
+.escuro .e-f{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:22px;padding-top:18px;border-top:1px solid rgba(255,255,255,.12)}
+.ea{display:inline-flex;align-items:center;gap:8px;height:46px;padding:0 18px;border-radius:12px;border:1px solid rgba(255,255,255,.25);background:transparent;color:#fff;font-size:14.5px;font-weight:600;cursor:pointer}
+.ea.m{background:#FF6A2B;border-color:#FF6A2B;color:#0E1A40}
+.escuro .pular{margin-left:auto;color:rgba(255,255,255,.7)}
+.escuro .av{background:rgba(255,255,255,.15);color:#fff}
+
+/* fila Depois */
+.dep{margin-top:16px;overflow:hidden}
+.dep-h{display:flex;justify-content:space-between;align-items:baseline;padding:16px 22px 10px}
+.dep-h h3{font-size:15px;font-weight:700}
+.fl{display:grid;grid-template-columns:4px auto minmax(0,1fr) auto;gap:14px;align-items:center;width:100%;padding:11px 22px;border:0;border-top:1px solid var(--rule);background:#fff;text-align:left;cursor:pointer}
+.fl:hover{background:#f8faff}
+.fl b{display:block;font-size:14px;font-weight:600}
+.fl .s{font-size:12.5px;color:var(--t)}
+.fl.t-calm .s{color:var(--muted)}
+.fl .h{font-size:12.5px;font-weight:600;color:var(--muted)}
+.fl .cor{display:block;width:4px;height:30px;border-radius:4px;background:var(--c)}
+
+/* lateral */
+.lat{display:flex;flex-direction:column;gap:16px}
+.lat > section{padding:18px 20px}
+.lat h3{font-size:15px;font-weight:700}
+.ag-h{display:flex;justify-content:space-between;align-items:baseline}
+.ag-l{list-style:none;margin:10px 0 0;padding:0}
+.ag-i{display:grid;grid-template-columns:44px 10px minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 0;border-top:1px solid var(--rule)}
+.ag-i:first-child{border-top:0}
+.ag-hr{font-size:13px;font-weight:600}
+.ag-p{width:9px;height:9px;border-radius:50%;background:#cbd5e1}
+.ag-nm{display:flex;flex-direction:column;min-width:0}
+.ag-nm a{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ag-nm span{font-size:12px;color:var(--muted)}
+.ag-e{font-size:12px;font-weight:600;white-space:nowrap;color:var(--muted)}
+.ag-e.b{height:26px;padding:0 9px;border-radius:999px;border:1px solid var(--line);background:#fff;cursor:pointer}
+.mini{display:flex;gap:4px}
+.mini button{width:28px;height:26px;border-radius:999px;border:1px solid var(--line);background:#fff;cursor:pointer;font-weight:700}
+.mini .ok{color:#047857}.mini .no{color:var(--rose700)}
+.st-veio .ag-p{background:#10B981}.st-veio .ag-e{color:#047857}
+.st-sem .ag-p{background:#F59E0B}
+.st-proxima{margin:0 -10px;padding:9px 10px;border-radius:12px;background:var(--blue50);border-top-color:transparent}
+.st-proxima .ag-p{background:var(--blue)}
+.st-proxima + .ag-i{border-top-color:transparent}
+.ritmo{display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin-top:10px}
+.ritmo i{width:14px;height:14px;border-radius:50%;background:#eef2f7}
+.ritmo i.b{background:#10B981}.ritmo i.n{background:#fecdd3}.ritmo i.h{background:#fff;box-shadow:0 0 0 2px var(--blue) inset}.ritmo i.f{width:8px;height:8px;margin:3px}
+.rt{display:flex;align-items:center;gap:10px;padding:7px 0;font-size:13px}
+.rt i{width:18px;height:18px;border-radius:50%;border:2px solid #cbd5e1;flex:none}
+.rt.ok i{border-color:#10B981;background:#10B981}
+.rt.late{color:var(--rose700);font-weight:600}
+.rt .hr{margin-left:auto;color:var(--muted);font-size:12px;font-weight:400}
+.feito{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 0;border-top:1px solid var(--rule);font-size:13px}
+.feito:first-of-type{margin-top:8px;border-top:0}
+.feito .r{font-size:12px;font-weight:600;color:#047857}
+
+/* troca de visual e de estado, só do mockup */
+.vers{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:14px;font-size:12.5px;color:var(--muted)}
+.vers button{height:30px;padding:0 12px;border-radius:999px;border:1px dashed var(--faint);background:transparent;font-size:12.5px;font-weight:600;cursor:pointer}
+.vers button[aria-pressed=true]{border-style:solid;border-color:var(--ink);background:var(--ink);color:#fff}
+.vers .sep{width:1px;height:18px;background:var(--line);margin:0 6px}
+@keyframes entra{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.entra > *{animation:entra .22s ease-out both}
+@media (prefers-reduced-motion:reduce){.entra > *{animation:none}}
+@media (max-width:1080px){.grid{grid-template-columns:1fr}.dia{position:static}}
+@media (max-width:560px){.corpo{grid-template-columns:1fr}.fl .h{display:none}}
+</style></head><body><div class="wrap" id="app"></div>
+<div class="tag">Mockup · Meta do consultor no visual do professor · dados de exemplo</div>
+<script>
+// Agora do mockup: sexta, 27/11, 11:40. A consultora logada é a Ana.
+const WA = '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.3 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2.1 1-2.4c.3-.3.6-.3.8-.3h.6c.2 0 .4 0 .6.5l.8 2c.1.2.1.4 0 .5l-.4.6-.4.4c-.1.1-.3.3-.1.6.2.3.8 1.3 1.7 2.1 1.2 1 2.1 1.3 2.4 1.5.3.1.5.1.6-.1l.9-1c.2-.3.4-.2.6-.1l1.9.9c.3.1.5.2.5.3.1.2.1.7-.1 1.3Z"/></svg>';
+const ini = (n) => n.split(' ').filter(Boolean).slice(0, 2).map((p) => p[0]).join('');
+const avatar = (n, s) => `<span class="av" style="--s:${s}px">${ini(n)}</span>`;
+
+// cat: visita | aula | contato | novo | atrasado | espera | renovacao | vencido
+const T = [
+  { id: 'rafael', cat: 'aula', foco: 'compromissos', tom: 'late', nome: 'Rafael Souza', motivo: 'Aula era às 10:00', catTxt: 'Aula experimental às 10:00',
+    frase: 'A aula experimental era às <b>10:00</b>, com a Heloísa, e ninguém marcou se ele veio.', fatos: [['Modalidade', 'Funcional'], ['Origem', 'Instagram'], ['Dor', 'Emagrecer']], tel: '(51) 99812-4430', nota: 'Disse que sai do trabalho às 9h30 e pode chegar um pouco atrasado.', fila: 'Aula era às 10:00, sem desfecho', h: '10:00' },
+  { id: 'mateus', cat: 'visita', foco: 'compromissos', tom: 'now', nome: 'Mateus Rocha', motivo: 'Visita em 10 min', catTxt: 'Visita às 11:50',
+    frase: 'Chega para a visita às <b>11:50</b>, na unidade Centro.', fatos: [['Origem', 'Google'], ['Dor', 'Dor nas costas']], tel: '(51) 98134-9921', nota: 'Quer conhecer o pilates e a musculação.', fila: 'Visita em 10 min', h: '11:50' },
+  { id: 'carla', cat: 'atrasado', foco: 'atrasado', tom: 'late', nome: 'Carla Menezes', motivo: 'Atrasado há 4 dias, crítico', catTxt: 'Contato atrasado',
+    frase: 'A ligação era para <b>23/11</b> e está atrasada há <b class="u">4 dias</b>.', fatos: [['Etapa', 'Negociação'], ['Origem', 'Indicação']], tel: '(51) 99655-0182', nota: 'Pediu para ligar depois do dia 20, quando recebe o salário.', fila: 'Atrasado há 4 dias, crítico', h: '', ligar: true },
+  { id: 'luana', cat: 'contato', foco: 'contato_hoje', tom: 'warn', nome: 'Luana Prado', motivo: 'Em 2h 20min', catTxt: 'Mensagem às 14:00',
+    frase: 'Ficou combinada uma mensagem para hoje às <b>14:00</b>.', fatos: [['Etapa', 'Agendado'], ['Origem', 'Instagram']], tel: '(51) 99207-7745', nota: 'Mandar os horários do funcional da noite.', fila: 'Mensagem às 14:00', h: '14:00', colega: 'Contato passado por Bruno' },
+  { id: 'bruna', cat: 'novo', foco: 'novo_24h', tom: 'calm', nome: 'Bruna Torres', motivo: 'Fecha às 15:20', catTxt: 'Novo lead',
+    frase: 'Chegou ontem às 15:20, pelo Instagram, e ainda não teve contato. A janela de 24 horas fecha às <b>15:20</b>.', fatos: [['Dor', 'Ganhar massa'], ['Modalidade', 'Musculação']], tel: '(51) 98842-3306', nota: '', fila: 'Novo lead, fecha às 15:20', h: '15:20' },
+  { id: 'julia', cat: 'espera', foco: 'aguardando_resposta', tom: 'warn', nome: 'Júlia Ramos', motivo: 'Esperando há 22 min', catTxt: 'Respondeu, aguardando você',
+    frase: 'Escreveu há <b>22 min</b> pelo Stronizap e espera resposta.', quote: '“Oi! Qual o valor do pilates 2x por semana?”', fatos: [['Etapa', 'Contato feito']], tel: '(51) 99371-5568', nota: '', fila: 'Esperando há 22 min', h: '' },
+  { id: 'diego', cat: 'renovacao', foco: 'renovacao', tom: 'calm', nome: 'Diego Martins', motivo: 'Vence em 30 dias', catTxt: 'Renovação',
+    frase: 'O <b>Clube+ Start</b> vence em <b>30 dias</b>, em 27/12.', fatos: [['Plano', 'Clube+ Start'], ['Aluno há', '1 ano e 2 meses']], tel: '(51) 98720-1409', nota: '', fila: 'Vence em 30 dias', h: '' },
+  { id: 'patricia', cat: 'vencido', foco: 'vencido', tom: 'calm', nome: 'Patrícia Lopes', motivo: 'Venceu há 5 dias', catTxt: 'Contrato vencido',
+    frase: 'O <b>Clube+ Move</b> venceu há <b>5 dias</b>, em 22/11, e ela não renovou.', fatos: [['Plano', 'Clube+ Move'], ['Aluna há', '2 anos']], tel: '(51) 99118-6620', nota: '', fila: 'Venceu há 5 dias', h: '', ligar: true },
+];
+const FOCOS = [['all', 'Todos'], ['compromissos', 'Visitas e aulas'], ['contato_hoje', 'Contatos'], ['novo_24h', 'Novos leads'], ['atrasado', 'Atrasados'], ['aguardando_resposta', 'Aguardando você'], ['renovacao', 'Renovações'], ['vencido', 'Vencidos']];
+
+let visual = location.hash === '#atual' ? 'atual' : 'novo';
+let estado = 'normal'; // normal | pergunta | prova
+let foco = 'all';
+let agoraId = 'rafael';
+let pinned = false;
+let faixaFora = false;
+let feitos = ['Sabrina Kopp', 'Otávio Rezende', 'Elisa Carvalho', 'Igor Venâncio', 'Daniela Reis'];
+
+const daFila = () => T.filter((t) => foco === 'all' || t.foco === foco);
+
+function acoes(t) {
+  if (t.cat === 'visita' || t.cat === 'aula') {
+    return `<div class="acts">
+      <button type="button" class="btn" data-done="${t.id}">✓ Compareceu <kbd>C</kbd></button>
+      <button type="button" class="b2 no" data-done="${t.id}">✕ Não compareceu <kbd>N</kbd></button>
+      ${t.cat === 'aula' ? `<a class="b2 wa" href="#" onclick="return false">${WA}WhatsApp <kbd>W</kbd></a>` : ''}
+      <button type="button" class="b2">Mais ▾</button></div>`;
+  }
+  if (t.cat === 'espera') return '<div class="acts"><a class="b2" href="#" onclick="return false">Abrir ficha</a></div>';
+  const canal = t.ligar
+    ? '<button type="button" class="b2">📞 Ligar <kbd>L</kbd></button>'
+    : `<a class="b2 wa" href="#" onclick="return false">${WA}WhatsApp <kbd>W</kbd></a>`;
+  return `<div class="acts">${canal}
+    <button type="button" class="btn" data-done="${t.id}">✓ Concluir <kbd>C</kbd></button>
+    <button type="button" class="b2">Reagendar</button></div>`;
+}
+
+function agoraNovo(t) {
+  const primeiro = t.nome.split(' ')[0];
+  const temPergunta = estado === 'pergunta' && !['visita', 'aula', 'espera'].includes(t.cat);
+  const temProva = estado === 'prova' && !['visita', 'aula'].includes(t.cat);
+  const rodape = temPergunta
+    ? `<div class="ag-f"><div class="pergunta"><b>Conversou com ${primeiro}?</b>
+      <button type="button" class="btn" data-done="${t.id}">Sim, concluir <kbd>C</kbd></button><button type="button" class="b2" data-est="normal">Ainda não</button></div></div>`
+    : `<div class="ag-f">${acoes(t)}<button type="button" class="pular" data-pular>Pular por agora <kbd>S</kbd></button></div>`;
+  const prova = temProva
+    ? `<div class="prova">✓ Você respondeu às 11:32 pelo Stronizap<button type="button" class="btn" data-done="${t.id}">Concluir <kbd>C</kbd></button></div>` : '';
+  return `<section class="agora t-${t.tom} entra" aria-label="Agora: ${t.nome}">
+    <div class="ag-t"><span class="rot">Agora</span><span class="mot">${t.motivo}</span><span class="cat">${t.catTxt}</span>${t.colega ? `<span class="tagc">${t.colega}</span>` : ''}
+      ${pinned ? '<span class="esc">Você escolheu esta tarefa. <button type="button" data-unpin>Voltar à ordem sugerida</button></span>' : ''}</div>
+    <div class="corpo"><span class="foto">${avatar(t.nome, 64)}</span><div style="min-width:0">
+      <div class="hd"><h2 class="d">${t.nome}</h2><a href="#">Abrir ficha</a></div>
+      <p class="frase">${t.frase}</p>
+      ${t.quote ? `<p class="quote">${t.quote}</p>` : ''}
+      <div class="linha"><span>Contato <b class="num">${t.tel}</b></span>${t.fatos.map(([k, v]) => `<span>${k} <b>${v}</b></span>`).join('')}</div>
+      ${t.nota ? `<p class="nota"><span>Última anotação:</span> ${t.nota}</p>` : ''}
+    </div></div>
+    ${prova}${rodape}</section>`;
+}
+
+function agoraAtual(t) {
+  const isAppt = t.cat === 'visita' || t.cat === 'aula';
+  const btns = isAppt
+    ? '<button class="ea m">✓ Compareceu <kbd>C</kbd></button><button class="ea">✕ Não compareceu <kbd>N</kbd></button><button class="ea">Mais ▾</button>'
+    : `<button class="ea">${t.ligar ? '📞 Ligar <kbd>L</kbd>' : 'WhatsApp <kbd>W</kbd>'}</button><button class="ea m">✓ Concluir <kbd>C</kbd></button><button class="ea">Reagendar</button>`;
+  return `<article class="escuro t-${t.tom} entra" aria-label="Agora: ${t.nome}">
+    <div class="ag-t"><span class="mot">🕑 ${t.motivo}</span><span class="cat">${t.catTxt}</span></div>
+    <div class="e-h">${avatar(t.nome, 64)}<div><h2>${t.nome}</h2><p class="sub">${t.fatos[0][1]} · ${t.tel}</p></div></div>
+    ${t.nota ? `<p class="n2">${t.nota}</p>` : ''}
+    <div class="fx">${t.fatos.map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('')}</div>
+    <div class="e-f">${btns}<button class="pular" data-pular>Pular por agora <kbd>S</kbd></button></div></article>`;
+}
+
+function render() {
+  const fila = daFila();
+  if (!fila.find((t) => t.id === agoraId)) { agoraId = fila[0]?.id || null; pinned = false; }
+  const ag = T.find((t) => t.id === agoraId);
+  const resto = fila.filter((t) => t.id !== agoraId);
+  const mateus = T.find((t) => t.id === 'mateus');
+  const mostraFaixa = !faixaFora && ag && mateus && ag.id !== 'mateus' && fila.includes(mateus);
+  const total = T.length + feitos.length;
+  const pct = Math.round(feitos.length / total * 100);
+  document.getElementById('app').innerHTML = `
+    <div class="vers"><span>Bloco Agora:</span>
+      <button type="button" data-vis="novo" aria-pressed="${visual === 'novo'}">Visual do professor</button>
+      <button type="button" data-vis="atual" aria-pressed="${visual === 'atual'}">Visual de hoje</button>
+      <span class="sep"></span><span>Estado:</span>
+      <button type="button" data-est="normal" aria-pressed="${estado === 'normal'}">Normal</button>
+      <button type="button" data-est="pergunta" aria-pressed="${estado === 'pergunta'}">Volta do WhatsApp</button>
+      <button type="button" data-est="prova" aria-pressed="${estado === 'prova'}">Prova do Stronizap</button></div>
+    <header class="dia">
+      <div><h1 class="d">Bom dia, Ana</h1>
+      <p class="mut">Sexta-feira, 27 de novembro <span class="vivo"><i></i>Ao vivo</span></p></div>
+      <div class="dia-r">
+        <div class="prosp"><span class="l">⚡ <span class="num">12 de 20</span> ações de prospecção</span><span class="pb"><i style="width:60%"></i></span></div>
+        <span class="seq">🔥 <b class="num">6</b> dias seguidos</span>
+        <div class="prog"><b class="d num">${feitos.length} de ${total}</b><span class="mut">tarefas feitas, ${pct}%</span><span class="pb"><i style="width:${pct}%"></i></span></div>
+      </div></header>
+    <nav class="foco" role="tablist" aria-label="Foco em">${FOCOS.map(([id, l]) => {
+      const n = id === 'all' ? T.length : T.filter((t) => t.foco === id).length;
+      const top = T.find((t) => t.foco === id);
+      const dot = id !== 'all' && top && (top.tom === 'late' || top.tom === 'now') ? `<i class="dot t-${top.tom}"></i>` : '';
+      return n || foco === id ? `<button class="fe" role="tab" data-foco="${id}" aria-selected="${foco === id}">${dot}${l} <span class="n num">${n}</span></button>` : '';
+    }).join('')}</nav>
+    <div class="grid"><div>
+      ${mostraFaixa ? `<div class="faixa t-now">🕑 Mateus chega em 10 min<div class="acts"><button type="button" class="btn" data-ag="mateus">Ir agora</button><button type="button" class="b2" data-faixa>Agora não</button></div></div>` : ''}
+      ${ag ? (visual === 'novo' ? agoraNovo(ag) : agoraAtual(ag)) : '<section class="agora t-calm"><h2 class="d">Tudo feito por aqui</h2><p class="mut">Amanhã a Meta começa com 4 tarefas.</p></section>'}
+      ${resto.length ? `<section class="card dep"><div class="dep-h"><h3 class="d">Depois</h3><span class="mut num">${resto.length}</span></div>${resto.map((t) => `<button type="button" class="fl t-${t.tom}" data-ag="${t.id}"><i class="cor"></i>${avatar(t.nome, 30)}<span style="min-width:0"><b>${t.nome}</b><span class="s">${t.fila}</span></span><span class="h num">${t.h}</span></button>`).join('')}</section>` : ''}
+    </div>
+    <aside class="lat">
+      <section class="card"><div class="ag-h"><h3 class="d">Agenda de hoje</h3><span class="mut num">4 agendamentos</span></div>
+        <ol class="ag-l">
+          <li class="ag-i st-veio"><span class="ag-hr num">08:00</span><i class="ag-p"></i><span class="ag-nm"><a href="#">Cíntia Barros</a><span>Aula experimental, Pilates</span></span><span class="ag-e">Compareceu</span></li>
+          <li class="ag-i st-sem"><span class="ag-hr num">10:00</span><i class="ag-p"></i><span class="ag-nm"><a href="#">Rafael Souza</a><span>Aula experimental, Funcional</span></span><span class="mini"><button class="ok" aria-label="Compareceu">✓</button><button class="no" aria-label="Não compareceu">✕</button></span></li>
+          <li class="ag-i st-proxima"><span class="ag-hr num">11:50</span><i class="ag-p"></i><span class="ag-nm"><a href="#">Mateus Rocha</a><span>Visita, unidade Centro</span></span><button class="ag-e b">Marcar</button></li>
+          <li class="ag-i"><span class="ag-hr num">18:00</span><i class="ag-p"></i><span class="ag-nm"><a href="#">Juliana Costa</a><span>Visita, de Bruno</span></span><button class="ag-e b">Marcar</button></li>
+        </ol></section>
+      <section class="card"><div class="ag-h"><h3 class="d">Ritmo do mês</h3><span class="mut num">16 de 19 dias</span></div>
+        <div class="ritmo">${'bbbnbbbbbnbbbbnbbbbh'.split('').map((c) => `<i class="${c}"></i>`).join('')}${'ffff'.split('').map(() => '<i class="f"></i>').join('')}</div></section>
+      <section class="card"><div class="ag-h"><h3 class="d">Rotina de hoje</h3><span class="mut num">2 de 4</span></div>
+        <div class="rt ok"><i></i>Abrir a recepção<span class="hr">06:00</span></div>
+        <div class="rt ok"><i></i>Story da aula das 7h<span class="hr">07:30</span></div>
+        <div class="rt late"><i></i>Responder o Direct<span class="hr">atrasada</span></div>
+        <div class="rt"><i></i>Atualizar o Stronilead antes de sair<span class="hr">14:00</span></div></section>
+      <section class="card"><h3 class="d">Feitos hoje</h3>${feitos.map((n) => `<div class="feito">${avatar(n, 26)}<span>${n}</span><span class="r">Feito</span></div>`).join('')}</section>
+    </aside></div>`;
+}
+
+function trocar(id, escolha = true) { agoraId = id; pinned = escolha; estado = 'normal'; render(); }
+document.addEventListener('click', (e) => {
+  const v = e.target.closest('[data-vis]'); if (v) { visual = v.dataset.vis; render(); return; }
+  const s = e.target.closest('[data-est]'); if (s) { estado = s.dataset.est; render(); return; }
+  const f = e.target.closest('[data-foco]'); if (f) { foco = f.dataset.foco; pinned = false; agoraId = null; render(); return; }
+  const a = e.target.closest('[data-ag]'); if (a) { trocar(a.dataset.ag); return; }
+  if (e.target.closest('[data-faixa]')) { faixaFora = true; render(); return; }
+  if (e.target.closest('[data-unpin]')) { const fl = daFila(); if (fl[0]) trocar(fl[0].id, false); return; }
+  if (e.target.closest('[data-pular]')) { const fl = daFila(); const i = fl.findIndex((x) => x.id === agoraId); trocar(fl[(i + 1) % fl.length].id); return; }
+  const d = e.target.closest('[data-done]');
+  if (d) { const i = T.findIndex((x) => x.id === d.dataset.done); feitos = [T[i].nome, ...feitos]; T.splice(i, 1); agoraId = null; pinned = false; estado = 'normal'; render(); }
+});
+render();
+</script></body></html>
