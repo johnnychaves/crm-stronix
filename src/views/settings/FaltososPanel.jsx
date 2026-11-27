@@ -27,7 +27,8 @@ const ImportarPlanilhasDialog = lazy(() => import('../faltosos/importacao/Import
 
 // Os alunos faltando que a importação deixou sem professor (professorId null),
 // com o nome lido do lead, em lotes de 30. Uma leitura na abertura do bloco.
-function useSemProfessor({ db, enabled }) {
+// releitura: muda a cada importação (o bloco importa sem sair da tela).
+function useSemProfessor({ db, enabled, releitura }) {
   const [nomes, setNomes] = useState([]);
   useEffect(() => {
     if (!db || !enabled) return undefined;
@@ -44,7 +45,7 @@ function useSemProfessor({ db, enabled }) {
       if (vivo) setNomes(lidos.sort((a, b) => a.localeCompare(b, 'pt-BR')));
     })().catch(() => {});
     return () => { vivo = false; };
-  }, [db, enabled]);
+  }, [db, enabled, releitura]);
   return nomes;
 }
 
@@ -87,7 +88,7 @@ export function FaltososPanel({ db, appUser }) {
   const [hojeDia] = useState(() => hojeEmBrasilia());
   const visivel = importaFaltosos(appUser) && pronta && !erro;
   const registro = useRegistroDaImportacao({ db, id: visivel ? ultimaImportacao?.id : null });
-  const semProfessor = useSemProfessor({ db, enabled: visivel });
+  const semProfessor = useSemProfessor({ db, enabled: visivel, releitura: ultimaImportacao?.id ?? null });
   const naoAchados = registro?.naoLigados || [];
 
   if (!importaFaltosos(appUser) || !pronta) return null;
