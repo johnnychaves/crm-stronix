@@ -50,8 +50,13 @@ const MODULOS = [
   'src/lib/faltosos/planoImportacao.js',
 ];
 
+// Puros que o plano da importação não alcança (a Meta do professor).
+const MODULOS_DA_META = [
+  'src/lib/faltosos/metaProfessor.js',
+];
+
 describe('o motor dos faltosos é puro', () => {
-  it.each(MODULOS)('%s não chega a pacote, ao Firebase nem a tela', (modulo) => {
+  it.each([...MODULOS, ...MODULOS_DA_META])('%s não chega a pacote, ao Firebase nem a tela', (modulo) => {
     const { arquivos, pacotes } = grafoDe(doRepo(modulo));
     expect(pacotes).toEqual([]);
     expect(arquivos.filter((f) => PROIBIDOS.includes(f) || f.endsWith('.jsx') || f.endsWith('gravarImportacao.js'))).toEqual([]);
