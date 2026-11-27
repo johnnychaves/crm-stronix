@@ -107,8 +107,11 @@ export const SCREENS = Object.freeze({
   // As telas de Professores só existem com o módulo da STRONIX (modulo, lido
   // no canAccess). O perfil não tem a trava de gestor porque o professor abre
   // o dele: quem não é professor precisa ser gestor (canAccess).
-  professores: tela(['professores'], 'Professores', { gestor: true, modulo: MODULES.FALTOSOS, subs: PROFESSORES_SUBS, subPadrao: 'lista' }),
-  professorPerfil: tela(['professores', 'perfil'], 'Perfil do professor', { modulo: MODULES.FALTOSOS, subs: PERFIL_TABS, subPadrao: 'carteira' }),
+  // O menu Carreira (plano de carreira, PR 3). Os ids continuam os de antes
+  // (professores e professorPerfil) e só os endereços mudaram; o readScreen lê
+  // /professores e o accessRedirect leva ao endereço novo (antigo).
+  professores: tela(['carreira'], 'Carreira', { gestor: true, modulo: MODULES.FALTOSOS, subs: PROFESSORES_SUBS, subPadrao: 'lista' }),
+  professorPerfil: tela(['carreira', 'professor'], 'Carreira', { modulo: MODULES.FALTOSOS, subs: PERFIL_TABS, subPadrao: 'carteira' }),
   leads: tela(['leads'], 'Leads'),
   aulas: tela(['leads', 'aulas'], 'Aulas'),
   visitas: tela(['leads', 'visitas'], 'Visitas'),
@@ -205,9 +208,14 @@ function readScreen(segs, out) {
     readSub('ficha', out.rest, out);
     return;
   }
-  if (head === 'professores') {
-    // O perfil leva o id do professor (cru, como o da ficha) e a aba.
-    if (lower(segs[1]) === 'perfil') {
+  if (head === 'carreira' || head === 'professores') {
+    // /carreira e /carreira/professor/<id>/<aba>. O endereço de antes
+    // (/professores e /professores/perfil/<id>) é lido igual, com `antigo`, e
+    // o accessRedirect o leva ao novo.
+    const antigo = head === 'professores';
+    if (antigo) out.antigo = true;
+    // O perfil leva o id da pessoa (cru, como o da ficha) e a aba.
+    if (lower(segs[1]) === (antigo ? 'perfil' : 'professor')) {
       out.screen = 'professorPerfil';
       out.profId = isValidLeadId(segs[2]) ? segs[2] : null;
       out.rest = segs.slice(3);
@@ -216,7 +224,7 @@ function readScreen(segs, out) {
     }
     out.screen = 'professores';
     out.rest = segs.slice(1);
-    if (out.rest.length === 1 && lower(out.rest[0]) === 'metas') {
+    if (antigo && out.rest.length === 1 && lower(out.rest[0]) === 'metas') {
       out.metasAntigas = true;
       return;
     }
@@ -358,7 +366,7 @@ export function hrefFor(tenantId, screen, opts = {}) {
   }
   if (screen === 'professorPerfil') {
     const id = isValidLeadId(profId) ? encode(profId) : null;
-    return id === null ? null : `${base}/professores/perfil/${id}${trecho}`;
+    return id === null ? null : `${base}/carreira/professor/${id}${trecho}`;
   }
   if (screen === 'settings' && sub === 'carreira') {
     // Id que não serve cai na lista das trilhas, como o modelo de rotina.
@@ -468,6 +476,11 @@ function accessRedirect(route, appUser, home, { tenantId = null, search = '' } =
     const dele = hrefFor(tenantId, 'professorPerfil', { profId: appUser.professorId, sub: route.sub });
     if (!dele) return redirectTo(home, { notice: 'nao-liberada' });
     if (route.profId !== appUser.professorId) return redirectTo(dele, { search, notice: 'nao-liberada' });
+  }
+  // O endereço de antes do menu Carreira leva ao novo, com a query, sem aviso.
+  if (route.antigo) {
+    const novo = hrefFor(tenantId, route.screen, { profId: route.profId, sub: route.sub });
+    if (novo) return redirectTo(novo, { search });
   }
   if (route.unknown) {
     return redirectTo(home, { notice: homeScreenFor(appUser) === HOME_SCREEN ? 'nao-encontrada' : 'nao-encontrada-meta' });
