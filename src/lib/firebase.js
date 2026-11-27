@@ -156,6 +156,9 @@ export const UNITS_PATH = 'stronix_units';
 // Catálogo de professores da academia (nome + modalidades em que atua). Não são
 // usuários do sistema (sem login/authUid) e não entram no limite de assentos.
 export const PROFESSORS_PATH = 'stronix_professores';
+// Ficha da equipe (spec docs/superpowers/specs/2026-11-26-cadastro-da-equipe-design.md):
+// CPF, endereço, vínculo e movimentações de cada pessoa. Só o gestor lê e grava.
+export const EQUIPE_PATH = 'stronix_equipe';
 // Catálogo de planos/serviços que a academia oferece (escolhidos na
 // matrícula). 1 doc por plano.
 export const PLANS_PATH = 'stronix_planos';

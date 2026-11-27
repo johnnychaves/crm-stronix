@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import { fromDateInputValue, toDateInputValue } from '../../lib/dates.js';
 import { LeadLink } from '../../components/nav/AppLink.jsx';
 import { Avatar } from '../../components/ui/Avatar.jsx';
+import { pedacoTexto } from './criterios.js';
 
 // A aba Aderência do perfil (mockup B do perfil): a nota do ano com cada
 // semestre e, embaixo, as semanas agrupadas por semestre, da mais nova para a
@@ -17,14 +18,6 @@ const sextaDe = (iso) => {
   const d = fromDateInputValue(iso);
   return ddmm(toDateInputValue(new Date(d.getFullYear(), d.getMonth(), d.getDate() + 4)));
 };
-// O semestre da semana pela segunda-feira: janeiro a junho, julho a novembro,
-// e o dezembro que abre o ciclo, que fica fora da conta.
-const grupoDe = (iso) => {
-  const m = Number(iso.slice(5, 7));
-  return m <= 6 ? 0 : m <= 11 ? 1 : 2;
-};
-const GRUPOS = ['1º semestre, janeiro a junho', '2º semestre, julho a novembro', 'Dezembro, fora da conta'];
-
 function SeloDaFaixa({ taxa, min, max }) {
   if (taxa == null) return null;
   if (taxa < min) return <span className={cn(FLAG, 'bg-amber-50 text-amber-800 dark:bg-amber-400/15 dark:text-amber-200')}>Abaixo da meta</span>;
@@ -51,9 +44,11 @@ function Pessoas({ titulo, ids, leadsById }) {
   );
 }
 
-export function AderenciaTab({ linhas, resumo, metas, leadsById, professorLogado, primeiroNome }) {
+export function AderenciaTab({ linhas, resumo, barra, meta, faixaMax, semestral = false, leadsById, professorLogado, primeiroNome }) {
   const [aberta, setAberta] = useState(null);
-  const { barra, faixaMin, faixaMax } = metas.aderencia;
+  // A meta é a do nível de agora; sem nível ou com a meta em branco, a aba
+  // não mostra meta.
+  const faixaMin = meta;
 
   if (!linhas.length) {
     return (
@@ -65,27 +60,36 @@ export function AderenciaTab({ linhas, resumo, metas, leadsById, professorLogado
   }
 
   const fechados = resumo.semestres.filter((s) => s.fechado && s.taxa != null).length;
-  // Do mais novo para o mais antigo, como as semanas: julho a novembro, janeiro
-  // a junho e o dezembro que abre o ciclo.
-  const grupos = [1, 0, 2].map((g) => ({ g, ls: linhas.filter((l) => grupoDe(l.semana) === g) })).filter((x) => x.ls.length);
+  // No semestral com o período aberto, o número é a taxa até agora, como no placar.
+  const numero = semestral && resumo.nota == null ? resumo.taxa : resumo.nota;
+  const andamento = semestral && resumo.nota == null && resumo.emAndamento;
+  // Um grupo por pedaço do período, do mais novo para o mais antigo, e no fim
+  // as semanas fora de qualquer pedaço (o dezembro), que não entram na conta.
+  const noPedaco = (l, p) => { const d = fromDateInputValue(l.semana); return d >= p.inicio && d < p.fim; };
+  const grupos = [...resumo.semestres].reverse().map((p) => ({ g: pedacoTexto(p), ls: linhas.filter((l) => noPedaco(l, p)) }));
+  grupos.push({ g: 'Fora da conta, dezembro', ls: linhas.filter((l) => !resumo.semestres.some((p) => noPedaco(l, p))) });
+  const gruposComSemana = grupos.filter((x) => x.ls.length);
   const somaDoGrupo = (ls) => ls.reduce((a, l) => ({ contam: a.contam + l.contam, aderentes: a.aderentes + l.aderentes, uma: a.uma + l.umaPresenca, zero: a.zero + l.nenhuma }), { contam: 0, aderentes: 0, uma: 0, zero: 0 });
 
   return (
     <div className="flex flex-col gap-4">
-      <section aria-label="Aderência do ano" className={cn(CARD, 'grid gap-4 px-5 py-[18px] md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] md:items-center md:px-[22px]')}>
+      <section aria-label={semestral ? 'Aderência do período' : 'Aderência do ano'} className={cn(CARD, 'grid gap-4 px-5 py-[18px] md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] md:items-center md:px-[22px]')}>
         <div>
-          <div className="flex flex-wrap items-center gap-2 text-[13px] font-semibold text-muted-foreground">Aderência do ano <SeloDaFaixa taxa={resumo.nota} min={faixaMin} max={faixaMax} /></div>
-          <div className={cn('num mb-1.5 mt-2 font-display text-[44px] font-bold leading-none tracking-[-0.03em]', resumo.nota == null && 'text-[28px] text-muted-foreground')}>
-            {resumo.nota == null ? 'Sem semestre fechado' : `${resumo.nota}%`}
+          <div className="flex flex-wrap items-center gap-2 text-[13px] font-semibold text-muted-foreground">{semestral ? 'Aderência do período' : 'Aderência do ano'} {faixaMin != null && <SeloDaFaixa taxa={numero} min={faixaMin} max={faixaMax} />}</div>
+          <div className={cn('num mb-1.5 mt-2 font-display text-[44px] font-bold leading-none tracking-[-0.03em]', numero == null && 'text-[28px] text-muted-foreground')}>
+            {numero == null ? (semestral ? 'Sem dados no período' : 'Sem semestre fechado') : `${numero}%`}
+            {andamento && <span className="ml-2 align-middle font-sans text-[13px] font-semibold tracking-normal text-muted-foreground">em andamento</span>}
           </div>
           <p className="m-0 text-[13px] text-muted-foreground">
-            {fechados === 2 ? 'Média dos dois semestres.' : fechados === 1 ? 'Só um semestre fechou, então a nota do ano é a dele.' : 'A nota do ano sai quando o primeiro semestre fechar.'} Dezembro fica fora. Meta: {faixaMin}% a {faixaMax}%, a mesma para os três níveis.
+            {semestral
+              ? (resumo.nota == null ? 'A nota sai quando o período fechar.' : 'Soma das semanas do período.')
+              : fechados === 2 ? 'Média dos dois semestres.' : fechados === 1 ? 'Só um semestre fechou, então a nota do ano é a dele.' : 'A nota do ano sai quando o primeiro semestre fechar.'} Dezembro fica fora.{faixaMin != null && ` Meta: ${faixaMin}% a ${faixaMax}%, do nível de agora.`}
           </p>
         </div>
         <ul className="m-0 flex list-none flex-col gap-2 p-0">
           {resumo.semestres.map((s, i) => (
             <li key={i} className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-3 rounded-xl bg-muted/60 px-3.5 py-2.5">
-              <span className="text-[13.5px] font-semibold">{GRUPOS[i]}{!s.fechado && s.taxa != null ? ', em andamento' : ''}</span>
+              <span className="text-[13.5px] font-semibold">{pedacoTexto(s)}{!s.fechado && s.taxa != null ? ', em andamento' : ''}</span>
               <b className="num font-display text-[18px]">{s.taxa == null ? '–' : `${s.taxa}%`}</b>
               <small className="num col-span-2 text-[12px] text-muted-foreground">{s.aderentes} de {s.contam} aluno-semanas</small>
             </li>
@@ -101,15 +105,15 @@ export function AderenciaTab({ linhas, resumo, metas, leadsById, professorLogado
               A semana do aluno vai de segunda a sexta e conta como aderente com {barra} ou mais aulas de funcional. Ficam fora a semana de trancamento e a primeira semana do contrato.
             </p>
           </div>
-          <p className="m-0 inline-flex items-center gap-2 text-[13px] text-muted-foreground"><span aria-hidden="true" className="inline-block h-2.5 w-4 rounded-[3px] bg-emerald-400/40" />Meta: {faixaMin}% a {faixaMax}%</p>
+          {faixaMin != null && <p className="m-0 inline-flex items-center gap-2 text-[13px] text-muted-foreground"><span aria-hidden="true" className="inline-block h-2.5 w-4 rounded-[3px] bg-emerald-400/40" />Meta: {faixaMin}% a {faixaMax}%</p>}
         </div>
-        {grupos.map(({ g, ls }) => {
+        {gruposComSemana.map(({ g, ls }) => {
           const t = somaDoGrupo(ls);
           const taxa = t.contam ? Math.round((t.aderentes / t.contam) * 100) : null;
           return (
             <div key={g}>
               <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-y border-border bg-muted/40 px-5 py-3 text-[13px] md:px-[22px]">
-                <b className="text-[14.5px]">{GRUPOS[g]}</b>
+                <b className="text-[14.5px]">{g}</b>
                 <span className="num text-muted-foreground">{taxa == null ? '' : `${taxa}% aderentes, ${t.aderentes} de ${t.contam} aluno-semanas. `}{t.uma} com 1 presença e {t.zero} sem nenhuma.</span>
               </div>
               <ul className="m-0 list-none p-0">
@@ -120,8 +124,8 @@ export function AderenciaTab({ linhas, resumo, metas, leadsById, professorLogado
                       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-5 py-3 md:grid-cols-[150px_110px_minmax(120px,1fr)_120px_120px_auto] md:px-[22px]">
                         <span className="num font-semibold">{ddmm(l.semana)} a {sextaDe(l.semana)}</span>
                         <span className="num text-right md:text-left"><b className="font-display text-[17px]">{l.taxa == null ? '–' : `${l.taxa}%`}</b> <small className="text-[12px] text-muted-foreground">{l.aderentes} de {l.contam}</small></span>
-                        <span role="img" aria-label={`${l.taxa ?? 0}%, meta de ${faixaMin}% a ${faixaMax}%`} className="relative col-span-2 h-2 rounded-full bg-muted md:col-span-1">
-                          <span className="absolute inset-y-0 rounded-sm bg-emerald-400/35" style={{ left: `${faixaMin}%`, right: `${100 - faixaMax}%` }} />
+                        <span role="img" aria-label={faixaMin != null ? `${l.taxa ?? 0}%, meta de ${faixaMin}% a ${faixaMax}%` : `${l.taxa ?? 0}%`} className="relative col-span-2 h-2 rounded-full bg-muted md:col-span-1">
+                          {faixaMin != null && <span className="absolute inset-y-0 rounded-sm bg-emerald-400/35" style={{ left: `${faixaMin}%`, right: `${100 - faixaMax}%` }} />}
                           <i className="relative block h-full rounded-full bg-brand-600" style={{ width: `${Math.min(100, l.taxa ?? 0)}%` }} />
                         </span>
                         <span className="num text-[13px]"><b>{l.umaPresenca}</b> com 1 presença</span>

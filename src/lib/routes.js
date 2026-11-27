@@ -24,6 +24,11 @@ export const HOME_SCREEN = 'dashboard';
 
 const tela = (segs, title, trava = {}) => Object.freeze({ segs: Object.freeze(segs), title, ...trava });
 
+// Abas da ficha da equipe (/configuracoes/equipe/<id>/<aba>). Dados é o
+// padrão e não vai para o endereço.
+export const PESSOA_ABAS = Object.freeze({ dados: '', movimentacoes: 'movimentacoes', acesso: 'acesso' });
+const PESSOA_ABA_BY_SEGMENT = Object.freeze({ movimentacoes: 'movimentacoes', acesso: 'acesso' });
+
 // Sub-telas: id interno para o segmento em português. Molde da subaba do
 // super-admin (SUPER_TABS, abaixo). Elas NÃO entram na screenKey nem no molde
 // do Sentry: trocar de seção ou de aba não pode remontar a tela.
@@ -73,7 +78,7 @@ export const PROFESSORES_SUBS = Object.freeze({
   lista: 'lista',
   pesquisas: 'pesquisas',
 });
-// Abas do perfil do professor, em /professores/perfil/<id>/<aba>, lido à parte
+// Abas do perfil do professor, em /carreira/professor/<id>/<aba>, lido à parte
 // em readScreen. O PR 4 acrescenta a NPS e o PR 6 a Aderência.
 export const PERFIL_TABS = Object.freeze({
   carteira: 'carteira',
@@ -107,8 +112,11 @@ export const SCREENS = Object.freeze({
   // As telas de Professores só existem com o módulo da STRONIX (modulo, lido
   // no canAccess). O perfil não tem a trava de gestor porque o professor abre
   // o dele: quem não é professor precisa ser gestor (canAccess).
-  professores: tela(['professores'], 'Professores', { gestor: true, modulo: MODULES.FALTOSOS, subs: PROFESSORES_SUBS, subPadrao: 'lista' }),
-  professorPerfil: tela(['professores', 'perfil'], 'Perfil do professor', { modulo: MODULES.FALTOSOS, subs: PERFIL_TABS, subPadrao: 'carteira' }),
+  // O menu Carreira (plano de carreira, PR 3). Os ids continuam os de antes
+  // (professores e professorPerfil) e só os endereços mudaram; o readScreen lê
+  // /professores e o accessRedirect leva ao endereço novo (antigo).
+  professores: tela(['carreira'], 'Carreira', { gestor: true, modulo: MODULES.FALTOSOS, subs: PROFESSORES_SUBS, subPadrao: 'lista' }),
+  professorPerfil: tela(['carreira', 'professor'], 'Carreira', { modulo: MODULES.FALTOSOS, subs: PERFIL_TABS, subPadrao: 'carteira' }),
   leads: tela(['leads'], 'Leads'),
   aulas: tela(['leads', 'aulas'], 'Aulas'),
   visitas: tela(['leads', 'visitas'], 'Visitas'),
@@ -205,9 +213,14 @@ function readScreen(segs, out) {
     readSub('ficha', out.rest, out);
     return;
   }
-  if (head === 'professores') {
-    // O perfil leva o id do professor (cru, como o da ficha) e a aba.
-    if (lower(segs[1]) === 'perfil') {
+  if (head === 'carreira' || head === 'professores') {
+    // /carreira e /carreira/professor/<id>/<aba>. O endereço de antes
+    // (/professores e /professores/perfil/<id>) é lido igual, com `antigo`, e
+    // o accessRedirect o leva ao novo.
+    const antigo = head === 'professores';
+    if (antigo) out.antigo = true;
+    // O perfil leva o id da pessoa (cru, como o da ficha) e a aba.
+    if (lower(segs[1]) === (antigo ? 'perfil' : 'professor')) {
       out.screen = 'professorPerfil';
       out.profId = isValidLeadId(segs[2]) ? segs[2] : null;
       out.rest = segs.slice(3);
@@ -216,7 +229,7 @@ function readScreen(segs, out) {
     }
     out.screen = 'professores';
     out.rest = segs.slice(1);
-    if (out.rest.length === 1 && lower(out.rest[0]) === 'metas') {
+    if (antigo && out.rest.length === 1 && lower(out.rest[0]) === 'metas') {
       out.metasAntigas = true;
       return;
     }
@@ -232,6 +245,22 @@ function readScreen(segs, out) {
       return;
     }
     readSub('rotinas', out.rest, out);
+    return;
+  }
+  if (head === 'configuracoes' && lower(segs[1]) === SETTINGS_SECTIONS.team && segs.length >= 3) {
+    // A ficha da equipe é sub-tela das Configurações, como o modelo de rotina:
+    // a tela continua 'settings', então o SettingsView não remonta (ele lê a
+    // base de leads ao montar). Id inválido ou aba desconhecida abre a lista.
+    out.screen = 'settings';
+    out.rest = segs.slice(1);
+    const aba = segs.length === 3 ? 'dados' : (segs.length === 4 ? PESSOA_ABA_BY_SEGMENT[lower(segs[3])] ?? null : null);
+    if (isValidLeadId(segs[2]) && aba) {
+      out.sub = 'team';
+      out.pessoaId = segs[2];
+      out.pessoaAba = aba;
+    } else {
+      out.subUnknown = true;
+    }
     return;
   }
   if (head === 'super-admin') {
@@ -283,7 +312,8 @@ function readScreen(segs, out) {
 
 // parseAppPath('/stronix-crm-app/ficha/AbC') →
 //   { pathname, tenantSlug, screen, leadId, superTab, rest, unknown }
-//   (mais `modelId`, só quando existe: /rotinas/modelos/<id>)
+//   (mais `modelId`, só quando existe: /rotinas/modelos/<id>, e `pessoaId` e
+//   `pessoaAba`, só na ficha da equipe: /configuracoes/equipe/<id>[/<aba>])
 // - trilhaId e trilhaAba: a trilha aberta do plano de carreira
 //   (/configuracoes/carreira/<id>, aba 'metas', ou /<id>/regras, aba
 //   'regras'), com sub 'carreira'. Como o modelId, só existem quando o id passa
@@ -298,6 +328,8 @@ function readScreen(segs, out) {
 //   o endereço traz um segmento a mais que a tabela da tela conhece. Segmento
 //   desconhecido não é endereço desconhecido: vira subUnknown e a decisão de
 //   rota abre a tela-mãe com replace, sem aviso;
+// - antigo: o endereço é /professores (de antes do menu Carreira) e leva ao
+//   /carreira, com a query.
 // - modelId: o id do modelo de rotina aberto (/rotinas/modelos/<id>), com sub
 //   'modelos'. Só existe quando o id passa no isValidLeadId e não vem segmento
 //   depois dele; senão a chave nem aparece e a tela abre a lista (subUnknown).
@@ -339,7 +371,7 @@ const encode = (s) => {
 // montar (sem academia, ficha sem id válido): quem chama não navega. Tela
 // desconhecida vira a inicial.
 export function hrefFor(tenantId, screen, opts = {}) {
-  const { leadId, superTab, sub, modelId, profId, trilhaId, trilhaAba } = opts || {};
+  const { leadId, superTab, sub, modelId, profId, pessoaId, pessoaAba, trilhaId, trilhaAba } = opts || {};
   if (typeof tenantId !== 'string' || tenantId === '') return null;
   const t = encode(tenantId);
   if (t === null) return null;
@@ -358,7 +390,7 @@ export function hrefFor(tenantId, screen, opts = {}) {
   }
   if (screen === 'professorPerfil') {
     const id = isValidLeadId(profId) ? encode(profId) : null;
-    return id === null ? null : `${base}/professores/perfil/${id}${trecho}`;
+    return id === null ? null : `${base}/carreira/professor/${id}${trecho}`;
   }
   if (screen === 'settings' && sub === 'carreira') {
     // Id que não serve cai na lista das trilhas, como o modelo de rotina.
@@ -370,6 +402,13 @@ export function hrefFor(tenantId, screen, opts = {}) {
     // um emoji) cai na lista, nunca em /rotinas/modelos/null.
     const mid = isValidLeadId(modelId) ? encode(modelId) : null;
     if (mid !== null) return `${base}/rotinas/modelos/${mid}`;
+  }
+  if (screen === 'settings' && sub === 'team') {
+    const pid = isValidLeadId(pessoaId) ? encode(pessoaId) : null;
+    if (pid !== null) {
+      const aba = own(PESSOA_ABAS, pessoaAba) && PESSOA_ABAS[pessoaAba] ? `/${PESSOA_ABAS[pessoaAba]}` : '';
+      return `${base}/configuracoes/${SETTINGS_SECTIONS.team}/${pid}${aba}`;
+    }
   }
   return `${base}/${SCREENS[screen].segs.join('/')}${trecho}`;
 }
@@ -424,7 +463,7 @@ function redirectTo(path, { search = '', notice = null } = {}) {
   const r = parseAppPath(path);
   // O `sub` vai no alvo junto com a tela: sem ele, a correção de academia
   // desenharia a seção padrão por um render antes de saltar para a certa.
-  return { kind: 'redirect', to: path + search, target: { screen: r.screen, leadId: r.leadId, superTab: r.superTab, sub: r.sub, ...(r.modelId ? { modelId: r.modelId } : {}), ...(r.profId ? { profId: r.profId } : {}), ...(r.trilhaId ? { trilhaId: r.trilhaId, trilhaAba: r.trilhaAba } : {}) }, notice };
+  return { kind: 'redirect', to: path + search, target: { screen: r.screen, leadId: r.leadId, superTab: r.superTab, sub: r.sub, ...(r.modelId ? { modelId: r.modelId } : {}), ...(r.profId ? { profId: r.profId } : {}), ...(r.pessoaId ? { pessoaId: r.pessoaId, pessoaAba: r.pessoaAba } : {}), ...(r.trilhaId ? { trilhaId: r.trilhaId, trilhaAba: r.trilhaAba } : {}) }, notice };
 }
 
 const joinPath = (base, raw) => (raw.length ? `${base}/${raw.join('/')}` : base);
@@ -469,6 +508,13 @@ function accessRedirect(route, appUser, home, { tenantId = null, search = '' } =
     if (!dele) return redirectTo(home, { notice: 'nao-liberada' });
     if (route.profId !== appUser.professorId) return redirectTo(dele, { search, notice: 'nao-liberada' });
   }
+  // O endereço de antes do menu Carreira leva ao novo, com a query, sem aviso.
+  if (route.antigo) {
+    // Perfil sem id que serve (/professores/perfil) vai para a lista.
+    const novo = hrefFor(tenantId, route.screen, { profId: route.profId, sub: route.sub })
+      ?? hrefFor(tenantId, 'professores');
+    if (novo) return redirectTo(novo, { search });
+  }
   if (route.unknown) {
     return redirectTo(home, { notice: homeScreenFor(appUser) === HOME_SCREEN ? 'nao-encontrada' : 'nao-encontrada-meta' });
   }
@@ -476,7 +522,9 @@ function accessRedirect(route, appUser, home, { tenantId = null, search = '' } =
   // Erro de digitação na seção não pode punir com perda de contexto, e o aviso
   // de "não achamos essa tela" continua só para endereço de tela.
   if (route.subUnknown) {
-    const mae = hrefFor(tenantId, route.screen, { leadId: route.leadId });
+    // Aba desconhecida da ficha da equipe cai na lista da equipe, não nas Configurações.
+    const naEquipe = route.screen === 'settings' && lower(route.rest[0]) === SETTINGS_SECTIONS.team;
+    const mae = hrefFor(tenantId, route.screen, { leadId: route.leadId, ...(naEquipe ? { sub: 'team' } : {}) });
     if (mae) return redirectTo(mae, { search });
   }
   return null;
@@ -515,6 +563,8 @@ function sessionPathFor(route, tenantId, base, home) {
   const keepsScreen = route.screen && route.screen !== 'ficha' && route.screen !== 'superadmin';
   if (!keepsScreen) return home;
   if (route.modelId) return joinPath(base, SCREENS[route.screen].segs);
+  // A ficha da equipe também é dado de lá: cai na lista da equipe da sessão.
+  if (route.pessoaId) return joinPath(base, ['configuracoes', SETTINGS_SECTIONS.team]);
   // A trilha de carreira também é dado de lá: cai na lista das trilhas.
   if (route.trilhaId) return joinPath(base, [...SCREENS.settings.segs, SETTINGS_SECTIONS.carreira]);
   // O perfil é de um professor da outra academia: cai na lista da sessão.

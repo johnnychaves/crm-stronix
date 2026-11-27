@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { normalizeContracts } from '../operacional/base.js';
-import { aderenciaDoAno, aderenciaDoSemestre, aderenciaPorSemana, aderenciaResumo, presencasPorSemana } from '../professor/aderencia.js';
-import { semestresDoCiclo } from '../professor/ciclo.js';
+import { aderenciaDoAno, aderenciaDoSemestre, aderenciaPorSemana, aderenciaResumo, aderenciaSomada, presencasPorSemana } from '../professor/aderencia.js';
+import { pecasDaAderencia } from '../carreira/periodo.js';
+
+const semestresDoCiclo = (ciclo) => pecasDaAderencia({ inicio: new Date(ciclo - 1, 11, 1), fim: new Date(ciclo, 11, 1) });
 
 const PROF = { id: 'p1', modalidadeIds: ['func'] };
 const PLANOS = [{ id: 'move', modalityIds: ['func'] }, { id: 'start', modalityIds: ['musc'] }];
@@ -195,5 +197,33 @@ describe('presencasPorSemana (os documentos por mês da importação da Next Fit
       professor: PROF, asOf: new Date('2027-02-01T12:00:00'),
     });
     expect(linha).toMatchObject({ semana: '2027-01-18', contam: 1, aderentes: 1 });
+  });
+});
+
+describe('aderência somada (semestral)', () => {
+  // Semestral de junho e dezembro, 2º período: junho (um pedaço) e julho a novembro (outro).
+  const pecas = pecasDaAderencia({ inicio: new Date(2027, 5, 1), fim: new Date(2027, 11, 1) });
+  const linhas = [
+    { semana: '2027-06-07', contam: 10, aderentes: 2 },
+    { semana: '2027-07-05', contam: 40, aderentes: 32 },
+  ];
+
+  it('soma as semanas dos pedaços, sem tirar a média deles', () => {
+    expect(pecas).toHaveLength(2);
+    const r = aderenciaSomada(linhas, pecas, new Date(2027, 11, 5));
+    expect(r.taxa).toBe(68); // 34 de 50; a média dos pedaços daria 50
+    expect(r.nota).toBe(68);
+    expect(r.emAndamento).toBe(false);
+  });
+
+  it('com o período aberto, a taxa até agora e sem nota', () => {
+    const r = aderenciaSomada(linhas, pecas, new Date(2027, 7, 1));
+    expect(r.taxa).toBe(68);
+    expect(r.nota).toBeNull();
+    expect(r.emAndamento).toBe(true);
+  });
+
+  it('sem semana, nada', () => {
+    expect(aderenciaSomada([], pecas, new Date(2027, 11, 5))).toMatchObject({ taxa: null, nota: null, emAndamento: false });
   });
 });

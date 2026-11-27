@@ -46,6 +46,8 @@ export function screenState(shown, locationState, appUser) {
     sub: def?.subs ? (shown.sub ?? def.subPadrao) : null,
     modelId: shown?.screen === 'rotinas' ? (shown.modelId ?? null) : null,
     profId: shown?.screen === 'professorPerfil' ? (shown.profId ?? null) : null,
+    pessoaId: shown?.screen === 'settings' ? (shown.pessoaId ?? null) : null,
+    pessoaAba: shown?.screen === 'settings' ? (shown.pessoaAba ?? null) : null,
     // A trilha aberta do plano de carreira e a aba dela (Configurações).
     trilhaId: shown?.screen === 'settings' ? (shown.trilhaId ?? null) : null,
     trilhaAba: shown?.screen === 'settings' && shown.trilhaId ? (shown.trilhaAba ?? 'metas') : null,

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { APPTS_COMPLETE_MONTH as DO_CRM } from '../crm/scope.js';
 import { APPTS_COMPLETE_MONTH, conversaoDoCiclo, pessoasDasAulas } from '../professor/conversao.js';
-import { limitesDoCiclo } from '../professor/ciclo.js';
+const limitesDoCiclo = (ciclo) => ({ inicio: new Date(ciclo - 1, 11, 1), fim: new Date(ciclo, 11, 1) });
 
 const ASOF = new Date('2027-06-15T12:00:00');
 let seq = 0;

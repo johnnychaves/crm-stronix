@@ -567,6 +567,11 @@ const ID = 'Ab12Cd34Ef56Gh78Ij90';
 const FICHA = `/stronix-crm-app/ficha/${ID}`;
 
 describe('scrubLeadPath', () => {
+  it('troca o id da ficha da equipe', () => {
+    expect(scrubLeadPath('/stronix-crm-app/configuracoes/equipe/u-123/acesso'))
+      .toBe('/stronix-crm-app/configuracoes/equipe/:pessoaId/acesso');
+  });
+
   it('troca o id da ficha pela marca :leadId e mantém o resto', () => {
     expect(scrubLeadPath(`https://stronilead.com.br${FICHA}?x=1`))
       .toBe('https://stronilead.com.br/stronix-crm-app/ficha/:leadId?x=1');

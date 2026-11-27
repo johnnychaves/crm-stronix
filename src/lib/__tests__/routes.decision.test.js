@@ -507,3 +507,40 @@ describe('Rotinas na decisão de rota', () => {
     expect(documentTitle({ screen: 'rotinas', tenantName: 'STRONIX' })).toBe('Rotinas · STRONIX · STRONILEAD');
   });
 });
+
+describe('ficha da equipe na decisão de rota', () => {
+  const professor = { id: 'u7', role: 'professor', tenantId: T, professorId: 'p1', tenantModules: ['faltosos'] };
+
+  it('o gestor abre a ficha e a aba de primeira', () => {
+    expect(decide(`/${T}/configuracoes/equipe/u-1`, admin)).toEqual({ kind: 'ok' });
+    expect(decide(`/${T}/configuracoes/equipe/u-1/acesso`, admin)).toEqual({ kind: 'ok' });
+  });
+
+  it('consultor e professor são barrados, como nas outras telas de gestor', () => {
+    expect(decide(`/${T}/configuracoes/equipe/u-1`, consultor)).toEqual(casa(`/${T}`, { screen: 'dashboard' }, 'so-gestor'));
+    const r = decide(`/${T}/configuracoes/equipe/u-1`, professor);
+    expect(r.kind).toBe('redirect');
+    expect(r.notice).toBe('nao-liberada');
+    expect(r.target.screen).not.toBe('settings');
+  });
+
+  it('o endereço sem academia leva o id e a aba no destino e no alvo', () => {
+    expect(decide('/configuracoes/equipe/u-1', admin)).toEqual(
+      casa(`/${T}/configuracoes/equipe/u-1`, { screen: 'settings', sub: 'team', pessoaId: 'u-1', pessoaAba: 'dados' }),
+    );
+    expect(decide('/configuracoes/equipe/u-1/acesso', admin)).toEqual(
+      casa(`/${T}/configuracoes/equipe/u-1/acesso`, { screen: 'settings', sub: 'team', pessoaId: 'u-1', pessoaAba: 'acesso' }),
+    );
+  });
+
+  it('a ficha de outra academia cai na lista da equipe, largando o id', () => {
+    expect(decide('/outra/configuracoes/equipe/u-1/acesso', admin)).toEqual(
+      casa(`/${T}/configuracoes/equipe`, { screen: 'settings', sub: 'team' }),
+    );
+  });
+
+  it('aba desconhecida da ficha cai na lista da equipe, e seção desconhecida nas Configurações', () => {
+    expect(decide(`/${T}/configuracoes/equipe/u-1/xyz`, admin)).toEqual(casa(`/${T}/configuracoes/equipe`, { screen: 'settings', sub: 'team' }));
+    expect(decide(`/${T}/configuracoes/xyz`, admin)).toEqual(casa(`/${T}/configuracoes`, { screen: 'settings' }));
+  });
+});

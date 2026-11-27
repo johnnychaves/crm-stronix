@@ -4,7 +4,6 @@ import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AppLink } from '../../../components/nav/AppLink.jsx';
 import { useToast } from '../../../contexts/ToastContext.jsx';
-import { TRILHA_PROFESSOR } from '../../../lib/carreira/trilhas.js';
 import { problemaDaTrilha } from '../../../lib/carreira/validacao.js';
 import { com, metasEmBranco, MOTIVO_DO_ARQUIVAR, MOTIVO_DO_ARQUIVAR_COM_MUDANCA, mudou, totalDePessoas } from '../../../lib/carreira/rascunho.js';
 import { TAB_TRIGGER } from '../../professores/ProfessoresComum.jsx';
@@ -124,7 +123,6 @@ export function TrilhaEditor({ inicial, gravada, outras, pessoas, aba, onAba, vo
           onMudar={setRascunho}
           totalDePessoas={total}
           modalities={modalities}
-          calendarioTravado={rascunho.id === TRILHA_PROFESSOR}
         />
       </TabsContent>
 

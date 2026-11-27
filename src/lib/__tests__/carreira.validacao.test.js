@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { AVISO_CALENDARIO_PROFESSOR, podeArquivar, problemaDaTrilha } from '../carreira/validacao.js';
+import { podeArquivar, problemaDaTrilha } from '../carreira/validacao.js';
 import { trilhasDe } from '../carreira/trilhas.js';
 
 const trilha = (id = 'professor') => structuredClone(trilhasDe(null).find((t) => t.id === id));
@@ -87,14 +87,10 @@ describe('problemaDaTrilha', () => {
   });
 
   // A trava do PR 2: o PR 3 a tira, junto com este teste.
-  it('a trilha Professor gravada não muda a frequência nem o mês', () => {
+  it('a trilha Professor muda a frequência e o mês, como as outras', () => {
     const gravada = trilha();
-    expect(problemaDaTrilha({ ...trilha(), frequencia: 'semestral' }, { gravada }))
-      .toEqual({ campo: 'frequencia', texto: AVISO_CALENDARIO_PROFESSOR });
-    expect(problema({ ...trilha(), mes: 6 }, { gravada })).toBe('frequencia');
-    expect(problema({ ...trilha(), janelaRenovacao: 'periodo' }, { gravada })).toBeNull();
-    const estagiario = trilha('estagiario');
-    expect(problema({ ...estagiario, mes: 3 }, { gravada: estagiario })).toBeNull();
+    expect(problema({ ...trilha(), frequencia: 'semestral', mes: 6 }, { gravada })).toBeNull();
+    expect(problema({ ...trilha(), mes: 3 }, { gravada })).toBeNull();
   });
 
   it('as três trilhas que vêm prontas não mudam de base, com ou sem gente', () => {

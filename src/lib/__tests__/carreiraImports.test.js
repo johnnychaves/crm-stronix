@@ -38,8 +38,8 @@ const PROIBIDOS = ['src/lib/firebase.js', 'src/lib/dailyGoal.js', 'src/lib/funne
 const ARQUIVOS = readdirSync(PASTA).filter((f) => f.endsWith('.js')).sort();
 
 describe('as contas da carreira cabem na api/', () => {
-  it('a pasta tem os períodos, os números, as trilhas, a validação e o rascunho', () => {
-    expect(ARQUIVOS).toEqual(['numeros.js', 'periodo.js', 'rascunho.js', 'trilhas.js', 'validacao.js']);
+  it('a pasta tem os períodos, os números, o placar, as contas do professor, as trilhas, a validação e o rascunho', () => {
+    expect(ARQUIVOS).toEqual(['numeros.js', 'periodo.js', 'placar.js', 'professor.js', 'rascunho.js', 'trilhas.js', 'validacao.js']);
   });
 
   for (const arquivo of ARQUIVOS) {

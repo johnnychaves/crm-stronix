@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { normalizeContracts } from '../operacional/base.js';
 import { renewalCohort, summarizeCohort } from '../operacional/renewal.js';
 import { renovacaoDoCiclo } from '../professor/renovacao.js';
-import { limitesDoCiclo } from '../professor/ciclo.js';
+const limitesDoCiclo = (ciclo) => ({ inicio: new Date(ciclo - 1, 11, 1), fim: new Date(ciclo, 11, 1) });
 
 const ts = (iso) => ({ toDate: () => new Date(iso) });
 const PROF = { id: 'p1', modalidadeIds: ['func'] };

@@ -1,0 +1,116 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Equipe B · Mesa</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="2026-11-26-equipe-base.css">
+<style>
+.desk{display:grid;grid-template-columns:300px 1fr;background:#fff;border:1px solid var(--line);border-radius:18px;overflow:hidden;min-height:calc(100vh - 230px)}
+.pane-l{border-right:1px solid var(--line);display:flex;flex-direction:column;min-width:0;background:#fbfcfe}
+.pane-l .tools{padding:12px;display:grid;gap:8px;border-bottom:1px solid var(--line)}
+.pane-l .search{min-width:0;width:100%}
+.seg{display:flex;padding:3px;border-radius:999px;background:#fff;border:1px solid var(--line)}
+.seg button{flex:1;border:0;background:none;height:28px;border-radius:999px;font-size:12.5px;font-weight:600;color:var(--muted)}
+.seg button[aria-pressed=true]{background:var(--ink);color:#fff}
+.fp.mini{height:30px;font-size:12.5px;justify-self:start}
+.people{overflow:auto;flex:1;padding:6px 8px 12px}
+.grp{padding:12px 8px 4px;font-size:12px;font-weight:600;color:var(--faint);display:flex;justify-content:space-between}
+.pr{display:flex;align-items:center;gap:10px;width:100%;border:0;background:none;text-align:left;padding:8px;border-radius:11px}
+.pr:hover{background:#fff}
+.pr[aria-current=true]{background:var(--blue50);box-shadow:inset 3px 0 0 var(--blue)}
+.pr .t{flex:1;min-width:0}
+.pr b{display:block;font-weight:600;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pr span.s{display:block;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pr .ring{width:28px;height:28px}
+.pr .ring::after{width:21px;height:21px;font-size:9px}
+.dot-new{width:28px;height:28px;border-radius:50%;border:2px dashed var(--blue200);flex:none}
+.pane-r{min-width:0;display:flex;flex-direction:column;max-height:calc(100vh - 160px)}
+.pane-r .hd{padding:18px 22px;border-bottom:1px solid var(--rule);display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.pane-r .hd h2{font:700 22px 'Space Grotesk';letter-spacing:-.02em}
+.pane-r .hd .grow{flex:1;min-width:200px}
+.pane-r .hd .badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px;align-items:center}
+.pane-r .hd p{font-size:12.5px;color:var(--ink2);margin-top:6px}
+.pane-r .sc{overflow:auto;padding:16px 22px 24px;display:grid;gap:14px;align-content:start}
+.pane-r .sec{border-radius:14px}
+.prog{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:12px;background:var(--amber50);flex-wrap:wrap}
+.prog.ok{background:var(--green50)}
+.prog .grow{flex:1;min-width:200px}
+.pane-r .bar{border-top:1px solid var(--rule);padding:12px 22px;display:flex;align-items:center;gap:12px;background:#fff}
+.form-sec{display:grid;gap:12px;padding:16px 0;border-top:1px solid var(--rule)}
+.form-sec:first-child{border-top:0;padding-top:4px}
+.form-sec h3{font:700 15px 'Space Grotesk'}
+.opts.row{grid-template-columns:repeat(3,1fr)}
+@media (max-width:1280px){.opts.row{grid-template-columns:1fr}}
+@media (max-width:900px){.desk{grid-template-columns:1fr}.pane-l{border-right:0;border-bottom:1px solid var(--line)}.pane-r{max-height:none}}
+</style></head><body>
+<div id="root"></div>
+<span class="tag">Mockup B: mesa com lista e ficha lado a lado, cadastro em folha única</span>
+<script src="2026-11-26-equipe-comum.js"></script>
+<script>
+let atual = 'marina';
+let subst = '';
+
+function linhaPessoa(p) {
+  const s = p.funcao === 'professor' ? `${p.vinculo === 'Estágio' ? 'Estagiário' : p.vinculo}, ${p.mods.join(' e ')}` : p.acesso === 'convite' ? `${p.vinculo}, convite até ${p.conviteAte}` : `${p.vinculo}${p.turno ? `, ${p.turno}` : ''}`;
+  return `<button class="pr" type="button" data-p="${p.id}" aria-current="${p.id === atual}">${avatar(p, 34)}<span class="t"><b>${p.nome}</b><span class="s">${s}</span></span>${ring(p)}</button>`;
+}
+function painelEsquerdo({ novo = false, situacao = 'ativos' } = {}) {
+  const gente = situacao === 'ativos' ? ativos() : desligados();
+  const grupos = [['gestor', 'Gestão'], ['consultor', 'Consultores'], ['professor', 'Professores']];
+  const incompletas = ativos().filter((p) => faltas(p).length).length;
+  return `<div class="pane-l">
+    <div class="tools"><span class="search">${ic('search')}Buscar pelo nome</span>
+      <div class="seg" role="group" aria-label="Situação"><button type="button" aria-pressed="${situacao === 'ativos'}" data-sit="ativos">Ativos ${ativos().length}</button><button type="button" aria-pressed="${situacao === 'desligados'}" data-sit="desligados">Desligados ${desligados().length}</button></div>
+      <button class="fp mini" type="button" aria-pressed="false">Ficha incompleta <small>${incompletas}</small></button></div>
+    <div class="people">
+      ${novo ? `<div class="grp"><span>Cadastrando</span></div><button class="pr" type="button" aria-current="true"><span class="dot-new" aria-hidden="true"></span><span class="t"><b>Pessoa nova</b><span class="s">Ainda não salva</span></span></button>` : ''}
+      ${grupos.map(([f, rot]) => { const g = gente.filter((p) => p.funcao === f); return g.length ? `<div class="grp"><span>${rot}</span><span>${g.length}</span></div>${g.map(linhaPessoa).join('')}` : ''; }).join('')}
+    </div></div>`;
+}
+function painelFicha(p, { editando = false } = {}) {
+  const f = faltas(p), tot = totalItens(p);
+  const desligada = p.acesso === 'off';
+  return `<div class="pane-r">
+    <div class="hd">${avatar(p, 58)}<div class="grow"><h2>${p.nome}</h2>
+      <div class="badges">${roleBadge(p)}${vinBadge(p)}<span style="margin-left:4px">${accBadge(p)}</span></div>
+      <p>${desligada ? `Esteve na equipe de ${dataBR(p.admissao)} a ${p.desligada}` : `Na equipe desde ${dataBR(p.admissao)}, ${tempo(p.admissao)}`}</p></div>
+      ${desligada ? `<button class="btn" type="button">${ic('back2')}Readmitir</button>` : `<button class="btn danger" type="button" data-desligar="${p.id}">${ic('off')}Desligar</button>`}</div>
+    <div class="sc">
+      <div class="prog ${f.length ? '' : 'ok'}">${ring(p)}<span class="grow">${f.length ? `<b style="font-weight:600">${tot - f.length} de ${tot}</b> na ficha. ${faltaLinha(p)}` : '<b style="font-weight:600">Ficha completa.</b>'}</span>${f.length ? '<button class="btn sm" type="button">Próxima ficha incompleta</button>' : ''}</div>
+      ${secIdentidade(p, { editando })}${secContato(p)}${secTrabalho(p)}${secAcesso(p)}${movimentacoes(p)}
+    </div></div>`;
+}
+function painelNovo() {
+  const sec = (s) => `<div class="form-sec"><h3>${TITULOS[s]}</h3>${corpoPasso(s).replace('class="opts"', 'class="opts row"')}</div>`;
+  return `<div class="pane-r">
+    <div class="hd"><span class="dot-new" style="width:58px;height:58px" aria-hidden="true"></span><div class="grow"><h2>Pessoa nova</h2><p>Só o que a pessoa precisa para começar. CPF, endereço e foto ficam para a ficha.</p></div></div>
+    <div class="sc">${passosVisiveis().map(sec).join('')}</div>
+    <div class="bar"><span class="status ok"><i></i>Tudo certo para cadastrar ${primeiro(CAD.nome)}</span><button class="btn gh" type="button">Cancelar</button><button class="btn pri" type="button">Cadastrar ${primeiro(CAD.nome)}</button></div>
+  </div>`;
+}
+function tela(direita, opcoes) {
+  return `<div class="shead"><div class="grow"><h1>Equipe & acessos</h1><p>Quem trabalha na academia: a ficha, o vínculo e o acesso ao app de cada pessoa.</p></div>
+      <button class="btn pri" type="button" onclick="location.hash='cadastro'">${ic('plus')}Cadastrar pessoa</button></div>
+    ${VAGAS}
+    <div class="desk">${painelEsquerdo(opcoes)}${direita}</div>`;
+}
+function render(estado) {
+  const root = document.getElementById('root');
+  if (estado === 'mesa') { if (atual === 'carla') atual = 'marina'; root.innerHTML = CASCA(tela(painelFicha(byId(atual)))); }
+  else if (estado === 'editar') { atual = 'rafael'; root.innerHTML = CASCA(tela(painelFicha(byId('rafael'), { editando: true }))); }
+  else if (estado === 'cadastro') root.innerHTML = CASCA(tela(painelNovo(), { novo: true }));
+  else if (estado === 'desligar') { atual = 'marina'; root.innerHTML = CASCA(tela(painelFicha(byId('marina')))) + desligarDialogo(byId('marina'), { substituto: subst }); }
+  else if (estado === 'bloqueado') { atual = 'camila'; root.innerHTML = CASCA(tela(painelFicha(byId('camila')))) + desligarDialogo(byId('camila')); }
+  else if (estado === 'desligados') { atual = 'carla'; root.innerHTML = CASCA(tela(painelFicha(byId('carla')), { situacao: 'desligados' })); }
+}
+document.addEventListener('click', (e) => {
+  const p = e.target.closest('[data-p]');
+  if (p) { atual = p.dataset.p; const h = location.hash.slice(1) || 'mesa'; if (h === 'mesa' || h === 'desligados') render(h); else location.hash = 'mesa'; return; }
+  const s = e.target.closest('[data-sit]'); if (s) { location.hash = s.dataset.sit === 'ativos' ? 'mesa' : 'desligados'; return; }
+  const d = e.target.closest('[data-desligar]'); if (d) location.hash = d.dataset.desligar === 'camila' ? 'bloqueado' : 'desligar';
+});
+document.addEventListener('change', (e) => { if (e.target.matches('[data-subst]')) { subst = e.target.value; render('desligar'); } });
+ligarCadastro(document, () => render('cadastro'));
+barraDeEstados([
+  ['mesa', 'Mesa'], ['editar', 'Editando uma seção'], ['cadastro', 'Cadastrar pessoa'], ['desligar', 'Desligar professor'],
+  ['bloqueado', 'Desligar consultor com leads'], ['desligados', 'Desligados'],
+], render);
+</script></body></html>

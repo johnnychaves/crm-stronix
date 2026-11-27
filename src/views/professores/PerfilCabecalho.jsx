@@ -2,15 +2,16 @@ import { useRef, useState } from 'react';
 import { Camera, Copy, QrCode, RefreshCw } from 'lucide-react';
 import { getSafeDateOrNull } from '../../lib/dates.js';
 import { RingAvatar } from '../../components/profile/RingAvatar.jsx';
-import { NivelPopover } from './NivelPopover.jsx';
+import { TrilhaNivelPopover } from './TrilhaNivelPopover.jsx';
 import { SeloDoNivel } from './ProfessoresTabela.jsx';
 import { BOTAO, Confirmacao } from './Confirmacao.jsx';
 
-// Cabeçalho do perfil (mockup B): a foto com o anel azul, o nome, o nível com
-// a data, as modalidades e, só para o gestor, a câmera e o "Trocar nível".
+// Cabeçalho do perfil (mockup B): a foto com o anel azul, o nome, a trilha, o
+// nível com a data, as modalidades, o tempo no nível e, só para o gestor, a
+// câmera e o "Trilha e nível".
 // Embaixo, o link do NPS: o professor copia e baixa o QR code; só o gestor
 // gera o link (e um novo, que derruba o antigo).
-export function PerfilCabecalho({ prof, modalidades, pode, fotoOcupada, onFoto, onSalvarNivel, link, onCopiar, onBaixarQr, onGerarLink }) {
+export function PerfilCabecalho({ prof, modalidades, pode, fotoOcupada, onFoto, trilhas, trilha, sugeridaId, tempo, onSalvarTrilha, link, onCopiar, onBaixarQr, onGerarLink }) {
   const desde = getSafeDateOrNull(prof.nivelDesde)?.toLocaleDateString('pt-BR') ?? null;
   return (
     <header className="flex flex-wrap items-center gap-x-6 gap-y-4 rounded-[18px] border border-border bg-card px-5 py-4 shadow-card md:px-[22px]">
@@ -33,12 +34,18 @@ export function PerfilCabecalho({ prof, modalidades, pode, fotoOcupada, onFoto, 
         <div className="min-w-0">
           <h1 className="m-0 truncate font-display text-[24px] font-bold leading-[1.15] tracking-[-0.02em]">{prof.nome || 'Professor sem nome'}</h1>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-2">
-            <SeloDoNivel nivel={prof.nivel} desde={desde} />
+            {trilha && <span className="inline-flex h-6 items-center rounded-[7px] bg-muted px-[9px] text-[12px] font-semibold text-foreground/80">Trilha {trilha.nome}</span>}
+            <SeloDoNivel nome={trilha?.niveis.find((n) => n.id === prof.nivel)?.nome ?? null} desde={desde} />
             {modalidades.map((m) => (
               <span key={m} className="inline-flex h-6 items-center rounded-[7px] bg-muted px-[9px] text-[12px] font-semibold text-foreground/80">{m}</span>
             ))}
-            {pode && <NivelPopover nivel={prof.nivel} onSalvar={onSalvarNivel} />}
+            {pode && <TrilhaNivelPopover trilhas={trilhas} trilhaId={trilha?.id ?? null} nivel={prof.nivel} sugeridaId={sugeridaId} onSalvar={onSalvarTrilha} />}
           </div>
+          {tempo && (
+            <p className="mt-1.5 text-[12.5px] text-muted-foreground">
+              {tempo.texto}{tempo.falta ? `. ${tempo.falta}.` : ''}
+            </p>
+          )}
         </div>
       </div>
       <LinhaDoLink link={link} pode={pode} onCopiar={onCopiar} onBaixarQr={onBaixarQr} onGerarLink={onGerarLink} />

@@ -103,8 +103,9 @@ export function redactDomAttrs(text) {
   return text.replace(DOM_ATTR_RE, '[$1="[redigido]"]');
 }
 
-// Dois endereços levam o id de um documento: a ficha (/<academia>/ficha/<id>,
-// o id do lead) e o modelo de rotina aberto (/<academia>/rotinas/modelos/<id>).
+// Três endereços levam o id de um documento: a ficha (/<academia>/ficha/<id>,
+// o id do lead), o modelo de rotina aberto (/<academia>/rotinas/modelos/<id>)
+// e a ficha da equipe (/<academia>/configuracoes/equipe/<id>).
 // O SDK copia o caminho cru para request.url, para o nome da transação no
 // escopo (que vai em todo erro), para as migalhas de navegação e para url.path.
 // A troca usa a mesma marca do molde de rota (routeTemplate), então é
@@ -116,18 +117,25 @@ const LEAD_PATH_RE = /(\/ficha\/)[^/?#\s"'<>]+/gi;
 // O id do modelo de rotina também sai do endereço, como pede o CLAUDE.md para
 // todo segmento novo com id.
 const MODEL_PATH_RE = /(\/rotinas\/modelos\/)[^/?#\s"'<>]+/gi;
-// E o id do professor do perfil (/professores/perfil/<id>).
-const PROF_PATH_RE = /(\/professores\/perfil\/)[^/?#\s"'<>]+/gi;
+// E o id da pessoa do perfil de carreira (/carreira/professor/<id>, e o
+// endereço de antes, /professores/perfil/<id>). Fora de /configuracoes, onde
+// /carreira/professor é a trilha Professor (TRILHA_PATH_RE).
+const PROF_PATH_RE = /((?<!\/configuracoes)\/(?:carreira\/professor|professores\/perfil)\/)[^/?#\s"'<>]+/gi;
 // E o id da trilha do plano de carreira (/configuracoes/carreira/<id>).
 const TRILHA_PATH_RE = /(\/configuracoes\/carreira\/)[^/?#\s"'<>]+/gi;
+
+// Id da ficha da equipe (/configuracoes/equipe/<id>): é o id do login ou do
+// professor, e não vai para o Sentry.
+const EQUIPE_PATH_RE = /(\/configuracoes\/equipe\/)[^/?#\s"'<>]+/gi;
 
 export function scrubLeadPath(text) {
   if (typeof text !== 'string' || !text) return text;
   return text
     .replace(LEAD_PATH_RE, '$1:leadId')
     .replace(MODEL_PATH_RE, '$1:modelId')
-    .replace(PROF_PATH_RE, '$1:profId')
-    .replace(TRILHA_PATH_RE, '$1:trilhaId');
+    .replace(PROF_PATH_RE, '$1:pessoaId')
+    .replace(TRILHA_PATH_RE, '$1:trilhaId')
+    .replace(EQUIPE_PATH_RE, '$1:pessoaId');
 }
 
 // Rede final: troca o id da ficha e o do modelo de rotina em qualquer texto do

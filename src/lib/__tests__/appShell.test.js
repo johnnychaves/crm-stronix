@@ -17,7 +17,7 @@ const superMembro = { id: 'u3', authUid: 'uid-3', role: 'admin', tenantId: T, su
 describe('screenState', () => {
   it('tela comum: o menu acende a tela do endereço e não há ficha', () => {
     const s = screenState(parseAppPath(`/${T}/pipeline`), null, consultor);
-    expect(s).toEqual({ fichaOpen: false, profileLeadId: null, activeTab: 'kanban', resolvedTab: 'kanban', superTab: 'overview', sub: null, modelId: null, profId: null, trilhaId: null, trilhaAba: null });
+    expect(s).toEqual({ fichaOpen: false, profileLeadId: null, activeTab: 'kanban', resolvedTab: 'kanban', superTab: 'overview', sub: null, modelId: null, profId: null, pessoaId: null, pessoaAba: null, trilhaId: null, trilhaAba: null });
   });
 
   it('endereço curto da academia abre o Operacional', () => {
@@ -221,5 +221,13 @@ describe('Rotinas', () => {
 
   it('a aba Hoje vem do endereço, sem modelo aberto', () => {
     expect(screenState(parseAppPath(`/${T}/rotinas/hoje`), null, gestor)).toMatchObject({ activeTab: 'rotinas', sub: 'hoje', modelId: null });
+  });
+});
+
+describe('screenState: ficha da equipe', () => {
+  it('passa o id e a aba só nas Configurações', () => {
+    const shown = parseAppPath('/stronix-crm-app/configuracoes/equipe/u-123/acesso');
+    expect(screenState(shown, null, { role: 'admin' })).toMatchObject({ sub: 'team', pessoaId: 'u-123', pessoaAba: 'acesso' });
+    expect(screenState(parseAppPath('/stronix-crm-app/pipeline'), null, { role: 'admin' })).toMatchObject({ pessoaId: null, pessoaAba: null });
   });
 });

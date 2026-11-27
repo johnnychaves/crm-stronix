@@ -41,12 +41,12 @@ describe('sidebarNav', () => {
     for (const u of [consultor, semPapel]) expect(sidebarNav(u), u.id).toEqual(DO_CONSULTOR);
   });
 
-  it('o professor vê a Meta diária, Clientes e o Meu perfil; sem professor ligado, sem o perfil', () => {
+  it('o professor vê a Meta diária, Clientes e a Minha carreira; sem professor ligado, sem o perfil', () => {
     expect(sidebarNav(professor)).toEqual(DO_PROFESSOR);
     expect(sidebarNav(semLigacao)).toEqual({ ...DO_PROFESSOR, meuPerfil: false });
   });
 
-  it('Professores é do gestor com o módulo, e o Meu perfil do professor com o módulo', () => {
+  it('Carreira é do gestor com o módulo, e a Minha carreira do professor com o módulo', () => {
     expect(sidebarNav({ ...gestor, tenantModules: COM_MODULO })).toEqual({ ...DO_GESTOR, professores: true });
     expect(sidebarNav({ ...consultor, tenantModules: COM_MODULO })).toEqual(DO_CONSULTOR);
     expect(sidebarNav({ ...professor, tenantModules: [] }).meuPerfil).toBe(false);

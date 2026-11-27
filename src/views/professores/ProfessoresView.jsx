@@ -1,72 +1,94 @@
-import { useMemo, useState } from 'react';
-import { ClipboardList } from 'lucide-react';
+import { useCallback, useMemo, useState } from 'react';
+import { ClipboardList, Route, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useCarreira } from '../../hooks/useCarreira.js';
 import { useNpsDados } from '../../hooks/useNpsDados.js';
 import { useMinuteClock } from '../../hooks/useMinuteClock.js';
 import { useProfessoresDados } from '../../hooks/useProfessoresDados.js';
 import { useScreenParams } from '../../hooks/useScreenParams.js';
 import { AppLink } from '../../components/nav/AppLink.jsx';
 import { hrefFor } from '../../lib/routes.js';
-import { TRILHA_PROFESSOR } from '../../lib/carreira/trilhas.js';
+import { getSafeDateOrNull } from '../../lib/dates.js';
+import { trilhaDaPessoa } from '../../lib/carreira/trilhas.js';
+import { placarDe, tempoNoNivel } from '../../lib/carreira/placar.js';
+import { contasDoProfessor, janelaDeLeitura, periodoDaPessoa } from '../../lib/carreira/professor.js';
 import { dayKeyOf } from '../../lib/operacional/month.js';
-import { cicloDe, limitesDoCiclo, semestresDoCiclo } from '../../lib/professor/ciclo.js';
-import { estadoDaPesquisa, npsDoCiclo, resumoDaPesquisa, turmasDoDia } from '../../lib/professor/pesquisas.js';
-import { conversaoDoCiclo } from '../../lib/professor/conversao.js';
-import { renovacaoDoCiclo } from '../../lib/professor/renovacao.js';
-import { FilterBar } from '../dashboard/DashFilterBar.jsx';
-import { criterioAderencia, criterioConversao, criterioNps, criterioRenovacao } from './criterios.js';
-import { aderenciaPorSemana, aderenciaResumo } from '../../lib/professor/aderencia.js';
+import { estadoDaPesquisa, resumoDaPesquisa, turmasDoDia } from '../../lib/professor/pesquisas.js';
+import { FilterBar, FilterChip } from '../dashboard/DashFilterBar.jsx';
 import { LegendaDosEstados, ProfessoresTabela } from './ProfessoresTabela.jsx';
 import { PesquisasTab } from './PesquisasTab.jsx';
 import { diaTexto, prazoTexto } from './pesquisasTexto.js';
-import { CicloControl, TAB_CONTAGEM, TAB_TRIGGER } from './ProfessoresComum.jsx';
+import { PeriodoControl, TAB_CONTAGEM, TAB_TRIGGER } from './ProfessoresComum.jsx';
 
-// A tela Professores do gestor (mockup A de 25/11/2026): a lista de placar e
-// a sub-tela Pesquisas (mockup B das pesquisas). O ciclo mora no endereço
-// (`ciclo`), e a aba é a sub-tela (/professores e /professores/pesquisas), que
-// o App troca com replace. As metas moram em Configurações → Plano de carreira,
-// na trilha Professor (o link "Metas da trilha").
+// A lista Carreira do gestor (mockup "Lista Carreira", 26/11/2026) e a
+// sub-tela Pesquisas (mockup B das pesquisas). A trilha da pílula e o período
+// moram no endereço (`trilha` e `ciclo`), e a aba é a sub-tela (/carreira e
+// /carreira/pesquisas), que o App troca com replace. A busca pelo nome fica
+// fora do endereço de propósito. As metas moram em Configurações → Plano de
+// carreira.
 const porNome = (a, b) => String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR');
+const semAcento = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 export function ProfessoresView({ db, appUser, tenantId, tab, onTab, listenersActive }) {
-  // Um relógio só por montagem: as contas do ciclo cortam no mesmo instante.
+  // Um relógio só por montagem: as contas do período cortam no mesmo instante.
   const [agora] = useState(() => new Date());
-  const ctx = useMemo(() => ({ cicloAtual: cicloDe(agora) }), [agora]);
-  const [{ ciclo }, setParams] = useScreenParams('professores', ctx);
-  const dados = useProfessoresDados({ db, ciclo, listenersActive });
-  const { carregando, erro, professores, planos, contratos, clientes, aulas, presencas, metas, trilhaProfessor } = dados;
+  const { carreira, trilhas } = useCarreira({ db, listenersActive });
+  // Neste PR só as trilhas de professor (a de consultor entra no PR 4).
+  const trilhasDeProfessor = useMemo(() => (trilhas || []).filter((t) => t.base === 'professor'), [trilhas]);
+  const ctx = useMemo(() => ({ trilhas: trilhasDeProfessor, agora }), [trilhasDeProfessor, agora]);
+  const [{ trilha: trilhaId, ciclo }, setParams] = useScreenParams('professores', ctx);
+  const escolhida = trilhasDeProfessor.find((t) => t.id === trilhaId) ?? null;
+
+  // A janela de leitura: o período escolhido da trilha da pílula, ou os
+  // períodos de agora de todas as trilhas de professor.
+  const janela = useMemo(() => {
+    if (!trilhas) return null;
+    const alvo = escolhida ? [escolhida] : trilhasDeProfessor;
+    return janelaDeLeitura(alvo.map((t) => periodoDaPessoa(t, t === escolhida ? ciclo : null, agora)));
+  }, [trilhas, escolhida, trilhasDeProfessor, ciclo, agora]);
+
+  const dados = useProfessoresDados({ db, inicioMs: janela?.inicio.getTime() ?? null, fimMs: janela?.fim.getTime() ?? null, listenersActive });
+  const { carregando, erro, professores, planos, contratos, clientes, aulas, presencas } = dados;
   const nps = useNpsDados({ db, listenersActive });
-  // O dia das pesquisas (prazo, situação, quando o Abrir libera) anda com o
-  // relógio, para a aba aberta de um dia para o outro não ficar no dia velho.
+  // O dia das pesquisas anda com o relógio, para a aba aberta de um dia para o
+  // outro não ficar no dia velho.
   const relogio = useMinuteClock();
   const hoje = dayKeyOf(relogio);
+  const [busca, setBusca] = useState('');
 
   const ativos = useMemo(() => (professores || []).filter((p) => p.ativo !== false).sort(porNome), [professores]);
+  const trilhaDe = useCallback((prof) => trilhaDaPessoa(prof, trilhasDeProfessor, { professor: true }), [trilhasDeProfessor]);
 
-  const contas = useMemo(() => {
-    if (carregando || !metas || nps.carregando) return null;
-    const { janelaDias, tolerancia } = metas.conversao;
-    const periodo = limitesDoCiclo(ciclo);
-    const pecas = semestresDoCiclo(ciclo);
-    const chave = String(ciclo);
-    const linhas = ativos.map((prof) => {
-      const renovacao = renovacaoDoCiclo({ leads: clientes, contratos, planos, professor: prof, periodo, asOf: agora });
-      const conversao = conversaoDoCiclo({ aulas, contratos, professorId: prof.id, periodo, asOf: agora, janelaDias, tolerancia });
-      return {
-        prof,
-        criterios: {
-          renovacao: criterioRenovacao(renovacao, metas, prof.nivel),
-          nps: criterioNps(npsDoCiclo({ pesquisas: nps.pesquisas, totais: nps.totais, professorId: prof.id, trilha: trilhaProfessor, chave, meta: metas.nps.meta }), metas),
-          conversao: criterioConversao(conversao),
-          aderencia: criterioAderencia(aderenciaResumo(aderenciaPorSemana({ presencas, leads: clientes, contratos, planos, professor: prof, asOf: agora, barra: metas.aderencia.barra }), pecas, agora), metas),
-        },
-      };
-    });
-    // A academia é a mesma para todos; sai da conta sem filtro de professor.
-    const academia = conversaoDoCiclo({ aulas, contratos, professorId: null, periodo, asOf: agora, janelaDias, tolerancia });
-    return { linhas, academia };
-  }, [carregando, metas, nps.carregando, nps.pesquisas, nps.totais, ativos, clientes, contratos, planos, aulas, presencas, ciclo, agora, trilhaProfessor]);
+  // A contagem da pílula: quantas pessoas ativas em cada trilha.
+  const contagem = useMemo(() => {
+    const c = new Map();
+    ativos.forEach((p) => { const t = trilhaDe(p); if (t) c.set(t.id, (c.get(t.id) ?? 0) + 1); });
+    return c;
+  }, [ativos, trilhaDe]);
+
+  const linhas = useMemo(() => {
+    if (carregando || carreira === null || nps.carregando) return null;
+    return ativos
+      .filter((prof) => !escolhida || trilhaDe(prof)?.id === escolhida.id)
+      .map((prof) => {
+        const trilha = trilhaDe(prof);
+        if (!trilha) return { prof, trilha: null, placar: placarDe(null, null, {}), tempo: null, desde: null };
+        const periodo = periodoDaPessoa(trilha, trilha === escolhida ? ciclo : null, agora);
+        const contas = contasDoProfessor({ trilha, periodo, prof, clientes, contratos, planos, aulas, presencas, nps: { pesquisas: nps.pesquisas, totais: nps.totais }, agora });
+        return {
+          prof,
+          trilha,
+          placar: placarDe(trilha, prof.nivel, contas.resultados),
+          tempo: tempoNoNivel(trilha, prof, agora),
+          desde: getSafeDateOrNull(prof.nivelDesde)?.toLocaleDateString('pt-BR') ?? null,
+        };
+      });
+  }, [carregando, carreira, nps.carregando, nps.pesquisas, nps.totais, ativos, escolhida, trilhaDe, ciclo, agora, clientes, contratos, planos, aulas, presencas]);
+
+  const visiveis = linhas && busca.trim()
+    ? linhas.filter((l) => semAcento(l.prof.nome).includes(semAcento(busca.trim())))
+    : linhas;
 
   // A turma de cada professor se a pesquisa abrisse agora (o formulário e o
   // Abrir mostram o total). Null enquanto os clientes não chegaram.
@@ -78,19 +100,36 @@ export function ProfessoresView({ db, appUser, tenantId, tab, onTab, listenersAc
   const turmasDoMomento = (instante) => turmasDoDia({ clientes, contratos, planos, professores, agora: instante });
 
   const aba = tab === 'pesquisas' ? tab : 'lista';
-  const metasHref = hrefFor(tenantId, 'settings', { sub: 'carreira', trilhaId: TRILHA_PROFESSOR });
-  const academiaTaxa = contas?.academia.academia.taxa ?? null;
+  const configHref = hrefFor(tenantId, 'settings', { sub: 'carreira' });
+  const periodoEscolhido = escolhida ? periodoDaPessoa(escolhida, ciclo, agora) : null;
+  const opcoesDaTrilha = [
+    { key: 'todas', label: 'Todas as trilhas', note: String(ativos.length) },
+    ...trilhasDeProfessor
+      .filter((t) => !t.arquivada || contagem.get(t.id))
+      .map((t) => ({ key: t.id, label: t.nome, note: String(contagem.get(t.id) ?? 0) })),
+  ];
 
   return (
     <div className="-m-4 animate-fade-in md:-m-8">
       <FilterBar
-        title="Professores"
-        subline="Plano de carreira do time técnico. Os números são do ciclo de avaliação, de dezembro a novembro."
+        title="Carreira"
+        subline="Plano de carreira da equipe. Cada trilha tem o próprio período de avaliação."
       >
-        <CicloControl ciclo={ciclo} cicloAtual={ctx.cicloAtual} onCiclo={(c) => setParams({ ciclo: c })} />
-        {metasHref && (
-          <AppLink to={metasHref} className="inline-flex h-[38px] items-center rounded-xl border border-border bg-card px-3 text-[13px] font-semibold shadow-card outline-none hover:border-brand-200 hover:text-brand-700 focus-visible:anel-foco dark:hover:text-brand-300">
-            Metas da trilha
+        <FilterChip
+          icon={Route}
+          label="Trilha"
+          valueText={escolhida ? escolhida.nome : 'Todas'}
+          active={Boolean(escolhida)}
+          options={opcoesDaTrilha}
+          value={escolhida ? escolhida.id : 'todas'}
+          onPick={(k) => setParams({ trilha: k === 'todas' ? null : k, ciclo: null })}
+        />
+        {escolhida && periodoEscolhido && (
+          <PeriodoControl trilha={escolhida} periodo={periodoEscolhido} agora={agora} onChave={(c) => setParams({ ciclo: c })} />
+        )}
+        {configHref && (
+          <AppLink to={configHref} className="inline-flex h-[38px] items-center rounded-xl border border-border bg-card px-3 text-[13px] font-semibold shadow-card outline-none hover:border-brand-200 hover:text-brand-700 focus-visible:anel-foco dark:hover:text-brand-300">
+            Configurar trilhas
           </AppLink>
         )}
       </FilterBar>
@@ -99,16 +138,16 @@ export function ProfessoresView({ db, appUser, tenantId, tab, onTab, listenersAc
         <Tabs value={aba} onValueChange={(id) => onTab?.(id === 'lista' ? null : id)} className="gap-4">
           <TabsList variant="line" className="w-full justify-start gap-1 overflow-x-auto overflow-y-hidden overscroll-x-contain rounded-none border-b border-border p-0 group-data-[orientation=horizontal]/tabs:h-10">
             <TabsTrigger value="lista" className={TAB_TRIGGER}>
-              Professores
-              <span className={TAB_CONTAGEM}>{ativos.length}</span>
+              Pessoas
+              <span className={TAB_CONTAGEM}>{escolhida ? contagem.get(escolhida.id) ?? 0 : ativos.length}</span>
             </TabsTrigger>
             <TabsTrigger value="pesquisas" className={TAB_TRIGGER}>Pesquisas</TabsTrigger>
           </TabsList>
 
           <TabsContent value="lista" tabIndex={-1}>
-            {erro && <p role="alert" className="mb-3 text-[13px] font-semibold text-rose-700 dark:text-rose-300">Não deu para carregar tudo. Recarregue a página.</p>}
-            {!contas ? (
-              <p className="text-[13px] text-muted-foreground">Carregando os professores…</p>
+            {(erro || carreira?.erro) && <p role="alert" className="mb-3 text-[13px] font-semibold text-rose-700 dark:text-rose-300">Não deu para carregar tudo. Recarregue a página.</p>}
+            {!visiveis ? (
+              <p className="text-[13px] text-muted-foreground">Carregando a equipe…</p>
             ) : ativos.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-border p-6 text-[13px] text-muted-foreground">
                 Nenhum professor ativo. Cadastre em Configurações, Equipe & acessos, no cartão Professores.
@@ -116,14 +155,21 @@ export function ProfessoresView({ db, appUser, tenantId, tab, onTab, listenersAc
             ) : (
               <>
                 <CartaoDaPesquisa nps={nps} hoje={hoje} onVer={() => onTab?.('pesquisas')} />
-                <p className="mb-3 flex flex-wrap gap-x-[22px] gap-y-2 text-[13.5px] text-foreground/80">
-                  <span>
-                    <b className="font-bold">Conversão da academia:</b>{' '}
-                    {academiaTaxa == null ? 'ainda sem aulas que contam no ciclo.' : `${academiaTaxa}%, a régua de todos.`}
-                  </span>
-                  {contas.academia.incompleto && <span className="text-muted-foreground">As aulas de antes de setembro de 2026 estão incompletas no sistema.</span>}
-                </p>
-                <ProfessoresTabela linhas={contas.linhas} tenantId={tenantId} />
+                <label className="mb-3 flex h-[38px] max-w-[320px] items-center gap-2 rounded-xl border border-border bg-card px-3 shadow-card focus-within:anel-foco">
+                  <Search size={15} aria-hidden="true" className="flex-none text-muted-foreground" />
+                  <span className="sr-only">Buscar pelo nome</span>
+                  <input
+                    type="search"
+                    value={busca}
+                    onChange={(e) => setBusca(e.target.value)}
+                    placeholder="Buscar pelo nome"
+                    autoComplete="off"
+                    className="h-full min-w-0 flex-1 bg-transparent text-[13px] outline-none"
+                  />
+                </label>
+                {visiveis.length === 0
+                  ? <p className="text-[13px] text-muted-foreground">Ninguém com esse nome.</p>
+                  : <ProfessoresTabela linhas={visiveis} tenantId={tenantId} />}
                 <LegendaDosEstados />
               </>
             )}

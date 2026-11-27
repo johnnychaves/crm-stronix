@@ -1,0 +1,13 @@
+// Foto da ficha da equipe (quem não é professor). A foto do professor continua
+// em tenants/<academia>/professores/<id>/avatar.jpg, com a regra já publicada.
+// Mesmo desenho dessa regra: a trava do gestor fica na tela, porque a versão
+// que lê o papel no Firestore pede uma permissão do IAM que não foi dada.
+// Entra dentro do bloco `match /b/{bucket}/o` das regras do Storage, no
+// console do Firebase, e é publicada à mão antes do merge do PR 1.
+match /tenants/{tenant}/equipe/{fichaId}/{fileName} {
+  allow read: if request.auth != null && request.auth.token.tenantId == tenant;
+  allow write: if request.auth != null && request.auth.token.tenantId == tenant
+               && request.resource.size < 2 * 1024 * 1024
+               && request.resource.contentType.matches('image/.*');
+  allow delete: if request.auth != null && request.auth.token.tenantId == tenant;
+}

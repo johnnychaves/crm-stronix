@@ -289,6 +289,16 @@ service cloud.firestore {
         && request.resource.data.get('professorId', null) == resource.data.get('professorId', null);
     }
 
+    // A trilha e o nível do plano de carreira (spec 2026-11-26-plano-de-
+    // carreira-configuravel) só mudam pelo gestor, no ramo isAdmin. Sem a
+    // trava, o consultor se promoveria pelo próprio cadastro. O `.get(campo,
+    // null)` cobre cadastro sem os campos.
+    function carreiraKept() {
+      return request.resource.data.get('trilhaId', null) == resource.data.get('trilhaId', null)
+        && request.resource.data.get('nivel', null) == resource.data.get('nivel', null)
+        && request.resource.data.get('nivelDesde', null) == resource.data.get('nivelDesde', null);
+    }
+
     // stronix_users: NÃO usa tenantActive — o login precisa ler/vincular o doc do
     // próprio usuário mesmo para conseguir mostrar a tela de bloqueio. O self-update
     // já é travado (role/tenantId imutáveis) contra escalada de privilégio, e
@@ -310,10 +320,11 @@ service cloud.firestore {
           // papel e o professor ligado
           isAdmin(appId)
           // ou o próprio usuário mexe no próprio doc (vínculo do login, "já li"
-          // do sino), sem se autopromover
+          // do sino), sem se autopromover nem trocar a própria trilha e o nível
           || (request.auth.uid == userId
               && request.resource.data.role == resource.data.role
-              && request.resource.data.tenantId == resource.data.tenantId)
+              && request.resource.data.tenantId == resource.data.tenantId
+              && carreiraKept())
         );
     }
 
@@ -360,6 +371,15 @@ service cloud.firestore {
     match /artifacts/{appId}/public/data/stronix_professores/{id} {
       allow read: if inTenant(appId) && tenantActive(appId);
       allow write: if isAdmin(appId) && inTenant(appId) && tenantActive(appId);
+    }
+
+    // Ficha da equipe (spec 2026-11-26-cadastro-da-equipe): CPF, RG,
+    // nascimento, endereço, vínculo e as movimentações, com o tipo e o motivo
+    // do desligamento. Só o gestor lê, porque o resto da equipe não tem por
+    // que ver o CPF de um colega. O servidor grava pelo Admin SDK (o userId do
+    // cadastro, o convite e o desligamento).
+    match /artifacts/{appId}/public/data/stronix_equipe/{id} {
+      allow read, write: if isAdmin(appId) && inTenant(appId) && tenantActive(appId);
     }
 
     // Catálogo de planos/serviços oferecidos na matrícula (feature lead→cliente).

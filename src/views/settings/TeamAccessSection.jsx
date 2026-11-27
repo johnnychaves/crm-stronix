@@ -1,72 +1,39 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Copy, Dumbbell, Mail, Pencil, Plus, Shield, Trash2 } from 'lucide-react';
-import { collection, doc, addDoc, getDocs, query, where, setDoc, updateDoc, deleteDoc, deleteField, serverTimestamp } from 'firebase/firestore';
-import { auth, appId, LEADS_PATH, PROFESSORS_PATH, USERS_PATH } from '../../lib/firebase.js';
-import { commitOpsInChunks } from '../../lib/funnels.js';
+import { useLocation, useNavigate } from 'react-router';
+import { Copy, Mail, Plus, Shield } from 'lucide-react';
+import { collection, doc, addDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { auth, appId, EQUIPE_PATH, PROFESSORS_PATH } from '../../lib/firebase.js';
 import { leadsWhere } from '../../lib/settingsLeads.js';
-import { isClientLead } from '../../lib/leads.js';
-import { professorModalityNames, professorNameById } from '../../lib/professores.js';
 import { generateTemporaryPassword, passwordPolicyError, PASSWORD_RULE_TEXT } from '../../lib/passwordPolicy.js';
-import { isGestor, isProfessor, roleLabel, roleOf, ROLES } from '../../lib/acesso.js';
+import { isGestor, isProfessor, roleOf, ROLES } from '../../lib/acesso.js';
 import { hasModule, MODULES } from '../../lib/modules.js';
-import {
-  availableProfessors, inviteRoleOptions, linkedProfessorIds, linkedProfessorText,
-  planRoleChange, PROFESSOR_LINK_MESSAGES, SET_ROLE_ACTION
-} from '../../lib/teamRoles.js';
-import { planLoginEmailChange, loginEmailConfirmText, LOGIN_EMAIL_FAILED_MESSAGE } from '../../lib/loginEmail.js';
+import { availableProfessors, inviteRoleOptions, PROFESSOR_LINK_MESSAGES } from '../../lib/teamRoles.js';
+import { montarEquipe } from '../../lib/equipe/equipe.js';
+import { hrefFor } from '../../lib/routes.js';
+import { screenParamsQuery } from '../../lib/screenParams.js';
 import { cn } from '../../lib/utils.js';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 import { useToast } from '../../contexts/ToastContext.jsx';
 import { useSeatLimits } from '../../hooks/useSeatLimits.js';
-import { settingsColorTone } from '../../components/ui/ColorPicker.jsx';
-import { SettingsPanel, SettingsSectionHeader } from '../../components/ui/SettingsCard.jsx';
-import {
-  DialogField, EmptyState, FIELD_INPUT, FormDialog,
-  RowAction, SettingsBtn, TableHeadRow
-} from './settingsBits.jsx';
+import { useEquipeFichas } from '../../hooks/useEquipeFichas.js';
+import { useMinuteClock } from '../../hooks/useMinuteClock.js';
+import { useScreenParams } from '../../hooks/useScreenParams.js';
+import { AppLink } from '../../components/nav/AppLink.jsx';
+import { SettingsSectionHeader } from '../../components/ui/SettingsCard.jsx';
+import { DialogField, FIELD_INPUT, FormDialog, SettingsBtn } from './settingsBits.jsx';
+import { EditarAcessoDialog } from './equipe/EditarAcessoDialog.jsx';
+import { ProfessorPicker } from './equipe/ProfessorPicker.jsx';
+import { EquipeLista } from './equipe/EquipeLista.jsx';
+import { EquipeFicha } from './equipe/EquipeFicha.jsx';
 
-// Equipe & acessos: quem entra no app, com qual papel, turno e piso de
-// prospecção; e, num card à parte, os professores que conduzem aula
-// experimental (catálogo simples). Com o módulo Professor e faltosos ligado
-// (appUser.tenantModules), o professor do cadastro pode ganhar login com o
-// papel Professor (src/lib/teamRoles.js).
+// Equipe & acessos: a lista de pessoas e a ficha de cada uma (endereço
+// /configuracoes/equipe[/<id>[/<aba>]]). Com o módulo Professor e faltosos
+// ligado (appUser.tenantModules), o professor do cadastro pode ganhar login
+// com o papel Professor (src/lib/teamRoles.js).
 //
 // Os caminhos de escrita são os mesmos de antes do redesign (/api/admin-*,
 // /api/invite-create e o doc do usuário): mudou a casca, não a regra. O papel
 // e o professor ligado só mudam pelo servidor (set-role), nunca pelo cliente.
-
-const MEMBERS_GRID = '1.6fr .8fr .9fr .9fr 1fr 84px';
-const MEMBERS_COLUMNS = [
-  { key: 'member', label: 'Membro' },
-  { key: 'role', label: 'Papel' },
-  { key: 'shift', label: 'Turno' },
-  { key: 'target', label: 'Prospecção' },
-  { key: 'access', label: 'Acesso' },
-  { key: 'actions', label: '' }
-];
-
-// Professores usam a MESMA tabela dos membros — as larguras espelham as de
-// MEMBERS_GRID (a coluna da barra ocupa duas) para as duas listas lerem como
-// uma coisa só, mesmo sendo cadastros diferentes.
-const PROFESSORS_GRID = '1.6fr .8fr 1.8fr 1fr 84px';
-const PROFESSORS_COLUMNS = [
-  { key: 'professor', label: 'Professor' },
-  { key: 'aulas', label: 'Aulas' },
-  { key: 'share', label: 'Participação' },
-  { key: 'conversion', label: 'Matrícula' },
-  { key: 'actions', label: '' }
-];
-
-// Selo do papel na lista. O professor tem cor própria para não se confundir
-// com o consultor, que é quem ocupa vaga do plano.
-const ROLE_BADGE = {
-  [ROLES.GESTOR]: 'bg-accent-500/[0.14] text-accent-600 dark:text-accent-400',
-  [ROLES.CONSULTOR]: 'bg-muted text-slate-600 dark:text-slate-300',
-  [ROLES.PROFESSOR]: 'bg-violet-500/[0.12] text-violet-700 dark:text-violet-300'
-};
-
-const initialsOf = (name) => (name || '?')
-  .trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
 
 const emptyForm = {
   name: '', email: '', password: '', shiftStart: '', shiftEnd: '', dailyVolumeTarget: '',
@@ -74,18 +41,6 @@ const emptyForm = {
 };
 
 const normalizeEmail = (v) => String(v || '').trim().toLowerCase();
-const normalizeUid = (v) => String(v || '').trim();
-
-function MemberAvatar({ name, size = 32 }) {
-  return (
-    <span
-      style={{ width: size, height: size, fontSize: Math.round(size * 0.34) }}
-      className="rounded-full grid place-items-center font-bold shrink-0 bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300"
-    >
-      {initialsOf(name)}
-    </span>
-  );
-}
 
 // A faixa das vagas de consultor do plano, mais a linha dos professores com
 // acesso, que não ocupam vaga. As vagas só aparecem com o limite de consultor
@@ -136,83 +91,22 @@ function SeatBand({ seats, consultantCount, professorCount = 0 }) {
   );
 }
 
-function ProfessorRow({ professor, modalities, aulas, share, conversion, last, withLogin = false, onEdit, onDelete }) {
-  const mods = professorModalityNames(professor, modalities);
-  // Cor da primeira modalidade: identifica o professor no avatar e na barra,
-  // como no card do handoff.
-  const modality = (modalities || []).find(m => (professor.modalidadeIds || []).includes(m.id));
-  const tone = settingsColorTone(modality?.color || 'slate');
-
-  return (
-    <div
-      className={cn('grid gap-3 items-center px-5 py-3.5 transition hover:bg-muted/50', !last && 'border-b border-border')}
-      style={{ gridTemplateColumns: PROFESSORS_GRID }}
-    >
-      <div className="flex items-center gap-2.5 min-w-0">
-        <span className={cn(
-          'size-8 rounded-full grid place-items-center text-[11px] font-bold shrink-0',
-          tone.soft, tone.text, tone.darkSoft, tone.darkText
-        )}>
-          {initialsOf(professor.nome)}
-        </span>
-        <div className="min-w-0">
-          <div className="text-[13.5px] font-semibold truncate">{professor.nome}</div>
-          <div className="text-[11.5px] text-muted-foreground truncate">
-            {mods.length ? mods.join(' · ') : 'Sem modalidade'}{withLogin ? ' · com acesso ao app' : ''}
-          </div>
-        </div>
-      </div>
-
-      <div className="text-[12.5px] font-semibold num">{aulas}</div>
-
-      <div className="flex items-center">
-        <div className="w-full h-[5px] rounded-full bg-muted overflow-hidden">
-          <div className={cn('h-full rounded-full', tone.strong)} style={{ width: `${share}%` }} />
-        </div>
-      </div>
-
-      <div className={cn('text-[12.5px] num', conversion == null && 'text-slate-400 dark:text-slate-500')}>
-        {conversion == null ? 'sem aula' : `${conversion}%`}
-      </div>
-
-      <div className="flex items-center justify-end gap-1.5">
-        <RowAction icon={<Pencil size={13} />} title={`Editar ${professor.nome}`} onClick={onEdit} />
-        <RowAction kind="danger" icon={<Trash2 size={13} />} title={`Excluir ${professor.nome}`} onClick={onDelete} />
-      </div>
-    </div>
-  );
-}
-
-// Escolha do professor do cadastro que a pessoa é: só os ativos e sem login,
-// mais o próprio professor de quem está sendo editado.
-function ProfessorPicker({ value, options, onChange, disabled = false }) {
-  return (
-    <DialogField
-      label="Professor do cadastro"
-      hint={options.length === 0
-        ? 'Nenhum professor ativo sem acesso. Cadastre o professor no card Professores, mais abaixo.'
-        : 'Cada professor do cadastro tem um login só.'}
-    >
-      <select className={FIELD_INPUT} value={value} onChange={e => onChange(e.target.value)} disabled={disabled} required>
-        <option value="" disabled>Escolha o professor</option>
-        {options.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
-      </select>
-    </DialogField>
-  );
-}
-
-function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHandled, onLeadsChanged }) {
+function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHandled, onLeadsChanged, listenersActive = true, pessoaId = null, pessoaAba = null }) {
   const toast = useToast();
+  const navigate = useNavigate();
+  const location = useLocation();
   const { professores, modalities } = useGeneralConfig();
   const seats = useSeatLimits();
+  const { tenantId } = appUser || {};
   // Módulos da academia, lidos no login e guardados no appUser
   // (src/lib/modules.js). Sem o Professor e faltosos, a tela fica como sempre.
   const tenantModules = appUser?.tenantModules;
   const professorEnabled = hasModule(tenantModules, MODULES.FALTOSOS);
 
-  const [memberDialog, setMemberDialog] = useState(null); // null | {mode:'create'|'edit', user}
+  const [memberDialog, setMemberDialog] = useState(null); // null | {mode:'create', papelFixo?}
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [editandoAcesso, setEditandoAcesso] = useState(false);
 
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
@@ -221,70 +115,93 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
   const [inviteLink, setInviteLink] = useState('');
   const [inviting, setInviting] = useState(false);
 
-  const [profDialog, setProfDialog] = useState(null); // null | {professor}
+  const [profOpen, setProfOpen] = useState(false);
   const [profName, setProfName] = useState('');
   const [profMods, setProfMods] = useState([]);
-
-  const rowRefs = useRef({});
+  const [busca, setBusca] = useState('');
+  const topoRef = useRef(null);
 
   const users = useMemo(() => usersList || [], [usersList]);
+  const { fichas, pronto, erro } = useEquipeFichas({ db, enabled: listenersActive, tenantId });
+  const agora = useMinuteClock();
+  const pessoas = useMemo(() => montarEquipe({ fichas, users, professores, agora }), [fichas, users, professores, agora]);
+  const ctxFiltros = useMemo(() => ({}), []);
+  const [filtros, setFiltros] = useScreenParams('settings', ctxFiltros);
+  // Os filtros da lista vão junto para a ficha e voltam com ela.
+  const qFiltros = screenParamsQuery('settings', filtros, ctxFiltros);
+  const listaHref = hrefFor(tenantId, 'settings', { sub: 'team' }) + qFiltros;
+  const hrefDe = (id, aba) => hrefFor(tenantId, 'settings', { sub: 'team', pessoaId: id, pessoaAba: aba }) + qFiltros;
+  // O id da pessoa muda quando ela ganha login ou ficha (do professor para o
+  // login, do login para a ficha): o endereço antigo continua achando a pessoa.
+  const acharPessoa = (id) => pessoas.find((p) => p.id === id)
+    ?? pessoas.find((p) => p.professor?.id === id || p.user?.id === id) ?? null;
+  const pessoa = pessoaId ? acharPessoa(pessoaId) : null;
+
   // Só consultor ocupa vaga de consultor do plano: o gestor tem a vaga dele e
   // o professor não ocupa nenhuma (a mesma conta do api/_plans.js).
   const consultantCount = users.filter(u => roleOf(u) === ROLES.CONSULTOR).length;
   const professorCount = users.filter(u => isProfessor(u)).length;
-  const professorLogins = linkedProfessorIds(users);
   const createLabel = professorEnabled ? 'Cadastrar pessoa' : 'Cadastrar consultor';
 
-  // Diálogo de membro, calculado no render. O papel aparece no cadastro com o
-  // módulo ligado e na edição de quem não é gestor, quando o módulo está ligado
-  // ou a pessoa já é professor (o módulo pode ter sido desligado depois).
-  const editingUser = memberDialog?.mode === 'edit' ? memberDialog.user : null;
-  const showRoleField = editingUser
-    ? !isGestor(editingUser) && (professorEnabled || isProfessor(editingUser))
-    : professorEnabled;
+  // No cadastro, o papel aparece com o módulo ligado.
+  const showRoleField = professorEnabled;
   const creatingProfessor = memberDialog?.mode === 'create' && form.role === ROLES.PROFESSOR;
-  const memberProfessorOptions = availableProfessors(professores, users, {
-    exceptUserId: editingUser?.id ?? null,
-    keepId: editingUser?.professorId ?? null
-  });
+  const memberProfessorOptions = availableProfessors(professores, users);
   const inviteProfessorOptions = availableProfessors(professores, users);
 
-  const openCreate = () => { setForm({ ...emptyForm, password: generateTemporaryPassword() }); setMemberDialog({ mode: 'create' }); };
-  const openEdit = (user) => {
-    setForm({
-      name: user.name || '',
-      email: user.email || '',
-      password: '',
-      shiftStart: user.shiftStart || '',
-      shiftEnd: user.shiftEnd || '',
-      dailyVolumeTarget: user.dailyVolumeTarget != null ? String(user.dailyVolumeTarget) : '',
-      role: roleOf(user),
-      professorId: user.professorId || ''
-    });
-    setMemberDialog({ mode: 'edit', user });
+  // Abrir a ficha não remonta a tela (a chave continua `settings`): a rolagem
+  // ficaria onde a lista estava. Só mexe no DOM.
+  useEffect(() => {
+    if (pessoaId) topoRef.current?.scrollIntoView?.({ block: 'start' });
+  }, [pessoaId]);
+
+  // O link clicado some com a troca de tela: o foco vai ao título da ficha e,
+  // na volta, ao link da pessoa de onde veio (ou à busca, se ela saiu da lista).
+  const pessoaAnterior = useRef(pessoaId);
+  useEffect(() => {
+    const de = pessoaAnterior.current;
+    pessoaAnterior.current = pessoaId;
+    const topo = topoRef.current;
+    if (de === pessoaId || !topo) return;
+    if (pessoaId) {
+      (topo.querySelector('h1') || topo.querySelector('a'))?.focus({ preventScroll: true });
+      return;
+    }
+    const link = [...topo.querySelectorAll('a[href]')].find((a) => new URL(a.href, window.location.href).pathname.endsWith(`/equipe/${de}`));
+    (link || topo.querySelector('input'))?.focus({ preventScroll: true });
+  }, [pessoaId]);
+
+  // Abrir o cadastro já preenchido (o "Dar acesso" da ficha).
+  // papelFixo: o "Dar acesso" da ficha não deixa trocar o papel nem o
+  // professor, porque o login novo só se liga à ficha pelo professor dela.
+  const openCreate = (inicio = {}, { papelFixo = false } = {}) => {
+    setForm({ ...emptyForm, ...inicio, password: generateTemporaryPassword() });
+    setMemberDialog({ mode: 'create', papelFixo });
   };
 
-  // Atalho da Visão geral: 'new' abre o cadastro, um id destaca a linha.
+  // Atalho da Visão geral: 'new' abre o cadastro; o id de um login sem acesso
+  // vinculado abre a ficha dessa pessoa em Acesso ao app.
   useEffect(() => {
     if (!focusId) return;
+    onFocusHandled?.();
     if (focusId === 'new') {
       setForm({ ...emptyForm, password: generateTemporaryPassword() });
       setMemberDialog({ mode: 'create' });
-      onFocusHandled?.();
       return;
     }
-    rowRefs.current[focusId]?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  }, [focusId, onFocusHandled]);
+    navigate(hrefFor(tenantId, 'settings', { sub: 'team', pessoaId: focusId, pessoaAba: 'acesso' }), { replace: true, state: location.state });
+  }, [focusId, onFocusHandled, navigate, tenantId, location.state]);
 
-  // Consultor EXTRA é cobrado além da mensalidade — nunca cobra sem avisar.
+  // Consultor extra é cobrado além da mensalidade: nunca cobra sem avisar.
   const confirmExtra = (price) => window.confirm(
-    `Os consultores inclusos no seu plano já foram usados.\n\nEste consultor entra como EXTRA: +R$ ${Number(price).toLocaleString('pt-BR')}/mês na mensalidade (vale a partir da próxima fatura).\n\nConfirmar?`
+    `Os consultores inclusos no seu plano já foram usados.\n\nEste consultor entra como extra: +R$ ${Number(price).toLocaleString('pt-BR')}/mês na mensalidade (vale a partir da próxima fatura).\n\nConfirmar?`
   );
 
   const authHeader = async () => ({
     'Content-Type': 'application/json',
     Authorization: `Bearer ${await auth.currentUser.getIdToken()}`
   });
+
 
   const createMember = async (allowExtra = false) => {
     if (!form.name.trim() || !form.email.trim() || !form.password.trim()) {
@@ -334,158 +251,10 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
     }
   };
 
-  // Papel e professor ligado mudam pelo servidor (set-role do
-  // /api/admin-users), que confere o módulo, o professor do cadastro, a
-  // carteira e a vaga de consultor. Devolve true quando o resto do cadastro
-  // pode seguir.
-  const changeRole = async (target, change, allowExtra = false) => {
-    const res = await fetch('/api/admin-users', {
-      method: 'POST',
-      headers: await authHeader(),
-      body: JSON.stringify({
-        action: SET_ROLE_ACTION,
-        userDocId: target.id,
-        role: change.role,
-        ...(change.role === ROLES.PROFESSOR ? { professorId: change.professorId } : {}),
-        allowExtra
-      })
-    });
-    const data = await res.json().catch(() => ({}));
-    if (res.status === 409 && data?.requiresExtraConfirmation) {
-      return confirmExtra(data.extraUserPrice) ? changeRole(target, change, true) : false;
-    }
-    if (!res.ok) { toast.error(data.error || 'Não foi possível trocar o papel.'); return false; }
-    if (data.changed !== false) {
-      toast.success(change.role === roleOf(target)
-        ? 'Professor do cadastro trocado.'
-        : `O papel de ${target.name} agora é ${roleLabel({ role: change.role })}. O acesso novo vale quando a pessoa entrar de novo.`);
-    }
-    if (data.isExtra) toast.info('Este consultor entrou como extra. A mensalidade foi ajustada a partir da próxima fatura.', { duration: 8000 });
-    return true;
-  };
-
-  const updateMember = async () => {
-    const target = memberDialog?.user;
-    if (!target) return;
-    // A senha é conferida antes de gravar o cadastro. Se fosse recusada só no
-    // fim, o resto das alterações já estaria salvo com o formulário aberto.
-    if (form.password.trim()) {
-      const passwordProblem = passwordPolicyError(form.password);
-      if (passwordProblem) { toast.warning(passwordProblem); return; }
-    }
-    // O que muda no papel. Professor sem professor escolhido nem chega ao
-    // servidor.
-    const roleChange = planRoleChange(target, form);
-    if (roleChange?.role === ROLES.PROFESSOR && !roleChange.professorId) {
-      toast.warning(PROFESSOR_LINK_MESSAGES.missing);
-      return;
-    }
-    // O e-mail de login de quem tem conta muda pelo servidor (set-email do
-    // /api/admin-users), no Auth e no cadastro juntos, e as sessões da pessoa
-    // caem. O cliente só grava o e-mail do cadastro sem conta, que não tem
-    // login para trocar.
-    const emailChange = planLoginEmailChange(target, form.email);
-    if (emailChange.kind === 'invalid') { toast.warning(emailChange.error); return; }
-    const ownEmail = emailChange.kind === 'account'
-      && emailChange.body.targetAuthUid === normalizeUid(appUser?.authUid);
-    // Trocar o próprio e-mail derruba a sessão de quem está salvando, e a troca
-    // de senha que viria em seguida seria recusada pelo servidor.
-    if (ownEmail && form.password.trim()) {
-      toast.warning('Troque o seu e-mail e a sua senha em duas vezes: salve o e-mail, entre de novo e depois troque a senha.');
-      return;
-    }
-    if (emailChange.kind === 'account'
-      && !window.confirm(loginEmailConfirmText({ name: target.name, email: emailChange.email, self: ownEmail }))) return;
-
-    setSaving(true);
-    try {
-      // A troca de papel vai primeiro: é o único passo que pode pedir a
-      // confirmação do extra, e recusada, nada mais é salvo.
-      if (roleChange && !(await changeRole(target, roleChange))) return;
-
-      if (emailChange.kind === 'account') {
-        const res = await fetch('/api/admin-users', {
-          method: 'POST',
-          headers: await authHeader(),
-          body: JSON.stringify(emailChange.body)
-        });
-        const data = await res.json().catch(() => ({}));
-        // Sem o e-mail trocado, nada mais é salvo: o formulário fica aberto com
-        // o que foi digitado.
-        if (!res.ok) { toast.error(data.error || LOGIN_EMAIL_FAILED_MESSAGE); return; }
-        // changed: false é o e-mail que a conta já tinha. O login não mudou.
-        if (data.changed !== false) {
-          toast.success(ownEmail
-            ? 'Seu e-mail de login mudou. Saia e entre de novo com o e-mail novo.'
-            : 'E-mail de login trocado. A pessoa passa a entrar com o e-mail novo.');
-        }
-      }
-
-      const newName = form.name.trim();
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', USERS_PATH, target.id), {
-        name: newName,
-        // O e-mail só entra aqui no cadastro sem conta. Com conta, quem grava é
-        // o set-email, junto com o Auth.
-        ...(emailChange.kind === 'record' ? { email: emailChange.email } : {}),
-        // authUid não sai daqui: é a chave que liga o cadastro à conta do Auth,
-        // e as rules agora recusam a troca. Ele nasce no /api/admin-users (ação
-        // create) e no aceite de convite.
-        shiftStart: form.shiftStart || null,
-        shiftEnd: form.shiftEnd || null,
-        // Vazio ou 0 = sem meta de prospecção. Não existe padrão de academia:
-        // o piso é 100% individual. O professor não prospecta, então a meta
-        // dele sai junto.
-        dailyVolumeTarget: form.role !== ROLES.PROFESSOR && form.dailyVolumeTarget !== '' && Number(form.dailyVolumeTarget) > 0
-          ? Math.min(500, Math.floor(Number(form.dailyVolumeTarget)))
-          : deleteField(),
-        password: deleteField()
-      });
-
-      // consultantName é desnormalizado nos leads (Kanban, Agendamentos, CSV,
-      // ranking do Dashboard) — sem esta cascata tudo isso exibiria o nome
-      // antigo. Busca direto no Firestore pra alcançar a base inteira.
-      if (target.name !== newName) {
-        const leadsSnap = await getDocs(query(
-          collection(db, 'artifacts', appId, 'public', 'data', LEADS_PATH),
-          where('consultantId', '==', target.id)
-        ));
-        if (!leadsSnap.empty) {
-          await commitOpsInChunks(db, leadsSnap.docs.map(d => ({
-            ref: doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, d.id),
-            data: { consultantName: newName }
-          })), 400);
-        }
-      }
-
-      if (form.password.trim()) {
-        const targetUid = target.authUid;
-        if (!targetUid) {
-          toast.error('Cadastro sem authUid. Não é possível redefinir senha.');
-        } else {
-          const res = await fetch('/api/admin-users', {
-            method: 'POST',
-            headers: await authHeader(),
-            body: JSON.stringify({ action: 'set-password', targetAuthUid: targetUid, password: form.password })
-          });
-          const data = await res.json();
-          if (!res.ok) { toast.error(data.error || 'Erro ao redefinir senha.'); return; }
-          toast.success(`Senha redefinida. Nova senha: ${form.password}`, { duration: 8000 });
-        }
-      }
-
-      toast.success('Cadastro atualizado.');
-      setMemberDialog(null);
-    } catch (err) {
-      console.error(err);
-      toast.error('Erro ao salvar alterações.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const deleteMember = async (user) => {
+  const deleteMember = async (pessoa) => {
+    const user = pessoa.user;
     if (isGestor(user)) { toast.warning('O gestor não pode ser excluído por aqui.'); return; }
-    if (!window.confirm(`Excluir o acesso de "${user.name}"?\n\nApaga a conta no Auth e o cadastro interno. Essa ação é irreversível.`)) return;
+    if (!window.confirm(`Tirar o acesso de "${user.name}"?\n\nA conta de login é apagada e não dá para desfazer.`)) return;
     if (!appUser?.authUid) { toast.error('Sessão sem authUid. Reentre no sistema.'); return; }
     try {
       const res = await fetch('/api/admin-users', {
@@ -494,12 +263,20 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
         body: JSON.stringify({ action: 'delete', userDocId: user.id, targetAuthUid: user.authUid || null })
       });
       const data = await res.json();
-      if (!res.ok) { toast.error(data.error || 'Erro ao excluir consultor.'); return; }
-      toast.success('Acesso excluído.');
+      if (!res.ok) { toast.error(data.error || 'Não deu para tirar o acesso.'); return; }
+      toast.success('Acesso removido.');
       setMemberDialog(null);
+      // O botão some com o login: o foco fica no bloco Acesso ao app.
+      if (pessoa.ficha) topoRef.current?.querySelector('section[aria-label="Acesso ao app"]')?.focus();
+      // Sem ficha, o id da pessoa era o do login, que deixou de existir: o
+      // professor continua na equipe pelo cadastro dele, o consultor sai.
+      if (!pessoa.ficha) {
+        const destino = pessoa.professor ? hrefDe(pessoa.professor.id, 'acesso') : listaHref;
+        navigate(destino, { replace: true, state: location.state });
+      }
     } catch (err) {
       console.error(err);
-      toast.error('Falha de rede ao excluir consultor.');
+      toast.error('Falha de rede ao tirar o acesso.');
     }
   };
 
@@ -538,66 +315,20 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
     catch { toast.info('Copie o link manualmente.'); }
   };
 
-  // --- Professores ---------------------------------------------------------
-
-  const professorStats = useMemo(() => {
-    const rows = (professores || []).map(p => {
-      const aulas = (leads || []).filter(l => l.appointmentProfessorId === p.id);
-      const matriculas = aulas.filter(isClientLead).length;
-      return {
-        professor: p,
-        aulas: aulas.length,
-        conversion: aulas.length > 0 ? Math.round((matriculas / aulas.length) * 100) : null
-      };
-    });
-    const max = rows.reduce((m, r) => Math.max(m, r.aulas), 0);
-    return rows.map(r => ({ ...r, share: max > 0 ? Math.round((r.aulas / max) * 100) : 0 }));
-  }, [professores, leads]);
-
-  const openProfessor = (professor) => {
-    setProfName(professor?.nome || '');
-    setProfMods(professor?.modalidadeIds || []);
-    setProfDialog({ professor: professor || null });
-  };
-
   const saveProfessor = async () => {
     const trimmed = profName.trim();
     if (!trimmed) { toast.warning('Informe o nome do professor.'); return; }
-    const editingId = profDialog?.professor?.id || null;
-    const dup = (professores || []).some(p => p.id !== editingId && (p.nome || '').trim().toLowerCase() === trimmed.toLowerCase());
+    const dup = (professores || []).some(p => (p.nome || '').trim().toLowerCase() === trimmed.toLowerCase());
     if (dup) { toast.warning(`O professor "${trimmed}" já existe.`); return; }
 
     setSaving(true);
     try {
-      if (editingId) {
-        const old = profDialog.professor;
-        await setDoc(
-          doc(db, 'artifacts', appId, 'public', 'data', PROFESSORS_PATH, editingId),
-          { nome: trimmed, modalidadeIds: profMods, updatedAt: serverTimestamp() },
-          { merge: true }
-        );
-        // Nome do professor é desnormalizado no lead (aparece na agenda e nos
-        // relatórios de aula) — renomear tem que alcançar a base.
-        if (old.nome !== trimmed) {
-          // Lidos na hora: a lista da tela é uma foto da abertura.
-          const affected = await leadsWhere(db, 'appointmentProfessorId', '==', editingId);
-          if (affected.length > 0) {
-            await commitOpsInChunks(db, affected.map(l => ({
-              ref: doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, l.id),
-              data: { appointmentProfessorName: trimmed }
-            })), 400);
-            onLeadsChanged?.();
-          }
-        }
-        toast.success('Professor atualizado.');
-      } else {
-        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', PROFESSORS_PATH), {
-          nome: trimmed, modalidadeIds: profMods, ativo: true,
-          order: (professores || []).length, createdAt: serverTimestamp(), updatedAt: serverTimestamp()
-        });
-        toast.success('Professor cadastrado.');
-      }
-      setProfDialog(null);
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', PROFESSORS_PATH), {
+        nome: trimmed, modalidadeIds: profMods, ativo: true,
+        order: (professores || []).length, createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+      });
+      toast.success('Professor cadastrado.');
+      setProfOpen(false);
     } catch (err) {
       console.error(err);
       toast.error('Não foi possível salvar o professor.');
@@ -606,172 +337,58 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
     }
   };
 
-  const deleteProfessor = async (p) => {
-    // Professor com login não sai do cadastro: o acesso dele aponta para cá.
-    const login = users.find(u => isProfessor(u) && u.professorId === p.id);
-    if (login) {
-      toast.warning(`"${p.nome}" tem acesso ao app (${login.name}). Exclua esse acesso na lista da equipe antes de excluir o professor.`);
-      return;
+  // Para cadastro feito por engano: sem login e com no máximo uma movimentação.
+  const excluirCadastro = async (p) => {
+    if (p.user || (p.ficha?.movimentacoes || []).length > 1) return;
+    if (p.professor) {
+      let emUso;
+      try {
+        const [aulas, alunos] = await Promise.all([
+          leadsWhere(db, 'appointmentProfessorId', '==', p.professor.id),
+          leadsWhere(db, 'professorId', '==', p.professor.id),
+        ]);
+        emUso = aulas.length + alunos.length;
+      } catch (err) {
+        console.error(err);
+        toast.error('Não deu para conferir as aulas e os alunos. Tente de novo.');
+        return;
+      }
+      if (emUso > 0) { toast.warning(`"${p.nome}" tem aulas ou alunos registrados, então o cadastro não pode ser excluído.`); return; }
     }
-    let inUse;
+    if (!window.confirm(`Excluir o cadastro de "${p.nome}"? Use só para cadastro feito por engano.`)) return;
     try {
-      inUse = (await leadsWhere(db, 'appointmentProfessorId', '==', p.id)).length;
+      // Num lote só: apagar um e falhar no outro deixaria uma pessoa sem cadastro na lista.
+      const lote = writeBatch(db);
+      if (p.professor) lote.delete(doc(db, 'artifacts', appId, 'public', 'data', PROFESSORS_PATH, p.professor.id));
+      if (p.ficha) lote.delete(doc(db, 'artifacts', appId, 'public', 'data', EQUIPE_PATH, p.ficha.id));
+      await lote.commit();
+      toast.success('Cadastro excluído.');
+      navigate(listaHref, { replace: true, state: location.state });
     } catch (err) {
       console.error(err);
-      toast.error('Não foi possível conferir as aulas do professor. Tente de novo.');
-      return;
+      toast.error('Não deu para excluir o cadastro.');
     }
-    if (inUse > 0) {
-      toast.warning(`"${p.nome}" está em ${inUse} ${inUse === 1 ? 'aula' : 'aulas'} já registradas. Não é possível excluí-lo.`);
-      return;
-    }
-    if (!window.confirm(`Excluir o professor "${p.nome}"?`)) return;
-    try {
-      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', PROFESSORS_PATH, p.id));
-    } catch (err) {
-      console.error(err);
-      toast.error('Não foi possível excluir o professor.');
-      return;
-    }
-    toast.success('Professor excluído.');
   };
 
   const toggleProfMod = (id) => setProfMods(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
-  return (
-    <div className="flex flex-col gap-5">
-      <SettingsSectionHeader
-        title="Equipe & acessos"
-        hint="Quem entra no app, com qual papel, turno e piso de prospecção."
-      >
-        <SettingsBtn size={38} icon={<Mail size={14} />} onClick={() => { setInviteOpen(true); setInviteLink(''); }}>
-          Convidar por e-mail
-        </SettingsBtn>
-        <SettingsBtn kind="primary" size={38} icon={<Plus size={14} />} onClick={openCreate}>
-          {createLabel}
-        </SettingsBtn>
-      </SettingsSectionHeader>
-
-      <SeatBand seats={seats} consultantCount={consultantCount} professorCount={professorCount} />
-
-      <section className="rounded-2xl border border-border bg-card shadow-card overflow-hidden">
-        <TableHeadRow columns={MEMBERS_COLUMNS} template={MEMBERS_GRID} />
-        {users.length === 0 ? (
-          <EmptyState>Nenhum membro cadastrado ainda. Comece pelo botão “Cadastrar consultor”.</EmptyState>
-        ) : users.map((u, i) => {
-          const linked = Boolean(normalizeUid(u.authUid));
-          const target = Number(u.dailyVolumeTarget) > 0 ? u.dailyVolumeTarget : null;
-          const professorRow = isProfessor(u);
-          const linkedName = professorRow ? professorNameById(professores, u.professorId) : null;
-          return (
-            <div
-              key={u.id}
-              ref={el => { rowRefs.current[u.id] = el; }}
-              className={cn(
-                'grid gap-3 items-center px-5 py-3.5 transition hover:bg-muted/50',
-                i < users.length - 1 && 'border-b border-border',
-                focusId === u.id && 'bg-brand-50/60 dark:bg-brand-500/10'
-              )}
-              style={{ gridTemplateColumns: MEMBERS_GRID }}
-            >
-              <div className="flex items-center gap-2.5 min-w-0">
-                <MemberAvatar name={u.name} />
-                <div className="min-w-0">
-                  <div className="text-[13.5px] font-semibold truncate">{u.name}</div>
-                  <div className="text-[11.5px] text-muted-foreground truncate">{u.email}</div>
-                </div>
-              </div>
-
-              <div className="min-w-0">
-                <span className={cn('inline-flex text-[11.5px] font-semibold px-2.5 py-1 rounded-[7px]', ROLE_BADGE[roleOf(u)])}>
-                  {roleLabel(u)}
-                </span>
-                {professorRow && (
-                  <div className={cn('text-[11px] mt-1 truncate', linkedName ? 'text-muted-foreground' : 'text-amber-600 dark:text-amber-400')}>
-                    {linkedProfessorText(u, professores)}
-                  </div>
-                )}
-              </div>
-
-              <div className="text-[12.5px] text-slate-700 dark:text-slate-200 num">
-                {u.shiftStart && u.shiftEnd ? `${u.shiftStart}–${u.shiftEnd}` : '—'}
-              </div>
-
-              <div className={cn('text-[12.5px] num', target && !professorRow ? 'font-semibold' : 'text-slate-400 dark:text-slate-500')}>
-                {professorRow ? '—' : target ? `${target}/dia` : 'sem meta'}
-              </div>
-
-              <div className="flex items-center gap-2">
-                <span className={cn('size-[7px] rounded-full shrink-0', linked ? 'bg-emerald-500' : 'bg-amber-500')} />
-                <span className={cn('text-[12px] font-semibold', linked ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400')}>
-                  {linked ? 'Vinculado' : 'Sem vínculo'}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-end gap-1.5">
-                <RowAction icon={<Pencil size={13} />} title="Editar membro" onClick={() => openEdit(u)} />
-                {!isGestor(u) && (
-                  <RowAction kind="danger" icon={<Trash2 size={13} />} title="Excluir acesso" onClick={() => deleteMember(u)} />
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </section>
-
-      <SettingsPanel
-        icon={<Dumbbell size={16} />}
-        title="Professores"
-        hint={professorEnabled
-          ? 'Quem conduz aulas experimentais. Com o papel Professor, na lista da equipe, ganha acesso ao app.'
-          : 'Quem conduz aulas experimentais. Eles não têm login no app.'}
-        action={
-          <SettingsBtn kind="primary" size={38} icon={<Plus size={14} />} onClick={() => openProfessor(null)}>
-            Cadastrar professor
-          </SettingsBtn>
-        }
-      >
-        <TableHeadRow columns={PROFESSORS_COLUMNS} template={PROFESSORS_GRID} />
-        {professorStats.length === 0 ? (
-          <EmptyState>Nenhum professor cadastrado. Quem conduzir a aula experimental aparece aqui.</EmptyState>
-        ) : professorStats.map(({ professor, aulas, share, conversion }, i) => (
-          <ProfessorRow
-            key={professor.id}
-            professor={professor}
-            modalities={modalities}
-            aulas={aulas}
-            share={share}
-            conversion={conversion}
-            last={i === professorStats.length - 1}
-            withLogin={professorLogins.has(professor.id)}
-            onEdit={() => openProfessor(professor)}
-            onDelete={() => deleteProfessor(professor)}
-          />
-        ))}
-      </SettingsPanel>
-
-      {/* Cadastro / edição de membro */}
+  const dialogos = (
+    <>
+      {/* Cadastro de membro */}
       <FormDialog
         open={Boolean(memberDialog)}
         onOpenChange={(v) => !v && setMemberDialog(null)}
-        title={memberDialog?.mode === 'edit'
-          ? `Editar ${memberDialog.user.name}`
-          : (creatingProfessor ? 'Cadastrar acesso de professor' : 'Cadastrar consultor')}
-        description={memberDialog?.mode === 'edit'
-          ? 'O authUid é gerado no cadastro e não muda. Preencha a nova senha só se quiser redefini-la.'
-          : `Cria a conta no Firebase Auth e o cadastro interno numa operação só. Anote a senha temporária para entregar ao ${creatingProfessor ? 'professor' : 'consultor'}.`}
-        submitLabel={memberDialog?.mode === 'edit' ? 'Salvar alterações' : 'Cadastrar'}
+        title={creatingProfessor ? 'Cadastrar acesso de professor' : 'Cadastrar consultor'}
+        description={`Cria a conta no Firebase Auth e o cadastro interno numa operação só. Anote a senha temporária para entregar ao ${creatingProfessor ? 'professor' : 'consultor'}.`}
+        submitLabel="Cadastrar"
         submitting={saving}
-        onSubmit={() => (memberDialog?.mode === 'edit' ? updateMember() : createMember())}
+        onSubmit={() => createMember()}
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <DialogField label="Nome">
             <input className={FIELD_INPUT} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Ex: Ana Duarte" required />
           </DialogField>
-          <DialogField
-            label="E-mail de login"
-            hint={memberDialog?.mode === 'edit' ? 'Trocar o e-mail muda o login da pessoa.' : undefined}
-          >
+          <DialogField label="E-mail de login">
             <input className={FIELD_INPUT} type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="ana@academia.com.br" required />
           </DialogField>
         </div>
@@ -779,7 +396,7 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
         {showRoleField && (
           <div className="grid gap-4 sm:grid-cols-2">
             <DialogField label="Papel" hint="Professor não ocupa vaga de consultor do plano.">
-              <select className={FIELD_INPUT} value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
+              <select className={FIELD_INPUT} value={form.role} disabled={Boolean(memberDialog?.papelFixo)} onChange={e => setForm({ ...form, role: e.target.value })}>
                 <option value={ROLES.CONSULTOR}>Consultor</option>
                 <option value={ROLES.PROFESSOR}>Professor</option>
               </select>
@@ -788,7 +405,7 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
               <ProfessorPicker
                 value={form.professorId}
                 options={memberProfessorOptions}
-                disabled={!professorEnabled}
+                disabled={!professorEnabled || Boolean(memberDialog?.papelFixo)}
                 onChange={(id) => setForm({ ...form, professorId: id })}
               />
             )}
@@ -796,8 +413,8 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
         )}
 
         <DialogField
-          label={memberDialog?.mode === 'edit' ? 'Nova senha (opcional)' : 'Senha temporária'}
-          hint={memberDialog?.mode === 'edit' ? `Em branco mantém a senha atual. ${PASSWORD_RULE_TEXT}` : PASSWORD_RULE_TEXT}
+          label="Senha temporária"
+          hint={PASSWORD_RULE_TEXT}
         >
           <div className="flex gap-2">
             <input
@@ -805,8 +422,8 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
               type="text"
               value={form.password}
               onChange={e => setForm({ ...form, password: e.target.value })}
-              placeholder={memberDialog?.mode === 'edit' ? 'Deixe em branco para não alterar' : 'Digite ou clique em Gerar'}
-              required={memberDialog?.mode === 'create'}
+              placeholder="Digite ou clique em Gerar"
+              required
             />
             <SettingsBtn size={36} type="button" onClick={() => setForm({ ...form, password: generateTemporaryPassword() })}>Gerar</SettingsBtn>
           </div>
@@ -820,17 +437,6 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
             <input className={FIELD_INPUT} type="time" value={form.shiftEnd} onChange={e => setForm({ ...form, shiftEnd: e.target.value })} />
           </DialogField>
         </div>
-
-        {memberDialog?.mode === 'edit' && form.role !== ROLES.PROFESSOR && (
-          <DialogField label="Meta de prospecção (ações/dia)" hint="0 ou vazio desabilita a prospecção da pessoa.">
-            <input
-              className={cn(FIELD_INPUT, 'num')}
-              type="number" min="0" max="500" placeholder="off"
-              value={form.dailyVolumeTarget}
-              onChange={e => setForm({ ...form, dailyVolumeTarget: e.target.value })}
-            />
-          </DialogField>
-        )}
       </FormDialog>
 
       {/* Convite por e-mail */}
@@ -862,15 +468,15 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
         )}
       </FormDialog>
 
-      {/* Professor */}
+      {/* Professor novo */}
       <FormDialog
-        open={Boolean(profDialog)}
-        onOpenChange={(v) => !v && setProfDialog(null)}
-        title={profDialog?.professor ? `Editar ${profDialog.professor.nome}` : 'Novo professor'}
+        open={profOpen}
+        onOpenChange={setProfOpen}
+        title="Novo professor"
         description={professorEnabled
-          ? 'Professores aparecem na lista ao agendar uma aula experimental. O acesso ao app é dado na lista da equipe, com o papel Professor.'
+          ? 'Professores aparecem na lista ao agendar uma aula experimental. O acesso ao app é dado na ficha da pessoa, em Acesso ao app.'
           : 'Professores aparecem na lista ao agendar uma aula experimental. Não têm login no app.'}
-        submitLabel={profDialog?.professor ? 'Salvar' : 'Cadastrar professor'}
+        submitLabel="Cadastrar professor"
         submitting={saving}
         onSubmit={saveProfessor}
       >
@@ -903,6 +509,82 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
           )}
         </DialogField>
       </FormDialog>
+    </>
+  );
+
+  if (pessoaId) {
+    const voltar = (
+      <AppLink to={listaHref} className="w-fit rounded text-[13px] font-semibold text-muted-foreground outline-none hover:text-brand-700 focus-visible:anel-foco">Equipe & acessos</AppLink>
+    );
+    let corpo;
+    if (erro || !pronto) {
+      // Gravar sem a leitura das fichas poderia criar uma ficha duplicada.
+      corpo = (
+        <div className="flex flex-col gap-4">
+          {voltar}
+          <p role={erro ? 'alert' : 'status'} className="rounded-2xl border border-border bg-card p-6 text-[13px] text-muted-foreground">
+            {erro ? 'Não deu para ler as fichas da equipe.' : 'Abrindo a ficha…'}
+          </p>
+        </div>
+      );
+    } else if (!pessoa) {
+      corpo = (
+        <div className="flex flex-col gap-4">
+          {voltar}
+          <p className="rounded-2xl border border-border bg-card p-6 text-[13px] text-muted-foreground">Não achamos essa pessoa na equipe.</p>
+        </div>
+      );
+    } else {
+      corpo = (
+        <>
+          <EquipeFicha
+            db={db} appUser={appUser} tenantId={tenantId} pessoa={pessoa} aba={pessoaAba || 'dados'}
+            onAba={(aba) => navigate(hrefDe(pessoa.id, aba), { replace: true, state: location.state })}
+            voltarHref={listaHref} modalities={modalities} professores={professores} leads={leads}
+            professorEnabled={professorEnabled} agora={agora}
+            onEditarAcesso={() => setEditandoAcesso(true)}
+            onTirarAcesso={() => deleteMember(pessoa)}
+            onDarAcesso={() => openCreate({
+              name: pessoa.nome, email: pessoa.ficha?.emailPessoal || '',
+              role: pessoa.funcao === 'professor' ? ROLES.PROFESSOR : ROLES.CONSULTOR, professorId: pessoa.professor?.id || '',
+            }, { papelFixo: true })}
+            onLeadsChanged={onLeadsChanged}
+            acoesDaFicha={!pessoa.user && (pessoa.ficha?.movimentacoes || []).length <= 1
+              ? <SettingsBtn size={36} onClick={() => excluirCadastro(pessoa)}>Excluir cadastro</SettingsBtn> : null}
+          />
+          {pessoa.user && (
+            <EditarAcessoDialog db={db} appUser={appUser} user={pessoa.user} usersList={users} open={editandoAcesso} onOpenChange={setEditandoAcesso} />
+          )}
+        </>
+      );
+    }
+    return <div ref={topoRef} className="scroll-mt-4 md:scroll-mt-8">{corpo}{dialogos}</div>;
+  }
+
+  return (
+    <div ref={topoRef} className="flex scroll-mt-4 flex-col gap-5 md:scroll-mt-8">
+      <SettingsSectionHeader
+        title="Equipe & acessos"
+        hint="Quem trabalha na academia: a ficha, o vínculo e o acesso ao app de cada pessoa."
+      >
+        <SettingsBtn size={38} icon={<Mail size={14} />} onClick={() => { setInviteOpen(true); setInviteLink(''); }}>
+          Convidar por e-mail
+        </SettingsBtn>
+        <SettingsBtn size={38} icon={<Plus size={14} />} onClick={() => { setProfName(''); setProfMods([]); setProfOpen(true); }}>
+          Cadastrar professor
+        </SettingsBtn>
+        <SettingsBtn kind="primary" size={38} icon={<Plus size={14} />} onClick={() => openCreate()}>
+          {createLabel}
+        </SettingsBtn>
+      </SettingsSectionHeader>
+
+      <SeatBand seats={seats} consultantCount={consultantCount} professorCount={professorCount} />
+
+      {erro && <p role="alert" className="rounded-xl border border-border bg-card px-4 py-3 text-[13px] text-muted-foreground">Não deu para ler as fichas da equipe.</p>}
+
+      <EquipeLista pessoas={pessoas} filtros={filtros} setFiltros={setFiltros} busca={busca} setBusca={setBusca}
+        hrefDe={(id) => hrefDe(id)} modalities={modalities} leads={leads} agora={agora} />
+      {dialogos}
     </div>
   );
 }

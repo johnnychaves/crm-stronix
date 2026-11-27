@@ -21,6 +21,9 @@ import { FOCO_ORDER, FOCO_GRUPOS } from './metaFocoCodes.js';
 import { SOLO_TRAINING } from './professores.js';
 import { addMonthsToKey, compareOptions } from './operacional/month.js';
 import { PERIOD_SHORTCUTS, intervalRefusal } from './period.js';
+import { FUNCOES, VINCULOS } from './equipe/ficha.js';
+import { ACESSOS } from './equipe/equipe.js';
+import { periodoDe, periodoValido } from './carreira/periodo.js';
 
 const own = (obj, key) => typeof key === 'string' && Object.prototype.hasOwnProperty.call(obj, key);
 
@@ -372,19 +375,29 @@ const ordemDosLeads = param(
 );
 
 // Tabela por tela. A ordem aqui é a ordem no endereço.
-// Ciclo de avaliação do plano de carreira (dezembro a novembro, com o nome do
-// ano em que termina; src/lib/professor/ciclo.js). O primeiro é o de 2026, o
-// primeiro com contratos no sistema; o último é o de agora, que vem no
-// ctx.cicloAtual e não se escreve.
-export const PRIMEIRO_CICLO = 2026;
-const cicloValido = (raw, ctx) => {
-  if (raw === null || raw === undefined || raw === '') return null;
-  const n = Number(raw);
-  return Number.isInteger(n) && n >= PRIMEIRO_CICLO && n <= ctx.cicloAtual ? n : null;
-};
+// O plano de carreira (spec 2026-11-26-plano-de-carreira-configuravel). A
+// trilha da lista Carreira (`trilha`, ausente é todas) e o período (`ciclo`),
+// que é a chave da trilha ('2027' ou '2027-1'), conferida pelo periodoValido.
+// No perfil, a trilha vem no ctx (a da pessoa). Na lista, é a escolhida na
+// pílula: sem ela, cada pessoa fica no período de agora da trilha dela e o
+// `ciclo` não vale. O período de agora não se escreve.
+const trilhaDaLista = param('trilha',
+  (raw, ctx) => ((ctx.trilhas || []).some((t) => t.id === raw) ? raw : null),
+  (v, ctx) => ((ctx.trilhas || []).some((t) => t.id === v) ? v : null));
+const trilhaDoCtx = (ctx, valores) => ctx.trilha ?? (ctx.trilhas || []).find((t) => t.id === valores?.trilha) ?? null;
 const ciclo = param('ciclo',
-  (raw, ctx) => cicloValido(raw, ctx) ?? ctx.cicloAtual,
-  (v, ctx) => (cicloValido(v, ctx) !== null && v !== ctx.cicloAtual ? String(v) : null));
+  (raw, ctx, out) => (periodoValido(trilhaDoCtx(ctx, out), raw, ctx.agora ?? new Date()) ? String(raw) : null),
+  (v, ctx, valores) => {
+    const t = trilhaDoCtx(ctx, valores);
+    const agora = ctx.agora ?? new Date();
+    if (!v || !periodoValido(t, v, agora)) return null;
+    return v === periodoDe(t, agora)?.chave ? null : String(v);
+  });
+
+// Equipe & acessos (Configurações → Equipe). Ausente é Ativos e todas as
+// funções, vínculos e acessos. A busca pelo nome nunca vai para o endereço.
+const umDe = (campo, valores) => param(campo, (raw) => (valores.includes(raw) ? raw : null), (v) => (valores.includes(v) ? v : null));
+const situacaoEquipe = param('situacao', (raw) => (raw === 'desligados' ? 'desligados' : 'ativos'), (v) => (v === 'desligados' ? 'desligados' : null));
 
 const TABELA = {
   dashOperacional: { mes, comparar, 'comparar-com': compararCom, pessoa },
@@ -396,8 +409,14 @@ const TABELA = {
   aulas: { dia, de: dataDoPeriodo('de'), ate: dataDoPeriodo('ate'), resp, prof },
   visitas: { dia, de: dataDoPeriodo('de'), ate: dataDoPeriodo('ate'), resp },
   dailyGoal: { cat },
-  professores: { ciclo },
+  professores: { trilha: trilhaDaLista, ciclo },
   professorPerfil: { ciclo },
+  settings: {
+    sit: situacaoEquipe,
+    funcao: umDe('funcao', FUNCOES),
+    vinculo: umDe('vinculo', VINCULOS.map((v) => v.id)),
+    acesso: umDe('acesso', ACESSOS),
+  },
   relatorios: {
     mes: soNoModoMes(mes),
     periodo: periodoDoPainel,
