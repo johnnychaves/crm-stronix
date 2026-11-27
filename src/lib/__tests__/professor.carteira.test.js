@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { normalizeContracts } from '../operacional/base.js';
 import { carteiraAt, contratosDaModalidade, estadoEm, planosDoProfessor } from '../professor/carteira.js';
 import { carteiraDoCiclo } from '../professor/renovacao.js';
+import { limitesDoCiclo } from '../professor/ciclo.js';
 
 const ts = (iso) => ({ toDate: () => new Date(iso) });
 const PROF = { id: 'p1', modalidadeIds: ['func'] };
@@ -101,7 +102,7 @@ describe('carteiraDoCiclo', () => {
     { id: 'bia', professorId: 'p1', name: 'Bia' },
     { id: 'caio', professorId: 'p1', name: 'Caio', cpfDigits: '11144477735' },
   ];
-  const linhas = carteiraDoCiclo({ leads, contratos: normalizeContracts(raw), planos: PLANOS, professor: PROF, ciclo: 2027, asOf: ASOF });
+  const linhas = carteiraDoCiclo({ leads, contratos: normalizeContracts(raw), planos: PLANOS, professor: PROF, periodo: limitesDoCiclo(2027), asOf: ASOF });
 
   it('uma linha por aluno, com a situação: a vencer primeiro, depois os que venceram', () => {
     expect(linhas.map((l) => [l.lead.id, l.situacao])).toEqual([['caio', 'vencer'], ['ana', 'renovou'], ['bia', 'nao']]);

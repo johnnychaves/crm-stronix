@@ -2,16 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, Info, Plus, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { dayKeyOf } from '../../lib/operacional/month.js';
-import { abreAPartirDe, ciclosDaPesquisa, fimPassou, MAX_PERGUNTAS, podeAbrir, problemaDaPesquisa } from '../../lib/professor/pesquisas.js';
+import { abreAPartirDe, fimPassou, MAX_PERGUNTAS, podeAbrir, problemaDaPesquisa } from '../../lib/professor/pesquisas.js';
 import { BOTAO, BOTAO_PRI, Confirmacao } from './Confirmacao.jsx';
-import { cicloLongo, diaTexto, periodoTexto } from './pesquisasTexto.js';
+import { diaTexto, periodoTexto } from './pesquisasTexto.js';
 
 // O formulário da pesquisa em três passos (mockup B): nome e datas, perguntas,
 // revisar e abrir. O rodapé diz o que falta e só deixa seguir com o passo
 // certo. Salvar rascunho pede a pesquisa inteira certa: com a principal
 // sugerida, isso já vale depois do primeiro passo.
 const PASSOS = ['Nome e datas', 'Perguntas', 'Revisar e abrir'];
-const CAMPOS_DO_PASSO = [['nome', 'inicio', 'fim', 'ciclo'], null, null];
+const CAMPOS_DO_PASSO = [['nome', 'inicio', 'fim'], null, null];
 const INPUT = 'h-[38px] min-w-0 rounded-[10px] border border-border bg-card px-3 text-[14px] font-medium text-foreground outline-none focus-visible:anel-foco aria-[invalid=true]:border-rose-500';
 const LINK = 'rounded text-[13px] font-semibold text-brand-700 outline-none hover:underline focus-visible:anel-foco dark:text-brand-300';
 
@@ -39,16 +39,7 @@ export function PesquisaForm({ id, inicial, turmaHoje, hoje = dayKeyOf(new Date(
   // O foco vai para o título do passo ao abrir o formulário e a cada troca.
   useEffect(() => { titulo.current?.focus(); }, [passo]);
 
-  const ciclos = ciclosDaPesquisa(form.inicio);
-  const mudar = (campo, valor) => setForm((f) => {
-    const novo = { ...f, [campo]: valor };
-    // Início novo: o ciclo segue o padrão quando o escolhido deixou de valer.
-    if (campo === 'inicio') {
-      const opcoes = ciclosDaPesquisa(valor);
-      if (!opcoes.includes(novo.ciclo)) novo.ciclo = opcoes[0] ?? null;
-    }
-    return novo;
-  });
+  const mudar = (campo, valor) => setForm((f) => ({ ...f, [campo]: valor }));
   const mudarPergunta = (i, mudanca) => setForm((f) => ({ ...f, perguntas: f.perguntas.map((q, j) => (j === i ? { ...q, ...mudanca } : q)) }));
   const marcarPrincipal = (i) => setForm((f) => ({ ...f, perguntas: f.perguntas.map((q, j) => ({ ...q, principal: j === i })) }));
   const tirarPergunta = (i) => setForm((f) => {
@@ -130,13 +121,6 @@ export function PesquisaForm({ id, inicial, turmaHoje, hoje = dayKeyOf(new Date(
               <label htmlFor="pesq-fim" className="text-[12.5px] font-medium text-foreground/80">Termina em</label>
               <input id="pesq-fim" type="date" className={INPUT} value={form.fim} min={form.inicio || undefined} aria-invalid={invalido('fim')} onChange={(e) => mudar('fim', e.target.value)} />
             </div>
-            <div className="flex min-w-0 flex-col gap-1.5 sm:col-span-2">
-              <label htmlFor="pesq-ciclo" className="text-[12.5px] font-medium text-foreground/80">Conta para o ciclo</label>
-              <select id="pesq-ciclo" className={INPUT} value={form.ciclo ?? ''} disabled={!ciclos.length} aria-invalid={invalido('ciclo')} onChange={(e) => mudar('ciclo', Number(e.target.value))}>
-                {!ciclos.length && <option value="">Escolha o início primeiro</option>}
-                {ciclos.map((c) => <option key={c} value={c}>{cicloLongo(c)}</option>)}
-              </select>
-            </div>
           </div>
         )}
 
@@ -186,7 +170,6 @@ export function PesquisaForm({ id, inicial, turmaHoje, hoje = dayKeyOf(new Date(
             <dl className="m-0 grid grid-cols-1 gap-x-3.5 gap-y-2 text-[14px] sm:grid-cols-[140px_minmax(0,1fr)]">
               <dt className="text-muted-foreground">Nome</dt><dd className="m-0">{form.nome}</dd>
               <dt className="text-muted-foreground">Período</dt><dd className="num m-0">{periodoTexto(form.inicio, form.fim)}</dd>
-              <dt className="text-muted-foreground">Ciclo</dt><dd className="m-0">{form.ciclo ? cicloLongo(form.ciclo) : ''}</dd>
               <dt className="text-muted-foreground">Turma ao abrir</dt>
               <dd className="m-0">{turmaHoje == null ? 'Contando os alunos…' : `${turmaHoje} ${turmaHoje === 1 ? 'aluno' : 'alunos'} da carteira dos professores, hoje`}</dd>
               <dt className="text-muted-foreground">Principal</dt><dd className="m-0">{principal?.texto}</dd>

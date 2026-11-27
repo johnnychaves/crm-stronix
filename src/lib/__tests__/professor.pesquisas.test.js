@@ -1,24 +1,18 @@
 import { describe, it, expect } from 'vitest';
 import { normalizeContracts } from '../operacional/base.js';
 import {
-  ciclosDaPesquisa, estadoDaPesquisa, fimPassou, novaPesquisa, podeAbrir, npsDoCiclo, paraGravar, PERGUNTA_PRINCIPAL_PADRAO,
+  estadoDaPesquisa, fimPassou, novaPesquisa, podeAbrir, npsDoCiclo, paraGravar, PERGUNTA_PRINCIPAL_PADRAO,
   pesquisaEmCurso, problemaDaPesquisa, progressoDaTurma, recebeRespostas, resumoDaPesquisa, turmasDoDia,
 } from '../professor/pesquisas.js';
 import { somarResposta } from '../professor/nps.js';
+
+const ANUAL_DEZ = { frequencia: 'anual', mes: 12 };
+const SEM_JUN = { frequencia: 'semestral', mes: 6 };
 
 const form = (over = {}) => ({
   nome: 'Junho de 2027', inicio: '2027-06-01', fim: '2027-06-20', ciclo: 2027,
   perguntas: [{ texto: PERGUNTA_PRINCIPAL_PADRAO, principal: true }, { texto: 'De 0 a 10, as aulas ajudam?', principal: false }],
   ...over,
-});
-
-describe('ciclosDaPesquisa', () => {
-  it('junho só conta para o ciclo do ano; dezembro oferece o ano e o ciclo seguinte', () => {
-    expect(ciclosDaPesquisa('2027-06-01')).toEqual([2027]);
-    expect(ciclosDaPesquisa('2027-12-01')).toEqual([2027, 2028]);
-    expect(ciclosDaPesquisa('')).toEqual([]);
-    expect(ciclosDaPesquisa('2027-02-30')).toEqual([]);
-  });
 });
 
 describe('problemaDaPesquisa', () => {
@@ -32,11 +26,10 @@ describe('problemaDaPesquisa', () => {
     expect(problemaDaPesquisa(form({ inicio: '2027-12-01', fim: '2027-12-15', ciclo: 2028 }))).toBeNull();
   });
 
-  it('recusa datas, ciclo e perguntas fora da regra', () => {
+  it('recusa datas e perguntas fora da regra', () => {
     expect(problemaDaPesquisa(form({ inicio: '' }))).toMatchObject({ campo: 'inicio' });
     expect(problemaDaPesquisa(form({ fim: '2027-05-31' }))).toMatchObject({ campo: 'fim' });
-    expect(problemaDaPesquisa(form({ ciclo: 2028 }))).toMatchObject({ campo: 'ciclo' });
-    expect(problemaDaPesquisa(form({ ciclo: null }))).toMatchObject({ campo: 'ciclo' });
+    expect(problemaDaPesquisa(form({ ciclo: null }))).toBeNull();
     expect(problemaDaPesquisa(form({ perguntas: [] }))).toMatchObject({ campo: 'perguntas' });
     const seis = Array.from({ length: 6 }, (_, i) => ({ texto: `P${i}`, principal: i === 0 }));
     expect(problemaDaPesquisa(form({ perguntas: seis }))).toMatchObject({ campo: 'perguntas' });
@@ -144,7 +137,7 @@ describe('npsDoCiclo', () => {
       ],
       totais: [totaisDe('jun', doze)],
       professorId: 'p1',
-      ciclo: 2027,
+      trilha: ANUAL_DEZ, chave: '2027',
     });
     expect(r.itens.map((i) => i.pesquisa.id)).toEqual(['jun']);
     expect(r).toMatchObject({ nota: 9.33, pesquisas: 1, passa: true, promotores: 83 });
@@ -159,13 +152,13 @@ describe('npsDoCiclo', () => {
       ],
       totais: [],
       professorId: 'p1',
-      ciclo: 2027,
+      trilha: ANUAL_DEZ, chave: '2027',
     });
     expect(r.itens.map((i) => i.pesquisa.id)).toEqual(['jun']);
   });
 
   it('a pesquisa sem totais aparece com zero respostas e sem nota', () => {
-    const r = npsDoCiclo({ pesquisas: [pesquisa('dez', '2027-12-01', { situacao: 'aberta' })], totais: [], professorId: 'p1', ciclo: 2027 });
+    const r = npsDoCiclo({ pesquisas: [pesquisa('dez', '2027-12-01', { situacao: 'aberta' })], totais: [], professorId: 'p1', trilha: ANUAL_DEZ, chave: '2027' });
     expect(r.itens[0].resultado).toMatchObject({ respostas: 0, turma: 20, valida: false, nota: null });
     expect(r).toMatchObject({ nota: null, pesquisas: 0, promotores: null });
   });
@@ -175,12 +168,30 @@ describe('npsDoCiclo', () => {
       pesquisas: [pesquisa('jun', '2027-06-01'), pesquisa('dez', '2027-12-01'), pesquisa('pouca', '2027-09-01')],
       totais: [totaisDe('jun', doze), totaisDe('dez', [...Array(10).fill(10)]), totaisDe('pouca', [6, 6])],
       professorId: 'p1',
-      ciclo: 2027,
+      trilha: ANUAL_DEZ, chave: '2027',
     });
     expect(r.itens.map((i) => i.pesquisa.id)).toEqual(['jun', 'pouca', 'dez']);
     expect(r.nota).toBe(9.66); // (9,33 + 10) ÷ 2, com a média de duas casas de cada pesquisa
     expect(r.pesquisas).toBe(2);
     expect(r.promotores).toBe(91);
+  });
+
+  it('a pesquisa conta pela data em que abre, e o ciclo gravado não importa', () => {
+    const r = npsDoCiclo({
+      pesquisas: [pesquisa('dez', '2027-12-01', { ciclo: 2028 }), pesquisa('jan', '2028-01-10', { ciclo: 2027 })],
+      totais: [],
+      professorId: 'p1',
+      trilha: ANUAL_DEZ,
+      chave: '2027',
+    });
+    expect(r.itens.map((i) => i.pesquisa.id)).toEqual(['dez']);
+  });
+
+  it('no semestral, a de junho conta no primeiro e a de dezembro no segundo', () => {
+    const pesquisas = [pesquisa('jun', '2027-06-01'), pesquisa('dez', '2027-12-01')];
+    const ids = (chave) => npsDoCiclo({ pesquisas, totais: [], professorId: 'p1', trilha: SEM_JUN, chave }).itens.map((i) => i.pesquisa.id);
+    expect(ids('2027-1')).toEqual(['jun']);
+    expect(ids('2027-2')).toEqual(['dez']);
   });
 });
 
@@ -190,5 +201,12 @@ describe('resumoDaPesquisa', () => {
     const totais = [{ pesquisaId: 'a', professorId: 'p1', respostas: 14 }, { pesquisaId: 'a', professorId: 'p2', respostas: 9 }, { pesquisaId: 'x', professorId: 'p1', respostas: 3 }];
     expect(resumoDaPesquisa([p], totais, '2027-06-10')).toEqual({ pesquisa: p, respostas: 23, turma: 44 });
     expect(resumoDaPesquisa([p], totais, '2027-06-21')).toBeNull();
+  });
+});
+
+describe('paraGravar e o ciclo', () => {
+  it('grava o ano do início no ciclo, só para a regra da pesquisa encerrada', () => {
+    expect(paraGravar(form({ inicio: '2027-12-01', fim: '2027-12-15' })).ciclo).toBe(2027);
+    expect(novaPesquisa()).not.toHaveProperty('ciclo');
   });
 });
