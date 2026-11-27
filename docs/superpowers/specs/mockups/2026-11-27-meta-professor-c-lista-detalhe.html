@@ -1,0 +1,75 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Meta do professor C · Lista e detalhe</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="2026-11-27-meta-professor.css">
+<style>
+/* Lista curta à esquerda, o aluno escolhido à direita com o histórico. */
+.md{display:grid;grid-template-columns:360px minmax(0,1fr);gap:16px;margin-top:16px;align-items:start}
+.ls{overflow:hidden}
+.ls h3{padding:14px 20px 8px;font-size:13px;font-weight:600;color:var(--muted)}
+.it{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;width:100%;padding:12px 20px;border:0;border-left:3px solid transparent;background:#fff;text-align:left;cursor:pointer}
+.it:hover{background:#f8faff}
+.it[aria-current=true]{background:var(--blue50);border-left-color:var(--blue)}
+.it b{display:block;font-size:14px;font-weight:600}
+.it .s{font-size:12px;color:var(--muted)}
+.it .s.u{color:var(--rose700);font-weight:600}
+.it .d2{font-size:13px;font-weight:700}
+.it.ok{opacity:.65}
+.det{padding:24px 26px}
+.det-t{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.det-t h2{font-size:24px;font-weight:700;letter-spacing:-.02em}
+.det-t a{font-size:13px;font-weight:600;color:var(--blue700)}
+.mot{display:inline-flex;margin-top:14px;height:26px;align-items:center;padding:0 11px;border-radius:999px;background:rgba(245,158,11,.15);color:var(--amber700);font-size:12.5px;font-weight:600}
+.mot.u{background:rgba(244,63,94,.10);color:var(--rose700)}
+.fatos{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:18px 0 20px}
+.fato span{display:block;font-size:12px;color:var(--muted)}
+.fato b{font-size:14px;font-weight:600}
+.hist{margin-top:22px;padding-top:18px;border-top:1px solid var(--rule)}
+.hist h3{font-size:15px;font-weight:700;margin-bottom:12px}
+.ev{display:grid;grid-template-columns:70px 1fr;gap:12px;padding:8px 0;font-size:13px}
+.ev .q{color:var(--muted)}
+.semana{display:flex;gap:4px;margin-top:8px}
+.semana i{width:22px;height:22px;border-radius:6px;background:#eef2f7}
+.semana i.v{background:#10B981}
+@media (max-width:980px){.md{grid-template-columns:1fr}.fatos{grid-template-columns:1fr 1fr}}
+</style></head><body><div class="wrap" id="app"></div><div id="vis"></div>
+<div class="tag">Mockup C · Lista e detalhe · dados de exemplo</div>
+<script src="2026-11-27-faltosos-dados.js"></script>
+<script src="2026-11-27-meta-professor-comum.js"></script>
+<script>
+const { F } = MP;
+let selId = null;
+function render() {
+  const fila = MP.pendentes(); const feitos = MP.feitos();
+  const todos = [...fila, ...feitos];
+  if (!todos.find((a) => a.id === selId)) selId = todos[0]?.id || null;
+  const a = todos.find((x) => x.id === selId);
+  const item = (x) => `<button type="button" class="it${x.tarefa.status === 'feita' ? ' ok' : ''}" data-sel="${x.id}" aria-current="${x.id === selId}">${F.avatar(x, 32)}<span style="min-width:0"><b>${x.nome}</b><span class="s${x.urgente ? ' u' : ''}">${x.tarefa.status === 'feita' ? 'Contato feito' : x.urgente ? `Urgente, termina ${x.fim}` : `${x.tarefa.marco} dias`}</span></span><span class="d2 num">${x.dias}d</span></button>`;
+  document.getElementById('app').innerHTML = `
+    ${MP.faixa()}
+    <div class="md">
+      <section class="card ls"><h3>Para fazer (${fila.length})</h3>${fila.map(item).join('')}${feitos.length ? `<h3>Feitos nesta semana (${feitos.length})</h3>${feitos.map(item).join('')}` : ''}</section>
+      ${a ? `<section class="card det">
+        <div class="det-t">${F.avatar(a, 50)}<div><h2 class="d">${a.nome}</h2><a href="#">Abrir ficha</a></div></div>
+        <span class="mot${a.urgente ? ' u' : ''}">${MP.motivo(a)}</span>
+        <div class="fatos">
+          <div class="fato"><span>Sem vir desde</span><b class="num">${a.ultima}</b></div>
+          <div class="fato"><span>Dias sem vir</span><b class="num">${a.dias}</b></div>
+          <div class="fato"><span>Plano</span><b>${a.plano}</b></div>
+          <div class="fato"><span>Contrato até</span><b class="num${a.urgente ? ' urgt' : ''}">${a.fim}</b></div>
+        </div>
+        ${a.tarefa.status === 'pendente' ? MP.acoes(a) : '<p style="color:#047857;font-weight:600">Contato feito nesta semana: vai voltar.</p>'}
+        <div class="hist"><h3 class="d">Presença nas últimas 8 semanas</h3>
+          <div class="semana" aria-label="Semanas com presença">${[1, 1, 1, 0, 1, 0, 0, 0].map((v) => `<i class="${v ? 'v' : ''}"></i>`).join('')}</div>
+          <h3 class="d" style="margin-top:20px">Contatos de falta</h3>
+          ${a.tarefa.status === 'feita' ? '<div class="ev"><span class="q num">24/11</span><span>WhatsApp, por você: vai voltar</span></div>' : ''}
+          <div class="ev"><span class="q num">06/10</span><span>Ligação, por você: respondeu. "Está viajando, volta no fim do mês."</span></div>
+        </div>
+      </section>` : '<section class="card det"><h2 class="d">Tudo feito nesta semana</h2></section>'}
+    </div>`;
+  document.getElementById('vis').innerHTML = F.trocaVisao();
+}
+document.addEventListener('click', (e) => { const s = e.target.closest('[data-sel]'); if (s) { selId = s.dataset.sel; render(); } });
+MP.ligar(render);
+render();
+</script></body></html>

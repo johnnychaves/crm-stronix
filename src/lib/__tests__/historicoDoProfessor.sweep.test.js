@@ -38,10 +38,12 @@ const REVISADOS = {
   'src/lib/clientRegistration.js': 'formulário do cadastro completo',
   // Registro da aula em stronix_aulas, não o professor do lead.
   'src/lib/aulas.js': 'registro da aula',
+  'src/lib/faltosos/contatoDeFalta.js': 'campo da interação de contato de falta, não grava o lead',
   'src/lib/aulasPlan.js': 'aulas marcadas no lançamento do freepass, registro da aula',
   'src/lib/slotPatch.js': 'o lead aponta para um registro de aula ou visita (appointmentProfessorId, pelo buildSchedulePatch)',
   'src/components/profile/ScheduleWizard.jsx': 'escolha do professor da aula',
   'src/views/LeadProfileView.jsx': 'registro da aula do assistente',
+  'src/views/MetaDiariaRoute.jsx': 'Meta do professor, só lê os faltosos dele (professorId na consulta, nunca grava no lead)',
   'src/views/DailyGoalView.jsx': 'registro da aula do Remarcar',
   'api/_zapSchedule.js': 'registro da aula do agendamento pelo Stronizap',
   // Só mostram ou contam.
@@ -70,6 +72,9 @@ const REVISADOS = {
   'src/lib/faltosos/lotesImportacao.js': 'gravação de stronix_faltosos, nunca de stronix_leads',
   'src/lib/faltosos/passosImportacao.js': 'escolhas da ligação dos professores na janela',
   'src/lib/faltosos/configuracoes.js': 'troca da ligação de um professor da Next Fit',
+  // Leituras da Meta do professor (PR 2B): filtram por professorId, não gravam.
+  'src/hooks/useFaltososDoProfessor.js': 'leitura dos faltosos do professor, não grava',
+  'src/hooks/useAulasDeHojeDoProfessor.js': 'leitura das aulas de hoje do professor, não grava',
 };
 
 const comChave = [...arquivosDeCodigo(join(RAIZ, 'src')), ...arquivosDeCodigo(join(RAIZ, 'api'))]

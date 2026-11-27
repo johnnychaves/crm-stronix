@@ -4,7 +4,7 @@
 
 import { dayKeyOf, monthKeyOf, monthLabel } from './operacional/month.js';
 import { parseValorBRL } from './format.js';
-import { PRESENCE_RETURN_TYPE, ZAP_SIGNUP_TYPE, ZAP_SIGNAL_TYPE, ZAP_VIA, isAiInteraction, isZapSignalInteraction } from './leads.js';
+import { PRESENCE_RETURN_TYPE, ABSENCE_CONTACT_TYPE, ZAP_SIGNUP_TYPE, ZAP_SIGNAL_TYPE, ZAP_VIA, isAiInteraction, isZapSignalInteraction } from './leads.js';
 
 // Troca de responsável feita pelo cadastro completo da ficha: status_change
 // com dois colchetes, "Responsável alterado de [Ana] para [Bruno]."
@@ -317,6 +317,8 @@ export const classifyInteraction = (i) => {
   // de início. Entra em Marcos e aparece com o interruptor de Sistema
   // desligado.
   if (i.type === PRESENCE_RETURN_TYPE) return 'presence';
+  // Contato do professor com o aluno faltoso: Conversas, com rótulo próprio.
+  if (i.type === ABSENCE_CONTACT_TYPE) return 'conversation';
   // Linha da conversa pelo Stronizap (o lead escreveu, a equipe enviou):
   // bucket Conversas, decidido pelo type. Vem antes das regras de texto, porque
   // o trecho da mensagem do lead é texto livre.
@@ -385,6 +387,7 @@ export const timelineTypeLabel = (i) => {
   // texto livre, e uma palavra como "ligação" não pode mudar o rótulo.
   if (i?.type === ZAP_SIGNAL_TYPE) return 'WhatsApp';
   if (i?.type === 'freepass') return 'Freepass';
+  if (i?.type === ABSENCE_CONTACT_TYPE) return 'Contato de falta';
   switch (i?._kind) {
     case 'contract': return 'Contrato';
     case 'status': return isOwnerChangeText(t) ? 'Responsável' : 'Fase';

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Bell, Handshake, Sparkles, ArrowRight, UserRoundPlus } from 'lucide-react';
+import { Bell, Handshake, Sparkles, ArrowRight, UserRoundPlus, UserX } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { ANNOUNCEMENTS } from '../../lib/announcements.js';
 import { buildNotificationFeed, emptyBellText } from '../../lib/notifications.js';
@@ -71,17 +71,17 @@ export function NotificationRow({ icon, tone, title, subtitle, time, unread, act
   );
 }
 
-export function NotificationBell({ appUser, leads, handoffLeads, seenIds, lastSeenReferralsAt, onMarkAllSeen, onOpenArticle }) {
+export function NotificationBell({ appUser, leads, handoffLeads, cancelamentos, seenIds, lastSeenReferralsAt, onMarkAllSeen, onOpenArticle }) {
   const [open, setOpen] = useState(false);
 
-  const { news, referrals, handoffs, unreadCount } = useMemo(
+  const { news, referrals, handoffs, cancelamentos: querCancelar, unreadCount } = useMemo(
     () => buildNotificationFeed({
-      announcements: ANNOUNCEMENTS, appUser, leads, handoffLeads, seenIds, lastSeenReferralsAt, now: new Date()
+      announcements: ANNOUNCEMENTS, appUser, leads, handoffLeads, cancelamentos, seenIds, lastSeenReferralsAt, now: new Date()
     }),
-    [appUser, leads, handoffLeads, seenIds, lastSeenReferralsAt]
+    [appUser, leads, handoffLeads, cancelamentos, seenIds, lastSeenReferralsAt]
   );
 
-  const vazio = news.length === 0 && referrals.length === 0 && handoffs.length === 0;
+  const vazio = news.length === 0 && referrals.length === 0 && handoffs.length === 0 && querCancelar.length === 0;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -145,6 +145,21 @@ export function NotificationBell({ appUser, leads, handoffLeads, seenIds, lastSe
                 setOpen(false);
                 if (n.articleId) onOpenArticle?.(n.articleId);
               }}
+            />
+          ))}
+
+          {querCancelar.length > 0 && <GroupLabel>Querem cancelar</GroupLabel>}
+          {querCancelar.map((c) => (
+            <NotificationRow
+              key={`qc-${c.id}`}
+              icon={<UserX size={15} />}
+              tone="bg-rose-50 text-rose-600 dark:bg-rose-500/12 dark:text-rose-300"
+              title={c.name}
+              subtitle={c.por ? `Disse ao professor ${c.por} que quer cancelar.` : 'Disse que quer cancelar.'}
+              time={relTime(c.at)}
+              unread={c.unread}
+              leadId={c.id}
+              onNavigate={() => setOpen(false)}
             />
           ))}
 

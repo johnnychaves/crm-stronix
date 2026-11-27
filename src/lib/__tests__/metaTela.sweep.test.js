@@ -64,7 +64,7 @@ describe('o número de urgentes no título da aba', () => {
 
   it('a tela, o selo do menu e o título contam a mesma base, com quem está na agenda de hoje', () => {
     expect(APP).toMatch(/const goalLeads = useMemo\(\(\) => withDayAgendaLeads\(metaLeads, dayAgendaLeads\)/);
-    expect(APP).toContain('<DailyGoalView leads={goalLeads} agendaLeads={dayAgendaLeads}');
+    expect(APP).toContain('dailyGoalProps={{ leads: goalLeads, agendaLeads: dayAgendaLeads,');
     // O selo e o dia batido usam a conta do MetaUrgentCount, com o relógio.
     expect(APP).toContain('onProgress={handleMetaProgress}');
     expect(APP).not.toMatch(/computeDailyGoalSlots\(/);

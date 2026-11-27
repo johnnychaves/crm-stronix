@@ -2,7 +2,7 @@
 // registrada do lead. Quem chama passa o limite: o fim do mês seguinte ao do
 // cadastro, ou o corte pró-rata. Puro.
 
-import { isRegistrationNote, isZapSignalInteraction, PRESENCE_RETURN_TYPE, ZAP_SIGNUP_TYPE } from '../leads.js';
+import { isRegistrationNote, isZapSignalInteraction, PRESENCE_RETURN_TYPE, ABSENCE_CONTACT_TYPE, ZAP_SIGNUP_TYPE } from '../leads.js';
 import { medianWithMissing } from './stats.js';
 
 // A troca de responsável é registro administrativo, não contato. Vai como
@@ -21,6 +21,7 @@ export const isContactInteraction = (i) => Boolean(i)
   && i.type !== 'import'
   && i.type !== ZAP_SIGNUP_TYPE
   && i.type !== PRESENCE_RETURN_TYPE
+  && i.type !== ABSENCE_CONTACT_TYPE
   && !isZapSignalInteraction(i)
   && !(i.type === 'note' && isRegistrationNote(i.text))
   && !isOwnerChange(i);

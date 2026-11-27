@@ -189,10 +189,11 @@ service cloud.firestore {
 
     // Os tipos de interação que o professor cria. A Anotação, o WhatsApp, a
     // Ligação e a nota do Agendar gravam todos 'note'. O contato de falta
-    // (absence_contact) entra com a Meta do professor, no PR 3, aqui e em
-    // src/lib/professorWrites.js juntos.
+    // (absence_contact) é o Registrar contato da Meta do professor
+    // (src/lib/faltosos/contatoDeFalta.js), aqui e em src/lib/professorWrites.js juntos.
     function professorInteractionTypes() {
       return [
+        'absence_contact',
         'note'
       ];
     }
@@ -515,17 +516,39 @@ service cloud.firestore {
     // que não aconteceu, e o professor não cria, porque o tipo não está em
     // professorInteractionTypes().
     //
+    // O professor fecha a tarefa dos alunos dele pela Meta (Registrar contato e
+    // Já voltou, src/lib/faltosos/contatoDeFalta.js): só os campos da tarefa e
+    // do Quer cancelar, só de pendente para feita ou voltou, com a hora do
+    // servidor e o feitaPor igual ao uid (o cadastro do professor tem id igual ao uid). O Quer cancelar só
+    // vale com resultado quer_cancelar e a hora do servidor. O dono, o período, o marco e o urgente ficam como estão.
+    function professorFaltosoOk(appId) {
+      let antes = resource.data;
+      let depois = request.resource.data;
+      let mudou = depois.diff(antes).affectedKeys();
+      return isProfessor(appId)
+        && antes.get('professorId', null) != null
+        && antes.get('professorId', null) == userDoc(appId).data.get('professorId', null)
+        && mudou.hasOnly(['tarefa', 'querCancelarEm', 'querCancelarPorNome', 'querCancelarAluno'])
+        && antes.tarefa.status == 'pendente'
+        && depois.tarefa.status in ['feita', 'voltou']
+        && depois.tarefa.diff(antes.tarefa).affectedKeys().hasOnly(['status', 'feitaEm', 'feitaPor', 'feitaPorNome', 'canal', 'resultado'])
+        && depois.tarefa.feitaEm == request.time
+        && depois.tarefa.feitaPor == request.auth.uid
+        && (!mudou.hasAny(['querCancelarEm', 'querCancelarPorNome', 'querCancelarAluno'])
+          || (depois.querCancelarEm == request.time && depois.tarefa.resultado == 'quer_cancelar'));
+    }
+
     // Estado de cada aluno faltando (stronix_faltosos/{leadId}). Todo membro
     // lê: a aba Faltosos e o selo da ficha leem daqui. No PR 2 só o gestor
-    // grava. O professor marcar a tarefa como feita entra no PR 3, como uma
-    // condição a mais na linha de update, nunca numa segunda linha allow,
-    // porque as regras juntam as linhas com OU.
+    // grava. O professor fecha a tarefa dos alunos dele pela condição
+    // professorFaltosoOk, na mesma linha de update, nunca numa segunda linha
+    // allow, porque as regras juntam as linhas com OU.
     match /artifacts/{appId}/public/data/stronix_faltosos/{leadId} {
       allow read: if inTenant(appId) && tenantActive(appId) && hasModule(appId, 'faltosos');
       allow create: if inTenant(appId) && tenantActive(appId) && hasModule(appId, 'faltosos')
         && isAdmin(appId);
       allow update: if inTenant(appId) && tenantActive(appId) && hasModule(appId, 'faltosos')
-        && isAdmin(appId);
+        && (isAdmin(appId) || professorFaltosoOk(appId));
       allow delete: if false;
     }
 

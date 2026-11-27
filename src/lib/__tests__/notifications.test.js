@@ -93,7 +93,7 @@ describe('buildNotificationFeed — contagem do badge', () => {
 
   it('sem usuário devolve feed vazio', () => {
     expect(buildNotificationFeed({ announcements: ANNS, appUser: null, now: NOW }))
-      .toEqual({ news: [], referrals: [], handoffs: [], unreadCount: 0 });
+      .toEqual({ news: [], referrals: [], handoffs: [], cancelamentos: [], unreadCount: 0 });
   });
 });
 
@@ -234,5 +234,17 @@ describe('buildNotificationFeed — passaram para você', () => {
       now: NOW
     });
     expect(handoffs.map((h) => h.id)).toEqual(['b', 'a']);
+  });
+});
+
+describe('buildNotificationFeed: quer cancelar', () => {
+  it('só para o gestor, com o não lido pelo carimbo de sempre', () => {
+    const at = new Date('2026-11-26T15:00:00Z');
+    const cancelamentos = [{ id: 'l1', querCancelarEm: { toDate: () => at }, querCancelarAluno: 'Marina', querCancelarPorNome: 'Heloísa' }];
+    const comum = { announcements: [], seenIds: [], leads: [], handoffLeads: [], cancelamentos, lastSeenReferralsAt: 0, now: new Date('2026-11-27T12:00:00Z') };
+    const gestor = buildNotificationFeed({ ...comum, appUser: admin });
+    expect(gestor.cancelamentos).toEqual([{ id: 'l1', name: 'Marina', por: 'Heloísa', at, unread: true }]);
+    expect(gestor.unreadCount).toBe(1);
+    expect(buildNotificationFeed({ ...comum, appUser: consultor }).cancelamentos).toEqual([]);
   });
 });

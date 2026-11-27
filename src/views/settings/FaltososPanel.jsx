@@ -1,7 +1,9 @@
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { AlertTriangle, CalendarX, FileSpreadsheet, Plus, Upload, X } from 'lucide-react';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { appId, CONFIG_PATH, CONFIG_FALTOSOS_ID } from '../../lib/firebase.js';
+import { collection, doc, documentId, getDocs, query, setDoc, serverTimestamp, where } from 'firebase/firestore';
+import { appId, CONFIG_PATH, CONFIG_FALTOSOS_ID, FALTOSOS_PATH, LEADS_PATH } from '../../lib/firebase.js';
+import { chunk } from '../../lib/operacional/queries.js';
+import { useRegistroDaImportacao } from '../../hooks/useRegistroDaImportacao.js';
 import { configDasTelas } from '../../lib/faltosos/configFaltosos.js';
 import { hojeEmBrasilia } from '../../lib/faltosos/dias.js';
 import { importaFaltosos, lembreteExportacao, resumoDaUltimaImportacao } from '../../lib/faltosos/abaFaltosos.js';
@@ -22,6 +24,30 @@ import { DialogField, EmptyState, FIELD_INPUT, FormDialog, PanelNote, SettingsBt
 // faltososPanel.test.js.
 const ImportarPlanilhasDialog = lazy(() => import('../faltosos/importacao/ImportarPlanilhasDialog.jsx')
   .then((m) => ({ default: m.ImportarPlanilhasDialog })));
+
+// Os alunos faltando que a importação deixou sem professor (professorId null),
+// com o nome lido do lead, em lotes de 30. Uma leitura na abertura do bloco.
+// releitura: muda a cada importação (o bloco importa sem sair da tela).
+function useSemProfessor({ db, enabled, releitura }) {
+  const [nomes, setNomes] = useState([]);
+  useEffect(() => {
+    if (!db || !enabled) return undefined;
+    let vivo = true;
+    const col = (path) => collection(db, 'artifacts', appId, 'public', 'data', path);
+    (async () => {
+      const snap = await getDocs(query(col(FALTOSOS_PATH), where('professorId', '==', null)));
+      const ids = snap.docs.filter((d) => d.data().status === 'faltando').map((d) => d.id);
+      const lidos = [];
+      for (const lote of chunk(ids, 30)) {
+        const leads = await getDocs(query(col(LEADS_PATH), where(documentId(), 'in', lote)));
+        leads.docs.forEach((d) => lidos.push(d.data().name || 'Sem nome'));
+      }
+      if (vivo) setNomes(lidos.sort((a, b) => a.localeCompare(b, 'pt-BR')));
+    })().catch(() => {});
+    return () => { vivo = false; };
+  }, [db, enabled, releitura]);
+  return nomes;
+}
 
 // Bloco "Faltosos" de Configurações → Metas & ritmo (spec
 // docs/superpowers/specs/2026-10-02-professor-e-faltosos-design.md,
@@ -60,6 +86,10 @@ export function FaltososPanel({ db, appUser }) {
   const [gravando, setGravando] = useState(false);
   const [importando, setImportando] = useState(false);
   const [hojeDia] = useState(() => hojeEmBrasilia());
+  const visivel = importaFaltosos(appUser) && pronta && !erro;
+  const registro = useRegistroDaImportacao({ db, id: visivel ? ultimaImportacao?.id : null });
+  const semProfessor = useSemProfessor({ db, enabled: visivel, releitura: ultimaImportacao?.id ?? null });
+  const naoAchados = registro?.naoLigados || [];
 
   if (!importaFaltosos(appUser) || !pronta) return null;
 
@@ -261,6 +291,43 @@ export function FaltososPanel({ db, appUser }) {
             </ul>
           )}
         </section>
+
+        {semProfessor.length > 0 && (
+          <section aria-labelledby="faltosos-sem-professor" className="border-t border-border">
+            <div className="px-5 pt-4 pb-2">
+              <h4 id="faltosos-sem-professor" className="text-[13px] font-semibold">Sem professor <span className="num font-normal text-muted-foreground">({semProfessor.length})</span></h4>
+              <p className="text-[11.5px] text-muted-foreground mt-0.5 max-w-[460px] text-pretty">
+                Alunos faltando que ficaram sem professor. Ligue o professor da Next Fit em Professores da Next Fit, logo acima.
+              </p>
+            </div>
+            <ul className="flex flex-col">
+              {semProfessor.map((nome, i) => (
+                <li key={`${nome}-${i}`} className="px-5 py-2 border-t border-border text-[13px]">{nome}</li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {naoAchados.length > 0 && (
+          <section aria-labelledby="faltosos-nao-achados" className="border-t border-border">
+            <div className="px-5 pt-4 pb-2">
+              <h4 id="faltosos-nao-achados" className="text-[13px] font-semibold">Não achados <span className="num font-normal text-muted-foreground">({naoAchados.length})</span></h4>
+              <p className="text-[11.5px] text-muted-foreground mt-0.5 max-w-[460px] text-pretty">
+                A importação não achou um cliente com esse nome ou telefone. Ligue na próxima.
+              </p>
+            </div>
+            <ul className="flex flex-col">
+              {naoAchados.map((n, i) => (
+                <li key={`${n.nome}-${i}`} className="flex items-baseline gap-3 px-5 py-2 border-t border-border text-[13px]">
+                  <span className="flex-1 min-w-0 truncate" title={n.nome}>{n.nome}</span>
+                  <span className="shrink-0 text-[11.5px] text-muted-foreground">
+                    {[n.telefone, n.relatorio === 'faltantes' ? 'no Faltantes' : 'no Presenças'].filter(Boolean).join(' · ')}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         <PanelNote>Tudo aqui vale a partir da próxima importação. Os alunos já importados ficam como estão até lá.</PanelNote>
       </SettingsPanel>

@@ -112,7 +112,7 @@ import { ClientsView } from './views/ClientsView.jsx';
 import { LeadProfileRoute } from './views/LeadProfileRoute.jsx';
 import { AddLeadModal } from './modals/AddLeadModal.jsx';
 import { DailyGoalView } from './views/DailyGoalView.jsx';
-import { ProfessorGoalPlaceholder } from './views/ProfessorGoalPlaceholder.jsx';
+import { MetaDiariaRoute } from './views/MetaDiariaRoute.jsx';
 import { RotinasView } from './views/RotinasView.jsx';
 import { ProfessoresView } from './views/professores/ProfessoresView.jsx';
 import { ProfessorPerfilView } from './views/professores/ProfessorPerfilView.jsx';
@@ -128,6 +128,7 @@ import { HelpCenterModal } from './components/HelpCenterModal.jsx';
 import { NotificationBell } from './components/layout/NotificationBell.jsx';
 import { useNotificationsSeen } from './hooks/useNotificationsSeen.js';
 import { useHandoffs } from './hooks/useHandoffs.js';
+import { useQuerCancelar } from './hooks/useQuerCancelar.js';
 import { GymProfileTab } from './views/settings/GymProfileTab.jsx';
 import { PlanInvoicesTab } from './views/settings/PlanInvoicesTab.jsx';
 import { PersonaMenu } from './components/layout/PersonaMenu.jsx';
@@ -285,6 +286,7 @@ function AppInner() {
   // professor não tem carteira nem esse grupo (ACTIONS.SINO_EQUIPE), então a
   // leitura nem sai.
   const handoffLeads = useHandoffs({ db, appUser, enabled: !!appUser && !appUser.superAdminOnly && !professorAccessOff(appUser) && can(appUser, ACTIONS.SINO_EQUIPE) });
+  const cancelamentos = useQuerCancelar({ db, enabled: !!appUser && !appUser.superAdminOnly && isGestor(appUser) && hasModule(appUser.tenantModules, MODULES.FALTOSOS) });
   // Menu do celular: aberto enquanto o endereço for o mesmo em que ele abriu
   // (location.key). Qualquer troca de endereço fecha o menu sozinha, inclusive
   // o voltar do navegador e o replace de um aviso de rota, sem effect. Os links
@@ -1905,6 +1907,7 @@ useEffect(() => {
                   appUser={appUser}
                   leads={leads}
                   handoffLeads={handoffLeads}
+                  cancelamentos={cancelamentos}
                   seenIds={seenIds}
                   lastSeenReferralsAt={lastSeenReferralsAt}
                   onMarkAllSeen={markAllSeen}
@@ -2001,11 +2004,16 @@ useEffect(() => {
               {/* Meta Diária (G1d): base = ativo ∪ clientes a vencer (metaLeads),
                   flip-safe. computeDailyGoalSlots filtra por consultor e categoria
                   internamente. interactions segue global (G2). */}
-              {/* O professor não tem a Meta do consultor. Até a Meta dos
-                  faltosos (PR 3), a tela dele diz o que falta. */}
-              {activeTab === 'dailyGoal' && (isProfessor(appUser)
-                ? <ProfessorGoalPlaceholder appUser={appUser} />
-                : <DailyGoalView leads={goalLeads} agendaLeads={dayAgendaLeads} interactions={interactions} appUser={appUser} statuses={statuses} db={db} tags={tags} lossReasons={lossReasons} usersList={usersList} funnels={funnels} listenersActive={listenersActive} />)}
+              {/* O professor tem a Meta dos faltosos dele, e o gestor escolhe de
+                  quem ver pelo seletor; o resto da equipe segue na DailyGoalView. */}
+              {activeTab === 'dailyGoal' && (
+                <MetaDiariaRoute
+                  db={db}
+                  appUser={appUser}
+                  listenersActive={listenersActive}
+                  dailyGoalProps={{ leads: goalLeads, agendaLeads: dayAgendaLeads, interactions, appUser, statuses, db, tags, lossReasons, usersList, funnels, listenersActive }}
+                />
+              )}
               {activeTab === 'leads' && <LeadsView interactions={interactions} appUser={appUser} sources={sources} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} onAddLeadClick={() => setIsAddLeadModalOpen(true)} />}
               {/* Aulas e Visitas são SOMENTE CONSULTA: não gravam desfecho, então
                   não precisam mais de interactions/statuses (que serviam ao antigo

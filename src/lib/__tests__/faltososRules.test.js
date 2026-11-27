@@ -82,8 +82,11 @@ describe.each([...DE_TODOS, ...DO_GESTOR])('%s', (colecao) => {
 
   it('gravar é só do gestor, na academia ativa e com o módulo ligado, no E de cima', () => {
     for (const op of ['create', 'update']) {
+      // O update de stronix_faltosos também é do professor do aluno (professorFaltosoOk).
+      const ultimo = colecao === 'stronix_faltosos' && op === 'update'
+        ? '(isAdmin(appId) || professorFaltosoOk(appId))' : 'isAdmin(appId)';
       expect(termosDoE(regraDe(blocoDe(colecao), op)), `${colecao}: ${op}`)
-        .toEqual(['inTenant(appId)', 'tenantActive(appId)', MODULO, 'isAdmin(appId)']);
+        .toEqual(['inTenant(appId)', 'tenantActive(appId)', MODULO, ultimo]);
     }
   });
 
@@ -111,6 +114,35 @@ describe('stronix_config, onde mora stronix_config/faltosos', () => {
     const config = blocoDe('stronix_config');
     expect(regraDe(config, 'read').trim()).toBe('if inTenant(appId) && tenantActive(appId);');
     expect(termosDoE(regraDe(config, 'write'))).toEqual(['isAdmin(appId)', 'inTenant(appId)', 'tenantActive(appId)']);
+  });
+});
+
+// O corpo de uma function da regra, até a chave que a fecha.
+function corpoDaFuncao(nome) {
+  const inicio = RULES.indexOf(`function ${nome}(appId) {`);
+  expect(inicio, `function ${nome}`).toBeGreaterThan(-1);
+  const fim = RULES.indexOf('\n    }\n', inicio);
+  return RULES.slice(inicio, fim).replace(/\/\/.*$/gm, '');
+}
+
+describe('professorFaltosoOk: o professor fecha a tarefa dos alunos dele', () => {
+  it('só o aluno dele, só a tarefa e o Quer cancelar, de pendente para feita ou voltou', () => {
+    const f = corpoDaFuncao('professorFaltosoOk');
+    expect(f).toContain('isProfessor(appId)');
+    expect(f).toContain("userDoc(appId).data.get('professorId', null)");
+    expect(f).toContain(".hasOnly(['tarefa', 'querCancelarEm', 'querCancelarPorNome', 'querCancelarAluno'])");
+    expect(f).toContain("antes.tarefa.status == 'pendente'");
+    expect(f).toContain("depois.tarefa.status in ['feita', 'voltou']");
+    expect(f).toContain(".hasOnly(['status', 'feitaEm', 'feitaPor', 'feitaPorNome', 'canal', 'resultado'])");
+    expect(f).toContain('depois.tarefa.feitaEm == request.time');
+    expect(f).toContain('depois.tarefa.feitaPor == request.auth.uid');
+    expect(f).toContain("!mudou.hasAny(['querCancelarEm', 'querCancelarPorNome', 'querCancelarAluno'])");
+    expect(f).toContain("depois.tarefa.resultado == 'quer_cancelar'");
+  });
+
+  it('o professor cria absence_contact, nas duas listas', () => {
+    expect(listaDaRegra('professorInteractionTypes')).toContain('absence_contact');
+    expect(PROFESSOR_INTERACTION_TYPES).toContain('absence_contact');
   });
 });
 

@@ -1,0 +1,55 @@
+/* Base dos três mockups da Meta diária do professor (27/11/2026). */
+@import url("2026-11-27-faltosos-base.css");
+
+/* faixa do topo, como a da Meta do consultor */
+.dia{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;background:#fff;border-radius:18px;padding:18px 24px}
+.dia h1{font-size:24px;font-weight:700;letter-spacing:-.02em}
+.dia p{margin-top:2px}
+.vivo{display:inline-flex;align-items:center;gap:6px;margin-left:8px;color:#047857;font-weight:600}
+.vivo i{width:7px;height:7px;border-radius:50%;background:#10B981}
+.dia-r{display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+.prog{display:grid;grid-template-columns:auto auto;gap:2px 10px;align-items:baseline;min-width:200px}
+.prog b{font-size:22px;font-weight:700}
+.pb{grid-column:1/-1;height:6px;border-radius:999px;background:#eef2f7;overflow:hidden}
+.pb i{display:block;height:100%;background:#10B981;border-radius:999px}
+.selp{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--ink2)}
+.selp select{height:36px;padding:0 12px;border-radius:999px;border:1px solid var(--blue200);background:var(--blue50);color:var(--blue700);font:600 13px Geist,sans-serif}
+.obs{margin-top:12px;padding:10px 16px;border-radius:12px;background:#fff8eb;color:var(--amber700);font-size:13px}
+
+/* barra Foco em */
+.foco{display:flex;gap:4px;flex-wrap:wrap;margin-top:16px}
+.fe{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:#fff;font-size:13px;font-weight:500;cursor:pointer}
+.fe[aria-selected=true]{background:var(--ink);border-color:var(--ink);color:#fff;font-weight:600}
+.fe[aria-disabled=true]{color:var(--faint);cursor:default}
+.fe .n{font-weight:700}
+.fe small{font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;background:#f1f5f9;color:var(--muted)}
+
+/* botões */
+.acts{display:flex;gap:8px;flex-wrap:wrap}
+.b2{display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:#fff;font-size:13px;font-weight:600;cursor:pointer}
+.b2:hover{border-color:var(--blue200)}
+.b2.wa{color:#047857}
+.urgt{color:var(--rose700);font-weight:600}
+
+/* balão do Registrar contato */
+.ov{position:fixed;inset:0;z-index:200;display:grid;place-items:center;padding:16px;background:rgba(14,26,64,.38)}
+.pop{width:min(520px,100%);max-height:calc(100vh - 32px);overflow:auto;background:#fff;border-radius:18px;box-shadow:0 20px 50px rgba(14,26,64,.25)}
+.pop-h{display:flex;justify-content:space-between;align-items:center;padding:18px 22px 6px}
+.pop-h h2{font-size:18px;font-weight:700}
+.x{width:32px;height:32px;border-radius:10px;border:0;background:transparent;font-size:20px;cursor:pointer;color:var(--muted)}
+.pop-l{display:flex;gap:12px;align-items:center;margin:8px 22px 0;padding:12px 14px;border-radius:12px;background:var(--paper)}
+.pop-l b{display:block;font-size:14px}
+.pop-l span{font-size:12.5px}
+.pop-b{padding:6px 22px 4px}
+.lb{margin:16px 0 8px;font-size:13px;font-weight:600;color:var(--ink2)}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.ch{height:34px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:#fff;font-weight:500;cursor:pointer}
+.ch[aria-checked=true]{background:var(--blue50);border-color:var(--blue);color:var(--blue700)}
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.oc{display:flex;flex-direction:column;gap:2px;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:#fff;text-align:left;cursor:pointer}
+.oc b{font-size:13.5px}.oc span{font-size:12px;color:var(--muted)}
+.oc[aria-checked=true]{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue) inset;background:var(--blue50)}
+.oc.red[aria-checked=true]{border-color:#F43F5E;box-shadow:0 0 0 1px #F43F5E inset;background:#fff5f6}
+.add{margin-top:14px;border:0;background:none;padding:0;color:var(--blue700);font-weight:600;cursor:pointer}
+.pop-f{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:18px;padding:14px 22px;border-top:1px solid var(--rule);font-size:12.5px}
+@media (max-width:560px){.cards{grid-template-columns:1fr}}

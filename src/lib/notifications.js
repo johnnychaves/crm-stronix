@@ -30,12 +30,13 @@ export function buildNotificationFeed({
   seenIds = [],
   leads = [],
   handoffLeads = [],
+  cancelamentos: cancelamentosIn = [],
   lastSeenReferralsAt = 0,
   now = new Date(),
   maxReferrals = 15,
   windowDays = REFERRAL_WINDOW_DAYS
 } = {}) {
-  if (!appUser?.id) return { news: [], referrals: [], handoffs: [], unreadCount: 0 };
+  if (!appUser?.id) return { news: [], referrals: [], handoffs: [], cancelamentos: [], unreadCount: 0 };
 
   const isAdmin = isGestor(appUser);
   // Os dois grupos de carteira (indicações e passados pra você). Quem não
@@ -109,12 +110,21 @@ export function buildNotificationFeed({
     .sort((a, b) => b.at.getTime() - a.at.getTime())
     .slice(0, maxReferrals);
 
+  // Aluno que disse "quer cancelar" no contato de falta (Meta do professor).
+  // Só o gestor recebe; o "já li" é o mesmo carimbo das indicações.
+  const cancelamentos = isAdmin ? (cancelamentosIn || [])
+    .map((c) => ({ id: c.id, name: c.querCancelarAluno || 'Aluno', por: c.querCancelarPorNome || '', at: getSafeDateOrNull(c.querCancelarEm) }))
+    .filter((c) => c.at && c.at.getTime() >= cutoff)
+    .sort((a, b) => b.at.getTime() - a.at.getTime())
+    .map((c) => ({ ...c, unread: c.at.getTime() > (lastSeenReferralsAt || 0) })) : [];
+
   const unreadCount =
-    news.filter((n) => n.unread).length
+    cancelamentos.filter((c) => c.unread).length
+    + news.filter((n) => n.unread).length
     + referrals.filter((r) => r.unread).length
     + handoffs.filter((h) => h.unread).length;
 
-  return { news, referrals, handoffs, unreadCount };
+  return { news, referrals, handoffs, cancelamentos, unreadCount };
 }
 
 // Texto do sino sem nenhum aviso. Diz só o que a pessoa pode receber: quem

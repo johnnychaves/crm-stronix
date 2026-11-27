@@ -398,6 +398,16 @@
 @keyframes spin { to { transform: rotate(360deg); } }
 .spin { animation: spin .7s linear infinite; }
 
+/* Troca do aluno no bloco Agora da Meta do professor (pedido do Johnny,
+   27/11/2026): o novo entra e a borda pisca em azul; a linha de quem saiu
+   acende na fila e apaga. */
+@keyframes meta-entra { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes meta-borda { from { border-left-color: var(--color-brand-600); } }
+@keyframes meta-voltou { from { background-color: var(--color-brand-100); } }
+.meta-entra > * { animation: meta-entra .22s ease-out both; }
+.meta-entra { animation: meta-borda .6s ease-out; }
+.meta-voltou { animation: meta-voltou 1.1s ease-out; }
+
 /* =========================
    MOVIMENTO REDUZIDO
    ========================= */
@@ -422,6 +432,9 @@
   [class*="animate-accordion-"],
   [class*="animate-collapsible-"],
   .animate-wiggle,
+  .meta-entra,
+  .meta-entra > *,
+  .meta-voltou,
   .fade-in,
   .animate-fade-in,
   .pop,

@@ -1,0 +1,80 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Faltosos A · Faixas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="2026-11-27-faltosos-base.css">
+<style>
+/* A faixa repete a da Situação da carteira: cada grupo é um segmento e um botão da legenda. */
+.g-urg{--c:#F43F5E;--t:#BE123C}.g-60{--c:#7C3AED;--t:#6D28D9}.g-30{--c:#F97316;--t:#C2410C}.g-14{--c:#F59E0B;--t:#B45309}.g-7{--c:#FCD34D;--t:#92400E}.g-sem{--c:#cbd5e1;--t:#64748b}
+.fx{margin-top:16px;padding:22px 24px 14px}
+.fx-top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.fx h2{font-size:17px;font-weight:700}
+.strip{display:flex;gap:3px;height:16px}
+.seg{border:0;padding:0;min-width:8px;background:var(--c);cursor:pointer;border-radius:4px}
+.seg:first-child{border-radius:8px 4px 4px 8px}.seg:last-child{border-radius:4px 8px 8px 4px}
+.legend{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;margin-top:12px}
+.lg{display:flex;flex-direction:column;align-items:flex-start;gap:1px;text-align:left;padding:10px 12px;border-radius:12px;border:0;background:transparent;cursor:pointer}
+.lg:hover{background:#f4f7fd}.lg[aria-pressed=true]{background:#f1f4fb}
+.lt{display:inline-flex;align-items:center;gap:7px;font-weight:500;color:var(--ink2);white-space:nowrap}
+.lt i{width:9px;height:9px;border-radius:3px;background:var(--c)}
+.lg b{font-size:27px;font-weight:700;letter-spacing:-.02em;line-height:1.15}
+.lg.g-urg b{color:var(--t)}
+.dim{opacity:.38}
+.lnk{border:0;background:none;padding:0;color:var(--blue700);font-weight:600;cursor:pointer}
+
+.anda{margin-top:16px;padding:18px 24px}
+.anda h2{font-size:15px;font-weight:700;margin-bottom:10px}
+.ar{display:grid;grid-template-columns:130px 1fr 150px;gap:16px;align-items:center;padding:7px 8px;border:0;background:none;width:100%;text-align:left;cursor:pointer;border-radius:10px}
+.ar:hover{background:#f8faff}
+.ab{display:flex;height:8px;border-radius:999px;overflow:hidden;background:#eef2f7}
+.ab i{display:block;height:100%}
+.ab .f{background:#10B981}.ab .p{background:#F59E0B}
+.tbl{margin-top:16px;overflow:hidden}
+@media (max-width:980px){.legend{grid-template-columns:repeat(3,minmax(0,1fr))}.ar{grid-template-columns:1fr}}
+</style></head><body><div class="wrap" id="app"></div><div id="vis"></div>
+<div class="tag">Mockup A · Faixas · dados de exemplo</div>
+<script src="2026-11-27-faltosos-dados.js"></script>
+<script>
+const F = FT;
+const GR = [
+  { id: 'urg', nome: 'Urgentes', dica: 'O contrato termina em até 30 dias.', teste: (a) => a.urgente },
+  { id: '60', nome: '60 dias ou mais', teste: (a) => !a.urgente && a.prof && a.faixa === 60 },
+  { id: '30', nome: '30 a 59 dias', teste: (a) => !a.urgente && a.prof && a.faixa === 30 },
+  { id: '14', nome: '14 a 29 dias', teste: (a) => !a.urgente && a.prof && a.faixa === 14 },
+  { id: '7', nome: '7 a 13 dias', teste: (a) => !a.urgente && a.prof && a.faixa === 7 },
+  { id: 'sem', nome: 'Sem professor', dica: 'Ligue o professor da Next Fit em Configurações, Metas & ritmo.', teste: (a) => !a.urgente && !a.prof, soGestor: true },
+];
+const on = new Set();
+let prof = null;
+function render() {
+  const gestor = F.visao() === 'gestor';
+  if (!gestor) prof = F.EU;
+  const base = prof ? F.alunos.filter((a) => a.prof === prof) : F.alunos;
+  const grupos = GR.filter((g) => gestor || !g.soGestor).map((g) => ({ ...g, itens: base.filter(g.teste) }));
+  const vis = grupos.filter((g) => !on.size || on.has(g.id));
+  const comItens = grupos.filter((g) => g.itens.length);
+  const andamento = gestor && !prof ? F.andamento : [];
+  document.getElementById('app').innerHTML = `
+    ${F.cabecalho({ total: base.length, prof })}
+    ${F.importacao()}
+    <section class="card fx"><div class="fx-top"><h2 class="d">${gestor ? 'Quem está sem vir' : 'Seus alunos sem vir'}</h2>
+      <p class="mut">${on.size ? `${vis.reduce((n, g) => n + g.itens.length, 0)} alunos no filtro. <button type="button" class="lnk" data-clear>Limpar filtro</button>` : 'Clique num grupo para filtrar a lista.'}</p></div>
+      <div class="strip">${comItens.map((g) => `<button type="button" class="seg g-${g.id}${on.size && !on.has(g.id) ? ' dim' : ''}" data-g="${g.id}" style="flex:${g.itens.length}" aria-label="${g.nome}, ${g.itens.length}"></button>`).join('')}</div>
+      <div class="legend">${grupos.map((g) => `<button type="button" class="lg g-${g.id}${on.size && !on.has(g.id) ? ' dim' : ''}" data-g="${g.id}" aria-pressed="${on.has(g.id)}"><span class="lt"><i></i>${g.nome}</span><b class="d num">${g.itens.length}</b></button>`).join('')}</div>
+    </section>
+    ${andamento.length ? `<section class="card anda"><h2 class="d">Contatos da semana por professor</h2>${andamento.map((p) => `<button type="button" class="ar" data-p="${p.id}"><b>${p.nome}</b><span class="ab"><i class="f" style="width:${p.feitas / p.total * 100}%"></i><i class="p" style="width:${p.pend / p.total * 100}%"></i></span><span class="mut num">${p.feitas} feitos, ${p.pend} pendentes</span></button>`).join('')}</section>` : ''}
+    <section class="card tbl">${F.cabecaTabela}
+      ${vis.filter((g) => g.itens.length).map((g) => `<div class="gh${g.id === 'urg' ? ' u' : ''}"><h3 class="d">${g.nome}</h3><span class="c num">${g.itens.length}</span>${g.dica ? `<p>${g.dica}</p>` : ''}</div>${g.itens.map(F.linha).join('')}`).join('')}
+      ${gestor && !prof && !on.size ? `<div class="gh"><h3 class="d">Não achados</h3><span class="c num">${F.naoAchados.length}</span><p>A importação não achou um cliente com esse nome ou telefone. Ligue na próxima.</p></div>${F.naoAchadosHtml(F.naoAchados)}` : ''}
+    </section>`;
+  document.getElementById('vis').innerHTML = F.trocaVisao();
+}
+document.addEventListener('click', (e) => {
+  const g = e.target.closest('[data-g]'); const p = e.target.closest('[data-p]');
+  if (g) { on.has(g.dataset.g) ? on.delete(g.dataset.g) : on.add(g.dataset.g); render(); }
+  else if (p) { prof = p.dataset.p; render(); }
+  else if (e.target.closest('[data-clear]')) { on.clear(); render(); }
+  else if (e.target.closest('.fp.on') && F.visao() === 'gestor') { prof = null; render(); }
+});
+addEventListener('hashchange', () => { prof = null; on.clear(); render(); });
+render();
+</script></body></html>

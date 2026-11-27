@@ -25,7 +25,7 @@ import {
   TIMELINE_SYSTEM_KIND
 } from '../timeline.js';
 import { taskOwnerText } from '../schedulePatch.js';
-import { ZAP_SIGNAL_TYPE, isAiInteraction } from '../leads.js';
+import { ZAP_SIGNAL_TYPE, ABSENCE_CONTACT_TYPE, isAiInteraction } from '../leads.js';
 import { ownerChangeNote } from '../clientRegistration.js';
 import {
   buildContractActivate,
@@ -870,5 +870,13 @@ describe('volta a treinar (type presence_return)', () => {
 
   it("rótulo da coluna: 'Presença'", () => {
     expect(timelineTypeLabel({ ...VOLTA, _kind: 'presence' })).toBe('Presença');
+  });
+});
+
+describe('contato de falta do professor (type absence_contact)', () => {
+  it('é conversa, com o rótulo próprio', () => {
+    const i = { type: ABSENCE_CONTACT_TYPE, text: 'Contato de falta (14 dias), WhatsApp: vai voltar.' };
+    expect(classifyInteraction(i)).toBe('conversation');
+    expect(timelineTypeLabel({ ...i, _kind: 'conversation' })).toBe('Contato de falta');
   });
 });

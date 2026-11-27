@@ -16,6 +16,7 @@ import {
   isRegistrationInteraction,
   ZAP_SIGNUP_TYPE,
   PRESENCE_RETURN_TYPE,
+  ABSENCE_CONTACT_TYPE,
   ZAP_SIGNAL_TYPE,
   isZapSignalInteraction,
   hasActiveInteractionToday,
@@ -672,5 +673,12 @@ describe('volta a treinar da importação da Next Fit (type presence_return)', (
 
   it('não é registro do cadastro', () => {
     expect(isRegistrationInteraction(VOLTA)).toBe(false);
+  });
+});
+
+describe('contato de falta do professor (type absence_contact)', () => {
+  it('não acende o "Já interagido hoje"', () => {
+    const c = { leadId: 'l1', type: ABSENCE_CONTACT_TYPE, text: 'Contato de falta', createdAt: TODAY_10H };
+    expect(hasActiveInteractionToday({ id: 'l1' }, [c], TODAY_START)).toBe(false);
   });
 });
