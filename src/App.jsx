@@ -128,6 +128,7 @@ import { HelpCenterModal } from './components/HelpCenterModal.jsx';
 import { NotificationBell } from './components/layout/NotificationBell.jsx';
 import { useNotificationsSeen } from './hooks/useNotificationsSeen.js';
 import { useHandoffs } from './hooks/useHandoffs.js';
+import { useQuerCancelar } from './hooks/useQuerCancelar.js';
 import { GymProfileTab } from './views/settings/GymProfileTab.jsx';
 import { PlanInvoicesTab } from './views/settings/PlanInvoicesTab.jsx';
 import { PersonaMenu } from './components/layout/PersonaMenu.jsx';
@@ -285,6 +286,7 @@ function AppInner() {
   // professor não tem carteira nem esse grupo (ACTIONS.SINO_EQUIPE), então a
   // leitura nem sai.
   const handoffLeads = useHandoffs({ db, appUser, enabled: !!appUser && !appUser.superAdminOnly && !professorAccessOff(appUser) && can(appUser, ACTIONS.SINO_EQUIPE) });
+  const cancelamentos = useQuerCancelar({ db, enabled: !!appUser && !appUser.superAdminOnly && isGestor(appUser) && hasModule(appUser.tenantModules, MODULES.FALTOSOS) });
   // Menu do celular: aberto enquanto o endereço for o mesmo em que ele abriu
   // (location.key). Qualquer troca de endereço fecha o menu sozinha, inclusive
   // o voltar do navegador e o replace de um aviso de rota, sem effect. Os links
@@ -1905,6 +1907,7 @@ useEffect(() => {
                   appUser={appUser}
                   leads={leads}
                   handoffLeads={handoffLeads}
+                  cancelamentos={cancelamentos}
                   seenIds={seenIds}
                   lastSeenReferralsAt={lastSeenReferralsAt}
                   onMarkAllSeen={markAllSeen}
