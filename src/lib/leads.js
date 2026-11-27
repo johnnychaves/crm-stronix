@@ -226,6 +226,9 @@ export const ZAP_VIA = 'stronizap';
 // linha "Voltou a treinar em 03/10" da linha do tempo, no filtro Marcos. É
 // registro da presença, e não contato com a pessoa.
 export const PRESENCE_RETURN_TYPE = 'presence_return';
+// O contato que o professor registra com o aluno faltoso (Meta diária do
+// professor). Não toca o lead e não fecha tarefa da Meta de ninguém.
+export const ABSENCE_CONTACT_TYPE = 'absence_contact';
 
 // Tipo da interação que a ponte grava quando o lead escreve ou a equipe envia
 // mensagem pelo Stronizap (api/zap.js, ação conversation-signal): no máximo
@@ -286,6 +289,7 @@ export const hasActiveInteractionToday = (lead, interactions, todayStart) => {
     // aluno: sem esta exclusão, a importação acenderia o "Já interagido hoje"
     // do cliente na Meta da renovação e dos vencidos.
     if (i.type === PRESENCE_RETURN_TYPE) return false;
+    if (i.type === ABSENCE_CONTACT_TYPE) return false;
     if (isRegistrationInteraction(i)) return false;
     if (isZapSignalInteraction(i)) return false;
     return true;

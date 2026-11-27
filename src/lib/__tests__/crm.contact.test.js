@@ -3,7 +3,13 @@ import { isContactInteraction, contactTimesByLead, firstContactOf, firstContactM
 
 const T = (d, h = 10, min = 0) => new Date(2026, 8, d, h, min);
 
+import { ABSENCE_CONTACT_TYPE } from '../leads.js';
+
 describe('interação que conta como contato', () => {
+  it('o contato de falta do professor não é primeiro contato', () => {
+    expect(isContactInteraction({ type: ABSENCE_CONTACT_TYPE })).toBe(false);
+  });
+
   it('a observação do cadastro, a indicação e a importação não contam', () => {
     expect(isContactInteraction({ type: 'note', text: 'OBSERVAÇÃO DO CADASTRO: veio pelo site' })).toBe(false);
     expect(isContactInteraction({ type: 'referral' })).toBe(false);
