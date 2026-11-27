@@ -25,9 +25,9 @@ export function sidebarNav(appUser) {
     leads: tela('leads') && tela('aulas') && tela('visitas'),
     relatorios: tela('relatorios'),
     suporte: can(appUser, ACTIONS.SUPORTE_ABRIR),
-    // Professores (lista e metas) é do gestor com o módulo. O Meu perfil é o
-    // perfil de professor de quem está logado, e só existe com o cadastro de
-    // professor ligado (appUser.professorId).
+    // Carreira (lista e pesquisas) é do gestor com o módulo. O Minha carreira
+    // é o perfil de professor de quem está logado, e só existe com o cadastro
+    // de professor ligado (appUser.professorId). O do consultor vem no PR 4.
     professores: tela('professores'),
     meuPerfil: isProfessor(appUser) && Boolean(appUser?.professorId) && tela('professorPerfil'),
   });
