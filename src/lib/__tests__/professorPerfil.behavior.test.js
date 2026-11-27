@@ -403,7 +403,7 @@ describe('a aderência no perfil', () => {
     expect(placar.textContent).toContain('67%');
     expect(placar.textContent).toContain('Período em andamento');
     expect(document.body.textContent).toContain('25/01 a 29/01');
-    expect(document.body.textContent).toContain('1º semestre, janeiro a junho');
+    expect(document.body.textContent).toContain('janeiro a junho de 2027');
     await click(button('Ver quem chamar'));
     expect(document.body.textContent).toContain('Não vieram');
     expect(document.body.textContent).toContain('Rita Souza');
