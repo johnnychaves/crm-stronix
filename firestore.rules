@@ -373,6 +373,15 @@ service cloud.firestore {
       allow write: if isAdmin(appId) && inTenant(appId) && tenantActive(appId);
     }
 
+    // Ficha da equipe (spec 2026-11-26-cadastro-da-equipe): CPF, RG,
+    // nascimento, endereço, vínculo e as movimentações, com o tipo e o motivo
+    // do desligamento. Só o gestor lê, porque o resto da equipe não tem por
+    // que ver o CPF de um colega. O servidor grava pelo Admin SDK (o userId do
+    // cadastro, o convite e o desligamento).
+    match /artifacts/{appId}/public/data/stronix_equipe/{id} {
+      allow read, write: if isAdmin(appId) && inTenant(appId) && tenantActive(appId);
+    }
+
     // Catálogo de planos/serviços oferecidos na matrícula (feature lead→cliente).
     // Mesmo padrão dos demais catálogos: lê quem é do tenant, escreve só admin.
     match /artifacts/{appId}/public/data/stronix_planos/{id} {

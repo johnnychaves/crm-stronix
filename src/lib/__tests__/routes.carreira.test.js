@@ -24,7 +24,7 @@ describe('endereço do plano de carreira', () => {
   it('segmento a mais é sub-tela desconhecida, e as outras seções não leem id', () => {
     expect(parseAppPath(`/${T}/configuracoes/carreira/professor/x`)).toMatchObject({ screen: 'settings', subUnknown: true });
     expect(parseAppPath(`/${T}/configuracoes/carreira/professor/regras/x`)).toMatchObject({ screen: 'settings', subUnknown: true });
-    expect(parseAppPath(`/${T}/configuracoes/equipe/professor`)).toMatchObject({ screen: 'settings', subUnknown: true });
+    expect(parseAppPath(`/${T}/configuracoes/funis/professor`)).toMatchObject({ screen: 'settings', subUnknown: true });
     expect(parseAppPath(`/${T}/configuracoes/equipe`)).toMatchObject({ screen: 'settings', sub: 'team', rest: ['equipe'] });
   });
 

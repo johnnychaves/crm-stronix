@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createElement as h, act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { updateDoc } from 'firebase/firestore';
-import { TeamAccessSection } from '../../views/settings/TeamAccessSection.jsx';
+import { EditarAcessoDialog } from '../../views/settings/equipe/EditarAcessoDialog.jsx';
 import { LOGIN_EMAIL_INVALID_MESSAGE, LOGIN_EMAIL_TAKEN_MESSAGE } from '../loginEmail.js';
 
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }));
@@ -55,6 +55,7 @@ let respostaDaApi = null;
 beforeEach(() => {
   ordem.length = 0;
   updateDoc.mockClear();
+  fechar.mockClear();
   for (const fn of Object.values(toast)) fn.mockClear();
   respostaDaApi = { status: 200, body: { ok: true, changed: true } };
   vi.stubGlobal('fetch', vi.fn(async (url, init) => {
@@ -70,15 +71,6 @@ afterEach(async () => {
   root = null;
   vi.unstubAllGlobals();
 });
-
-async function montar(appUser = GESTOR) {
-  const container = document.createElement('div');
-  document.body.appendChild(container);
-  root = createRoot(container);
-  await act(async () => {
-    root.render(h(TeamAccessSection, { db: {}, appUser, usersList: EQUIPE, leads: [] }));
-  });
-}
 
 async function escrever(el, valor) {
   const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
@@ -99,12 +91,16 @@ async function clicar(el) {
 
 const botao = (rotulo) => [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === rotulo);
 const campoEmail = () => document.querySelector('input[type="email"]');
-const campoNome = () => document.querySelector('input[placeholder="Ex: Ana Duarte"]');
 const campoSenha = () => document.querySelector('input[placeholder="Deixe em branco para não alterar"]');
 
-async function editar(membro) {
-  const botoes = [...document.querySelectorAll('button[title="Editar membro"]')];
-  await clicar(botoes[EQUIPE.indexOf(membro)]);
+const fechar = vi.fn();
+async function editar(membro, appUser = GESTOR) {
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  root = createRoot(container);
+  await act(async () => {
+    root.render(h(EditarAcessoDialog, { db: {}, appUser, user: membro, usersList: EQUIPE, open: true, onOpenChange: fechar }));
+  });
   expect(campoEmail().value).toBe(membro.email);
 }
 
@@ -114,7 +110,6 @@ const gravado = () => updateDoc.mock.calls.map(([ref, dados]) => ({ caminho: ref
 
 describe('Editar membro: e-mail de login de quem tem conta', () => {
   it('troca pelo set-email, pede confirmação antes, e o cliente não grava o e-mail', async () => {
-    await montar();
     await editar(ANA);
     await escrever(campoEmail(), ' Ana@Gmail.com ');
     await clicar(botao('Salvar alterações'));
@@ -130,21 +125,19 @@ describe('Editar membro: e-mail de login de quem tem conta', () => {
     expect(gravado()).toHaveLength(1);
     expect(gravado()[0].caminho).toBe('artifacts/academia-teste/public/data/stronix_users/uid-ana');
     expect(gravado()[0].dados).not.toHaveProperty('email');
-    expect(gravado()[0].dados).toMatchObject({ name: 'Ana' });
     expect(toast.success).toHaveBeenCalledWith('Cadastro atualizado.');
-    expect(campoEmail()).toBeNull();
+    expect(fechar).toHaveBeenCalledWith(false);
   });
 
   it('se o set-email falhar, mostra o erro do servidor e não salva o resto', async () => {
     respostaDaApi = { status: 409, body: { error: LOGIN_EMAIL_TAKEN_MESSAGE } };
-    await montar();
     await editar(ANA);
-    await escrever(campoNome(), 'Ana Duarte');
     await escrever(campoEmail(), 'ana@gmail.com');
     await clicar(botao('Salvar alterações'));
 
     expect(toast.error).toHaveBeenCalledWith(LOGIN_EMAIL_TAKEN_MESSAGE);
     expect(updateDoc).not.toHaveBeenCalled();
+    expect(fechar).not.toHaveBeenCalled();
     expect(toast.success).not.toHaveBeenCalled();
     // O formulário continua aberto, com o que foi digitado.
     expect(campoEmail().value).toBe('ana@gmail.com');
@@ -152,17 +145,16 @@ describe('Editar membro: e-mail de login de quem tem conta', () => {
 
   it('confirmação recusada não chama a API nem grava nada', async () => {
     confirm.mockReturnValue(false);
-    await montar();
     await editar(ANA);
     await escrever(campoEmail(), 'ana@gmail.com');
     await clicar(botao('Salvar alterações'));
 
     expect(chamadasDaApi()).toEqual([]);
     expect(updateDoc).not.toHaveBeenCalled();
+    expect(fechar).not.toHaveBeenCalled();
   });
 
   it('formato ruim avisa antes de perguntar e não chama nada', async () => {
-    await montar();
     await editar(ANA);
     // Passa na conferência do navegador, que aceita domínio sem ponto.
     await escrever(campoEmail(), 'ana@gmail');
@@ -172,12 +164,11 @@ describe('Editar membro: e-mail de login de quem tem conta', () => {
     expect(confirm).not.toHaveBeenCalled();
     expect(chamadasDaApi()).toEqual([]);
     expect(updateDoc).not.toHaveBeenCalled();
+    expect(fechar).not.toHaveBeenCalled();
   });
 
   it('e-mail igual ao de antes não chama a API, não pergunta e não grava e-mail', async () => {
-    await montar();
     await editar(ANA);
-    await escrever(campoNome(), 'Ana Duarte');
     await escrever(campoEmail(), ' ANA@gmial.com');
     await clicar(botao('Salvar alterações'));
 
@@ -185,13 +176,11 @@ describe('Editar membro: e-mail de login de quem tem conta', () => {
     expect(chamadasDaApi()).toEqual([]);
     expect(gravado()).toHaveLength(1);
     expect(gravado()[0].dados).not.toHaveProperty('email');
-    expect(gravado()[0].dados).toMatchObject({ name: 'Ana Duarte' });
   });
 });
 
 describe('Editar membro: cadastro sem conta', () => {
   it('troca só o cadastro, pelo cliente, sem API e sem confirmação', async () => {
-    await montar();
     await editar(BETO);
     await escrever(campoEmail(), 'Beto.Novo@academia.com');
     await clicar(botao('Salvar alterações'));
@@ -199,13 +188,12 @@ describe('Editar membro: cadastro sem conta', () => {
     expect(confirm).not.toHaveBeenCalled();
     expect(chamadasDaApi()).toEqual([]);
     expect(gravado()).toHaveLength(1);
-    expect(gravado()[0].dados).toMatchObject({ name: 'Beto', email: 'beto.novo@academia.com' });
+    expect(gravado()[0].dados).toMatchObject({ email: 'beto.novo@academia.com' });
   });
 });
 
 describe('Editar membro: o próprio gestor', () => {
   it('a confirmação fala com ele e a troca vai para a conta dele', async () => {
-    await montar();
     await editar(GESTOR);
     await escrever(campoEmail(), 'gestor.novo@academia.com');
     await clicar(botao('Salvar alterações'));
@@ -220,7 +208,6 @@ describe('Editar membro: o próprio gestor', () => {
   it('e-mail e senha juntos: avisa para fazer em duas vezes e não chama nada', async () => {
     // A troca do e-mail derruba a sessão do próprio gestor, e a troca de senha
     // que viria em seguida seria recusada pelo servidor.
-    await montar();
     await editar(GESTOR);
     await escrever(campoEmail(), 'gestor.novo@academia.com');
     await escrever(campoSenha(), 'Nova@Senha1');
@@ -230,20 +217,13 @@ describe('Editar membro: o próprio gestor', () => {
     expect(confirm).not.toHaveBeenCalled();
     expect(chamadasDaApi()).toEqual([]);
     expect(updateDoc).not.toHaveBeenCalled();
+    expect(fechar).not.toHaveBeenCalled();
   });
 });
 
 describe('o campo', () => {
   it('na edição, diz que trocar o e-mail muda o login', async () => {
-    await montar();
     await editar(ANA);
     expect(document.body.textContent).toContain('Trocar o e-mail muda o login da pessoa.');
-  });
-
-  it('no cadastro de consultor, não mostra a dica', async () => {
-    await montar();
-    await clicar(botao('Cadastrar consultor'));
-    expect(campoEmail()).not.toBeNull();
-    expect(document.body.textContent).not.toContain('Trocar o e-mail muda o login da pessoa.');
   });
 });

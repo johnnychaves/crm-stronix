@@ -1,0 +1,140 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Equipe A · Lista e página</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="2026-11-26-equipe-base.css">
+<style>
+.tbl{background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.th,.tr{display:grid;grid-template-columns:minmax(220px,2fr) 1.15fr .8fr 1.05fr .95fr 44px;gap:12px;align-items:center;padding:0 18px}
+.th{height:40px;background:#fafbfd;border-bottom:1px solid var(--line);font-size:12px;font-weight:600;color:var(--muted)}
+.tr{min-height:62px;border-bottom:1px solid var(--rule);position:relative}
+.tr:last-child{border-bottom:0}
+.tr:hover{background:#fafbff}
+.tr a.stretch{position:absolute;inset:0;border-radius:0}
+.tr a.stretch:focus-visible{outline-offset:-2px}
+.who{display:flex;align-items:center;gap:11px;min-width:0}
+.who b{display:block;font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.who span{display:block;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sub{font-size:12px;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tenure b{display:block;font-weight:600;font-size:13px}
+.tenure span{font-size:12px;color:var(--muted)}
+.countline{margin-left:auto;font-size:12.5px;color:var(--muted)}
+.seg{display:inline-flex;padding:3px;border-radius:999px;background:#fff;border:1px solid var(--line)}
+.seg button{border:0;background:none;height:28px;padding:0 12px;border-radius:999px;font-size:13px;font-weight:600;color:var(--muted)}
+.seg button[aria-pressed=true]{background:var(--ink);color:#fff}
+/* ficha em página */
+.crumb{display:inline-flex;align-items:center;gap:4px;color:var(--muted);font-weight:600;font-size:13px;border:0;background:none;padding:0;border-radius:6px;align-self:flex-start}
+.crumb svg{width:16px;height:16px}
+.crumb:hover{color:var(--blue700)}
+.hero{background:#fff;border:1px solid var(--line);border-radius:18px;padding:20px 22px;display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+.hero .ph{position:relative}
+.hero .ph button{position:absolute;right:-2px;bottom:-2px;width:26px;height:26px;border-radius:50%;border:2px solid #fff;background:var(--ink);color:#fff;display:grid;place-items:center}
+.hero .ph button svg{width:13px;height:13px}
+.hero h1{font:700 26px 'Space Grotesk';letter-spacing:-.02em}
+.hero .badges{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px}
+.hero .since{margin-top:8px;font-size:13px;color:var(--ink2)}
+.hero .since b{font-weight:600}
+.hero .grow{flex:1;min-width:240px}
+.hero .side2{display:flex;align-items:center;gap:12px}
+.bigring{width:54px;height:54px}
+.bigring::after{width:42px;height:42px;font-size:12px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line)}
+.tabs button{border:0;background:none;height:40px;padding:0 14px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--blue)}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+.cols .wide{grid-column:1/-1}
+@media (max-width:1280px){.cols{grid-template-columns:1fr}}
+@media (max-width:900px){.th{display:none}.tr{grid-template-columns:1fr auto;padding:12px 16px}.tr>:nth-child(n+2):not(:nth-child(6)):not(a){display:none}}
+</style></head><body>
+<div id="root"></div>
+<span class="tag">Mockup A: lista e ficha em página, cadastro em gaveta</span>
+<script src="2026-11-26-equipe-comum.js"></script>
+<script>
+let aba = 'dados';
+let subst = '';
+let situacao = 'ativos';
+
+function linha(p) {
+  const prof = p.funcao === 'professor';
+  const sub = prof ? p.mods.join(' e ') : p.funcao === 'consultor' && p.leads ? `${p.leads} leads` : '';
+  return `<div class="tr">
+    <div class="who">${avatar(p)}<div style="min-width:0"><b>${p.nome}</b><span>${p.login || p.email || p.cel}</span></div></div>
+    <div>${roleBadge(p)}${sub ? `<div class="sub">${sub}</div>` : ''}</div>
+    <div>${vinBadge(p)}</div>
+    <div>${accBadge(p)}</div>
+    <div class="tenure"><b>${tempo(p.admissao).replace('há ', '')}</b><span>desde ${dataBR(p.admissao).slice(3)}</span></div>
+    <div>${ring(p)}</div>
+    <a class="stretch" href="#${p.acesso === 'off' ? 'ficha-desligada' : 'ficha'}" aria-label="Abrir a ficha de ${p.nome}"></a>
+  </div>`;
+}
+
+function lista() {
+  const gente = situacao === 'ativos' ? ativos() : desligados();
+  const completas = gente.filter((p) => !faltas(p).length).length;
+  return `<div class="shead"><div class="grow"><h1>Equipe & acessos</h1><p>Quem trabalha na academia: a ficha, o vínculo e o acesso ao app de cada pessoa.</p></div>
+      <button class="btn pri" type="button" onclick="location.hash='cadastro'">${ic('plus')}Cadastrar pessoa</button></div>
+    ${VAGAS}
+    <div class="filters">
+      <div class="seg" role="group" aria-label="Situação"><button type="button" aria-pressed="${situacao === 'ativos'}" data-sit="ativos">Ativos ${ativos().length}</button><button type="button" aria-pressed="${situacao === 'desligados'}" data-sit="desligados">Desligados ${desligados().length}</button></div>
+      <button class="fp" type="button">Função <small>Todas</small>${ic('down')}</button>
+      <button class="fp" type="button">Vínculo <small>Todos</small>${ic('down')}</button>
+      <button class="fp" type="button">Acesso <small>Todos</small>${ic('down')}</button>
+      <span class="search">${ic('search')}Buscar pelo nome</span>
+      <span class="countline">${gente.length} pessoas, ${completas} com a ficha completa</span>
+    </div>
+    <div class="tbl" role="table" aria-label="Equipe">
+      <div class="th" role="row"><span>Pessoa</span><span>Função</span><span>Vínculo</span><span>Acesso ao app</span><span>Na equipe</span><span>Ficha</span></div>
+      ${gente.map(linha).join('')}
+    </div>`;
+}
+
+function ficha(p) {
+  const tabs = [['dados', 'Dados'], ['mov', 'Movimentações'], ['acesso', 'Acesso ao app']];
+  const tot = totalItens(p), ok = tot - faltas(p).length;
+  let corpo = '';
+  if (aba === 'dados') corpo = `<div style="padding:2px 2px 0">${faltaLinha(p)}</div><div class="cols">${secIdentidade(p)}${secContato(p)}<div class="wide">${secTrabalho(p)}</div></div>`;
+  if (aba === 'mov') corpo = movimentacoes(p);
+  if (aba === 'acesso') corpo = secAcesso(p);
+  const desligada = p.acesso === 'off';
+  return `<button class="crumb" type="button" onclick="location.hash='${desligada ? 'desligados' : 'lista'}'">${ic('back')}Equipe & acessos</button>
+    <div class="hero">
+      <div class="ph">${avatar(p, 72)}<button type="button" aria-label="Trocar a foto">${ic('cam')}</button></div>
+      <div class="grow"><h1>${p.nome}</h1>
+        <div class="badges">${roleBadge(p)}${vinBadge(p)}${p.mods ? p.mods.map((m) => `<span class="vin">${m}</span>`).join('') : ''}<span style="margin-left:6px">${accBadge(p)}</span></div>
+        <p class="since">${desligada ? `Esteve na equipe de <b>${dataBR(p.admissao)}</b> a <b>${p.desligada}</b>` : `Na equipe desde <b>${dataBR(p.admissao)}</b>, ${tempo(p.admissao)}`}</p></div>
+      <div class="side2"><span class="ring bigring ${ok === tot ? 'full' : ''}" style="--p:${Math.round(ok / tot * 100)}" data-n="${ok}/${tot}" aria-label="Ficha com ${ok} de ${tot} itens"></span>
+        ${desligada ? `<button class="btn" type="button">${ic('back2')}Readmitir</button>` : `<button class="btn danger" type="button" data-desligar="${p.id}">${ic('off')}Desligar</button>`}</div>
+    </div>
+    <div class="tabs" role="tablist" aria-label="Ficha">${tabs.map(([id, rot]) => `<button role="tab" type="button" aria-selected="${aba === id}" data-aba="${id}">${rot}</button>`).join('')}</div>
+    ${corpo}`;
+}
+
+function render(estado) {
+  const root = document.getElementById('root');
+  const marina = byId('marina');
+  if (estado !== 'ficha-desligada' && aba === 'mov' && estado !== 'ficha') aba = 'dados';
+  if (estado === 'lista') { situacao = 'ativos'; root.innerHTML = CASCA(lista()); }
+  else if (estado === 'desligados') { situacao = 'desligados'; root.innerHTML = CASCA(lista()); }
+  else if (estado === 'ficha') root.innerHTML = CASCA(ficha(marina));
+  else if (estado === 'ficha-desligada') { root.innerHTML = CASCA(ficha(byId('carla'))); }
+  else if (estado === 'cadastro') {
+    situacao = 'ativos';
+    root.innerHTML = CASCA(lista()) + `<div class="scrim"></div><aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="cad-t">
+      <header><div><h2 id="cad-t">Cadastrar pessoa</h2><p>O resto da ficha (CPF, endereço, foto) fica para depois.</p></div><button class="x" type="button" aria-label="Fechar" onclick="location.hash='lista'">${ic('x')}</button></header>
+      <div class="scroll" id="cad">${cadastroPassos()}</div><footer id="cad-f">${cadastroRodape()}</footer></aside>`;
+  } else if (estado === 'desligar') root.innerHTML = CASCA(ficha(marina)) + desligarDialogo(marina, { substituto: subst });
+  else if (estado === 'bloqueado') root.innerHTML = CASCA(ficha(byId('camila'))) + desligarDialogo(byId('camila'));
+}
+
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('[data-aba]'); if (t) { aba = t.dataset.aba; render(location.hash.slice(1) || 'lista'); return; }
+  const s = e.target.closest('[data-sit]'); if (s) { location.hash = s.dataset.sit === 'ativos' ? 'lista' : 'desligados'; return; }
+  const d = e.target.closest('[data-desligar]'); if (d) location.hash = d.dataset.desligar === 'camila' ? 'bloqueado' : 'desligar';
+});
+document.addEventListener('change', (e) => { if (e.target.matches('[data-subst]')) { subst = e.target.value; render('desligar'); } });
+ligarCadastro(document, () => { document.getElementById('cad').innerHTML = cadastroPassos(); document.getElementById('cad-f').innerHTML = cadastroRodape(); });
+
+barraDeEstados([
+  ['lista', 'Lista'], ['ficha', 'Ficha'], ['cadastro', 'Cadastrar pessoa'], ['desligar', 'Desligar professor'],
+  ['bloqueado', 'Desligar consultor com leads'], ['desligados', 'Desligados'], ['ficha-desligada', 'Ficha desligada'],
+], render);
+</script></body></html>

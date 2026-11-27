@@ -21,6 +21,8 @@ import { FOCO_ORDER, FOCO_GRUPOS } from './metaFocoCodes.js';
 import { SOLO_TRAINING } from './professores.js';
 import { addMonthsToKey, compareOptions } from './operacional/month.js';
 import { PERIOD_SHORTCUTS, intervalRefusal } from './period.js';
+import { FUNCOES, VINCULOS } from './equipe/ficha.js';
+import { ACESSOS } from './equipe/equipe.js';
 import { periodoDe, periodoValido } from './carreira/periodo.js';
 
 const own = (obj, key) => typeof key === 'string' && Object.prototype.hasOwnProperty.call(obj, key);
@@ -392,6 +394,11 @@ const ciclo = param('ciclo',
     return v === periodoDe(t, agora)?.chave ? null : String(v);
   });
 
+// Equipe & acessos (Configurações → Equipe). Ausente é Ativos e todas as
+// funções, vínculos e acessos. A busca pelo nome nunca vai para o endereço.
+const umDe = (campo, valores) => param(campo, (raw) => (valores.includes(raw) ? raw : null), (v) => (valores.includes(v) ? v : null));
+const situacaoEquipe = param('situacao', (raw) => (raw === 'desligados' ? 'desligados' : 'ativos'), (v) => (v === 'desligados' ? 'desligados' : null));
+
 const TABELA = {
   dashOperacional: { mes, comparar, 'comparar-com': compararCom, pessoa },
   dashCrm: { mes, comparar, 'comparar-com': compararCom, pessoa, funil: funilRecorte },
@@ -404,6 +411,12 @@ const TABELA = {
   dailyGoal: { cat },
   professores: { trilha: trilhaDaLista, ciclo },
   professorPerfil: { ciclo },
+  settings: {
+    sit: situacaoEquipe,
+    funcao: umDe('funcao', FUNCOES),
+    vinculo: umDe('vinculo', VINCULOS.map((v) => v.id)),
+    acesso: umDe('acesso', ACESSOS),
+  },
   relatorios: {
     mes: soNoModoMes(mes),
     periodo: periodoDoPainel,

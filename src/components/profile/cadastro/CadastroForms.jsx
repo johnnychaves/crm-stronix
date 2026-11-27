@@ -23,7 +23,7 @@ import { Switch } from '../../ui/switch.jsx';
 const GRID = 'grid grid-cols-1 gap-3.5 @xs:grid-cols-6';
 
 // `msgId` é o id da dica ou do erro, para o campo apontar com aria-describedby.
-function Fld({ label, required, hint, error, msgId, className, children }) {
+export function Fld({ label, required, hint, error, msgId, className, children }) {
   return (
     <div className={cn('flex min-w-0 flex-col gap-1.5', className)}>
       <label className="flex min-w-0 flex-col gap-1.5">
@@ -184,7 +184,7 @@ function IdentityForm({ form, set, lead, db }) {
   );
 }
 
-function AddressForm({ form, set, setForm }) {
+export function AddressForm({ form, set, setForm }) {
   const toast = useToast();
   const [cepBusy, setCepBusy] = useState(false);
   const onCepBlur = async () => {

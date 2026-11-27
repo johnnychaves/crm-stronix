@@ -55,6 +55,9 @@ const REVISADOS = {
   // Cadastro da equipe (stronix_users), não o lead.
   'src/lib/teamRoles.js': 'papel da equipe',
   'src/views/settings/TeamAccessSection.jsx': 'papel da equipe',
+  'src/views/settings/equipe/EditarAcessoDialog.jsx': 'papel da equipe',
+  // Ficha da equipe (stronix_equipe), não o lead.
+  'src/lib/equipe/equipeWrites.js': 'ficha da equipe',
   'api/_professorLink.js': 'vínculo do login com o professor',
   'api/_npsPublico.js': 'resposta e totais da pesquisa de NPS, não grava lead',
   'api/admin-users.js': 'papel da equipe',
