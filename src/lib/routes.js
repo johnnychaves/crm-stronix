@@ -86,6 +86,9 @@ export const PERFIL_TABS = Object.freeze({
   nps: 'nps',
   aderencia: 'aderencia',
 });
+// Abas da trilha aberta em Configurações → Plano de carreira, além de Níveis e
+// metas (sem segmento): /configuracoes/carreira/<id>/regras e /pessoas.
+const TRILHA_ABAS = Object.freeze(['regras', 'pessoas']);
 // Abas do perfil do consultor, em /carreira/consultor/<id>/<aba> (plano de
 // carreira, PR 4).
 export const CONSULTOR_TABS = Object.freeze({
@@ -301,10 +304,10 @@ function readScreen(segs, out) {
     out.rest = segs.slice(1);
     const [secao, id, aba, ...sobra] = out.rest;
     if (lower(secao) === SETTINGS_SECTIONS.carreira && isValidLeadId(id) && sobra.length === 0
-      && (aba === undefined || lower(aba) === 'regras')) {
+      && (aba === undefined || TRILHA_ABAS.includes(lower(aba)))) {
       out.sub = 'carreira';
       out.trilhaId = id;
-      out.trilhaAba = aba === undefined ? 'metas' : 'regras';
+      out.trilhaAba = aba === undefined ? 'metas' : lower(aba);
       return;
     }
     readSub('settings', out.rest, out);
@@ -417,7 +420,7 @@ export function hrefFor(tenantId, screen, opts = {}) {
   if (screen === 'settings' && sub === 'carreira') {
     // Id que não serve cai na lista das trilhas, como o modelo de rotina.
     const tid = isValidLeadId(trilhaId) ? encode(trilhaId) : null;
-    if (tid !== null) return `${base}/configuracoes/carreira/${tid}${trilhaAba === 'regras' ? '/regras' : ''}`;
+    if (tid !== null) return `${base}/configuracoes/carreira/${tid}${TRILHA_ABAS.includes(trilhaAba) ? `/${trilhaAba}` : ''}`;
   }
   if (screen === 'rotinas') {
     // Como na ficha: id aceito pelo isValidLeadId que o encode recusa (metade de

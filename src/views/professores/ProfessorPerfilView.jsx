@@ -10,7 +10,7 @@ import { deleteProfessorPhoto, uploadProfessorPhoto } from '../../lib/professorP
 import { npsLinkDe } from '../../lib/npsLink.js';
 import { gerarNovoLink } from '../../lib/npsWrites.js';
 import { baixarQr } from '../../lib/qrPng.js';
-import { trilhaDaPessoa, trilhaSugerida } from '../../lib/carreira/trilhas.js';
+import { foraDoPlano, trilhaDaPessoa, trilhaSugerida } from '../../lib/carreira/trilhas.js';
 import { placarDe, tempoNoNivel } from '../../lib/carreira/placar.js';
 import { contasDoProfessor, periodoDaPessoa } from '../../lib/carreira/professor.js';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
@@ -217,7 +217,9 @@ export function ProfessorPerfilView({ db, appUser, tenantId, profId, tab, onTab,
       {(erro || carreira?.erro) && <p role="alert" className="mt-3 text-[13px] font-semibold text-rose-700 dark:text-rose-300">Não deu para carregar tudo. Recarregue a página.</p>}
 
       {trilhas && !trilha ? (
-        <p className="mt-4 text-[13px] text-muted-foreground">Sem trilha. Defina a trilha e o nível no cabeçalho.</p>
+        <p className="mt-4 text-[13px] text-muted-foreground">
+          {foraDoPlano(prof) ? 'Fora do plano de carreira. O gestor põe de volta em Configurações, Plano de carreira.' : 'Sem trilha. Defina a trilha e o nível no cabeçalho.'}
+        </p>
       ) : !contas ? (
         <p className="mt-4 text-[13px] text-muted-foreground">Carregando os números do período…</p>
       ) : (

@@ -11,6 +11,7 @@ import {
   BASE_UI, BOTAO_PRIMARIO, BOTAO_SECUNDARIO, maiuscula, paraQuemTexto, pessoasTexto, quandoTexto,
 } from './carreiraTexto.js';
 import { TrilhaGrade } from './TrilhaGrade.jsx';
+import { TrilhaPessoas } from './TrilhaPessoas.jsx';
 import { TrilhaRegras } from './TrilhaRegras.jsx';
 
 // A trilha aberta (mockup A refinado): o cabeçalho com o nome editável, as
@@ -30,7 +31,9 @@ function Fato({ icone: Icone, children }) {
   );
 }
 
-export function TrilhaEditor({ inicial, gravada, outras, pessoas, aba, onAba, voltarHref, modalities, onSalvar, onArquivar, onDescartarNova }) {
+// `equipe` (o pessoasDaTrilha da gravada), `onGravarPessoa` e `onTirarPessoa`
+// são da aba Pessoas, que só existe com a trilha salva.
+export function TrilhaEditor({ inicial, gravada, outras, pessoas, aba, onAba, voltarHref, modalities, onSalvar, onArquivar, onDescartarNova, equipe = null, onGravarPessoa, onTirarPessoa }) {
   const toast = useToast();
   const motivoId = useId();
   const [rascunho, setRascunho] = useState(inicial);
@@ -111,6 +114,7 @@ export function TrilhaEditor({ inicial, gravada, outras, pessoas, aba, onAba, vo
         >
           <TabsTrigger value="metas" className={TAB_TRIGGER}>Níveis e metas</TabsTrigger>
           <TabsTrigger value="regras" className={TAB_TRIGGER}>Regras da trilha</TabsTrigger>
+          {!nova && equipe && <TabsTrigger value="pessoas" className={TAB_TRIGGER}>Pessoas</TabsTrigger>}
         </TabsList>
       </header>
 
@@ -125,6 +129,11 @@ export function TrilhaEditor({ inicial, gravada, outras, pessoas, aba, onAba, vo
           modalities={modalities}
         />
       </TabsContent>
+      {!nova && equipe && (
+        <TabsContent value="pessoas" tabIndex={-1}>
+          <TrilhaPessoas trilha={gravada} trilhas={[gravada, ...(outras || [])]} equipe={equipe} onGravar={onGravarPessoa} onTirar={onTirarPessoa} />
+        </TabsContent>
+      )}
 
       <div className="sticky bottom-3 z-10 flex flex-wrap items-center gap-2.5 rounded-2xl border border-border bg-card/95 py-2.5 pl-[18px] pr-3 shadow-card backdrop-blur">
         <span role="status" className={cn('mr-auto text-[13px]', problema ? 'font-semibold text-rose-700 dark:text-rose-300' : 'text-muted-foreground')}>

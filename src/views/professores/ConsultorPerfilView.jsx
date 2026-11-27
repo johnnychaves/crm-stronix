@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { appId, USERS_PATH } from '../../lib/firebase.js';
 import { isGestor } from '../../lib/acesso.js';
 import { hrefFor } from '../../lib/routes.js';
-import { trilhaDaPessoa, trilhaSugerida } from '../../lib/carreira/trilhas.js';
+import { foraDoPlano, trilhaDaPessoa, trilhaSugerida } from '../../lib/carreira/trilhas.js';
 import { placarDe, tempoNoNivel } from '../../lib/carreira/placar.js';
 import { periodoDaPessoa } from '../../lib/carreira/professor.js';
 import { consultoresDaCarreira, contasDoConsultor } from '../../lib/carreiraConsultor.js';
@@ -121,7 +121,9 @@ export function ConsultorPerfilView({ db, appUser, tenantId, profId, tab, onTab,
       {(dados.erro || carreira?.erro) && <p role="alert" className="mt-3 text-[13px] font-semibold text-rose-700 dark:text-rose-300">Não deu para carregar tudo. Recarregue a página.</p>}
 
       {trilhas && !trilha ? (
-        <p className="mt-4 text-[13px] text-muted-foreground">Sem trilha. Defina a trilha e o nível no cabeçalho.</p>
+        <p className="mt-4 text-[13px] text-muted-foreground">
+          {foraDoPlano(pessoa) ? 'Fora do plano de carreira. O gestor põe de volta em Configurações, Plano de carreira.' : 'Sem trilha. Defina a trilha e o nível no cabeçalho.'}
+        </p>
       ) : !contas ? (
         <p className="mt-4 text-[13px] text-muted-foreground">Carregando os números do período…</p>
       ) : (

@@ -158,6 +158,19 @@ export function pessoasPorNivel(trilha, { professores = [], usuarios = [] } = {}
   return out;
 }
 
+// As pessoas da base da trilha, para a aba Pessoas: quem está nela e quem pode
+// entrar (fora do plano, em outra trilha ou, no consultor, sem trilha). As
+// mesmas pessoas do pessoasPorNivel: professores ativos e o papel consultor.
+export function pessoasDaTrilha(trilha, { professores = [], usuarios = [] } = {}) {
+  const professor = trilha.base === 'professor';
+  const lista = professor
+    ? (professores || []).filter((p) => p?.id && p.ativo !== false).map((p) => ({ id: p.id, nome: p.nome || '', tipo: 'professor', trilhaId: p.trilhaId ?? null, nivel: p.nivel ?? null, nivelDesde: p.nivelDesde ?? null }))
+    : (usuarios || []).filter((u) => u?.id && roleOf(u) === ROLES.CONSULTOR).map((u) => ({ id: u.id, nome: u.name || '', tipo: 'consultor', trilhaId: u.trilhaId ?? null, nivel: u.nivel ?? null, nivelDesde: u.nivelDesde ?? null }));
+  lista.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  const naTrilha = lista.filter((p) => trilhaDaPessoa(p, [trilha], { professor }));
+  return { naTrilha, deFora: lista.filter((p) => !naTrilha.includes(p)) };
+}
+
 export const totalDePessoas = (pessoas) => Object.values(pessoas || {}).reduce((s, n) => s + (Number(n) || 0), 0);
 
 // Por que o nível não pode sair agora, ou null. O texto do nível com gente é o

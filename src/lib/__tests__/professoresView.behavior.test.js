@@ -230,3 +230,14 @@ describe('os consultores na lista (PR 4)', () => {
     expect(document.body.textContent).toContain('Ninguém da equipe no plano de carreira ainda.');
   });
 });
+
+describe('quem está fora do plano de carreira', () => {
+  it('some da lista e da contagem, professor ou consultor', async () => {
+    s.dados = { ...s.dados, professores: [...PROFESSORES, { id: 'p9', nome: 'Diego Fora', trilhaId: 'fora-do-plano', modalidadeIds: ['func'] }] };
+    s.users = [{ id: 'u9', name: 'Fiama Fora', role: 'consultant', trilhaId: 'fora-do-plano' }];
+    await render('/acad/carreira');
+    expect(document.body.textContent).not.toContain('Diego Fora');
+    expect(document.body.textContent).not.toContain('Fiama Fora');
+    expect(document.body.querySelector('[role="tab"]').textContent).toBe('Pessoas3');
+  });
+});

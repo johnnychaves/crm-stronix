@@ -12,7 +12,7 @@ import { consultoresDaCarreira, contasDoConsultor } from '../../lib/carreiraCons
 import { AppLink } from '../../components/nav/AppLink.jsx';
 import { hrefFor } from '../../lib/routes.js';
 import { getSafeDateOrNull } from '../../lib/dates.js';
-import { trilhaDaPessoa } from '../../lib/carreira/trilhas.js';
+import { foraDoPlano, trilhaDaPessoa } from '../../lib/carreira/trilhas.js';
 import { placarDe, tempoNoNivel } from '../../lib/carreira/placar.js';
 import { contasDoProfessor, janelaDeLeitura, periodoDaPessoa } from '../../lib/carreira/professor.js';
 import { dayKeyOf } from '../../lib/operacional/month.js';
@@ -60,12 +60,13 @@ export function ProfessoresView({ db, appUser, tenantId, tab, onTab, usersList, 
   const hoje = dayKeyOf(relogio);
   const [busca, setBusca] = useState('');
 
-  const ativos = useMemo(() => (professores || []).filter((p) => p.ativo !== false).sort(porNome), [professores]);
+  // Quem o gestor tirou do plano de carreira não entra na lista.
+  const ativos = useMemo(() => (professores || []).filter((p) => p.ativo !== false && !foraDoPlano(p)).sort(porNome), [professores]);
   const trilhaDe = useCallback((prof) => trilhaDaPessoa(prof, trilhasDeProfessor, { professor: true }), [trilhasDeProfessor]);
 
   // Os consultores (PR 4): quem vende e não é gestor. Sem consultor, o hook
   // fica sem janela e não lê nada.
-  const consultores = useMemo(() => consultoresDaCarreira(usersList), [usersList]);
+  const consultores = useMemo(() => consultoresDaCarreira(usersList).filter((c) => !foraDoPlano(c)), [usersList]);
   const dadosC = useConsultoresDados({
     db, agora, liveLeads, interactions, listenersActive,
     inicioMs: consultores.length ? janela?.inicio.getTime() ?? null : null,

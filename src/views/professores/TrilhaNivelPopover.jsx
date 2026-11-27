@@ -14,7 +14,9 @@ const ESCOLHIDA = 'border-brand-200 bg-brand-50 text-brand-700 dark:border-brand
 const LIVRE = 'border-border bg-card text-muted-foreground hover:text-foreground';
 const LINK = 'rounded text-[13px] font-semibold text-brand-700 outline-none hover:underline focus-visible:anel-foco dark:text-brand-300';
 
-export function TrilhaNivelPopover({ trilhas, trilhaId, nivel, sugeridaId, onSalvar }) {
+// `rotulo` troca o texto do botão (a aba Pessoas das Configurações usa "Mudar
+// nível" e "Pôr na trilha"); sem ele, vale o de sempre.
+export function TrilhaNivelPopover({ trilhas, trilhaId, nivel, sugeridaId, onSalvar, rotulo = null }) {
   const [aberto, setAberto] = useState(false);
   const [trilha, setTrilha] = useState('');
   const [escolha, setEscolha] = useState('');
@@ -60,7 +62,7 @@ export function TrilhaNivelPopover({ trilhas, trilhaId, nivel, sugeridaId, onSal
 
   return (
     <Popover open={aberto} onOpenChange={abrir}>
-      <PopoverTrigger className={LINK}>{atual && temNivel ? 'Trilha e nível' : 'Definir trilha e nível'}</PopoverTrigger>
+      <PopoverTrigger className={LINK}>{rotulo ?? (atual && temNivel ? 'Trilha e nível' : 'Definir trilha e nível')}</PopoverTrigger>
       <PopoverContent align="start" className="w-[340px] p-4">
         <form onSubmit={salvar} className="flex flex-col gap-3.5">
           <div>
