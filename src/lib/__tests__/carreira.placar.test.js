@@ -75,6 +75,10 @@ describe('tempo no nível', () => {
     expect(mesesEntre(new Date(2026, 0, 15), new Date(2026, 1, 15))).toBe(1);
     expect(mesesEntre(new Date(2026, 0, 31), new Date(2027, 0, 31))).toBe(12);
     expect(mesesEntre(new Date(2027, 0, 1), new Date(2026, 0, 1))).toBe(0);
+    // o dia que não existe no mês final fecha no último dia dele
+    expect(mesesEntre(new Date(2026, 0, 31), new Date(2026, 1, 28))).toBe(1);
+    expect(mesesEntre(new Date(2026, 7, 31), new Date(2027, 1, 28))).toBe(6);
+    expect(mesesEntre(new Date(2026, 0, 31), new Date(2026, 1, 27))).toBe(0);
   });
 
   it('escreve a duração em anos e meses', () => {
@@ -95,6 +99,13 @@ describe('tempo no nível', () => {
     expect(tempoNoNivel(professor, { nivel: 'senior', nivelDesde: new Date(2025, 7, 1) }, agora))
       .toEqual({ meses: 24, minimo: null, pct: null, texto: '2 anos no nível', falta: null });
     expect(tempoNoNivel(estagiario, { nivel: 'estagiario1', nivelDesde: new Date(2027, 4, 1) }, agora).texto).toBe('3 meses de 6 meses');
+  });
+
+  it('o verbo concorda com o que falta', () => {
+    const agora = new Date(2027, 7, 1);
+    expect(tempoNoNivel(professor, { nivel: 'junior', nivelDesde: agora }, agora).falta).toBe('Falta 1 ano para Pleno');
+    expect(tempoNoNivel(professor, { nivel: 'junior', nivelDesde: new Date(2026, 8, 1) }, agora).falta).toBe('Falta 1 mês para Pleno');
+    expect(tempoNoNivel(professor, { nivel: 'pleno', nivelDesde: new Date(2027, 2, 1) }, agora).falta).toBe('Faltam 1 ano e 7 meses para Sênior');
   });
 
   it('sem nível ou sem data, null', () => {

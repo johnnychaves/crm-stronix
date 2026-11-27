@@ -48,10 +48,12 @@ export function placarDe(trilha, nivelId, resultados = {}) {
   };
 }
 
-// Meses inteiros de `de` até `ate`, nunca abaixo de zero.
+// Meses inteiros de `de` até `ate`, nunca abaixo de zero. O dia que não existe
+// no mês final (31/01 → 28/02) fecha no último dia dele.
 export function mesesEntre(de, ate) {
   let m = (ate.getFullYear() - de.getFullYear()) * 12 + (ate.getMonth() - de.getMonth());
-  if (ate.getDate() < de.getDate()) m -= 1;
+  const ultimoDia = new Date(ate.getFullYear(), ate.getMonth() + 1, 0).getDate();
+  if (ate.getDate() < Math.min(de.getDate(), ultimoDia)) m -= 1;
   return Math.max(0, m);
 }
 
@@ -77,11 +79,14 @@ export function tempoNoNivel(trilha, pessoa, agora = new Date()) {
   }
   const minimo = nivel.mesesMinimos;
   if (meses >= minimo) return { meses, minimo, pct: 100, texto: 'Tempo mínimo cumprido', falta: null };
+  const resta = minimo - meses;
+  // "Falta 1 ano", "Falta 1 mês"; "Faltam 4 meses", "Faltam 1 ano e 7 meses".
+  const verbo = resta === 1 || resta === 12 ? 'Falta' : 'Faltam';
   return {
     meses,
     minimo,
     pct: Math.round((meses / minimo) * 100),
     texto: `${duracaoTexto(meses)} de ${duracaoTexto(minimo)}`,
-    falta: `Faltam ${duracaoTexto(minimo - meses)} para ${proximo.nome}`,
+    falta: `${verbo} ${duracaoTexto(resta)} para ${proximo.nome}`,
   };
 }
