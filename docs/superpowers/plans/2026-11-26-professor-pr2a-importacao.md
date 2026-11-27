@@ -10583,7 +10583,7 @@ A spec pede que a primeira importação de verdade seja conferida no Preview ant
 - [ ] **Step 6: Depois do merge (Johnny)**
 
 1. A Vercel publica o merge sozinha. Conferir o deploy de produção.
-2. Fazer a primeira importação em produção, com as planilhas da semana, e confirmar.
+2. No mesmo dia do merge, fazer a primeira importação em produção, com o Faltantes da semana e o Presenças desde 02/11/2026, e confirmar. Até ela entrar, a aderência de todo professor aparece como "sem dados", porque a leitura nova ignora os documentos semanais do script (D7).
 3. Conferir o bloco Faltosos (a última importação e os professores da Next Fit), a ficha de um aluno que voltou e a aba Aderência de um professor de funcional, que agora conta a ida à academia, e não só a aula marcada, e por isso pode mudar em relação ao número de antes.
 4. Daí em diante, a importação é toda segunda. A lista dos professores chega com o 2B.
 5. Atualizar, no repositório STRONIX-FIRMA (fora deste repositório), a tabela "Últimas Atualizações" do `CLAUDE.md` raiz e a linha do Stronilead no `06-sistemas/CLAUDE.md`, com o 2A.
