@@ -306,6 +306,8 @@ function readScreen(segs, out) {
 //   o endereço traz um segmento a mais que a tabela da tela conhece. Segmento
 //   desconhecido não é endereço desconhecido: vira subUnknown e a decisão de
 //   rota abre a tela-mãe com replace, sem aviso;
+// - antigo: o endereço é /professores (de antes do menu Carreira) e leva ao
+//   /carreira, com a query.
 // - modelId: o id do modelo de rotina aberto (/rotinas/modelos/<id>), com sub
 //   'modelos'. Só existe quando o id passa no isValidLeadId e não vem segmento
 //   depois dele; senão a chave nem aparece e a tela abre a lista (subUnknown).
@@ -479,7 +481,9 @@ function accessRedirect(route, appUser, home, { tenantId = null, search = '' } =
   }
   // O endereço de antes do menu Carreira leva ao novo, com a query, sem aviso.
   if (route.antigo) {
-    const novo = hrefFor(tenantId, route.screen, { profId: route.profId, sub: route.sub });
+    // Perfil sem id que serve (/professores/perfil) vai para a lista.
+    const novo = hrefFor(tenantId, route.screen, { profId: route.profId, sub: route.sub })
+      ?? hrefFor(tenantId, 'professores');
     if (novo) return redirectTo(novo, { search });
   }
   if (route.unknown) {

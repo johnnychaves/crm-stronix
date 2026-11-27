@@ -384,11 +384,12 @@ const trilhaDaLista = param('trilha',
   (v, ctx) => ((ctx.trilhas || []).some((t) => t.id === v) ? v : null));
 const trilhaDoCtx = (ctx, valores) => ctx.trilha ?? (ctx.trilhas || []).find((t) => t.id === valores?.trilha) ?? null;
 const ciclo = param('ciclo',
-  (raw, ctx, out) => (periodoValido(trilhaDoCtx(ctx, out), raw, ctx.agora) ? String(raw) : null),
+  (raw, ctx, out) => (periodoValido(trilhaDoCtx(ctx, out), raw, ctx.agora ?? new Date()) ? String(raw) : null),
   (v, ctx, valores) => {
     const t = trilhaDoCtx(ctx, valores);
-    if (!v || !periodoValido(t, v, ctx.agora)) return null;
-    return v === periodoDe(t, ctx.agora)?.chave ? null : String(v);
+    const agora = ctx.agora ?? new Date();
+    if (!v || !periodoValido(t, v, agora)) return null;
+    return v === periodoDe(t, agora)?.chave ? null : String(v);
   });
 
 const TABELA = {
