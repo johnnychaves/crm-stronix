@@ -64,7 +64,7 @@ function Barras({ p }) {
   );
 }
 
-export function NpsTab({ nps, metaNps, pode, professorLogado, primeiroNome, db, prof, clientes, contratos, planos, listenersActive }) {
+export function NpsTab({ nps, metaNps, semestral = false, pode, professorLogado, primeiroNome, db, prof, clientes, contratos, planos, listenersActive }) {
   const itens = nps.itens;
   const [escolhidaId, setEscolhidaId] = useState(null);
   const item = itens.find((i) => i.pesquisa.id === escolhidaId) ?? itens[itens.length - 1] ?? null;
@@ -88,7 +88,7 @@ export function NpsTab({ nps, metaNps, pode, professorLogado, primeiroNome, db, 
   if (!itens.length) {
     return (
       <div className="rounded-2xl border border-dashed border-border p-6 text-[13.5px] text-muted-foreground">
-        Nenhuma pesquisa deste ciclo teve {professorLogado ? 'a sua turma' : `a turma de ${primeiroNome}`}. A nota aparece quando a primeira pesquisa abrir.
+        Nenhuma pesquisa deste período teve {professorLogado ? 'a sua turma' : `a turma de ${primeiroNome}`}. A nota aparece quando a primeira pesquisa abrir.
       </div>
     );
   }
@@ -105,14 +105,14 @@ export function NpsTab({ nps, metaNps, pode, professorLogado, primeiroNome, db, 
 
   return (
     <div className="flex flex-col gap-4">
-      <section aria-label="Nota do ano" className={cn(CARD, 'grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] md:items-center')}>
+      <section aria-label={semestral ? 'Nota do período' : 'Nota do ano'} className={cn(CARD, 'grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] md:items-center')}>
         <div>
-          <div className={ROTULO}>Nota do ano {metaNps != null && <SeloDaMeta nota={nps.nota} meta={metaNps} />}</div>
+          <div className={ROTULO}>{semestral ? 'Nota do período' : 'Nota do ano'} {metaNps != null && <SeloDaMeta nota={nps.nota} meta={metaNps} />}</div>
           <div className={cn('num mb-1.5 mt-2 font-display text-[44px] font-bold leading-none tracking-[-0.03em]', metaNps != null && nps.passa && 'text-emerald-700 dark:text-emerald-300', nps.nota == null && 'text-[28px] text-muted-foreground')}>
             {nps.nota == null ? 'Sem nota válida' : notaTexto(nps.nota)}
           </div>
           <p className="m-0 text-[13px] text-muted-foreground">
-            {nps.pesquisas >= 2 ? `Média das ${nps.pesquisas} pesquisas do ciclo.` : nps.pesquisas === 1 ? 'Só uma pesquisa valeu, então a nota do ano é a dela.' : 'Nenhuma pesquisa do ciclo valeu.'}{metaNps != null && ` Meta: ${metaNps} ou mais.`}
+            {nps.pesquisas >= 2 ? `Média das ${nps.pesquisas} pesquisas do período.` : nps.pesquisas === 1 ? `Só uma pesquisa valeu, então a nota ${semestral ? 'do período' : 'do ano'} é a dela.` : 'Nenhuma pesquisa do período valeu.'}{metaNps != null && ` Meta: ${metaNps} ou mais.`}
           </p>
         </div>
         <ul className="m-0 flex list-none flex-col gap-2 p-0">

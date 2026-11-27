@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const s = vi.hoisted(() => ({ dados: null, args: null }));
+const s = vi.hoisted(() => ({ dados: null, args: null, carreiraErro: null }));
 vi.mock('../../hooks/useProfessoresDados.js', () => ({
   useProfessoresDados: (args) => {
     s.args = args;
@@ -18,7 +18,7 @@ vi.mock('../../hooks/useProfessoresDados.js', () => ({
 }));
 vi.mock('../../hooks/useCarreira.js', async () => {
   const { trilhasDe } = await import('../carreira/trilhas.js');
-  return { useCarreira: () => ({ carreira: { doc: null }, trilhas: trilhasDe(null) }) };
+  return { useCarreira: () => ({ carreira: { doc: null, erro: s.carreiraErro }, trilhas: trilhasDe(null) }) };
 });
 vi.mock('../firebase.js', () => ({ appId: 'acad', db: {}, auth: {} }));
 vi.mock('../../hooks/useNpsDados.js', () => ({
@@ -70,6 +70,7 @@ beforeEach(() => {
     presencas: [],
   };
   s.args = null;
+  s.carreiraErro = null;
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -161,6 +162,12 @@ describe('a lista Carreira', () => {
     expect(button('Período anterior').disabled).toBe(true);
     await click(button('Próximo período'));
     expect(nav.location.search).toBe('?trilha=professor');
+  });
+
+  it('a falha na leitura das trilhas aparece', async () => {
+    s.carreiraErro = new Error('negado');
+    await render('/acad/carreira');
+    expect(document.body.querySelector('[role="alert"]').textContent).toContain('Não deu para carregar tudo');
   });
 
   it('sem trilha escolhida, não há seletor de período', async () => {

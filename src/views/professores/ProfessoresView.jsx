@@ -75,7 +75,7 @@ export function ProfessoresView({ db, appUser, tenantId, tab, onTab, listenersAc
         const trilha = trilhaDe(prof);
         if (!trilha) return { prof, trilha: null, placar: placarDe(null, null, {}), tempo: null, desde: null };
         const periodo = periodoDaPessoa(trilha, trilha === escolhida ? ciclo : null, agora);
-        const contas = contasDoProfessor({ trilha, periodo, prof, clientes, contratos, planos, aulas, presencas, nps, agora });
+        const contas = contasDoProfessor({ trilha, periodo, prof, clientes, contratos, planos, aulas, presencas, nps: { pesquisas: nps.pesquisas, totais: nps.totais }, agora });
         return {
           prof,
           trilha,
@@ -84,7 +84,7 @@ export function ProfessoresView({ db, appUser, tenantId, tab, onTab, listenersAc
           desde: getSafeDateOrNull(prof.nivelDesde)?.toLocaleDateString('pt-BR') ?? null,
         };
       });
-  }, [carregando, carreira, nps, ativos, escolhida, trilhaDe, ciclo, agora, clientes, contratos, planos, aulas, presencas]);
+  }, [carregando, carreira, nps.carregando, nps.pesquisas, nps.totais, ativos, escolhida, trilhaDe, ciclo, agora, clientes, contratos, planos, aulas, presencas]);
 
   const visiveis = linhas && busca.trim()
     ? linhas.filter((l) => semAcento(l.prof.nome).includes(semAcento(busca.trim())))
@@ -145,7 +145,7 @@ export function ProfessoresView({ db, appUser, tenantId, tab, onTab, listenersAc
           </TabsList>
 
           <TabsContent value="lista" tabIndex={-1}>
-            {erro && <p role="alert" className="mb-3 text-[13px] font-semibold text-rose-700 dark:text-rose-300">Não deu para carregar tudo. Recarregue a página.</p>}
+            {(erro || carreira?.erro) && <p role="alert" className="mb-3 text-[13px] font-semibold text-rose-700 dark:text-rose-300">Não deu para carregar tudo. Recarregue a página.</p>}
             {!visiveis ? (
               <p className="text-[13px] text-muted-foreground">Carregando a equipe…</p>
             ) : ativos.length === 0 ? (

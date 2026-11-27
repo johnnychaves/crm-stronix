@@ -8,7 +8,7 @@ import { escalaDaRenovacao, estadoTexto, metaTexto, notaTexto, proximaTexto, val
 // do nível de agora e o tracejado da meta do próximo nível. Embaixo, "Para
 // Pleno: 55%". No último nível, só a meta de agora. O texto claro fica em 58%
 // de branco ou mais, que dá 6:1 ou mais sobre o ink-900.
-const posicao = (v, lo, hi) => Math.min(100, Math.max(0, ((v - lo) / (hi - lo)) * 100));
+const posicao = (v, lo, hi) => (hi > lo ? Math.min(100, Math.max(0, ((v - lo) / (hi - lo)) * 100)) : 0);
 const COLUNAS = { 1: '@[1000px]:grid-cols-1', 2: '@[1000px]:grid-cols-2', 3: '@[1000px]:grid-cols-3', 4: '@[1000px]:grid-cols-4' };
 
 // marcas: { v, texto, rotulo, tipo: 'atual' | 'proxima' | 'ref' }.
@@ -73,7 +73,8 @@ function desenhoDe(item, nivel, proximo, det) {
   if (alvoProx != null) marcas.push({ v: alvoProx, texto: proximo.nome, rotulo: rotulo(alvoProx), tipo: 'proxima' });
   if (id === 'nps') {
     const candidatos = [alvo, alvoProx].filter((v) => v != null).map((v) => Math.floor(v) - 1);
-    const lo = Math.max(0, Math.min(...candidatos, valor == null ? 10 : Math.floor(valor)));
+    // Sem meta e com nota 10 (ou sem nota), a régua ainda vai de 9 a 10.
+    const lo = Math.max(0, Math.min(9, ...candidatos, valor == null ? 10 : Math.floor(valor)));
     const comPesquisa = Boolean(det.nps?.itens?.length);
     return {
       lo, hi: 10, pontas: [String(lo), '10'], marcas,

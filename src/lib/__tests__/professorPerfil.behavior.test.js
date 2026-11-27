@@ -13,16 +13,16 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 // O Popper do Radix mede o conteúdo com ResizeObserver, que o jsdom não tem.
 globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} };
 
-const s = vi.hoisted(() => ({ dados: null, carteira: [], nps: null, npsArgs: null, respostas: [], conversao: null }));
+const s = vi.hoisted(() => ({ carreiraErro: null, argsDados: null, dados: null, carteira: [], nps: null, npsArgs: null, respostas: [], conversao: null }));
 vi.mock('../../hooks/useNpsDados.js', () => ({
   useNpsDados: (args) => { s.npsArgs = args; return s.nps; },
   useNpsRespostas: () => ({ carregando: false, erro: null, respostas: s.respostas }),
 }));
 vi.mock('../npsWrites.js', () => ({ gerarNovoLink: vi.fn(async () => 'novo') }));
-vi.mock('../../hooks/useProfessoresDados.js', () => ({ useProfessoresDados: () => s.dados }));
+vi.mock('../../hooks/useProfessoresDados.js', () => ({ useProfessoresDados: (args) => { s.argsDados = args; return s.dados; } }));
 vi.mock('../../hooks/useCarreira.js', async () => {
   const { trilhasDe } = await import('../carreira/trilhas.js');
-  return { useCarreira: () => ({ carreira: { doc: null }, trilhas: trilhasDe(null) }) };
+  return { useCarreira: () => ({ carreira: { doc: null, erro: s.carreiraErro }, trilhas: trilhasDe(null) }) };
 });
 vi.mock('../firebase.js', () => ({ appId: 'acad', db: {}, auth: {}, storage: {}, PROFESSORS_PATH: 'stronix_professores' }));
 vi.mock('firebase/firestore', async (importOriginal) => ({
@@ -99,6 +99,8 @@ beforeEach(() => {
   };
   s.nps = { carregando: false, erro: null, pesquisas: [], totais: [] };
   s.respostas = [];
+  s.carreiraErro = null;
+  s.argsDados = null;
   s.conversao = null;
   s.carteira = [
     linha('l1', 'Gustavo Rangel', 'vencer', true),
@@ -297,6 +299,25 @@ describe('professor que não existe', () => {
     expect(document.body.textContent).toContain('Não achamos esse professor.');
     expect([...document.body.querySelectorAll('a')].some((a) => a.getAttribute('href') === '/acad/carreira' && a.textContent === 'Ver a lista da equipe')).toBe(true);
     expect(byLabel('Números do plano de carreira')).toBeNull();
+    // Com os professores carregados, a janela existe e a leitura termina.
+    expect(s.argsDados.inicioMs).not.toBeNull();
+  });
+
+  it('sem os professores carregados, não lê nada', async () => {
+    s.dados.professores = [];
+    s.dados.carregando = true;
+    await render('/acad/carreira/professor/p2');
+    expect(s.argsDados.inicioMs).toBeNull();
+    expect(s.argsDados.fimMs).toBeNull();
+    expect(document.body.textContent).toContain('Carregando o perfil');
+  });
+});
+
+describe('a leitura das trilhas', () => {
+  it('a falha aparece no perfil', async () => {
+    s.carreiraErro = new Error('negado');
+    await render('/acad/carreira/professor/p2');
+    expect([...document.body.querySelectorAll('[role="alert"]')].some((el) => el.textContent.includes('Não deu para carregar tudo'))).toBe(true);
   });
 });
 

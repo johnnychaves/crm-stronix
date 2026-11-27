@@ -44,3 +44,16 @@ export function escalaDaRenovacao(valores) {
   const hi = Math.min(100, Math.ceil((Math.max(...vs) + 15) / 10) * 10);
   return [lo, hi];
 }
+
+const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+
+// O rótulo de um pedaço da aderência pelas datas dele (o fim fica fora):
+// "junho de 2027", "janeiro a maio de 2027" ou "dezembro de 2026 a fevereiro
+// de 2027".
+export function pedacoTexto({ inicio, fim }) {
+  const ult = new Date(fim.getFullYear(), fim.getMonth() - 1, 1);
+  const de = MESES[inicio.getMonth()];
+  const ate = MESES[ult.getMonth()];
+  if (inicio.getFullYear() !== ult.getFullYear()) return `${de} de ${inicio.getFullYear()} a ${ate} de ${ult.getFullYear()}`;
+  return de === ate ? `${de} de ${ult.getFullYear()}` : `${de} a ${ate} de ${ult.getFullYear()}`;
+}

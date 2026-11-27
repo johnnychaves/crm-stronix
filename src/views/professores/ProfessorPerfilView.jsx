@@ -46,8 +46,9 @@ export function ProfessorPerfilView({ db, appUser, tenantId, profId, tab, onTab,
   const prof = useMemo(() => (professoresDoApp || []).find((p) => p.id === profId) ?? null, [professoresDoApp, profId]);
   const { carreira, trilhas } = useCarreira({ db, listenersActive });
   const trilhasDeProfessor = useMemo(() => (trilhas || []).filter((t) => t.base === 'professor'), [trilhas]);
-  // Sem o professor (ainda não chegou, ou não existe), vale a trilha Professor,
-  // para a janela de leitura existir e o "Não achamos" aparecer depois dela.
+  // Sem o professor (não existe), vale a trilha Professor, para a janela de
+  // leitura existir e o "Não achamos" aparecer depois dela. Enquanto a lista de
+  // professores não chegou, não há janela: a trilha certa ainda não se sabe.
   const trilha = useMemo(() => trilhaDaPessoa(prof, trilhasDeProfessor, { professor: true }), [prof, trilhasDeProfessor]);
 
   const ctx = useMemo(() => ({ trilha, agora }), [trilha, agora]);
@@ -55,7 +56,10 @@ export function ProfessorPerfilView({ db, appUser, tenantId, profId, tab, onTab,
   const periodo = useMemo(() => (trilha ? periodoDaPessoa(trilha, ciclo, agora) : null), [trilha, ciclo, agora]);
 
   const { carregando, erro, planos, contratos, clientes, aulas, presencas } = useProfessoresDados({
-    db, inicioMs: periodo?.inicio.getTime() ?? null, fimMs: periodo?.fim.getTime() ?? null, listenersActive,
+    db,
+    inicioMs: professoresDoApp?.length ? periodo?.inicio.getTime() ?? null : null,
+    fimMs: professoresDoApp?.length ? periodo?.fim.getTime() ?? null : null,
+    listenersActive,
   });
 
   const pode = isGestor(appUser);
@@ -68,9 +72,9 @@ export function ProfessorPerfilView({ db, appUser, tenantId, profId, tab, onTab,
 
   const contas = useMemo(() => {
     if (carregando || carreira === null || !prof || !trilha || !periodo || nps.carregando) return null;
-    const c = contasDoProfessor({ trilha, periodo, prof, clientes, contratos, planos, aulas, presencas, nps, agora });
+    const c = contasDoProfessor({ trilha, periodo, prof, clientes, contratos, planos, aulas, presencas, nps: { pesquisas: nps.pesquisas, totais: nps.totais }, agora });
     return { ...c, placar: placarDe(trilha, prof.nivel, c.resultados) };
-  }, [carregando, carreira, prof, trilha, periodo, clientes, contratos, planos, aulas, presencas, nps, agora]);
+  }, [carregando, carreira, prof, trilha, periodo, clientes, contratos, planos, aulas, presencas, nps.carregando, nps.pesquisas, nps.totais, agora]);
 
   const [fotoAberta, setFotoAberta] = useState(false);
   const [fotoOcupada, setFotoOcupada] = useState(false);
@@ -210,7 +214,7 @@ export function ProfessorPerfilView({ db, appUser, tenantId, profId, tab, onTab,
       />
       {nps.erro && <p role="alert" className="mt-3 text-[13px] font-semibold text-rose-700 dark:text-rose-300">Não deu para ler a pesquisa dos alunos. Recarregue a página.</p>}
 
-      {erro && <p role="alert" className="mt-3 text-[13px] font-semibold text-rose-700 dark:text-rose-300">Não deu para carregar tudo. Recarregue a página.</p>}
+      {(erro || carreira?.erro) && <p role="alert" className="mt-3 text-[13px] font-semibold text-rose-700 dark:text-rose-300">Não deu para carregar tudo. Recarregue a página.</p>}
 
       {trilhas && !trilha ? (
         <p className="mt-4 text-[13px] text-muted-foreground">Sem trilha. Defina a trilha e o nível no cabeçalho.</p>
@@ -257,6 +261,7 @@ export function ProfessorPerfilView({ db, appUser, tenantId, profId, tab, onTab,
               <NpsTab
                 nps={contas.nps}
                 metaNps={contas.metaNps}
+                semestral={trilha.frequencia === 'semestral'}
                 pode={pode}
                 professorLogado={professorLogado}
                 primeiroNome={primeiroNome}
