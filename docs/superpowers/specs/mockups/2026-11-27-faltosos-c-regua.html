@@ -1,0 +1,89 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Faltosos C · Régua de dias</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="2026-11-27-faltosos-base.css">
+<style>
+/* Os urgentes ganham um painel próprio; o resto se lê numa régua de dias sem vir. */
+.urg{margin-top:16px;padding:20px 24px;border-left:4px solid #F43F5E}
+.urg h2{font-size:17px;font-weight:700;color:var(--rose700)}
+.urg > p{margin-top:2px;color:var(--muted)}
+.ug{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin-top:14px}
+.uc{display:flex;flex-direction:column;gap:8px;padding:14px 16px;border-radius:14px;background:#fff5f6}
+.uc:hover{background:#ffeef1}
+.uc .who b{font-size:14px}
+.uc .q{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px}
+.uc .q .t{color:var(--rose700);font-weight:600}
+
+.rg{margin-top:16px;padding:22px 24px 18px}
+.rg h2{font-size:17px;font-weight:700}
+.rg > p{margin-top:2px;color:var(--muted)}
+.axis{position:relative;height:96px;margin:22px 8px 0}
+.axis .ln{position:absolute;left:0;right:0;top:54px;height:2px;background:#e2e8f0}
+.mk{position:absolute;top:44px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.mk::before{content:"";width:2px;height:22px;background:#cbd5e1}
+.dot{position:absolute;transform:translate(-50%,0);width:16px;height:16px;border-radius:50%;border:2px solid #fff;background:#F59E0B;cursor:pointer;padding:0}
+.dot.f{background:#10B981}.dot.s{background:#94a3b8}
+.dot[aria-pressed=true]{outline:2px solid var(--blue);outline-offset:2px}
+.lgd{display:flex;gap:18px;flex-wrap:wrap;margin-top:6px;font-size:12.5px;color:var(--ink2)}
+.lgd i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:-1px;background:#F59E0B}
+.lgd .f{background:#10B981}.lgd .s{background:#94a3b8}
+
+.tbl{margin-top:16px;overflow:hidden}
+.sep{padding:10px 24px;border-bottom:1px solid var(--rule);background:#fafbfe;font-size:12.5px;font-weight:600;color:var(--muted)}
+.tr.on{background:var(--blue50)}
+.pend{margin-top:16px;padding:16px 24px}
+.pend h2{font-size:15px;font-weight:700;margin-bottom:6px}
+.pend .na{padding:0}
+</style></head><body><div class="wrap" id="app"></div><div id="vis"></div>
+<div class="tag">Mockup C · Régua de dias · dados de exemplo</div>
+<script src="2026-11-27-faltosos-dados.js"></script>
+<script>
+const F = FT;
+const MAX = 75; // a régua vai até 75 dias; quem passa disso fica na ponta
+let foco = null;
+const pos = (d) => `${Math.min(d, MAX) / MAX * 100}%`;
+function render() {
+  const gestor = F.visao() === 'gestor';
+  const prof = gestor ? null : F.EU;
+  const base = prof ? F.doProfessor(F.alunos) : F.alunos;
+  const urg = base.filter((a) => a.urgente);
+  const resto = base.filter((a) => !a.urgente && a.prof);
+  const sem = gestor ? base.filter((a) => !a.prof && !a.urgente) : [];
+  // pontos que caem perto um do outro sobem uma linha
+  const ocupado = [];
+  const dots = resto.map((a) => {
+    const x = Math.min(a.dias, MAX) / MAX * 100;
+    let lin = 0; while (ocupado.some((o) => o.lin === lin && Math.abs(o.x - x) < 2.4)) lin++;
+    ocupado.push({ x, lin });
+    const cls = a.tarefa?.status === 'feita' ? 'f' : a.tarefa ? '' : 's';
+    return `<button type="button" class="dot ${cls}" data-a="${a.id}" aria-pressed="${foco === a.id}" style="left:${pos(a.dias)};top:${40 - lin * 18}px" title="${a.nome}, ${a.dias} dias" aria-label="${a.nome}, ${a.dias} dias sem vir"></button>`;
+  }).join('');
+  let ultimoMarco = null;
+  const linhas = resto.map((a) => {
+    const sep = a.faixa !== ultimoMarco ? `<div class="sep">${a.faixa} dias ou mais</div>` : '';
+    ultimoMarco = a.faixa;
+    return sep + F.linha(a).replace('class="tr"', `class="tr${foco === a.id ? ' on' : ''}" id="${a.id}"`);
+  }).join('');
+  document.getElementById('app').innerHTML = `
+    ${F.cabecalho({ total: base.length, prof })}
+    ${F.importacao()}
+    ${urg.length ? `<section class="card urg"><h2 class="d">${F.plural(urg.length, 'aluno sumido', 'alunos sumidos')} com o contrato no fim</h2><p>Sem vir e com o contrato terminando em até 30 dias. Fale com eles primeiro.</p>
+      <div class="ug">${urg.map((a) => `<a class="uc" href="#">
+        <span class="who">${F.avatar(a, 30)}<span style="min-width:0"><b>${a.nome}</b><span>${a.profNome}</span></span></span>
+        <span class="q"><span class="t num">Termina em ${a.fim}</span><span class="num">${a.dias} dias sem vir</span></span>${F.chip(a.tarefa)}</a>`).join('')}</div></section>` : ''}
+    <section class="card rg"><h2 class="d">Há quanto tempo cada um não vem</h2><p>Cada ponto é um aluno. Clique para achar na lista.</p>
+      <div class="axis"><span class="ln"></span>${F.MARCOS.map((m) => `<span class="mk" style="left:${pos(m)}">${m} dias</span>`).join('')}${dots}</div>
+      <div class="lgd"><span><i></i>Contato pendente</span><span><i class="f"></i>Contato feito</span><span><i class="s"></i>Sem tarefa</span></div></section>
+    <section class="card tbl">${F.cabecaTabela}${linhas}</section>
+    ${gestor ? `<section class="card pend"><h2 class="d">Para acertar na próxima importação</h2>
+      ${sem.map((a) => `<div class="na"><b>${a.nome}</b><span class="mut">sem professor ligado na Next Fit</span></div>`).join('')}
+      ${F.naoAchados.map((n) => `<div class="na"><b>${n.nome}</b><span class="mut">não achado no ${n.rel}</span></div>`).join('')}</section>` : ''}`;
+  document.getElementById('vis').innerHTML = F.trocaVisao();
+}
+document.addEventListener('click', (e) => {
+  const d = e.target.closest('[data-a]');
+  if (d) { foco = d.dataset.a; render(); document.getElementById(foco)?.scrollIntoView({ block: 'center' }); }
+});
+addEventListener('hashchange', () => { foco = null; render(); });
+render();
+</script></body></html>

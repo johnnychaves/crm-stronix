@@ -1,0 +1,82 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Faltosos B · Por professor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="2026-11-27-faltosos-base.css">
+<style>
+/* Um cartão por professor com o andamento da semana; o clique filtra a lista. */
+.pg{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-top:16px}
+.pc{display:flex;flex-direction:column;gap:8px;padding:16px 18px;border-radius:18px;border:1px solid transparent;background:#fff;text-align:left;cursor:pointer}
+.pc:hover{border-color:var(--blue200)}
+.pc[aria-pressed=true]{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue) inset}
+.pc .t{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.pc .t b{font-size:15px;font-weight:700}
+.pc .big{font-size:26px;font-weight:700;letter-spacing:-.02em;line-height:1}
+.pc .big small{font-size:13px;font-weight:500;color:var(--muted);letter-spacing:0;margin-left:6px}
+.ab{display:flex;height:6px;border-radius:999px;overflow:hidden;background:#eef2f7}
+.ab i{display:block;height:100%}.ab .f{background:#10B981}.ab .p{background:#F59E0B}
+.pc .s{font-size:12px;color:var(--muted)}
+.pc .u{color:var(--rose700);font-weight:600}
+.pc.neutro .big{color:var(--muted)}
+
+.semana{display:grid;grid-template-columns:auto 1fr;gap:6px 28px;align-items:center;margin-top:16px;padding:22px 24px}
+.semana h2{grid-column:1/-1;font-size:17px;font-weight:700}
+.semana .n{font-size:40px;font-weight:700;letter-spacing:-.02em;line-height:1}
+.semana .ab{height:10px}
+
+.tbl{margin-top:16px;overflow:hidden}
+.fx{display:inline-block;margin-left:6px;padding:0 6px;border-radius:6px;background:#f1f5f9;color:var(--muted);font-size:11px;font-weight:600;vertical-align:1px}
+@media (max-width:560px){.semana{grid-template-columns:1fr}}
+</style></head><body><div class="wrap" id="app"></div><div id="vis"></div>
+<div class="tag">Mockup B · Por professor · dados de exemplo</div>
+<script src="2026-11-27-faltosos-dados.js"></script>
+<script>
+const F = FT;
+let sel = null; // id de professor, 'sem' ou 'nao'
+const linhaB = (a) => F.linha(a).replace(/(<span class="dias num">[^<]*)/, `$1<span class="fx">${a.faixa}+</span>`);
+function cartoes() {
+  const sem = F.alunos.filter((a) => !a.prof);
+  return `<div class="pg">${F.andamento.map((p) => `<button type="button" class="pc" data-sel="${p.id}" aria-pressed="${sel === p.id}">
+      <span class="t"><b class="d">${p.nome}</b><span class="mut num">${F.plural(p.total, 'aluno', 'alunos')}</span></span>
+      <span class="big d num">${p.pend}<small>${p.pend === 1 ? 'contato pendente' : 'contatos pendentes'}</small></span>
+      <span class="ab"><i class="f" style="width:${p.feitas / p.total * 100}%"></i><i class="p" style="width:${p.pend / p.total * 100}%"></i></span>
+      <span class="s num">${F.plural(p.feitas, 'feito', 'feitos')} na semana${p.urg ? `, <span class="u">${F.plural(p.urg, 'urgente', 'urgentes')}</span>` : ''}</span></button>`).join('')}
+    <button type="button" class="pc neutro" data-sel="sem" aria-pressed="${sel === 'sem'}"><span class="t"><b class="d">Sem professor</b></span><span class="big d num">${sem.length}<small>alunos</small></span><span class="s">Ligue o professor da Next Fit em Configurações.</span></button>
+    <button type="button" class="pc neutro" data-sel="nao" aria-pressed="${sel === 'nao'}"><span class="t"><b class="d">Não achados</b></span><span class="big d num">${F.naoAchados.length}<small>nomes</small></span><span class="s">A importação não achou o cliente.</span></button></div>`;
+}
+function minhaSemana(meus) {
+  const pend = meus.filter((a) => a.tarefa?.status === 'pendente').length;
+  const feitas = meus.filter((a) => a.tarefa?.status === 'feita').length;
+  const urg = meus.filter((a) => a.urgente).length;
+  return `<section class="card semana"><h2 class="d">Sua semana</h2>
+    <span class="n d num">${pend}</span><span>${pend === 1 ? 'contato para fazer' : 'contatos para fazer'}, ${F.plural(feitas, 'feito', 'feitos')}. ${urg ? `<b style="color:var(--rose700)">${F.plural(urg, 'aluno tem', 'alunos têm')} o contrato terminando.</b>` : ''}</span>
+    <span></span><span class="ab"><i class="f" style="width:${feitas / meus.length * 100}%"></i><i class="p" style="width:${pend / meus.length * 100}%"></i></span></section>`;
+}
+function render() {
+  const gestor = F.visao() === 'gestor';
+  const prof = gestor ? (sel && sel !== 'sem' && sel !== 'nao' ? sel : null) : F.EU;
+  let lista = F.alunos;
+  if (!gestor) lista = F.doProfessor(lista);
+  else if (sel === 'sem') lista = lista.filter((a) => !a.prof);
+  else if (prof) lista = lista.filter((a) => a.prof === prof);
+  const urg = lista.filter((a) => a.urgente);
+  const resto = lista.filter((a) => !a.urgente);
+  const corpo = sel === 'nao'
+    ? `<div class="gh"><h3 class="d">Não achados</h3><span class="c num">${F.naoAchados.length}</span><p>Ligue na próxima importação.</p></div>${F.naoAchadosHtml(F.naoAchados)}`
+    : `${F.cabecaTabela}
+      ${urg.length ? `<div class="gh u"><h3 class="d">Urgentes</h3><span class="c num">${urg.length}</span><p>O contrato termina em até 30 dias.</p></div>${urg.map(linhaB).join('')}` : ''}
+      ${resto.length ? `<div class="gh"><h3 class="d">Sem vir</h3><span class="c num">${resto.length}</span><p>De quem está há mais tempo para quem está há menos.</p></div>${resto.map(linhaB).join('')}` : ''}`;
+  document.getElementById('app').innerHTML = `
+    ${F.cabecalho({ total: lista.length, prof })}
+    ${F.importacao()}
+    ${gestor ? cartoes() : minhaSemana(lista)}
+    <section class="card tbl">${corpo}</section>`;
+  document.getElementById('vis').innerHTML = F.trocaVisao();
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-sel]');
+  if (b) { sel = sel === b.dataset.sel ? null : b.dataset.sel; render(); }
+  else if (e.target.closest('.fp.on') && F.visao() === 'gestor') { sel = null; render(); }
+});
+addEventListener('hashchange', () => { sel = null; render(); });
+render();
+</script></body></html>

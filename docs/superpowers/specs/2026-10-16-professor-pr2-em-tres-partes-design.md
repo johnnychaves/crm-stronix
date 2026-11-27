@@ -100,3 +100,50 @@ Decisão do Johnny em 26/11/2026: a importação do 2A alimenta a aderência, e 
 - A aderência passa a contar a ida à academia, e não só a aula marcada de funcional. Os números de novembro mudam na primeira importação, e os professores de musculação e de pilates passam a ter número. Por isso o primeiro Presenças importado começa em 02/11/2026.
 
 O plano do 2A foi refeito sobre a main de 26/11 (`e8423e2`), com essa mudança na Task 7 (regras) e numa Task 7A nova: `docs/superpowers/plans/2026-11-26-professor-pr2a-importacao.md`, na branch `claude/professor-pr2a-v2`. A versão de 16/10 continua no commit `4e95e8b` da branch `claude/professor-pr2a-importacao`.
+
+## Adendo de 27/11/2026: o 2B vira a Meta diária do professor
+
+Decisões do Johnny em 27/11/2026, depois de ver os mockups da aba Faltosos e da Meta do professor.
+
+- A aba Faltosos em Clientes sai do projeto. A lista completa dos faltosos vira um relatório no grupo Clientes dos Relatórios, quando esse grupo ganhar os relatórios dele. Esse relatório fica fora deste trabalho.
+- O 2B passa a ser a Meta diária do professor, que até aqui era o PR 3. O 2C (a ficha) continua igual e vem depois.
+- O desenho segue a Meta do consultor ("Foco agora"). O mockup aprovado é `mockups/2026-11-27-meta-professor-a-foco.html`. Os outros mockups de 27/11 (`2026-11-27-faltosos-*` e `2026-11-27-meta-professor-b-*` e `-c-*`) ficam só como registro.
+
+### A tela do professor
+
+A Meta diária do professor deixa de ser o aviso provisório (`ProfessorGoalPlaceholder`) e passa a ser esta tela. O professor sem professor do cadastro ligado continua vendo "Seu acesso ainda não está ligado a um professor. Fale com o gestor."
+
+- **Faixa do topo**, como a da Meta do consultor: a saudação, "Faltosos da semana, da importação de segunda, 23/11", o "Ao vivo" e "1 de 5 contatos feitos" com a barra. A semana vai de um Faltantes importado até o seguinte (`ultimaImportacao.dataFaltantes`).
+- **Barra "Foco em"**, a mesma da Meta do consultor, só com Faltosos e o número. Treinos a vencer e Treinos vencidos entram depois, cada um como uma aba a mais. O mockup mostra as duas desligadas só para mostrar onde ficam; a tela de verdade não mostra o que ainda não existe.
+- **Bloco Agora**, na versão 2 do mockup:
+  - borda esquerda âmbar, vermelha no urgente, sem o contorno azul;
+  - o motivo no canto ("Urgente: o contrato termina em 10/12" ou "Marco dos 30 dias sem vir");
+  - o nome, com o link "Abrir ficha";
+  - a frase "Não vem há 44 dias, desde 14/10.", que no urgente ganha "O contrato termina em 10/12.";
+  - o contato pelo `contactOf` ("Falar com Carla Teles, mãe (responsável)" no menor) e o último contato de falta registrado;
+  - os botões WhatsApp (`whatsappHref`), Registrar contato e Já voltou, e o "Pular por agora".
+  - Fica de fora o histórico de presença em quadradinhos, que o Johnny achou que não ajuda o professor.
+  - O Agora fica parado como na Meta do consultor: só muda pela ação de quem usa a tela.
+- **Ordem**: os urgentes primeiro e, dentro de cada grupo, quem está há mais dias sem vir.
+- **Fila "Depois"**: uma linha por aluno, com o motivo, os dias e a situação da tarefa. A linha traz o aluno para o Agora.
+- **Lateral**:
+  - **Agenda de hoje**, só com as aulas experimentais de hoje em que o professor é o professor da aula. Só para ver: o professor não marca Compareceu nem Não veio (decisão do Johnny, 27/11/2026). Cada aula mostra a hora, o nome (link para a ficha), a modalidade, a aula da vez ("Aula 1 de 2") e a situação: Compareceu, Não veio, Sem desfecho ou Próxima. No pé, "Quem marca se o aluno veio é o consultor, na Meta dele.";
+  - **Faltosos na semana**, com quantos estão em cada grupo (Urgentes, 60, 30, 14 e 7 dias);
+  - **Feitos nesta semana**, com o resultado de cada contato.
+- **Registrar contato** abre um balão na casca dos pop-ups da Meta (`PopupShell`): como foi o contato (WhatsApp, Ligação ou Pessoalmente), o que aconteceu, em cartões (Vai voltar, Respondeu, Não respondeu ou Quer cancelar), e a observação opcional. A gravação, o "Quer cancelar" no sino do gestor e o "Já voltou" seguem a spec original (`2026-10-02-professor-e-faltosos-design.md`, "A Meta do professor" e "O sino do gestor").
+
+### O gestor
+
+- Na Meta diária, o gestor da academia com o módulo ganha o seletor "Ver a Meta de", com a meta dele e a de cada professor ativo. Escolhido um professor, a tela é a do professor, com o título "Meta diária de Heloísa" e o aviso "Você está vendo a Meta de Heloísa. O que você registrar aqui fica no seu nome." A Agenda de hoje passa a ser a desse professor. A escolha mora no endereço da tela.
+- O gestor pode registrar o contato e marcar "Já voltou" pela Meta do professor, no nome dele.
+- O que é só do gestor fica no bloco Faltosos de Configurações → Metas & ritmo, ao lado da importação: os alunos Sem professor e os Não achados da última importação.
+- O consultor não tem o seletor.
+
+### Regras do Firestore
+
+Este PR muda regra, ao contrário do que esta spec dizia do 2B:
+- o professor passa a criar a interação do contato de falta (`absence_contact`), no próprio nome;
+- o professor passa a marcar a tarefa dos alunos dele em `stronix_faltosos`, só nos campos da tarefa, como uma condição a mais na linha de update;
+- o que o sino do gestor precisa ler para o "Quer cancelar".
+
+As regras são publicadas antes do merge, a partir da regra que estiver no ar, como no 2A. A Agenda de hoje só lê `stronix_aulas`, que todo membro já lê.

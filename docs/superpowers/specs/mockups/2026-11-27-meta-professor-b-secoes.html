@@ -1,0 +1,55 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Meta do professor B · Seções da semana</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="2026-11-27-meta-professor.css">
+<style>
+/* A semana inteira à vista: uma seção por marco, um cartão por aluno. */
+.sec{margin-top:22px}
+.sec-h{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.sec-h h2{font-size:17px;font-weight:700}
+.sec-h .c{font-weight:700;color:var(--muted)}
+.sec-h p{font-size:13px;color:var(--muted)}
+.sec.u .sec-h h2{color:var(--rose700)}
+.cg{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px}
+.ac{display:flex;flex-direction:column;gap:12px;padding:18px 20px;border-radius:18px;background:#fff}
+.sec.u .ac{box-shadow:0 0 0 1px rgba(244,63,94,.35) inset}
+.ac-t{display:flex;align-items:center;gap:12px}
+.ac-t b{display:block;font-size:15px;font-weight:700}
+.ac-t a{font-size:12.5px;color:var(--blue700);font-weight:600}
+.ac dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:0;font-size:13px}
+.ac dt{color:var(--muted)}.ac dd{margin:0;font-weight:500}
+.ac .ult{font-size:12.5px;color:var(--muted)}
+details.fe2{margin-top:22px;background:#fff;border-radius:18px;padding:16px 20px}
+details.fe2 summary{cursor:pointer;font-weight:700;font-size:15px}
+.feito{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--rule);font-size:13px}
+.feito:first-of-type{margin-top:10px}
+.feito .ok{margin-left:auto;color:#047857;font-weight:600}
+.vazio{margin-top:22px;padding:40px;border-radius:18px;background:#fff;text-align:center}
+</style></head><body><div class="wrap" id="app"></div><div id="vis"></div>
+<div class="tag">Mockup B · Seções da semana · dados de exemplo</div>
+<script src="2026-11-27-faltosos-dados.js"></script>
+<script src="2026-11-27-meta-professor-comum.js"></script>
+<script>
+const { F } = MP;
+const cartao = (a) => `<article class="ac">
+    <div class="ac-t">${F.avatar(a, 40)}<div style="min-width:0"><b>${a.nome}</b><a href="#">Abrir ficha</a></div></div>
+    <dl><dt>Sem vir desde</dt><dd class="num">${a.ultima}, ${a.dias} dias</dd><dt>Plano</dt><dd>${a.plano}</dd><dt>Contrato até</dt><dd class="num${a.urgente ? ' urgt' : ''}">${a.fim}</dd></dl>
+    <p class="ult">${MP.ultimoContato(a)}.</p>
+    ${MP.acoes(a)}</article>`;
+function render() {
+  const fila = MP.pendentes();
+  const secoes = [
+    { id: 'u', nome: 'Urgentes', dica: 'Sem vir e com o contrato terminando em até 30 dias. Comece por eles.', itens: fila.filter((a) => a.urgente) },
+    ...[60, 30, 14, 7].map((m) => ({ id: String(m), nome: `${m} dias sem vir`, itens: fila.filter((a) => !a.urgente && a.tarefa.marco === m) })),
+  ].filter((s) => s.itens.length);
+  const feitos = MP.feitos();
+  document.getElementById('app').innerHTML = `
+    ${MP.faixa()}
+    ${secoes.length ? secoes.map((s) => `<section class="sec${s.id === 'u' ? ' u' : ''}"><div class="sec-h"><h2 class="d">${s.nome}</h2><span class="c num">${s.itens.length}</span>${s.dica ? `<p>${s.dica}</p>` : ''}</div><div class="cg">${s.itens.map(cartao).join('')}</div></section>`).join('')
+      : '<div class="vazio"><h2 class="d">Tudo feito nesta semana</h2><p class="mut">A próxima lista chega com a importação de segunda.</p></div>'}
+    <details class="fe2"><summary class="d">Feitos nesta semana (${feitos.length})</summary>${feitos.map((a) => `<div class="feito">${F.avatar(a, 28)}<span>${a.nome}</span><span class="mut">WhatsApp em 24/11</span><span class="ok">Vai voltar</span></div>`).join('') || '<p class="mut" style="margin-top:10px">Nenhum ainda.</p>'}</details>`;
+  document.getElementById('vis').innerHTML = F.trocaVisao();
+}
+MP.ligar(render);
+render();
+</script></body></html>
