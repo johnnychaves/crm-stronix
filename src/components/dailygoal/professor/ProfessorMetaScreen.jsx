@@ -17,7 +17,7 @@ const dataDe = (v) => (v?.toDate ? v.toDate() : v);
 
 export function ProfessorMetaScreen({
   now, live, saudacao, nomeVisto, gestorVendo, professorLigado, ultimaImportacao, marcos,
-  estados, leadsById, aulas, onRegistrar, onJaVoltou,
+  estados, leadsById, aulas, onRegistrar, onJaVoltou, zapOn = false,
 }) {
   const hojeDia = hojeEmBrasilia(now);
   const [pulados, setPulados] = useState([]);
@@ -93,6 +93,7 @@ export function ProfessorMetaScreen({
                   ultimo={ultimoContato(agora)}
                   onRegistrar={() => setRegistrando(agora)}
                   onJaVoltou={() => onJaVoltou(agora)}
+                  zapOn={zapOn}
                   onPular={fila.length ? () => trocar(fila[0].id, true) : null}
                 />
               ) : (

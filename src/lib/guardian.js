@@ -84,6 +84,16 @@ export function whatsappHref(phone, text) {
   return text ? `https://wa.me/${n}?text=${encodeURIComponent(text)}` : `https://wa.me/${n}`;
 }
 
+// A conversa do número no Stronizap (link /chamar, no ar desde 25/11/2026):
+// ele leva ao login quando preciso, pergunta o canal e abre a conversa. Não
+// aceita texto pronto, então o link de indicação continua no wa.me.
+export function stronizapHref(phone) {
+  let n = onlyDigits(phone);
+  if (!n) return null;
+  if (n.length <= 11) n = `55${n}`;
+  return `https://stronizap.com.br/chamar/${n}`;
+}
+
 export function telHref(phone) {
   const n = onlyDigits(phone);
   return n ? `tel:${n}` : null;

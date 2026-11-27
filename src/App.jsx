@@ -73,6 +73,7 @@ import { planDefaultFunnel, planNegociacaoStages } from './lib/funnelSetup.js';
 import { tenantCol, tenantDoc, writeSetupWrites, writeSetupPlan } from './lib/funnelSetupWrites.js';
 import { IDLE_RUN, runStatusFor, settleRun, EMPTY_SETUP_FLAGS, setupFlagsFromConfig, setupFlagFor } from './lib/setupRun.js';
 import { normalizeModules, hasModule, MODULES } from './lib/modules.js';
+import { zapIntegrationState, ZAP_STATE } from './lib/zapIntegration.js';
 import { CONFIG_FALTOSOS_PADRAO, normalizarConfigFaltosos } from './lib/faltosos/configFaltosos.js';
 import { parseAppPath, routeDecision, hrefFor, screenKey, documentTitle } from './lib/routes.js';
 import { funnelFromSearch } from './lib/screenParams.js';
@@ -539,11 +540,15 @@ function AppInner() {
       // nova. Ao contrário do bloqueio, aqui a falta fecha: documento ausente
       // ou leitura que falhou dão lista vazia.
       let tenantModules = [];
+      // Stronizap ligado na academia: o botão Conversar da Meta e da ficha
+      // ganha a saída pelo Stronizap. Mesma regra da falha: sem leitura, não.
+      let tenantZap = false;
       if (tenantId) {
         try {
           const tenantSnap = await getDoc(doc(db, 'tenants', tenantId));
           const tData = tenantSnap.exists() ? tenantSnap.data() : null;
           tenantModules = normalizeModules(tData?.modules);
+          tenantZap = zapIntegrationState(tData?.integrations?.zap) === ZAP_STATE.CONECTADO;
           let block = null;
           let trialMs = null;
           let billingWarn = null;
@@ -615,7 +620,8 @@ function AppInner() {
           superAdmin: true,
           superAdminOnly: true,
           tenantId: null,
-          tenantModules: []
+          tenantModules: [],
+          tenantZap: false
         });
         setAuthSetupError('');
         setIsAuthChecking(false);
@@ -629,7 +635,7 @@ function AppInner() {
 
       if (!byUidSnap.empty) {
         const userDoc = byUidSnap.docs[0];
-        setAppUser({ id: userDoc.id, ...userDoc.data(), tenantId: appId, superAdmin, impersonating: !!impersonatedBy, impersonatedTenant, tenantModules });
+        setAppUser({ id: userDoc.id, ...userDoc.data(), tenantId: appId, superAdmin, impersonating: !!impersonatedBy, impersonatedTenant, tenantModules, tenantZap });
         setAuthSetupError('');
         setIsAuthChecking(false);
         return;
@@ -661,7 +667,8 @@ function AppInner() {
             superAdmin,
             impersonating: !!impersonatedBy,
             impersonatedTenant,
-            tenantModules
+            tenantModules,
+            tenantZap
           });
 
           setAuthSetupError('');
@@ -684,7 +691,8 @@ function AppInner() {
           superAdmin: true,
           superAdminOnly: true,
           tenantId: null,
-          tenantModules: []
+          tenantModules: [],
+          tenantZap: false
         });
         setAuthSetupError('');
         setIsAuthChecking(false);

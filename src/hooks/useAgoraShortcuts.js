@@ -2,7 +2,8 @@ import { useEffect, useRef } from 'react';
 
 // Os atalhos do bloco Agora da Meta nova (PR 4 do plano da Meta): W abre o
 // WhatsApp, L liga, C marca Compareceu ou conclui, N marca Não compareceu e S
-// pula. `acoes` é um objeto { w, l, c, n, s } com a função de cada tecla, ou
+// pula. Com o Stronizap ligado na academia, Z abre a conversa no Stronizap.
+// `acoes` é um objeto { w, l, c, n, s, z } com a função de cada tecla, ou
 // null quando a tecla não vale para a tarefa do Agora.
 //
 // O atalho fica calado quando:

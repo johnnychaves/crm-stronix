@@ -32,7 +32,7 @@ import { recordPlanFor } from '../lib/aulas.js';
 import { daysToExpiryOf, activeRenewalCheckpoint } from '../lib/renewalGoal.js';
 import { formatHourLabel } from '../lib/format.js';
 import { getSafeDateOrNull } from '../lib/dates.js';
-import { contactOf, telHref, whatsappHref } from '../lib/guardian.js';
+import { contactOf, stronizapHref, telHref, whatsappHref } from '../lib/guardian.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { LeadLink } from '../components/nav/AppLink.jsx';
@@ -927,6 +927,13 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
     return Boolean(href);
   };
 
+  // A conversa no Stronizap (link /chamar), só com a integração ligada.
+  const handleStronizap = (lead) => {
+    const href = stronizapHref(contactOf(lead).phone);
+    if (href) window.open(href, '_blank', 'noopener,noreferrer');
+    return Boolean(href);
+  };
+
   const handleCall = (lead) => {
     const href = telHref(contactOf(lead).phone);
     if (href) window.location.href = href;
@@ -1064,6 +1071,7 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
         onOutcomePopup={openOutcomePopup}
         onConclude={concludeTask}
         onWhatsapp={handleWhatsapp}
+        onStronizap={appUser?.tenantZap ? handleStronizap : null}
         onCall={handleCall}
         aside={(
           <>
