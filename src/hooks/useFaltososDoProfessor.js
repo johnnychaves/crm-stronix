@@ -10,12 +10,15 @@ import { appId, FALTOSOS_PATH, LEADS_PATH } from '../lib/firebase.js';
 import { normalizeLeadDoc } from '../lib/leads.js';
 import { chunk } from '../lib/operacional/queries.js';
 
+const EMPTY = new Map();
 const col = (db, path) => collection(db, 'artifacts', appId, 'public', 'data', path);
 
 export function useFaltososDoProfessor({ db, professorId, listenersActive = true }) {
   const [lido, setLido] = useState({ chave: null, estados: [], erro: false });
-  const [leads, setLeads] = useState(() => new Map());
+  const [lidos, setLidos] = useState({ chave: null, map: new Map() });
   const chave = professorId ? `${appId}:${professorId}` : null;
+  // Os leads são da academia e do professor lidos: trocar um dos dois nunca mostra os de antes.
+  const leads = lidos.chave === chave ? lidos.map : EMPTY;
 
   useEffect(() => {
     if (!db || !professorId || !listenersActive) return undefined;
@@ -41,15 +44,15 @@ export function useFaltososDoProfessor({ db, professorId, listenersActive = true
     Promise.all(chunk(faltam.split(','), 30).map((ids) => getDocs(query(col(db, LEADS_PATH), where(documentId(), 'in', ids)))))
       .then((snaps) => {
         if (!vivo) return;
-        setLeads((antes) => {
-          const nova = new Map(antes);
+        setLidos((antes) => {
+          const nova = new Map(antes.chave === chave ? antes.map : undefined);
           snaps.forEach((s) => s.docs.forEach((d) => nova.set(d.id, normalizeLeadDoc(d))));
-          return nova;
+          return { chave, map: nova };
         });
       })
       .catch(() => {});
     return () => { vivo = false; };
-  }, [db, faltam]);
+  }, [db, faltam, chave]);
 
   return { estados, leadsById: leads, carregando: Boolean(chave) && lido.chave !== chave, erro: lido.chave === chave && lido.erro };
 }

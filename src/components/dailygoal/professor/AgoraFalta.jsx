@@ -55,7 +55,7 @@ export const AgoraFalta = forwardRef(function AgoraFalta({ estado, lead, hojeDia
           <button type="button" onClick={onRegistrar} className="inline-flex h-9 items-center rounded-full bg-brand-600 px-4 text-[13px] font-semibold text-white hover:bg-brand-700 focus-visible:outline-none focus-visible:anel-foco focus-visible:ring-offset-2 focus-visible:ring-offset-background">Registrar contato</button>
           <button type="button" onClick={onJaVoltou} className={BOTAO}>Já voltou</button>
         </div>
-        <button type="button" onClick={onPular} className="rounded text-[13px] font-semibold text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:anel-foco">Pular por agora</button>
+        {onPular && <button type="button" onClick={onPular} className="rounded text-[13px] font-semibold text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:anel-foco">Pular por agora</button>}
       </div>
     </section>
   );

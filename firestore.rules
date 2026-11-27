@@ -519,7 +519,8 @@ service cloud.firestore {
     // O professor fecha a tarefa dos alunos dele pela Meta (Registrar contato e
     // Já voltou, src/lib/faltosos/contatoDeFalta.js): só os campos da tarefa e
     // do Quer cancelar, só de pendente para feita ou voltou, com a hora do
-    // servidor. O dono, o período, o marco e o urgente ficam como estão.
+    // servidor e o feitaPor igual ao uid (o cadastro do professor tem id igual ao uid). O Quer cancelar só
+    // vale com resultado quer_cancelar e a hora do servidor. O dono, o período, o marco e o urgente ficam como estão.
     function professorFaltosoOk(appId) {
       let antes = resource.data;
       let depois = request.resource.data;
@@ -532,7 +533,9 @@ service cloud.firestore {
         && depois.tarefa.status in ['feita', 'voltou']
         && depois.tarefa.diff(antes.tarefa).affectedKeys().hasOnly(['status', 'feitaEm', 'feitaPor', 'feitaPorNome', 'canal', 'resultado'])
         && depois.tarefa.feitaEm == request.time
-        && (!mudou.hasAny(['querCancelarEm']) || depois.querCancelarEm == request.time);
+        && depois.tarefa.feitaPor == request.auth.uid
+        && (!mudou.hasAny(['querCancelarEm', 'querCancelarPorNome', 'querCancelarAluno'])
+          || (depois.querCancelarEm == request.time && depois.tarefa.resultado == 'quer_cancelar'));
     }
 
     // Estado de cada aluno faltando (stronix_faltosos/{leadId}). Todo membro

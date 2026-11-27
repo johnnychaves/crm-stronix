@@ -32,6 +32,9 @@ export function ProfessorMetaScreen({
     return [...ordem.filter((d) => !pulados.includes(d.id)), ...ordem.filter((d) => pulados.includes(d.id))];
   }, [estados, hojeDia, leadsById, pulados]);
   const feitos = useMemo(() => feitosDaSemana(estados, ultimaImportacao?.importadoEm), [estados, ultimaImportacao]);
+  // O Agora só muda por ação da pessoa: sem escolha (ou com o aluno já feito), fixa o primeiro da ordem.
+  // Ajuste de estado no render, para a ordem mudar depois (nomes que chegam, nova leitura) sem trocar o Agora.
+  if (pendentes[0] && !pendentes.some((d) => d.id === agoraId)) setAgoraId(pendentes[0].id);
   const agora = pendentes.find((d) => d.id === agoraId) || pendentes[0] || null;
   const fila = pendentes.filter((d) => d !== agora);
 
@@ -90,7 +93,7 @@ export function ProfessorMetaScreen({
                   ultimo={ultimoContato(agora)}
                   onRegistrar={() => setRegistrando(agora)}
                   onJaVoltou={() => onJaVoltou(agora)}
-                  onPular={() => trocar(fila[0]?.id, true)}
+                  onPular={fila.length ? () => trocar(fila[0].id, true) : null}
                 />
               ) : (
                 <section className="rounded-[18px] bg-card px-6 py-8">

@@ -6,6 +6,7 @@ const hora = (v) => new Date(ms(v)).toLocaleTimeString('pt-BR', { hour: '2-digit
 const estadoDe = (a, now, proximaId) => {
   if (a.status === 'attended') return { id: 'veio', texto: 'Compareceu', ponto: 'bg-emerald-500', cor: 'text-emerald-700 dark:text-emerald-300' };
   if (a.status === 'no_show') return { id: 'faltou', texto: 'Não veio', ponto: 'bg-rose-500', cor: 'text-rose-700 dark:text-rose-300' };
+  if (a.status !== 'agendada') return { id: 'outro', texto: '', ponto: 'bg-slate-300 dark:bg-slate-600', cor: '' };
   if (ms(a.scheduledFor) < now.getTime()) return { id: 'sem', texto: 'Sem desfecho', ponto: 'bg-amber-500', cor: 'text-amber-700 dark:text-amber-300' };
   if (a.id === proximaId) return { id: 'proxima', texto: 'Próxima', ponto: 'bg-brand-600', cor: 'text-brand-700 dark:text-brand-300' };
   return { id: 'depois', texto: '', ponto: 'bg-slate-300 dark:bg-slate-600', cor: '' };

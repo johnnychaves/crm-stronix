@@ -81,6 +81,21 @@ describe('useFaltososDoProfessor', () => {
     expect(result.leadsById.get('l1').name).toBe('Ana');
   });
 
+  it('trocar de professor não mostra os leads do anterior', async () => {
+    getDocsMock.mockImplementation(async (q) => ({
+      docs: q.wheres[0].value.map((id) => ({ id, data: () => ({ name: `Lead ${id}` }) })),
+    }));
+    await montar(ProbeFaltosos, { db, professorId: 'p1', listenersActive: true });
+    await responder(ultima(), { docs: [docEstado('l1', { status: 'faltando', professorId: 'p1' })] });
+    await act(async () => {});
+    expect(result.leadsById.get('l1').name).toBe('Lead l1');
+    await act(async () => { root.render(h(ProbeFaltosos, { db, professorId: 'p2', listenersActive: true })); });
+    expect(result.leadsById.size).toBe(0);
+    await responder(ultima(), { docs: [docEstado('l2', { status: 'faltando', professorId: 'p2' })] });
+    await act(async () => {});
+    expect([...result.leadsById.keys()]).toEqual(['l2']);
+  });
+
   it('sem professor ou com o portão fechado, não assina nada', async () => {
     await montar(ProbeFaltosos, { db, professorId: null, listenersActive: true });
     expect(listeners).toHaveLength(0);

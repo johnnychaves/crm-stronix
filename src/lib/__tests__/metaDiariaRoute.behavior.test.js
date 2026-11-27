@@ -1,14 +1,18 @@
 // @vitest-environment jsdom
 // A rota da Meta diária: professor, gestor com o seletor e consultor.
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { createElement as h, act } from 'react';
+import { createElement as h, act, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { MemoryRouter } from 'react-router';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
+const montagens = vi.hoisted(() => ({ n: 0 }));
 vi.mock('../../components/dailygoal/professor/ProfessorMetaScreen.jsx', () => ({
-  ProfessorMetaScreen: (p) => h('div', { 'data-testid': 'prof', 'data-gestor': String(p.gestorVendo), 'data-nome': p.nomeVisto }),
+  ProfessorMetaScreen: (p) => {
+    useState(() => { montagens.n += 1; });
+    return h('div', { 'data-testid': 'prof', 'data-gestor': String(p.gestorVendo), 'data-nome': p.nomeVisto });
+  },
 }));
 vi.mock('../../views/DailyGoalView.jsx', () => ({ DailyGoalView: () => h('div', { 'data-testid': 'consultor' }) }));
 vi.mock('../../hooks/useFaltososDoProfessor.js', () => ({ useFaltososDoProfessor: () => ({ estados: [], leadsById: new Map() }) }));
@@ -49,6 +53,18 @@ describe('MetaDiariaRoute', () => {
     expect(q('prof').dataset.gestor).toBe('true');
     expect(q('prof').dataset.nome).toBe('Heloísa');
     expect(document.querySelector('select').value).toBe('p1');
+  });
+  it('gestor trocando de professor remonta a tela, para o estado dela recomeçar', async () => {
+    montagens.n = 0;
+    await montar(gestor, '?prof=p1');
+    expect(montagens.n).toBe(1);
+    const sel = document.querySelector('select');
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(sel, 'p2');
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(q('prof').dataset.nome).toBe('Gilson');
+    expect(montagens.n).toBe(2);
   });
   it('consultor com ?prof: a Meta dele, sem seletor', async () => {
     await montar(consultor, '?prof=p1');

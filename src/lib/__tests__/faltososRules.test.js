@@ -135,6 +135,9 @@ describe('professorFaltosoOk: o professor fecha a tarefa dos alunos dele', () =>
     expect(f).toContain("depois.tarefa.status in ['feita', 'voltou']");
     expect(f).toContain(".hasOnly(['status', 'feitaEm', 'feitaPor', 'feitaPorNome', 'canal', 'resultado'])");
     expect(f).toContain('depois.tarefa.feitaEm == request.time');
+    expect(f).toContain('depois.tarefa.feitaPor == request.auth.uid');
+    expect(f).toContain("!mudou.hasAny(['querCancelarEm', 'querCancelarPorNome', 'querCancelarAluno'])");
+    expect(f).toContain("depois.tarefa.resultado == 'quer_cancelar'");
   });
 
   it('o professor cria absence_contact, nas duas listas', () => {

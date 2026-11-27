@@ -73,6 +73,26 @@ describe('Meta do professor', () => {
     expect(agoraEl().querySelector('h2').textContent).toBe('Rodrigo Saldanha');
   });
 
+  it('o Agora não muda quando a ordem muda depois (nomes que chegam)', async () => {
+    const a = est('a', '2026-10-14');
+    const b = est('b', '2026-10-14');
+    // sem nomes, o empate cai na ordem de chegada (a); com nomes, "Bia" passaria na frente de "Zeca"
+    const zeca = new Map([['a', { id: 'a', name: 'Zeca' }], ['b', { id: 'b', name: 'Bia' }]]);
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    const props = { ...base(), estados: [a, b], leadsById: new Map() };
+    await act(async () => { root.render(h(MemoryRouter, null, h(ProfessorMetaScreen, props))); });
+    expect(agoraEl().querySelector('h2').textContent).toBe('Aluno');
+    await act(async () => { root.render(h(MemoryRouter, null, h(ProfessorMetaScreen, { ...props, leadsById: zeca }))); });
+    expect(agoraEl().querySelector('h2').textContent).toBe('Zeca');
+  });
+
+  it('sem ninguém na fila, não há Pular por agora', async () => {
+    await montar({ estados: [est('a', '2026-10-14')] });
+    expect(botao('Pular por agora')).toBeUndefined();
+  });
+
   it('a linha da fila não repete o marco nem a situação', async () => {
     await montar();
     const linha = botao(/Rodrigo Saldanha/);
@@ -90,6 +110,14 @@ describe('Meta do professor', () => {
     await montar({ gestorVendo: true });
     expect(document.body.textContent).toContain('Você está vendo a Meta de Heloísa. O que você registrar aqui fica no seu nome.');
     expect(document.querySelector('h1').textContent).toBe('Meta diária de Heloísa');
+  });
+
+  it('a agenda só diz Sem desfecho para aula agendada que já passou', async () => {
+    const aula = (id, status) => ({ id, leadId: 'a', leadName: id, modality: 'Funcional', status, scheduledFor: new Date('2026-11-27T07:00:00-03:00') });
+    await montar({ aulas: [aula('Pendente', 'agendada'), aula('Outra', 'rescheduled')] });
+    const itens = [...document.querySelectorAll('section[aria-label="Agenda de hoje"] li')];
+    expect(itens.find((li) => li.textContent.includes('Pendente')).textContent).toContain('Sem desfecho');
+    expect(itens.find((li) => li.textContent.includes('Outra')).textContent).not.toContain('Sem desfecho');
   });
 
   it('professor sem ligação vê só o aviso', async () => {

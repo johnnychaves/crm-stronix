@@ -75,14 +75,14 @@ export function MetaDiariaRoute({ db, appUser, listenersActive, dailyGoalProps }
 
   if (isProfessor(appUser)) {
     const meu = typeof appUser?.professorId === 'string' && appUser.professorId.trim() ? appUser.professorId : null;
-    return <MetaDoProfessor db={db} appUser={appUser} professorId={meu} nomeVisto={firstName(appUser?.name) || 'professor'} gestorVendo={false} listenersActive={listenersActive} />;
+    return <MetaDoProfessor key={meu || 'sem'} db={db} appUser={appUser} professorId={meu} nomeVisto={firstName(appUser?.name) || 'professor'} gestorVendo={false} listenersActive={listenersActive} />;
   }
   const seletor = podeVerProf && ativos.length > 0
     ? <div className="mb-3 flex justify-end"><SeletorDeMeta professores={ativos} valor={prof} onEscolher={(id) => setParams({ prof: id })} /></div>
     : null;
   if (prof) {
     const nome = ativos.find((p) => p.id === prof)?.nome || '';
-    return <MetaDoProfessor db={db} appUser={appUser} professorId={prof} nomeVisto={firstName(nome) || nome} gestorVendo listenersActive={listenersActive} topo={seletor} />;
+    return <MetaDoProfessor key={prof} db={db} appUser={appUser} professorId={prof} nomeVisto={firstName(nome) || nome} gestorVendo listenersActive={listenersActive} topo={seletor} />;
   }
   return <>{seletor}<DailyGoalView {...dailyGoalProps} /></>;
 }
