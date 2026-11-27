@@ -10,15 +10,17 @@ import { BOTAO, Confirmacao } from './Confirmacao.jsx';
 // nível com a data, as modalidades, o tempo no nível e, só para o gestor, a
 // câmera e o "Trilha e nível".
 // Embaixo, o link do NPS: o professor copia e baixa o QR code; só o gestor
-// gera o link (e um novo, que derruba o antigo).
-export function PerfilCabecalho({ prof, modalidades, pode, fotoOcupada, onFoto, trilhas, trilha, sugeridaId, tempo, onSalvarTrilha, link, onCopiar, onBaixarQr, onGerarLink }) {
+// gera o link (e um novo, que derruba o antigo). O consultor não tem foto nem
+// NPS: sem `onFoto` não há câmera, e sem `onCopiar` não há a linha do link.
+// `semNome` é o texto de quem não tem nome.
+export function PerfilCabecalho({ prof, modalidades = [], pode, fotoOcupada, onFoto = null, trilhas, trilha, sugeridaId, tempo, onSalvarTrilha, link, onCopiar = null, onBaixarQr, onGerarLink, semNome = 'Professor sem nome' }) {
   const desde = getSafeDateOrNull(prof.nivelDesde)?.toLocaleDateString('pt-BR') ?? null;
   return (
     <header className="flex flex-wrap items-center gap-x-6 gap-y-4 rounded-[18px] border border-border bg-card px-5 py-4 shadow-card md:px-[22px]">
       <div className="flex min-w-0 items-center gap-3.5">
         <div className="relative flex-none">
           <RingAvatar name={prof.nome} photoUrl={prof.photoUrl || null} size={50} toneName="brand" showDot={false} />
-          {pode && (
+          {pode && onFoto && (
             <button
               type="button"
               aria-label="Trocar a foto do professor"
@@ -32,7 +34,7 @@ export function PerfilCabecalho({ prof, modalidades, pode, fotoOcupada, onFoto, 
           )}
         </div>
         <div className="min-w-0">
-          <h1 className="m-0 truncate font-display text-[24px] font-bold leading-[1.15] tracking-[-0.02em]">{prof.nome || 'Professor sem nome'}</h1>
+          <h1 className="m-0 truncate font-display text-[24px] font-bold leading-[1.15] tracking-[-0.02em]">{prof.nome || semNome}</h1>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-2">
             {trilha && <span className="inline-flex h-6 items-center rounded-[7px] bg-muted px-[9px] text-[12px] font-semibold text-foreground/80">Trilha {trilha.nome}</span>}
             <SeloDoNivel nome={trilha?.niveis.find((n) => n.id === prof.nivel)?.nome ?? null} desde={desde} />
@@ -48,7 +50,7 @@ export function PerfilCabecalho({ prof, modalidades, pode, fotoOcupada, onFoto, 
           )}
         </div>
       </div>
-      <LinhaDoLink link={link} pode={pode} onCopiar={onCopiar} onBaixarQr={onBaixarQr} onGerarLink={onGerarLink} />
+      {onCopiar && <LinhaDoLink link={link} pode={pode} onCopiar={onCopiar} onBaixarQr={onBaixarQr} onGerarLink={onGerarLink} />}
     </header>
   );
 }

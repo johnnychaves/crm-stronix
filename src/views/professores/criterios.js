@@ -1,20 +1,29 @@
 // Os textos do placar e da lista de Carreira (plano de carreira, PR 3). As
 // contas moram em src/lib/carreira/placar.js; aqui só se decide o texto.
 import { alvoDe } from '../../lib/carreira/placar.js';
+import { NUMEROS } from '../../lib/carreira/numeros.js';
 
 export const notaTexto = (n) => n.toFixed(2).replace('.', ',');
 
-export function valorTexto(id, v) {
+const umaCasa = (n) => (Math.round(n * 10) / 10).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+export const reaisTexto = (v) => (v >= 1000 ? `R$ ${umaCasa(v / 1000)} mil` : `R$ ${Math.round(v).toLocaleString('pt-BR')}`);
+
+// `vendasEm` vem dos ajustes da trilha (reais ou quantidade).
+export function valorTexto(id, v, { vendasEm = 'reais' } = {}) {
   if (v == null) return null;
-  return id === 'nps' ? notaTexto(v) : `${v}%`;
+  if (id === 'nps') return notaTexto(v);
+  if (id === 'vendas') return vendasEm === 'quantidade' ? `${umaCasa(v)} ${v === 1 ? 'venda' : 'vendas'}` : reaisTexto(v);
+  return `${v}%`;
 }
 
-// A meta para ler: na conversão, os pontos em relação à academia e, com a
-// academia, o alvo em porcentagem. A regra é passar da academia mais os
-// pontos (empate não passa): 0 é "acima da academia".
-export function metaTexto(id, meta, academia = null) {
+// A meta para ler: no número contra a academia, os pontos em relação à
+// academia e, com a academia, o alvo em porcentagem. A regra é passar da
+// academia mais os pontos (empate não passa): 0 é "acima da academia". A meta
+// de vendas é por mês.
+export function metaTexto(id, meta, academia = null, opts = {}) {
   if (meta == null) return null;
-  if (id !== 'conversao') return valorTexto(id, meta);
+  if (id === 'vendas') return `${valorTexto(id, meta, opts)} por mês`;
+  if (!NUMEROS[id]?.contraAcademia) return valorTexto(id, meta, opts);
   const pontos = Math.abs(meta);
   const regra = meta === 0 ? 'acima da academia'
     : meta > 0 ? `${pontos} ${pontos === 1 ? 'ponto' : 'pontos'} acima da academia`
@@ -30,9 +39,9 @@ export function estadoTexto(item, nivel) {
   return null;
 }
 
-export function proximaTexto(item, proximo) {
+export function proximaTexto(item, proximo, opts = {}) {
   if (!proximo || item.metaProxima == null) return null;
-  return `Para ${proximo.nome}: ${metaTexto(item.id, item.metaProxima, item.academia)}`;
+  return `Para ${proximo.nome}: ${metaTexto(item.id, item.metaProxima, item.academia, opts)}`;
 }
 
 // Escala da régua da renovação: as metas e o resultado com folga dos dois

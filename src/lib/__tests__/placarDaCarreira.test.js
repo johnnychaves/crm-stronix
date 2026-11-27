@@ -95,3 +95,53 @@ describe('as semanas da aba Aderência', () => {
     expect(titulos).toEqual(['julho a novembro de 2027', 'junho de 2027', 'Fora da conta, dezembro']);
   });
 });
+
+describe('textos dos números do consultor', () => {
+  it('vendas em reais e em quantidade', () => {
+    expect(valorTexto('vendas', 14200)).toBe('R$ 14,2 mil');
+    expect(valorTexto('vendas', 950)).toBe('R$ 950');
+    expect(valorTexto('vendas', 2.5, { vendasEm: 'quantidade' })).toBe('2,5 vendas');
+    expect(valorTexto('vendas', 1, { vendasEm: 'quantidade' })).toBe('1 venda');
+    expect(metaTexto('vendas', 18000)).toBe('R$ 18 mil por mês');
+    expect(metaTexto('vendas', 3, null, { vendasEm: 'quantidade' })).toBe('3 vendas por mês');
+  });
+
+  it('a conversão do consultor segue a regra da academia, e os outros são porcentagem', () => {
+    expect(metaTexto('consultorConversao', 0, 40)).toBe('acima da academia, 40%');
+    expect(metaTexto('consultorConversao', 5, 40)).toBe('5 pontos acima da academia, 45%');
+    expect(valorTexto('consultorRenovacao', 62)).toBe('62%');
+    expect(valorTexto('metaDiaria', 81)).toBe('81%');
+  });
+});
+
+describe('o placar do consultor', () => {
+  const trilha = trilhasDe(null).find((t) => t.id === 'consultor');
+  const periodo = periodoDe(trilha, new Date(2027, 1, 10));
+  const item = (id, nome, valor, meta = null, academia = null) => ({ id, nome, valor, meta, metaProxima: null, academia, estado: meta == null ? 'semMeta' : valor >= meta ? 'ok' : 'baixo' });
+  const html = renderToStaticMarkup(h(PlacarDaCarreira, {
+    titulo: 'x', trilha, periodo, agora: new Date(2027, 1, 10), onChave: () => {},
+    placar: { nivel: { id: 'junior', nome: 'Júnior' }, proximo: null, itens: [
+      item('consultorConversao', 'Conversão em matrícula', 45, null, 40),
+      item('vendas', 'Vendas', 14200, 12000),
+      item('consultorRenovacao', 'Renovação da carteira', 75),
+      item('metaDiaria', 'Meta diária batida', 81, 75),
+    ] },
+    detalhes: {
+      vendasEm: 'reais',
+      vendas: { quantidade: 68, total: 170400 },
+      consultorConversao: { consultor: { leads: 40, matriculas: 18, taxa: 45 }, academia: { taxa: 40 }, incompleto: false },
+      consultorRenovacao: { renovados: 9, decididos: 12 },
+      metaDiaria: { bateram: 172, total: 213 },
+    },
+  }));
+
+  it('mostra as vendas em reais, as contagens e os dias de meta', () => {
+    expect(html).toContain('R$ 14,2 mil');
+    expect(html).toContain('68 vendas no período, R$ 170,4 mil');
+    expect(html).toContain('18 de 40 leads se matricularam');
+    expect(html).toContain('9 de 12 clientes renovaram');
+    expect(html).toContain('172 de 213 dias de meta');
+    expect(html).toContain('Meta R$ 12 mil por mês');
+    expect(html).not.toContain('NaN');
+  });
+});

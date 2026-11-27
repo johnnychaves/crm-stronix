@@ -116,6 +116,7 @@ import { ProfessorGoalPlaceholder } from './views/ProfessorGoalPlaceholder.jsx';
 import { RotinasView } from './views/RotinasView.jsx';
 import { ProfessoresView } from './views/professores/ProfessoresView.jsx';
 import { ProfessorPerfilView } from './views/professores/ProfessorPerfilView.jsx';
+import { ConsultorPerfilView } from './views/professores/ConsultorPerfilView.jsx';
 import { RelatoriosView } from './views/relatorios/RelatoriosView.jsx';
 import { RelatoriosNovo, NOVO_ATE as RELATORIOS_NOVO_ATE } from './views/relatorios/RelatoriosNovo.jsx';
 import { RotinasNovo, NOVO_ATE as ROTINAS_NOVO_ATE } from './components/rotinas/RotinasIntro.jsx';
@@ -1744,7 +1745,7 @@ useEffect(() => {
                 {nav.kanban && <SidebarItem icon={<Kanban className="w-[18px] h-[18px]" />} label="Pipeline" href={menuHref('kanban')} onNavigate={closeDrawer} active={activeTab === 'kanban'} />}
                 {nav.clientes && <SidebarItem icon={<GraduationCap className="w-[18px] h-[18px]" />} label="Clientes" badge={clientsAVencer > 0 ? clientsAVencer : null} href={menuHref('clientes')} onNavigate={closeDrawer} active={activeTab === 'clientes'} />}
                 {nav.dailyGoal && <SidebarItem icon={<Target className="w-[18px] h-[18px]" />} label="Meta diária" badge={dailyGoalPending > 0 ? dailyGoalPending : null} href={menuHref('dailyGoal')} onNavigate={closeDrawer} active={activeTab === 'dailyGoal'} />}
-                {nav.meuPerfil && <SidebarItem icon={<IdCard className="w-[18px] h-[18px]" />} label="Minha carreira" href={menuHref('professorPerfil', { profId: appUser.professorId })} onNavigate={closeDrawer} active={activeTab === 'professorPerfil'} />}
+                {nav.meuPerfil && <SidebarItem icon={<IdCard className="w-[18px] h-[18px]" />} label="Minha carreira" href={isProfessor(appUser) ? menuHref('professorPerfil', { profId: appUser.professorId }) : menuHref('consultorPerfil', { profId: appUser.id })} onNavigate={closeDrawer} active={activeTab === 'professorPerfil' || activeTab === 'consultorPerfil'} />}
                 {nav.leads && (
                   <SidebarGroup
                     icon={<Users className="w-[18px] h-[18px]" />}
@@ -1772,7 +1773,7 @@ useEffect(() => {
               <div className={`px-2.5 mt-6 mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-gray-400 dark:text-neutral-500 whitespace-nowrap ${SIDEBAR_EXPANDED_ONLY}`}>Administração</div>
               <div className="space-y-1">
                 {nav.professores && (
-                  <SidebarItem icon={<Award className="w-[18px] h-[18px]" />} label="Carreira" href={menuHref('professores')} onNavigate={closeDrawer} active={activeTab === 'professores' || activeTab === 'professorPerfil'} />
+                  <SidebarItem icon={<Award className="w-[18px] h-[18px]" />} label="Carreira" href={menuHref('professores')} onNavigate={closeDrawer} active={activeTab === 'professores' || activeTab === 'professorPerfil' || activeTab === 'consultorPerfil'} />
                 )}
                 {/* O balão "Novo" das Rotinas, em vermelho, fica no item do
                     menu até o ROTINAS_NOVO_ATE (mockup 2026-10-08, opção C).
@@ -1844,6 +1845,7 @@ useEffect(() => {
               {activeTab === 'rotinas' && 'Rotinas'}
               {activeTab === 'professores' && 'Carreira'}
               {activeTab === 'professorPerfil' && (isProfessor(appUser) ? 'Minha carreira' : 'Carreira')}
+              {activeTab === 'consultorPerfil' && (isGestor(appUser) ? 'Carreira' : 'Minha carreira')}
               {activeTab === 'leads' && 'Todos os Leads'}
               {activeTab === 'aulas' && 'Aulas Experimentais'}
               {activeTab === 'visitas' && 'Visitas'}
@@ -2033,6 +2035,10 @@ useEffect(() => {
                   tenantId={sessionTenant}
                   tab={sub}
                   onTab={(subId) => goToSub('professores', subId)}
+                  usersList={usersList}
+                  funnels={funnels}
+                  liveLeads={metaLeads}
+                  interactions={interactions}
                   listenersActive={listenersActive}
                 />
               )}
@@ -2047,6 +2053,23 @@ useEffect(() => {
                   profId={profId}
                   tab={sub}
                   onTab={(subId) => goToSub('professorPerfil', subId, { profId }, location.search)}
+                  listenersActive={listenersActive}
+                />
+              )}
+              {/* O perfil do consultor (plano de carreira, PR 4): o id e o
+                  período vão juntos na troca de aba, como no do professor. */}
+              {activeTab === 'consultorPerfil' && (
+                <ConsultorPerfilView
+                  db={db}
+                  appUser={appUser}
+                  tenantId={sessionTenant}
+                  profId={profId}
+                  tab={sub}
+                  onTab={(subId) => goToSub('consultorPerfil', subId, { profId }, location.search)}
+                  usersList={usersList}
+                  funnels={funnels}
+                  liveLeads={metaLeads}
+                  interactions={interactions}
                   listenersActive={listenersActive}
                 />
               )}

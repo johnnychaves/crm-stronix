@@ -46,9 +46,9 @@ describe('sidebarNav', () => {
     expect(sidebarNav(semLigacao)).toEqual({ ...DO_PROFESSOR, meuPerfil: false });
   });
 
-  it('Carreira é do gestor com o módulo, e a Minha carreira do professor com o módulo', () => {
+  it('Carreira é do gestor com o módulo, e a Minha carreira do professor e do consultor com o módulo', () => {
     expect(sidebarNav({ ...gestor, tenantModules: COM_MODULO })).toEqual({ ...DO_GESTOR, professores: true });
-    expect(sidebarNav({ ...consultor, tenantModules: COM_MODULO })).toEqual(DO_CONSULTOR);
+    expect(sidebarNav({ ...consultor, tenantModules: COM_MODULO })).toEqual({ ...DO_CONSULTOR, meuPerfil: true });
     expect(sidebarNav({ ...professor, tenantModules: [] }).meuPerfil).toBe(false);
   });
 

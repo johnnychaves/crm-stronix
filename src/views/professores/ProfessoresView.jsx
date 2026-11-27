@@ -6,7 +6,9 @@ import { useCarreira } from '../../hooks/useCarreira.js';
 import { useNpsDados } from '../../hooks/useNpsDados.js';
 import { useMinuteClock } from '../../hooks/useMinuteClock.js';
 import { useProfessoresDados } from '../../hooks/useProfessoresDados.js';
+import { useConsultoresDados } from '../../hooks/useConsultoresDados.js';
 import { useScreenParams } from '../../hooks/useScreenParams.js';
+import { consultoresDaCarreira, contasDoConsultor } from '../../lib/carreiraConsultor.js';
 import { AppLink } from '../../components/nav/AppLink.jsx';
 import { hrefFor } from '../../lib/routes.js';
 import { getSafeDateOrNull } from '../../lib/dates.js';
@@ -30,23 +32,24 @@ import { PeriodoControl, TAB_CONTAGEM, TAB_TRIGGER } from './ProfessoresComum.js
 const porNome = (a, b) => String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR');
 const semAcento = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
-export function ProfessoresView({ db, appUser, tenantId, tab, onTab, listenersActive }) {
+export function ProfessoresView({ db, appUser, tenantId, tab, onTab, usersList, funnels, liveLeads, interactions, listenersActive }) {
   // Um relógio só por montagem: as contas do período cortam no mesmo instante.
   const [agora] = useState(() => new Date());
   const { carreira, trilhas } = useCarreira({ db, listenersActive });
-  // Neste PR só as trilhas de professor (a de consultor entra no PR 4).
-  const trilhasDeProfessor = useMemo(() => (trilhas || []).filter((t) => t.base === 'professor'), [trilhas]);
-  const ctx = useMemo(() => ({ trilhas: trilhasDeProfessor, agora }), [trilhasDeProfessor, agora]);
+  // A pílula tem as trilhas das duas bases (professor e consultor, PR 4).
+  const trilhasDaLista = useMemo(() => trilhas || [], [trilhas]);
+  const trilhasDeProfessor = useMemo(() => trilhasDaLista.filter((t) => t.base === 'professor'), [trilhasDaLista]);
+  const ctx = useMemo(() => ({ trilhas: trilhasDaLista, agora }), [trilhasDaLista, agora]);
   const [{ trilha: trilhaId, ciclo }, setParams] = useScreenParams('professores', ctx);
-  const escolhida = trilhasDeProfessor.find((t) => t.id === trilhaId) ?? null;
+  const escolhida = trilhasDaLista.find((t) => t.id === trilhaId) ?? null;
 
   // A janela de leitura: o período escolhido da trilha da pílula, ou os
-  // períodos de agora de todas as trilhas de professor.
+  // períodos de agora de todas as trilhas.
   const janela = useMemo(() => {
     if (!trilhas) return null;
-    const alvo = escolhida ? [escolhida] : trilhasDeProfessor;
+    const alvo = escolhida ? [escolhida] : trilhasDaLista;
     return janelaDeLeitura(alvo.map((t) => periodoDaPessoa(t, t === escolhida ? ciclo : null, agora)));
-  }, [trilhas, escolhida, trilhasDeProfessor, ciclo, agora]);
+  }, [trilhas, escolhida, trilhasDaLista, ciclo, agora]);
 
   const dados = useProfessoresDados({ db, inicioMs: janela?.inicio.getTime() ?? null, fimMs: janela?.fim.getTime() ?? null, listenersActive });
   const { carregando, erro, professores, planos, contratos, clientes, aulas, presencas } = dados;
@@ -60,31 +63,79 @@ export function ProfessoresView({ db, appUser, tenantId, tab, onTab, listenersAc
   const ativos = useMemo(() => (professores || []).filter((p) => p.ativo !== false).sort(porNome), [professores]);
   const trilhaDe = useCallback((prof) => trilhaDaPessoa(prof, trilhasDeProfessor, { professor: true }), [trilhasDeProfessor]);
 
+  // Os consultores (PR 4): quem vende e não é gestor. Sem consultor, o hook
+  // fica sem janela e não lê nada.
+  const consultores = useMemo(() => consultoresDaCarreira(usersList), [usersList]);
+  const dadosC = useConsultoresDados({
+    db, agora, liveLeads, interactions, listenersActive,
+    inicioMs: consultores.length ? janela?.inicio.getTime() ?? null : null,
+    fimMs: consultores.length ? janela?.fim.getTime() ?? null : null,
+  });
+  const trilhaDoConsultor = useCallback((c) => trilhaDaPessoa(c, trilhasDaLista), [trilhasDaLista]);
+
   // A contagem da pílula: quantas pessoas ativas em cada trilha.
   const contagem = useMemo(() => {
     const c = new Map();
-    ativos.forEach((p) => { const t = trilhaDe(p); if (t) c.set(t.id, (c.get(t.id) ?? 0) + 1); });
+    const soma = (t) => { if (t) c.set(t.id, (c.get(t.id) ?? 0) + 1); };
+    ativos.forEach((p) => soma(trilhaDe(p)));
+    consultores.forEach((p) => soma(trilhaDoConsultor(p)));
     return c;
-  }, [ativos, trilhaDe]);
+  }, [ativos, trilhaDe, consultores, trilhaDoConsultor]);
 
-  const linhas = useMemo(() => {
+  const deProfessores = useMemo(() => {
     if (carregando || carreira === null || nps.carregando) return null;
     return ativos
       .filter((prof) => !escolhida || trilhaDe(prof)?.id === escolhida.id)
       .map((prof) => {
         const trilha = trilhaDe(prof);
-        if (!trilha) return { prof, trilha: null, placar: placarDe(null, null, {}), tempo: null, desde: null };
+        const href = hrefFor(tenantId, 'professorPerfil', { profId: prof.id });
+        const semNome = 'Professor sem nome';
+        if (!trilha) return { prof, trilha: null, placar: placarDe(null, null, {}), tempo: null, desde: null, href, semNome };
         const periodo = periodoDaPessoa(trilha, trilha === escolhida ? ciclo : null, agora);
         const contas = contasDoProfessor({ trilha, periodo, prof, clientes, contratos, planos, aulas, presencas, nps: { pesquisas: nps.pesquisas, totais: nps.totais }, agora });
         return {
           prof,
           trilha,
+          href,
+          semNome,
           placar: placarDe(trilha, prof.nivel, contas.resultados),
           tempo: tempoNoNivel(trilha, prof, agora),
           desde: getSafeDateOrNull(prof.nivelDesde)?.toLocaleDateString('pt-BR') ?? null,
         };
       });
-  }, [carregando, carreira, nps.carregando, nps.pesquisas, nps.totais, ativos, escolhida, trilhaDe, ciclo, agora, clientes, contratos, planos, aulas, presencas]);
+  }, [carregando, carreira, nps.carregando, nps.pesquisas, nps.totais, ativos, escolhida, trilhaDe, ciclo, agora, clientes, contratos, planos, aulas, presencas, tenantId]);
+
+  const deConsultores = useMemo(() => {
+    if (!consultores.length) return [];
+    if (dadosC.carregando || carreira === null) return null;
+    return consultores
+      .filter((c) => !escolhida || trilhaDoConsultor(c)?.id === escolhida.id)
+      .map((c) => {
+        const trilha = trilhaDoConsultor(c);
+        const href = hrefFor(tenantId, 'consultorPerfil', { profId: c.id });
+        const semNome = 'Consultor sem nome';
+        if (!trilha) return { prof: c, trilha: null, placar: placarDe(null, null, {}), tempo: null, desde: null, href, semNome };
+        const periodo = periodoDaPessoa(trilha, trilha === escolhida ? ciclo : null, agora);
+        const contas = contasDoConsultor({
+          trilha, periodo, pessoa: c, crm: dadosC.crm, users: usersList, funnels,
+          contratos: dadosC.contratos, clientesPorId: dadosC.clientesPorId, graceDays: dadosC.graceDays,
+          metaWeekdays: dadosC.metaWeekdays, history: dadosC.history, agora,
+        });
+        return {
+          prof: c,
+          trilha,
+          href,
+          semNome,
+          placar: placarDe(trilha, c.nivel, contas.resultados),
+          tempo: tempoNoNivel(trilha, c, agora),
+          desde: getSafeDateOrNull(c.nivelDesde)?.toLocaleDateString('pt-BR') ?? null,
+        };
+      });
+  }, [consultores, dadosC.carregando, dadosC.crm, dadosC.contratos, dadosC.clientesPorId, dadosC.graceDays, dadosC.metaWeekdays, dadosC.history, carreira, escolhida, trilhaDoConsultor, ciclo, agora, usersList, funnels, tenantId]);
+
+  const linhas = deProfessores && deConsultores
+    ? [...deProfessores, ...deConsultores].sort((a, b) => porNome(a.prof, b.prof))
+    : null;
 
   const visiveis = linhas && busca.trim()
     ? linhas.filter((l) => semAcento(l.prof.nome).includes(semAcento(busca.trim())))
@@ -103,8 +154,8 @@ export function ProfessoresView({ db, appUser, tenantId, tab, onTab, listenersAc
   const configHref = hrefFor(tenantId, 'settings', { sub: 'carreira' });
   const periodoEscolhido = escolhida ? periodoDaPessoa(escolhida, ciclo, agora) : null;
   const opcoesDaTrilha = [
-    { key: 'todas', label: 'Todas as trilhas', note: String(ativos.length) },
-    ...trilhasDeProfessor
+    { key: 'todas', label: 'Todas as trilhas', note: String(ativos.length + consultores.length) },
+    ...trilhasDaLista
       .filter((t) => !t.arquivada || contagem.get(t.id))
       .map((t) => ({ key: t.id, label: t.nome, note: String(contagem.get(t.id) ?? 0) })),
   ];
@@ -139,22 +190,22 @@ export function ProfessoresView({ db, appUser, tenantId, tab, onTab, listenersAc
           <TabsList variant="line" className="w-full justify-start gap-1 overflow-x-auto overflow-y-hidden overscroll-x-contain rounded-none border-b border-border p-0 group-data-[orientation=horizontal]/tabs:h-10">
             <TabsTrigger value="lista" className={TAB_TRIGGER}>
               Pessoas
-              <span className={TAB_CONTAGEM}>{escolhida ? contagem.get(escolhida.id) ?? 0 : ativos.length}</span>
+              <span className={TAB_CONTAGEM}>{escolhida ? contagem.get(escolhida.id) ?? 0 : ativos.length + consultores.length}</span>
             </TabsTrigger>
             <TabsTrigger value="pesquisas" className={TAB_TRIGGER}>Pesquisas</TabsTrigger>
           </TabsList>
 
           <TabsContent value="lista" tabIndex={-1}>
-            {(erro || carreira?.erro) && <p role="alert" className="mb-3 text-[13px] font-semibold text-rose-700 dark:text-rose-300">Não deu para carregar tudo. Recarregue a página.</p>}
+            {(erro || dadosC.erro || carreira?.erro) && <p role="alert" className="mb-3 text-[13px] font-semibold text-rose-700 dark:text-rose-300">Não deu para carregar tudo. Recarregue a página.</p>}
             {!visiveis ? (
               <p className="text-[13px] text-muted-foreground">Carregando a equipe…</p>
-            ) : ativos.length === 0 ? (
+            ) : ativos.length + consultores.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-border p-6 text-[13px] text-muted-foreground">
-                Nenhum professor ativo. Cadastre em Configurações, Equipe & acessos, no cartão Professores.
+                Ninguém da equipe no plano de carreira ainda. Cadastre a equipe em Configurações, Equipe & acessos.
               </div>
             ) : (
               <>
-                <CartaoDaPesquisa nps={nps} hoje={hoje} onVer={() => onTab?.('pesquisas')} />
+                {ativos.length > 0 && <CartaoDaPesquisa nps={nps} hoje={hoje} onVer={() => onTab?.('pesquisas')} />}
                 <label className="mb-3 flex h-[38px] max-w-[320px] items-center gap-2 rounded-xl border border-border bg-card px-3 shadow-card focus-within:anel-foco">
                   <Search size={15} aria-hidden="true" className="flex-none text-muted-foreground" />
                   <span className="sr-only">Buscar pelo nome</span>

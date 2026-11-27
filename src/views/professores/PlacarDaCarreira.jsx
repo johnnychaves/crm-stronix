@@ -1,7 +1,8 @@
 import { cn } from '@/lib/utils';
 import { alvoDe } from '../../lib/carreira/placar.js';
+import { NUMEROS } from '../../lib/carreira/numeros.js';
 import { PeriodoControl } from './ProfessoresComum.jsx';
-import { escalaDaRenovacao, estadoTexto, metaTexto, notaTexto, proximaTexto, valorTexto } from './criterios.js';
+import { escalaDaRenovacao, estadoTexto, metaTexto, notaTexto, proximaTexto, reaisTexto, valorTexto } from './criterios.js';
 
 // O placar escuro do perfil (spec 2026-11-26, "Menu Carreira"): os números
 // ligados na trilha, cada um com a régua do resultado, o traço laranja da meta
@@ -66,9 +67,9 @@ function desenhoDe(item, nivel, proximo, det) {
   const { id, valor, meta, metaProxima, academia } = item;
   const alvo = alvoDe(id, meta, academia);
   const alvoProx = alvoDe(id, metaProxima, academia);
-  const rotulo = (v) => (id === 'nps' ? notaTexto(v) : `${v}%`);
+  const rotulo = (v) => (id === 'nps' ? notaTexto(v) : valorTexto(id, v, { vendasEm: det.vendasEm }));
   const marcas = [];
-  if (id === 'conversao' && academia != null) marcas.push({ v: academia, texto: 'academia', rotulo: `${academia}%`, tipo: 'ref' });
+  if (NUMEROS[id]?.contraAcademia && academia != null) marcas.push({ v: academia, texto: 'academia', rotulo: `${academia}%`, tipo: 'ref' });
   if (alvo != null) marcas.push({ v: alvo, texto: nivel.nome, rotulo: rotulo(alvo), tipo: 'atual' });
   if (alvoProx != null) marcas.push({ v: alvoProx, texto: proximo.nome, rotulo: rotulo(alvoProx), tipo: 'proxima' });
   if (id === 'nps') {
@@ -102,6 +103,37 @@ function desenhoDe(item, nivel, proximo, det) {
       rodape: `Semanas com ${det.barra} ou mais aulas, de segunda a sexta. Dezembro fica fora.`,
     };
   }
+  // Os números do consultor (plano de carreira, PR 4).
+  if (id === 'vendas') {
+    const hi = Math.max(1, Math.ceil(Math.max(alvo ?? 0, alvoProx ?? 0, valor ?? 0) * 1.25));
+    return {
+      lo: 0, hi, pontas: [rotulo(0), rotulo(hi)], marcas,
+      linha: `${det.vendas.quantidade} ${det.vendas.quantidade === 1 ? 'venda' : 'vendas'} no período, ${reaisTexto(det.vendas.total)}`,
+      rodape: 'Valor dos contratos fechados, não o que entrou no caixa. Por mês, com o mês em andamento pelos dias corridos.',
+    };
+  }
+  if (id === 'consultorConversao') {
+    const c = det.consultorConversao;
+    return {
+      lo: 0, hi: 100, pontas: ['0%', '100%'], marcas,
+      linha: c.consultor.taxa == null ? 'Nenhum lead no período' : `${c.consultor.matriculas} de ${c.consultor.leads} leads se matricularam`,
+      rodape: c.incompleto
+        ? 'Leads cadastrados no período, matrícula até hoje. Algum mês não carregou: recarregue a página.'
+        : 'Leads cadastrados no período, matrícula até hoje, contra a academia inteira.',
+    };
+  }
+  if (id === 'consultorRenovacao' || id === 'metaDiaria') {
+    const [lo, hi] = escalaDaRenovacao([alvo, alvoProx, valor]);
+    const r = det.consultorRenovacao;
+    const m = det.metaDiaria;
+    return {
+      lo, hi, pontas: null, marcas,
+      linha: id === 'metaDiaria'
+        ? (m.total ? `${m.bateram} de ${m.total} dias de meta` : 'Nenhum dia de meta ainda')
+        : (r.decididos ? `${r.renovados} de ${r.decididos} clientes renovaram` : 'Nenhum contrato venceu'),
+      rodape: id === 'metaDiaria' ? 'Dias de meta até ontem.' : 'Clientes da carteira de hoje cujo contrato venceu no período.',
+    };
+  }
   const [lo, hi] = escalaDaRenovacao([alvo, alvoProx, valor]);
   return {
     lo, hi, pontas: null, marcas,
@@ -128,9 +160,10 @@ export function PlacarDaCarreira({ titulo, trilha, periodo, agora, onChave, plac
         <div className={cn('mt-6 grid grid-cols-1 gap-x-8 gap-y-8 @[620px]:grid-cols-2 @[1000px]:gap-x-0', COLUNAS[Math.min(4, itens.length)])}>
           {itens.map((item) => {
             const d = desenhoDe(item, nivel, proximo, detalhes);
-            const valor = valorTexto(item.id, item.valor);
+            const opts = { vendasEm: detalhes.vendasEm };
+            const valor = valorTexto(item.id, item.valor, opts);
             const estado = estadoTexto(item, nivel);
-            const prox = proximaTexto(item, proximo);
+            const prox = proximaTexto(item, proximo, opts);
             return (
               <div key={item.id} className="flex min-w-0 flex-col @[1000px]:border-l @[1000px]:border-white/10 @[1000px]:px-6 @[1000px]:first:border-l-0 @[1000px]:first:pl-0">
                 <h3 className="m-0 text-[14px] font-medium text-white/75">{item.nome}</h3>
@@ -145,7 +178,7 @@ export function PlacarDaCarreira({ titulo, trilha, periodo, agora, onChave, plac
                   ponto={item.valor}
                   verde={item.estado === 'ok'}
                   pontas={d.pontas}
-                  rotulo={`${valor ?? 'Sem resultado'}. ${item.meta == null ? 'Sem meta' : `Meta ${metaTexto(item.id, item.meta, item.academia)}`}.${prox ? ` ${prox}.` : ''}`}
+                  rotulo={`${valor ?? 'Sem resultado'}. ${item.meta == null ? 'Sem meta' : `Meta ${metaTexto(item.id, item.meta, item.academia, opts)}`}.${prox ? ` ${prox}.` : ''}`}
                 />
                 <div className="mt-2.5 text-[12.5px] text-white/60">
                   {(item.estado === 'ok' || item.estado === 'baixo') && <Selo ok={item.estado === 'ok'}>{estado}</Selo>}

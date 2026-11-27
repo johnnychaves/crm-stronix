@@ -411,6 +411,7 @@ const TABELA = {
   dailyGoal: { cat },
   professores: { trilha: trilhaDaLista, ciclo },
   professorPerfil: { ciclo },
+  consultorPerfil: { ciclo },
   settings: {
     sit: situacaoEquipe,
     funcao: umDe('funcao', FUNCOES),
