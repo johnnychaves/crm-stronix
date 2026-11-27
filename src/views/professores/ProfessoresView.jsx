@@ -7,7 +7,7 @@ import { useMinuteClock } from '../../hooks/useMinuteClock.js';
 import { useProfessoresDados } from '../../hooks/useProfessoresDados.js';
 import { useScreenParams } from '../../hooks/useScreenParams.js';
 import { dayKeyOf } from '../../lib/operacional/month.js';
-import { cicloDe } from '../../lib/professor/ciclo.js';
+import { cicloDe, limitesDoCiclo, semestresDoCiclo } from '../../lib/professor/ciclo.js';
 import { estadoDaPesquisa, npsDoCiclo, resumoDaPesquisa, turmasDoDia } from '../../lib/professor/pesquisas.js';
 import { conversaoDoCiclo } from '../../lib/professor/conversao.js';
 import { renovacaoDoCiclo } from '../../lib/professor/renovacao.js';
@@ -32,7 +32,7 @@ export function ProfessoresView({ db, appUser, tenantId, tab, onTab, listenersAc
   const ctx = useMemo(() => ({ cicloAtual: cicloDe(agora) }), [agora]);
   const [{ ciclo }, setParams] = useScreenParams('professores', ctx);
   const dados = useProfessoresDados({ db, ciclo, listenersActive });
-  const { carregando, erro, professores, planos, contratos, clientes, aulas, presencas, metas, salvarMetas } = dados;
+  const { carregando, erro, professores, planos, contratos, clientes, aulas, presencas, metas, salvarMetas, trilhaProfessor } = dados;
   const nps = useNpsDados({ db, listenersActive });
   // O dia das pesquisas (prazo, situação, quando o Abrir libera) anda com o
   // relógio, para a aba aberta de um dia para o outro não ficar no dia velho.
@@ -44,23 +44,26 @@ export function ProfessoresView({ db, appUser, tenantId, tab, onTab, listenersAc
   const contas = useMemo(() => {
     if (carregando || !metas || nps.carregando) return null;
     const { janelaDias, tolerancia } = metas.conversao;
+    const periodo = limitesDoCiclo(ciclo);
+    const pecas = semestresDoCiclo(ciclo);
+    const chave = String(ciclo);
     const linhas = ativos.map((prof) => {
-      const renovacao = renovacaoDoCiclo({ leads: clientes, contratos, planos, professor: prof, ciclo, asOf: agora });
-      const conversao = conversaoDoCiclo({ aulas, contratos, professorId: prof.id, ciclo, asOf: agora, janelaDias, tolerancia });
+      const renovacao = renovacaoDoCiclo({ leads: clientes, contratos, planos, professor: prof, periodo, asOf: agora });
+      const conversao = conversaoDoCiclo({ aulas, contratos, professorId: prof.id, periodo, asOf: agora, janelaDias, tolerancia });
       return {
         prof,
         criterios: {
           renovacao: criterioRenovacao(renovacao, metas, prof.nivel),
-          nps: criterioNps(npsDoCiclo({ pesquisas: nps.pesquisas, totais: nps.totais, professorId: prof.id, ciclo, meta: metas.nps.meta }), metas),
+          nps: criterioNps(npsDoCiclo({ pesquisas: nps.pesquisas, totais: nps.totais, professorId: prof.id, trilha: trilhaProfessor, chave, meta: metas.nps.meta }), metas),
           conversao: criterioConversao(conversao),
-          aderencia: criterioAderencia(aderenciaResumo(aderenciaPorSemana({ presencas, leads: clientes, contratos, planos, professor: prof, asOf: agora, barra: metas.aderencia.barra }), ciclo, agora), metas),
+          aderencia: criterioAderencia(aderenciaResumo(aderenciaPorSemana({ presencas, leads: clientes, contratos, planos, professor: prof, asOf: agora, barra: metas.aderencia.barra }), pecas, agora), metas),
         },
       };
     });
     // A academia é a mesma para todos; sai da conta sem filtro de professor.
-    const academia = conversaoDoCiclo({ aulas, contratos, professorId: null, ciclo, asOf: agora, janelaDias, tolerancia });
+    const academia = conversaoDoCiclo({ aulas, contratos, professorId: null, periodo, asOf: agora, janelaDias, tolerancia });
     return { linhas, academia };
-  }, [carregando, metas, nps.carregando, nps.pesquisas, nps.totais, ativos, clientes, contratos, planos, aulas, presencas, ciclo, agora]);
+  }, [carregando, metas, nps.carregando, nps.pesquisas, nps.totais, ativos, clientes, contratos, planos, aulas, presencas, ciclo, agora, trilhaProfessor]);
 
   // A turma de cada professor se a pesquisa abrisse agora (o formulário e o
   // Abrir mostram o total). Null enquanto os clientes não chegaram.

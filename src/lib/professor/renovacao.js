@@ -15,7 +15,6 @@ import { getSafeDateOrNull } from '../dates.js';
 import { hasOpenPause } from '../operacional/base.js';
 import { professorAt } from '../professorHistory.js';
 import { carteiraAt, contratosDaModalidade, estadoEm } from './carteira.js';
-import { limitesDoCiclo } from './ciclo.js';
 
 const DAY_MS = 86400000;
 export const DIAS_SEM_TROCA = 90;
@@ -32,8 +31,9 @@ function trocouAntesDoFim(lead, vence) {
 }
 
 // { venceram, renovados, taxa, linhas: [{ contrato, lead, renovou }] }.
-export function renovacaoDoCiclo({ leads, contratos, planos, professor, ciclo, asOf = new Date() }) {
-  const { inicio, fim } = limitesDoCiclo(ciclo);
+// `periodo` é { inicio, fim }, com fim fora (src/lib/carreira/periodo.js).
+export function renovacaoDoCiclo({ leads, contratos, planos, professor, periodo, asOf = new Date() }) {
+  const { inicio, fim } = periodo;
   const leadsById = new Map((leads || []).map((l) => [l.id, l]));
   const linhas = [];
   contratosDaModalidade(contratos, professor, planos).forEach((lista, leadId) => {
@@ -64,9 +64,9 @@ const ORDEM_SITUACAO = { vencer: 0, renovou: 1, nao: 2 };
 // [{ lead, contrato, situacao: 'vencer' | 'renovou' | 'nao', vence, estado, semCpf }],
 // a vencer primeiro (do vencimento mais perto), depois os que venceram (do
 // mais recente).
-export function carteiraDoCiclo({ leads, contratos, planos, professor, ciclo, asOf = new Date() }) {
+export function carteiraDoCiclo({ leads, contratos, planos, professor, periodo, asOf = new Date() }) {
   const porLead = new Map();
-  renovacaoDoCiclo({ leads, contratos, planos, professor, ciclo, asOf }).linhas.forEach((l) => {
+  renovacaoDoCiclo({ leads, contratos, planos, professor, periodo, asOf }).linhas.forEach((l) => {
     const atual = porLead.get(l.lead.id);
     if (!atual || l.contrato.plannedEndsAt > atual.vence) {
       porLead.set(l.lead.id, { lead: l.lead, contrato: l.contrato, situacao: l.renovou ? 'renovou' : 'nao', vence: l.contrato.plannedEndsAt, estado: null });

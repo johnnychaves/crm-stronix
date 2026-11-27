@@ -1,4 +1,4 @@
-// Os textos de data e de ciclo da pesquisa de NPS. Os dias chegam em texto
+// Os textos de data da pesquisa de NPS. Os dias chegam em texto
 // 'AAAA-MM-DD' (plano 2026-11-25-perfil-do-professor-04, decisão 2).
 const partes = (dia) => String(dia || '').split('-');
 
@@ -14,9 +14,6 @@ export function periodoTexto(inicio, fim) {
   if (!di || !df) return '';
   return ai === af ? `${di}/${mi} a ${df}/${mf}/${af}` : `${di}/${mi}/${ai} a ${df}/${mf}/${af}`;
 }
-
-export const cicloCurto = (c) => `dez/${String(c - 1).slice(2)} a nov/${String(c).slice(2)}`;
-export const cicloLongo = (c) => `dez/${c - 1} a nov/${c}`;
 
 const diasEntre = (a, b) => Math.round((new Date(`${b}T12:00:00`) - new Date(`${a}T12:00:00`)) / 864e5);
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cicloCurto, cicloLongo, diaTexto, periodoTexto, prazoTexto } from '../../views/professores/pesquisasTexto.js';
+import { diaTexto, periodoTexto, prazoTexto } from '../../views/professores/pesquisasTexto.js';
 
 describe('textos da pesquisa', () => {
   it('datas e ciclo', () => {
@@ -7,8 +7,6 @@ describe('textos da pesquisa', () => {
     expect(diaTexto('')).toBe('');
     expect(periodoTexto('2027-06-01', '2027-06-20')).toBe('01/06 a 20/06/2027');
     expect(periodoTexto('2027-12-20', '2028-01-05')).toBe('20/12/2027 a 05/01/2028');
-    expect(cicloCurto(2027)).toBe('dez/26 a nov/27');
-    expect(cicloLongo(2027)).toBe('dez/2026 a nov/2027');
   });
 
   it('prazo da aberta', () => {
