@@ -47,7 +47,7 @@ function rotuloDaLinha(linha) {
   const { prof, trilha, placar, tempo } = linha;
   const numeros = placar.itens.map((i) => `${i.nome} ${valorTexto(i.id, i.valor, { vendasEm: trilha?.ajustes?.vendasEm }) ?? 'sem dados'}`).join(', ');
   return [
-    prof.nome || 'Professor sem nome',
+    prof.nome || linha.semNome || 'Sem nome',
     trilha ? `trilha ${trilha.nome}` : 'sem trilha',
     placar.nivel ? placar.nivel.nome : 'sem nível',
     tempo ? (tempo.falta ?? tempo.texto) : null,
@@ -71,9 +71,9 @@ export function ProfessoresTabela({ linhas, tenantId }) {
         {linhas.map((linha) => {
           const { prof, trilha, placar, tempo, desde } = linha;
           return (
-            <li key={prof.id} className="border-b border-border last:border-b-0">
+            <li key={linha.href ?? prof.id} className="border-b border-border last:border-b-0">
               <AppLink
-                to={hrefFor(tenantId, 'professorPerfil', { profId: prof.id })}
+                to={linha.href ?? hrefFor(tenantId, 'professorPerfil', { profId: prof.id })}
                 aria-label={rotuloDaLinha(linha)}
                 className={cn(
                   'group grid grid-cols-1 items-center gap-x-3.5 gap-y-3 px-4 py-3.5 outline-none transition-colors hover:bg-brand-50/50 focus-visible:anel-foco focus-visible:ring-inset dark:hover:bg-white/[0.03]',
@@ -84,7 +84,7 @@ export function ProfessoresTabela({ linhas, tenantId }) {
                 <div className="flex min-w-0 items-center gap-3 @[560px]:col-span-2 @[880px]:col-span-1">
                   <span aria-hidden="true"><Avatar name={prof.nome} photoUrl={prof.photoUrl || null} size={40} /></span>
                   <div className="min-w-0">
-                    <b className="block truncate font-semibold">{prof.nome || 'Professor sem nome'}</b>
+                    <b className="block truncate font-semibold">{prof.nome || linha.semNome || 'Sem nome'}</b>
                     <span className="block truncate text-[12.5px] text-muted-foreground">{trilha ? trilha.nome : 'Sem trilha'}</span>
                   </div>
                 </div>

@@ -9,7 +9,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const s = vi.hoisted(() => ({ dados: null, args: null, carreiraErro: null }));
+const s = vi.hoisted(() => ({ dados: null, args: null, carreiraErro: null, users: [] }));
+// Os consultores (PR 4): o hook e as contas vêm prontos.
+vi.mock('../../hooks/useConsultoresDados.js', () => ({
+  useConsultoresDados: () => ({ carregando: false, erro: null, crm: {}, contratos: [], clientesPorId: new Map(), history: [], metaWeekdays: [1, 2, 3, 4, 5], graceDays: 15 }),
+}));
+vi.mock('../carreiraConsultor.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  contasDoConsultor: () => ({ resultados: { consultorConversao: { valor: 25, academia: 30 }, vendas: { valor: 1309 }, consultorRenovacao: { valor: null }, metaDiaria: { valor: 100 } } }),
+}));
 vi.mock('../../hooks/useProfessoresDados.js', () => ({
   useProfessoresDados: (args) => {
     s.args = args;
@@ -50,7 +58,7 @@ function Screen() {
   const tab = location.pathname.endsWith('/carreira/pesquisas') ? 'pesquisas' : 'lista';
   // O mesmo que o goToSub do App faz com a tela já aberta.
   const onTab = (subId) => navigate(hrefFor('acad', 'professores', { sub: subId }), { replace: true, state: location.state });
-  return h(ProfessoresView, { db: {}, appUser: { id: 'g1', role: 'admin' }, tenantId: 'acad', tab, onTab, listenersActive: true });
+  return h(ProfessoresView, { db: {}, appUser: { id: 'g1', role: 'admin' }, tenantId: 'acad', tab, onTab, usersList: s.users, funnels: [], listenersActive: true });
 }
 
 let container;
@@ -71,6 +79,7 @@ beforeEach(() => {
   };
   s.args = null;
   s.carreiraErro = null;
+  s.users = [];
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -182,5 +191,42 @@ describe('as metas', () => {
     expect([...document.body.querySelectorAll('[role="tab"]')].map((t) => t.textContent)).toEqual(['Pessoas3', 'Pesquisas']);
     const link = [...document.body.querySelectorAll('a')].find((a) => a.textContent === 'Configurar trilhas');
     expect(link.getAttribute('href')).toBe('/acad/configuracoes/carreira');
+  });
+});
+
+describe('os consultores na lista (PR 4)', () => {
+  const comConsultora = () => {
+    s.users = [
+      { id: 'ana', name: 'Ana Ribeiro', role: 'consultant', trilhaId: 'consultor', nivel: 'junior' },
+      { id: 'g1', name: 'Gestora Gomes', role: 'admin' },
+    ];
+  };
+
+  it('a consultora entra com a trilha Consultor e o link do perfil dela, e a gestora fica de fora', async () => {
+    comConsultora();
+    await render('/acad/carreira');
+    const ana = linhas().find((a) => a.querySelector('b').textContent === 'Ana Ribeiro');
+    expect(ana.getAttribute('href')).toBe('/acad/carreira/consultor/ana');
+    expect(ana.textContent).toContain('Consultor');
+    expect(document.body.textContent).not.toContain('Gestora Gomes');
+    expect(document.body.querySelector('[role="tab"]').textContent).toBe('Pessoas4');
+  });
+
+  it('a pílula Trilha tem a Consultor, e escolher ela deixa só a consultora', async () => {
+    comConsultora();
+    await render('/acad/carreira');
+    const pilula = [...document.body.querySelectorAll('button')].find((b) => b.textContent.includes('Trilha'));
+    await click(pilula);
+    const opcao = [...document.body.querySelectorAll('[role="menuitemradio"]')].find((el) => el.textContent.startsWith('Consultor'));
+    expect(opcao.textContent).toContain('1');
+    await click(opcao);
+    expect(nav.location.search).toBe('?trilha=consultor');
+    expect(linhas().map((a) => a.querySelector('b').textContent)).toEqual(['Ana Ribeiro']);
+  });
+
+  it('sem professor e sem consultor, a lista diz que não há ninguém', async () => {
+    s.dados = { ...s.dados, professores: [] };
+    await render('/acad/carreira');
+    expect(document.body.textContent).toContain('Ninguém da equipe no plano de carreira ainda.');
   });
 });
