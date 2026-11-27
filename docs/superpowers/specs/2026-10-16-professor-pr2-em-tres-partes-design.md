@@ -126,7 +126,7 @@ A Meta diária do professor deixa de ser o aviso provisório (`ProfessorGoalPlac
   - Fica de fora o histórico de presença em quadradinhos, que o Johnny achou que não ajuda o professor.
   - O Agora fica parado como na Meta do consultor: só muda pela ação de quem usa a tela.
 - **Ordem**: os urgentes primeiro e, dentro de cada grupo, quem está há mais dias sem vir.
-- **Fila "Depois"**: uma linha por aluno, com o motivo, os dias e a situação da tarefa. A linha traz o aluno para o Agora.
+- **Fila "Depois"**: uma linha por aluno, só com a foto, o nome e "Não vem há 37 dias" (no urgente, "Não vem há 25 dias, contrato termina em 18/12", em vermelho). Sem o marco nem a situação da tarefa, que repetiam os dias e são sempre "pendente" na fila (pedido do Johnny, 27/11/2026). A linha traz o aluno para o Agora.
 - **Lateral**:
   - **Agenda de hoje**, só com as aulas experimentais de hoje em que o professor é o professor da aula. Só para ver: o professor não marca Compareceu nem Não veio (decisão do Johnny, 27/11/2026). Cada aula mostra a hora, o nome (link para a ficha), a modalidade, a aula da vez ("Aula 1 de 2") e a situação: Compareceu, Não veio, Sem desfecho ou Próxima. No pé, "Quem marca se o aluno veio é o consultor, na Meta dele.";
   - **Faltosos na semana**, com quantos estão em cada grupo (Urgentes, 60, 30, 14 e 7 dias);

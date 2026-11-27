@@ -36,7 +36,7 @@
 .dep{margin-top:16px;overflow:hidden}
 .dep-h{display:flex;justify-content:space-between;align-items:baseline;padding:16px 22px 10px}
 .dep-h h3{font-size:15px;font-weight:700}
-.fl{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:14px;align-items:center;width:100%;padding:11px 22px;border:0;border-top:1px solid var(--rule);background:#fff;text-align:left;cursor:pointer}
+.fl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:14px;align-items:center;width:100%;padding:11px 22px;border:0;border-top:1px solid var(--rule);background:#fff;text-align:left;cursor:pointer}
 .fl:hover{background:#f8faff}
 .fl b{display:block;font-size:14px;font-weight:600}
 .fl .s{font-size:12.5px;color:var(--muted)}
@@ -181,7 +181,7 @@ function render() {
     </nav>
     <div class="grid"><div>
       ${ag ? agoraHtml(ag) : '<section class="agora"><h2 class="d">Tudo feito nesta semana</h2><p class="mut">A próxima lista chega com a importação de segunda.</p></section>'}
-      ${resto.length ? `<section class="card dep"><div class="dep-h"><h3 class="d">Depois</h3><span class="mut num">${resto.length}</span></div>${resto.map((a) => `<button type="button" class="fl" data-ag="${a.id}">${F.avatar(a, 30)}<span style="min-width:0"><b>${a.nome}</b><span class="s${a.urgente ? ' u' : ''}">${MP.motivo(a)}</span></span><span class="n num">${a.dias} dias</span>${F.chip(a.tarefa)}</button>`).join('')}</section>` : ''}
+      ${resto.length ? `<section class="card dep"><div class="dep-h"><h3 class="d">Depois</h3><span class="mut num">${resto.length}</span></div>${resto.map((a) => `<button type="button" class="fl" data-ag="${a.id}">${F.avatar(a, 30)}<span style="min-width:0"><b>${a.nome}</b><span class="s${a.urgente ? ' u' : ''}">Não vem há <span class="num">${a.dias} dias</span>${a.urgente ? `, contrato termina em <span class="num">${a.fim}</span>` : ''}</span></span></button>`).join('')}</section>` : ''}
     </div>
     <aside class="lat">
       ${MP.agenda()}
