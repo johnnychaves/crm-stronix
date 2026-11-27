@@ -72,6 +72,8 @@ const LISTAS_DE_QUEM_VENDE = [
   'lib/rotinas.js',
   // Relatórios: o filtro de consultores e os nomes dos recortes.
   'views/relatorios/RelatoriosView.jsx',
+  // Carreira: quem aparece como consultor (consultoresDaCarreira).
+  'lib/carreiraConsultor.js',
 ];
 
 describe('o papel se decide em src/lib/acesso.js', () => {
