@@ -118,6 +118,7 @@ A Meta diária do professor deixa de ser o aviso provisório (`ProfessorGoalPlac
 - **Bloco Agora**, na versão 2 do mockup:
   - borda esquerda âmbar, vermelha no urgente, sem o contorno azul;
   - o motivo no canto ("Urgente: o contrato termina em 10/12" ou "Marco dos 30 dias sem vir");
+  - no canto esquerdo, a foto do aluno no círculo, com o anel âmbar, vermelho no urgente (pedido do Johnny, 27/11/2026; sem foto, as iniciais);
   - o nome, com o link "Abrir ficha";
   - a frase "Não vem há 44 dias, desde 14/10.", que no urgente ganha "O contrato termina em 10/12.";
   - o contato pelo `contactOf` ("Falar com Carla Teles, mãe (responsável)" no menor) e o último contato de falta registrado;
@@ -143,7 +144,8 @@ A Meta diária do professor deixa de ser o aviso provisório (`ProfessorGoalPlac
 
 Este PR muda regra, ao contrário do que esta spec dizia do 2B:
 - o professor passa a criar a interação do contato de falta (`absence_contact`), no próprio nome;
-- o professor passa a marcar a tarefa dos alunos dele em `stronix_faltosos`, só nos campos da tarefa, como uma condição a mais na linha de update;
-- o que o sino do gestor precisa ler para o "Quer cancelar".
+- o professor passa a marcar a tarefa dos alunos dele em `stronix_faltosos`, só nos campos da tarefa e no `querCancelarEm`, como uma condição a mais na linha de update.
+
+O sino do gestor lê o "Quer cancelar" no `querCancelarEm` do estado do aluno, e `stronix_faltosos` já é lido por todo membro da academia com o módulo, então a leitura do sino não muda regra.
 
 As regras são publicadas antes do merge, a partir da regra que estiver no ar, como no 2A. A Agenda de hoje só lê `stronix_aulas`, que todo membro já lê.

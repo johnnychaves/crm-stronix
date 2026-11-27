@@ -94,7 +94,12 @@
 /* versão 2: faixa na borda e frase */
 .agora.v2{box-shadow:none;border:1px solid var(--line);border-left:6px solid #F59E0B;border-radius:18px}
 .agora.v2.u{border-left-color:#F43F5E}
-.v2 .hd{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-top:12px}
+.v2c{display:grid;grid-template-columns:auto minmax(0,1fr);gap:18px;align-items:start;margin-top:12px}
+/* o anel da foto, como o do app: âmbar, vermelho no urgente */
+.foto{display:inline-grid;padding:3px;border-radius:50%;background:#F59E0B}
+.foto.u{background:#F43F5E}
+.foto .av{border:3px solid #fff}
+.v2 .hd{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
 .v2 .hd h2{font-size:26px;font-weight:700;letter-spacing:-.02em}
 .v2 .hd a{font-size:13px;font-weight:600;color:var(--blue700)}
 .v2 .frase{margin-top:6px;font-size:17px;color:var(--ink2)}
@@ -146,9 +151,10 @@ function agoraHtml(a) {
   }
   if (versao === 2) {
     return `<section class="agora v2${a.urgente ? ' u' : ''}" aria-label="Agora">${topo(a)}
+      <div class="v2c"><span class="foto${a.urgente ? ' u' : ''}">${F.avatar(a, 64)}</span><div style="min-width:0">
       <div class="hd"><h2 class="d">${a.nome}</h2><a href="#">Abrir ficha</a></div>
       <p class="frase">Não vem há <b class="num">${a.dias} dias</b>, desde ${a.ultima}.${a.urgente ? ` O contrato termina em <b class="urgt num">${a.fim}</b>.` : ''}</p>
-      <div class="linha"><span>${RESP[a.nome] ? 'Falar com' : 'Contato'} <b class="num">${contato(a)}</b></span><span>${MP.ultimoContato(a)}</span></div>
+      <div class="linha"><span>${RESP[a.nome] ? 'Falar com' : 'Contato'} <b class="num">${contato(a)}</b></span><span>${MP.ultimoContato(a)}</span></div></div></div>
       <div class="ag-f">${MP.acoes(a)}<button type="button" class="pular" data-pular>Pular por agora</button></div></section>`;
   }
   return `<section class="agora v3" aria-label="Agora">${topo(a)}
