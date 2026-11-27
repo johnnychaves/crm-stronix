@@ -52,4 +52,10 @@ describe('lastRecordOf', () => {
     const r = lastRecordOf([nota('o', 'OBSERVAÇÃO DO CADASTRO: Casamento em dezembro.', D(10, 3))]);
     expect(r.text).toBe('Casamento em dezembro.');
   });
+  it('o contato de falta do professor não é o último registro do consultor', () => {
+    const falta = { id: 'falta', type: 'absence_contact', _kind: 'conversation', text: 'Contato de falta (14 dias), WhatsApp: vai voltar.', createdAt: D(10, 20) };
+    const anotacao = nota('ok', 'Obs: valida.', D(10, 2));
+    expect(lastRecordOf([falta, anotacao]).id).toBe('ok');
+    expect(lastRecordOf([falta])).toBeNull();
+  });
 });

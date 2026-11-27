@@ -16,12 +16,12 @@ export async function registrarContatoDeFalta(db, { lead, estado, quem, canal, r
   const { interacao, estadoPatch } = montarContato({ lead, estado, quem, canal, resultado, observacao, agora: serverTimestamp() });
   const batch = writeBatch(db);
   batch.set(doc(col(db, INTERACTIONS_PATH)), interacao);
-  batch.update(doc(col(db, FALTOSOS_PATH), estado.leadId), estadoPatch);
+  batch.update(doc(col(db, FALTOSOS_PATH), estado.leadId || estado.id), estadoPatch);
   await batch.commit();
 }
 
 export async function marcarJaVoltou(db, { estado, quem }) {
   const batch = writeBatch(db);
-  batch.update(doc(col(db, FALTOSOS_PATH), estado.leadId), montarJaVoltou({ estado, quem, agora: serverTimestamp() }));
+  batch.update(doc(col(db, FALTOSOS_PATH), estado.leadId || estado.id), montarJaVoltou({ estado, quem, agora: serverTimestamp() }));
   await batch.commit();
 }

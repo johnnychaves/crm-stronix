@@ -2,7 +2,7 @@
 // gravam. Puro: a gravação está em contatoDeFaltaWrites.js. `agora` é o
 // serverTimestamp() de quem grava (as regras exigem a hora do servidor).
 import { ABSENCE_CONTACT_TYPE, getInteractionSecurityFields } from '../leads.js';
-import { CANAIS, RESULTADOS, canalTexto, resultadoTexto } from './metaProfessor.js';
+import { CANAIS, RESULTADOS, canalTexto, ehPendente, resultadoTexto } from './metaProfessor.js';
 import { TAREFA } from './planoImportacao.js';
 
 const OBS_MAX = 500;
@@ -13,8 +13,9 @@ export function textoDoContato({ marco, urgente, canal, resultado, observacao })
   return obs ? `${base} ${obs}` : base;
 }
 
+// A mesma regra de pendente da tela: aberta e do período de falta atual.
 function conferirPendente(estado) {
-  if (estado?.tarefa?.status !== TAREFA.PENDENTE) throw new Error('A tarefa deste aluno não está pendente.');
+  if (!ehPendente(estado)) throw new Error('A tarefa deste aluno não está pendente.');
 }
 
 const fechar = (estado, quem, agora, status, canal, resultado) => ({

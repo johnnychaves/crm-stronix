@@ -5,7 +5,7 @@ import { ABSENCE_CONTACT_TYPE } from '../leads.js';
 const AGORA = { __serverTime: true };
 const lead = { id: 'l1', name: 'Marina Albuquerque', consultantId: 'c1', consultantAuthUid: 'ac1' };
 const quem = { id: 'u6', authUid: 'a6', name: 'Heloísa Prado' };
-const estado = { leadId: 'l1', professorId: 'p1', urgente: false, inicioFalta: '2026-10-14',
+const estado = { leadId: 'l1', status: 'faltando', professorId: 'p1', urgente: false, inicioFalta: '2026-10-14',
   tarefa: { marco: 30, urgente: false, status: 'pendente', inicioFalta: '2026-10-14', criadaEm: '2026-11-23', importacaoId: 'f', feitaEm: null, feitaPor: null, feitaPorNome: null, canal: null, resultado: null } };
 
 describe('montarContato', () => {
@@ -36,6 +36,8 @@ describe('montarContato', () => {
   it('recusa tarefa que não está pendente, canal ou resultado desconhecido', () => {
     const feita = { ...estado, tarefa: { ...estado.tarefa, status: 'feita' } };
     expect(() => montarContato({ lead, estado: feita, quem, canal: 'whatsapp', resultado: 'vai_voltar', agora: AGORA })).toThrow();
+    const outroPeriodo = { ...estado, tarefa: { ...estado.tarefa, inicioFalta: '2026-08-01' } };
+    expect(() => montarContato({ lead, estado: outroPeriodo, quem, canal: 'whatsapp', resultado: 'vai_voltar', agora: AGORA })).toThrow();
     expect(() => montarContato({ lead, estado, quem, canal: 'fax', resultado: 'vai_voltar', agora: AGORA })).toThrow();
     expect(() => montarContato({ lead, estado, quem, canal: 'whatsapp', resultado: 'talvez', agora: AGORA })).toThrow();
   });
