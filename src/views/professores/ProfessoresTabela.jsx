@@ -45,7 +45,7 @@ const resumoDasMetas = ({ placar }) => {
 
 function rotuloDaLinha(linha) {
   const { prof, trilha, placar, tempo } = linha;
-  const numeros = placar.itens.map((i) => `${i.nome} ${valorTexto(i.id, i.valor) ?? 'sem dados'}`).join(', ');
+  const numeros = placar.itens.map((i) => `${i.nome} ${valorTexto(i.id, i.valor, { vendasEm: trilha?.ajustes?.vendasEm }) ?? 'sem dados'}`).join(', ');
   return [
     prof.nome || 'Professor sem nome',
     trilha ? `trilha ${trilha.nome}` : 'sem trilha',
