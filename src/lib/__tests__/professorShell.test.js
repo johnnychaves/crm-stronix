@@ -146,3 +146,10 @@ describe('casca do App para o professor', () => {
     expect(prof).toBeLessThan(adm.indexOf('label="Rotinas"'));
   });
 });
+
+describe('Minha carreira do consultor (plano de carreira, PR 4)', () => {
+  it('o link leva ao perfil do consultor, e o App monta a tela', () => {
+    expect(app).toMatch(/menuHref\('consultorPerfil', \{ profId: appUser\.id \}\)/);
+    expect(app).toMatch(/activeTab === 'consultorPerfil' && \(\s*<ConsultorPerfilView/);
+  });
+});
