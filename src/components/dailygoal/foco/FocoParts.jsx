@@ -28,6 +28,14 @@ const WHY_TEXT = {
   calm: 'text-muted-foreground',
 };
 
+// A barrinha da fila, na cor da borda do Agora (visual da Meta do professor).
+const WHY_BAR = {
+  late: 'bg-rose-500',
+  now: 'bg-brand-500',
+  warn: 'bg-amber-500',
+  calm: 'bg-slate-300 dark:bg-slate-600',
+};
+
 // A barra "Foco em". É o Tabs do shadcn: a fila abaixo é o painel da aba
 // escolhida. O escolhido usa o azul-marinho do bloco Agora. O ponto avisa o que
 // já passou (vermelho) ou vence em até 90 minutos (azul), e o detalhe vai no
@@ -129,8 +137,9 @@ export function FilaDepois({ items, sla, onPick, whyOf, comEspera = false }) {
                   <button
                     type="button"
                     onClick={() => onPick(e)}
-                    className={cn('group grid w-full grid-cols-[34px_minmax(0,1fr)_auto_16px] items-center gap-3.5 px-5 py-[9px] text-left transition focus-visible:bg-slate-50 focus-visible:outline-none focus-visible:ring-inset focus-visible:anel-foco dark:focus-visible:bg-white/[0.04]', ROW_HOVER)}
+                    className={cn('group grid w-full grid-cols-[4px_34px_minmax(0,1fr)_auto_16px] items-center gap-3.5 px-5 py-[9px] text-left transition focus-visible:bg-slate-50 focus-visible:outline-none focus-visible:ring-inset focus-visible:anel-foco dark:focus-visible:bg-white/[0.04]', ROW_HOVER)}
                   >
+                    <span aria-hidden="true" className={cn('h-8 w-1 rounded-full', WHY_BAR[why.tone])} />
                     <Avatar name={e.lead.name} size={34} photoUrl={e.lead.photoUrl || null} />
                     <span className="min-w-0">
                       <span className="block truncate text-[14px] font-semibold">
