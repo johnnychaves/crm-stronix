@@ -11,7 +11,7 @@ const montagens = vi.hoisted(() => ({ n: 0 }));
 vi.mock('../../components/dailygoal/professor/ProfessorMetaScreen.jsx', () => ({
   ProfessorMetaScreen: (p) => {
     useState(() => { montagens.n += 1; });
-    return h('div', { 'data-testid': 'prof', 'data-gestor': String(p.gestorVendo), 'data-nome': p.nomeVisto });
+    return h('div', { 'data-testid': 'prof', 'data-gestor': String(p.gestorVendo), 'data-nome': p.nomeVisto }, h('header', null, p.seletor));
   },
 }));
 // O seletor vai para dentro da DailyGoalView (faixa do topo), e não antes dela.
@@ -54,6 +54,8 @@ describe('MetaDiariaRoute', () => {
     expect(q('prof').dataset.gestor).toBe('true');
     expect(q('prof').dataset.nome).toBe('Heloísa');
     expect(document.querySelector('select').value).toBe('p1');
+    // No mesmo lugar da Meta do consultor: dentro do cabeçalho.
+    expect(document.querySelector('header select')).not.toBeNull();
   });
   it('gestor trocando de professor remonta a tela, para o estado dela recomeçar', async () => {
     montagens.n = 0;

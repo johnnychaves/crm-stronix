@@ -17,7 +17,7 @@ const dataDe = (v) => (v?.toDate ? v.toDate() : v);
 
 export function ProfessorMetaScreen({
   now, live, saudacao, nomeVisto, gestorVendo, professorLigado, ultimaImportacao, marcos,
-  estados, leadsById, aulas, onRegistrar, onJaVoltou, zapOn = false,
+  estados, leadsById, aulas, onRegistrar, onJaVoltou, zapOn = false, seletor = null,
 }) {
   const hojeDia = hojeEmBrasilia(now);
   const [pulados, setPulados] = useState([]);
@@ -58,7 +58,9 @@ export function ProfessorMetaScreen({
 
   return (
     <div className="flex flex-col gap-4">
-      <header className="flex flex-wrap items-center justify-between gap-4 rounded-[18px] bg-card px-6 py-[18px]">
+      {/* mt-3: a mesma altura da faixa da Meta do consultor (DiaStrip), que desce
+          12 px da borda da área. Assim, trocar de Meta pelo seletor não pula. */}
+      <header className="mt-3 flex flex-wrap items-center justify-between gap-4 rounded-[18px] bg-card px-6 py-[18px]">
         <div>
           <h1 className="font-display text-[24px] font-bold tracking-[-0.02em]">{titulo}</h1>
           <p className="mt-0.5 text-[13px] text-muted-foreground">
@@ -68,13 +70,18 @@ export function ProfessorMetaScreen({
               : <span className="ml-2">Atualizado às {now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>)}
           </p>
         </div>
-        {professorLigado && total > 0 && (
-          <div className="grid min-w-[200px] grid-cols-[auto_auto] items-baseline gap-x-2.5 gap-y-0.5">
-            <b className="num font-display text-[22px] font-bold">{feitos.length} de {total}</b>
-            <span className="text-[13px] text-muted-foreground">contatos feitos</span>
-            <span className="col-span-2 h-1.5 overflow-hidden rounded-full bg-muted"><i className="block h-full rounded-full bg-emerald-500" style={{ width: `${(feitos.length / total) * 100}%` }} /></span>
-          </div>
-        )}
+        {/* O seletor "Ver a Meta de" do gestor fica aqui, à direita, no mesmo
+            lugar em que ele fica na faixa da Meta do consultor (DiaStrip). */}
+        <div className="flex flex-wrap items-center gap-5">
+          {seletor}
+          {professorLigado && total > 0 && (
+            <div className="grid min-w-[200px] grid-cols-[auto_auto] items-baseline gap-x-2.5 gap-y-0.5">
+              <b className="num font-display text-[22px] font-bold">{feitos.length} de {total}</b>
+              <span className="text-[13px] text-muted-foreground">contatos feitos</span>
+              <span className="col-span-2 h-1.5 overflow-hidden rounded-full bg-muted"><i className="block h-full rounded-full bg-emerald-500" style={{ width: `${(feitos.length / total) * 100}%` }} /></span>
+            </div>
+          )}
+        </div>
       </header>
       {gestorVendo && <p className="rounded-xl bg-amber-50 px-4 py-2.5 text-[13px] text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">Você está vendo a Meta de {nomeVisto}. O que você registrar aqui fica no seu nome.</p>}
       {professorLigado && (

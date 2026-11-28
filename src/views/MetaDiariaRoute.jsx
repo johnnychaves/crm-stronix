@@ -18,7 +18,7 @@ import { SeletorDeMeta } from '../components/dailygoal/professor/SeletorDeMeta.j
 
 const saudacaoDe = (d) => (d.getHours() < 12 ? 'Bom dia' : d.getHours() < 18 ? 'Boa tarde' : 'Boa noite');
 
-function MetaDoProfessor({ db, appUser, professorId, nomeVisto, gestorVendo, listenersActive, topo = null }) {
+function MetaDoProfessor({ db, appUser, professorId, nomeVisto, gestorVendo, listenersActive, seletor = null }) {
   const toast = useToast();
   const { faltosos } = useGeneralConfig();
   const config = configDasTelas(faltosos);
@@ -40,8 +40,6 @@ function MetaDoProfessor({ db, appUser, professorId, nomeVisto, gestorVendo, lis
     }
   };
   return (
-    <>
-      {topo}
       <ProfessorMetaScreen
         now={now}
         live={listenersActive}
@@ -57,8 +55,8 @@ function MetaDoProfessor({ db, appUser, professorId, nomeVisto, gestorVendo, lis
         onRegistrar={onRegistrar}
         onJaVoltou={onJaVoltou}
         zapOn={Boolean(appUser?.tenantZap)}
+        seletor={seletor}
       />
-    </>
   );
 }
 
@@ -81,12 +79,11 @@ export function MetaDiariaRoute({ db, appUser, listenersActive, dailyGoalProps }
   const escolha = podeVerProf && ativos.length > 0
     ? <SeletorDeMeta professores={ativos} valor={prof} onEscolher={(id) => setParams({ prof: id })} />
     : null;
-  const seletor = escolha ? <div className="mb-3 flex justify-end">{escolha}</div> : null;
   if (prof) {
     const nome = ativos.find((p) => p.id === prof)?.nome || '';
-    return <MetaDoProfessor key={prof} db={db} appUser={appUser} professorId={prof} nomeVisto={firstName(nome) || nome} gestorVendo listenersActive={listenersActive} topo={seletor} />;
+    return <MetaDoProfessor key={prof} db={db} appUser={appUser} professorId={prof} nomeVisto={firstName(nome) || nome} gestorVendo listenersActive={listenersActive} seletor={escolha} />;
   }
-  // Na Meta do consultor o seletor vai dentro da faixa do topo, que fica presa
-  // e cobriria o seletor se ele viesse antes dela.
+  // O seletor fica no mesmo lugar nas duas Metas: dentro do cabeçalho, à
+  // direita. Na do consultor, antes da faixa do topo, ele ficava coberto.
   return <DailyGoalView {...dailyGoalProps} seletor={escolha} />;
 }
