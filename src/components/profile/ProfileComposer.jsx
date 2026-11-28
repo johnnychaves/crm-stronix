@@ -4,6 +4,7 @@ import { appendQuickText, EMPTY_DRAFTS, QUICK_TEXTS } from '../../lib/quickTexts
 import { cn } from '../../lib/utils.js';
 import { Avatar } from '../ui/Avatar.jsx';
 import { Btn } from '../ui/Btn.jsx';
+import { StronizapMark } from '../brand/StronizapMark.jsx';
 
 // O compositor da ficha (desenho A2). Fechado, é uma linha: "Registrar o que
 // aconteceu com Rafael", com um ícone para cada modo. Aberto, mostra os modos em
@@ -25,7 +26,9 @@ import { Btn } from '../ui/Btn.jsx';
 
 const MODES = [
   { id: 'note', label: 'Anotação', Icon: Pencil, color: 'ink' },
-  { id: 'whatsapp', label: 'WhatsApp', Icon: MessageCircle, color: 'green' },
+  // O modo de mensagem é o Conversar (pedido do Johnny, 27/11/2026): a mesma
+  // mensagem sai pelo WhatsApp ou chega pronta na caixa do Stronizap.
+  { id: 'whatsapp', label: 'Conversar', Icon: MessageCircle, color: 'green' },
   { id: 'call', label: 'Ligação', Icon: Phone, color: 'brand' },
   { id: 'status', label: 'Mudar fase', Icon: RefreshCw, color: 'amber' },
   { id: 'schedule', label: 'Agendar', Icon: Calendar, color: 'violet' },
@@ -54,10 +57,15 @@ const dm = (d) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digi
 export function ProfileComposer({
   open, mode, onOpen, onClose,
   drafts = EMPTY_DRAFTS, onDrafts,
-  appUser, firstName, whatsappName = null, lastText = null, onGoto = null,
+  appUser, firstName, whatsappName = null, lastText = null, onGoto = null, stronizapOn = false,
   canMudarFase = true, loading = false,
   onSubmitText, renderStatus, renderSchedule,
 }) {
+  // Por onde a mensagem do Conversar sai. Sem o Stronizap conectado na
+  // academia, a opção dele aparece apagada e o envio é sempre pelo WhatsApp.
+  const [viaEscolhida, setVia] = useState('whatsapp');
+  const via = stronizapOn ? viaEscolhida : 'whatsapp';
+
   // A dica de campo vazio é de um modo só: trocar de modo a esconde.
   const [hintState, setHintState] = useState({ mode: null, text: '' });
   const hint = hintState.mode === mode ? hintState.text : '';
@@ -99,7 +107,7 @@ export function ProfileComposer({
     if (!text) { setHint(textMode.empty); return; }
     sending.current = true;
     try {
-      const ok = await onSubmitText(mode, text);
+      const ok = await (mode === 'whatsapp' ? onSubmitText(mode, text, { via }) : onSubmitText(mode, text));
       // Só esvazia o rascunho que ainda é o texto enviado: o que a pessoa
       // escreveu depois, com a rede lenta, fica.
       if (ok) { onDrafts((d) => (d[mode] === sent ? { ...d, [mode]: '' } : d)); setHint(''); }
@@ -192,6 +200,37 @@ export function ProfileComposer({
                 )}
               </div>
             )}
+            {mode === 'whatsapp' && (
+              <div role="group" aria-label="Enviar por" className="mb-2.5 flex flex-wrap items-center gap-1.5">
+                <span className="mr-1 text-[12.5px] text-muted-foreground">Enviar por</span>
+                {[
+                  { id: 'whatsapp', label: 'WhatsApp', icon: <MessageCircle size={14} aria-hidden="true" /> },
+                  { id: 'stronizap', label: 'Stronizap', icon: <StronizapMark size={14} /> },
+                ].map((o) => {
+                  const off = o.id === 'stronizap' && !stronizapOn;
+                  const on = via === o.id;
+                  return (
+                    <button
+                      key={o.id}
+                      type="button"
+                      aria-pressed={on}
+                      disabled={off || loading}
+                      title={off ? 'A academia ainda não conectou o Stronizap' : undefined}
+                      onClick={() => setVia(o.id)}
+                      className={cn(
+                        'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[12.5px] font-semibold transition focus-visible:outline-none focus-visible:anel-foco',
+                        on ? 'border-emerald-600 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200' : 'border-border bg-card hover:border-emerald-500/45',
+                        off && 'cursor-not-allowed opacity-50 grayscale',
+                      )}
+                    >
+                      {o.icon}{o.label}
+                    </button>
+                  );
+                })}
+                {!stronizapOn && <span className="text-[12px] text-muted-foreground">A academia ainda não conectou o Stronizap.</span>}
+                {via === 'stronizap' && <span className="text-[12px] text-muted-foreground">A mensagem chega pronta na caixa do Stronizap. Você confere e envia por lá.</span>}
+              </div>
+            )}
             <label htmlFor="composer-text" className="sr-only">{textMode.label}</label>
             <textarea
               id="composer-text"
@@ -227,7 +266,7 @@ export function ProfileComposer({
               </span>
               <span className="hidden text-[12px] text-muted-foreground sm:inline">{textMode.keys}</span>
               <Btn kind="soft" onClick={tryClose} disabled={loading}>Cancelar</Btn>
-              <Btn kind="brand" icon={<Check size={13} />} onClick={submit} disabled={loading}>{textMode.submit}</Btn>
+              <Btn kind="brand" icon={<Check size={13} />} onClick={submit} disabled={loading}>{mode === 'whatsapp' && via === 'stronizap' ? 'Abrir no Stronizap' : textMode.submit}</Btn>
             </div>
           </>
         )}

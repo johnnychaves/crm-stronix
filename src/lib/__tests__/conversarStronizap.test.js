@@ -21,6 +21,8 @@ describe('stronizapHref', () => {
     expect(stronizapHref('(51) 99812-4430')).toBe('https://stronizap.com.br/chamar/5551998124430');
     expect(stronizapHref('555199812443')).toBe('https://stronizap.com.br/chamar/555199812443');
     expect(stronizapHref('')).toBeNull();
+    // O texto vai pronto para a caixa do Stronizap (?texto=).
+    expect(stronizapHref('(51) 99812-4430', 'Oi, Ana!')).toBe('https://stronizap.com.br/chamar/5551998124430?texto=Oi%2C%20Ana!');
     expect(stronizapHref(null)).toBeNull();
   });
 });
