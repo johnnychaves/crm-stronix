@@ -58,7 +58,12 @@ export function AgendaHoje({ rows, now, savingId, onMark }) {
           const title = `${tipo} de ${row.name || 'sem nome'} · ${formatHourLabel(row.scheduledAt)}`;
           const saving = savingId === row.id;
           let acao;
-          if (row.outcome || estado !== 'pend' || !row.isMine) {
+          // Sem onMark (o gestor olhando a Meta de um consultor), só o texto do
+          // desfecho, sem botão nem balão.
+          if (!onMark) {
+            const texto = row.outcome === 'attended' ? 'Compareceu' : row.outcome === 'no_show' ? 'Não veio' : estado === 'pend' ? 'Sem desfecho' : null;
+            acao = texto ? <span className={cn('pt-px text-[12px] font-semibold whitespace-nowrap', row.outcome === 'attended' ? 'text-emerald-700 dark:text-emerald-300' : row.outcome === 'no_show' ? 'text-rose-700 dark:text-rose-300' : 'text-amber-700 dark:text-amber-300')}>{texto}</span> : null;
+          } else if (row.outcome || estado !== 'pend' || !row.isMine) {
             acao = <OutcomePopover tag upcoming={estado === 'next' || estado === 'later'} outcome={row.outcome} canUndo saving={saving} title={title} onPick={(c) => onMark(row, c)} />;
           } else {
             acao = (

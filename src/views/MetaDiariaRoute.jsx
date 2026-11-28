@@ -9,7 +9,7 @@ import { useFaltososDoProfessor } from '../hooks/useFaltososDoProfessor.js';
 import { useAulasDeHojeDoProfessor } from '../hooks/useAulasDeHojeDoProfessor.js';
 import { registrarContatoDeFalta, marcarJaVoltou } from '../lib/faltosos/contatoDeFaltaWrites.js';
 import { configDasTelas } from '../lib/faltosos/configFaltosos.js';
-import { isGestor, isProfessor } from '../lib/acesso.js';
+import { isGestor, isMetaParticipant, isProfessor } from '../lib/acesso.js';
 import { hasModule, MODULES } from '../lib/modules.js';
 import { firstName } from '../lib/guardian.js';
 import { DailyGoalView } from './DailyGoalView.jsx';
@@ -18,7 +18,7 @@ import { SeletorDeMeta } from '../components/dailygoal/professor/SeletorDeMeta.j
 
 const saudacaoDe = (d) => (d.getHours() < 12 ? 'Bom dia' : d.getHours() < 18 ? 'Boa tarde' : 'Boa noite');
 
-function MetaDoProfessor({ db, appUser, professorId, nomeVisto, gestorVendo, listenersActive, topo = null }) {
+function MetaDoProfessor({ db, appUser, professorId, nomeVisto, gestorVendo, listenersActive, seletor = null }) {
   const toast = useToast();
   const { faltosos } = useGeneralConfig();
   const config = configDasTelas(faltosos);
@@ -40,8 +40,6 @@ function MetaDoProfessor({ db, appUser, professorId, nomeVisto, gestorVendo, lis
     }
   };
   return (
-    <>
-      {topo}
       <ProfessorMetaScreen
         now={now}
         live={listenersActive}
@@ -57,36 +55,58 @@ function MetaDoProfessor({ db, appUser, professorId, nomeVisto, gestorVendo, lis
         onRegistrar={onRegistrar}
         onJaVoltou={onJaVoltou}
         zapOn={Boolean(appUser?.tenantZap)}
+        seletor={seletor}
       />
-    </>
   );
 }
 
 export function MetaDiariaRoute({ db, appUser, listenersActive, dailyGoalProps }) {
   const { professores = [] } = useGeneralConfig();
-  const podeVerProf = hasModule(appUser?.tenantModules, MODULES.FALTOSOS) && isGestor(appUser);
+  const gestor = isGestor(appUser);
+  const podeVerProf = hasModule(appUser?.tenantModules, MODULES.FALTOSOS) && gestor;
   const ativos = useMemo(
     () => professores.filter((p) => p?.ativo !== false)
       .map((p) => ({ id: p.id, nome: p.nome || '' }))
       .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')),
     [professores],
   );
-  const ctx = useMemo(() => ({ podeVerProf, professoresAtivos: ativos }), [podeVerProf, ativos]);
-  const [{ prof }, setParams] = useScreenParams('dailyGoal', ctx);
+  // Os consultores valem em toda academia, sem o Stronix 2.0: o gestor olha a
+  // Meta de cada um, sem agir (pedido do Johnny, 27/11/2026).
+  const usersList = dailyGoalProps?.usersList;
+  const consultores = useMemo(
+    () => (gestor ? (usersList || []) : [])
+      .filter((u) => u?.id && u.name && u.active !== false && isMetaParticipant(u))
+      .map((u) => ({ id: u.id, nome: u.name }))
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')),
+    [gestor, usersList],
+  );
+  const ctx = useMemo(
+    () => ({ podeVerProf, professoresAtivos: ativos, podeVerConsultor: gestor, consultoresAtivos: consultores }),
+    [podeVerProf, ativos, gestor, consultores],
+  );
+  const [{ prof, consultor }, setParams] = useScreenParams('dailyGoal', ctx);
 
   if (isProfessor(appUser)) {
     const meu = typeof appUser?.professorId === 'string' && appUser.professorId.trim() ? appUser.professorId : null;
     return <MetaDoProfessor key={meu || 'sem'} db={db} appUser={appUser} professorId={meu} nomeVisto={firstName(appUser?.name) || 'professor'} gestorVendo={false} listenersActive={listenersActive} />;
   }
-  const escolha = podeVerProf && ativos.length > 0
-    ? <SeletorDeMeta professores={ativos} valor={prof} onEscolher={(id) => setParams({ prof: id })} />
+  const profsNoSeletor = podeVerProf ? ativos : [];
+  const escolha = profsNoSeletor.length > 0 || consultores.length > 0
+    ? (
+      <SeletorDeMeta
+        professores={profsNoSeletor}
+        consultores={consultores}
+        valor={prof ? `p:${prof}` : consultor ? `c:${consultor}` : ''}
+        onEscolher={(e) => setParams({ prof: e?.tipo === 'professor' ? e.id : null, consultor: e?.tipo === 'consultor' ? e.id : null })}
+      />
+    )
     : null;
-  const seletor = escolha ? <div className="mb-3 flex justify-end">{escolha}</div> : null;
   if (prof) {
     const nome = ativos.find((p) => p.id === prof)?.nome || '';
-    return <MetaDoProfessor key={prof} db={db} appUser={appUser} professorId={prof} nomeVisto={firstName(nome) || nome} gestorVendo listenersActive={listenersActive} topo={seletor} />;
+    return <MetaDoProfessor key={prof} db={db} appUser={appUser} professorId={prof} nomeVisto={firstName(nome) || nome} gestorVendo listenersActive={listenersActive} seletor={escolha} />;
   }
-  // Na Meta do consultor o seletor vai dentro da faixa do topo, que fica presa
-  // e cobriria o seletor se ele viesse antes dela.
-  return <DailyGoalView {...dailyGoalProps} seletor={escolha} />;
+  // O seletor fica no mesmo lugar nas duas Metas: dentro do cabeçalho, à
+  // direita. Na do consultor, antes da faixa do topo, ele ficava coberto.
+  const vendo = consultor ? (usersList || []).find((u) => u?.id === consultor) || null : null;
+  return <DailyGoalView key={vendo?.id || 'eu'} {...dailyGoalProps} seletor={escolha} vendo={vendo} />;
 }

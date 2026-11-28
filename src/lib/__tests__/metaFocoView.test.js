@@ -54,7 +54,7 @@ afterEach(() => {
 const profile = { openProfile: () => {}, leadHref: (leadId) => hrefFor('acad', 'ficha', { leadId }), from: 'dailyGoal' };
 
 // A tela com o foco em estado, como o endereço faria.
-function Harness({ leads, now, totalSlots = 10, doneSlots = 2, startFoco = 'all', onFocoSpy, live = true }) {
+function Harness({ leads, now, totalSlots = 10, doneSlots = 2, startFoco = 'all', onFocoSpy, live = true, somenteLeitura = null }) {
   const [foco, setFoco] = useState(startFoco);
   return h(MetaFocoScreen, {
     strip: { greeting: 'Boa tarde', firstName: 'Júlia', todayLabel: 'sexta-feira, 16 de outubro', live, now, frozenDay: '', totalSlots, doneSlots, progress: 20, volume: { count: 0, target: 0 }, streak: 0 },
@@ -62,6 +62,7 @@ function Harness({ leads, now, totalSlots = 10, doneSlots = 2, startFoco = 'all'
     foco, onFoco: (v) => { onFocoSpy?.(v); setFoco(v); },
     totalSlots, doneSlots, volume: { count: 0, target: 0 }, perfectDay: false, tomorrow: null, aside: null,
     ...handlers,
+    somenteLeitura,
   });
 }
 
@@ -80,6 +81,13 @@ const button = (text, scope = host) => [...scope.querySelectorAll('button')].fin
 // O texto do botão sem a tecla do atalho (o <kbd>).
 const label = (b) => [...b.childNodes].filter((n) => n.nodeName !== 'KBD').map((n) => n.textContent).join('').trim();
 const click = (el) => act(() => { el.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+// O WhatsApp mora no menu Conversar (27/11/2026): abre o menu e escolhe a opção.
+const whatsappDoMenu = () => {
+  const gatilho = button('Conversar', agora());
+  act(() => { gatilho.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); });
+  const item = [...document.body.querySelectorAll('[role="menuitem"]')].find((el) => el.textContent.includes('WhatsApp'));
+  act(() => { item.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+};
 
 describe('Meta nova: o Agora e a fila', () => {
   it('o Agora é o primeiro da ordem, e a fila vem depois, na ordem', () => {
@@ -133,6 +141,19 @@ describe('Meta nova: o Agora e a fila', () => {
     expect(agoraName()).not.toBe('Carla Contato');
     expect(agora().classList.contains('meta-entra')).toBe(true);
     expect(host.querySelector('.meta-voltou').textContent).toContain('Carla Contato');
+  });
+
+  it('só para olhar: aviso, sem ações no Agora, e só o S vale no teclado', () => {
+    render({ leads: LEADS, now: NOW, somenteLeitura: 'Ana' });
+    expect(host.textContent).toContain('Você está vendo a Meta de Ana. É só para olhar');
+    expect(button('Concluir', agora())).toBeUndefined();
+    expect(button('Conversar', agora())).toBeUndefined();
+    act(() => { document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', bubbles: true, cancelable: true })); });
+    expect(handlers.onConclude).not.toHaveBeenCalled();
+    expect(handlers.onOutcomePopup).not.toHaveBeenCalled();
+    const antes = agoraName();
+    act(() => { document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 's', bubbles: true, cancelable: true })); });
+    expect(agoraName()).not.toBe(antes);
   });
 
   it('pular vale só no dia: no dia seguinte a tarefa volta ao lugar dela na fila', () => {
@@ -214,7 +235,7 @@ describe('Meta nova: o Agora e a fila', () => {
 describe('Meta nova: as ações do Agora', () => {
   it('a visita tem Compareceu e Não compareceu antes da hora, sem WhatsApp', () => {
     render({ leads: [VISITA], now: NOW });
-    expect(button('WhatsApp', agora())).toBeUndefined();
+    expect(button('Conversar', agora())).toBeUndefined();
     click(button('Compareceu', agora()));
     expect(handlers.onOutcome).toHaveBeenCalledWith(expect.objectContaining({ id: 'b' }), 'attended', 'visita_hoje');
     click(button('Não compareceu', agora()));
@@ -223,13 +244,13 @@ describe('Meta nova: as ações do Agora', () => {
 
   it('a visita que passou da hora mantém o WhatsApp', () => {
     render({ leads: [VISITA], now: at(17, 20) });
-    expect(button('WhatsApp', agora())).toBeDefined();
+    expect(button('Conversar', agora())).toBeDefined();
   });
 
   it('o contato por ligação tem Ligar como ação principal e Concluir', () => {
     render({ leads: [CONTATO], now: NOW });
     const acoes = [...agora().querySelectorAll('button')].map(label);
-    expect(acoes.indexOf('Ligar')).toBeLessThan(acoes.indexOf('WhatsApp'));
+    expect(acoes.indexOf('Ligar')).toBeLessThan(acoes.indexOf('Conversar'));
     click(button('Concluir', agora()));
     expect(handlers.onOutcomePopup).toHaveBeenCalledWith(expect.objectContaining({ id: 'c' }), 'contato_hoje');
     // O contato conclui pelo pop-up: nada é gravado e nada fica para desfazer.
@@ -455,7 +476,7 @@ describe('Meta nova: a pergunta na volta do contato', () => {
 
   it('depois do WhatsApp, pergunta quando a aba volta', () => {
     render({ leads: [NOVO], now: NOW });
-    click(button('WhatsApp', agora()));
+    whatsappDoMenu();
     expect(pergunta()).toBeNull();
     mudarAba('hidden');
     expect(pergunta()).toBeNull();
@@ -468,7 +489,7 @@ describe('Meta nova: a pergunta na volta do contato', () => {
 
   it('depois do WhatsApp, a janela voltando a ter o foco também conta', () => {
     render({ leads: [NOVO], now: NOW });
-    click(button('WhatsApp', agora()));
+    whatsappDoMenu();
     act(() => { window.dispatchEvent(new Event('blur')); });
     act(() => { window.dispatchEvent(new Event('focus')); });
     expect(pergunta()).not.toBeNull();
@@ -490,7 +511,7 @@ describe('Meta nova: a pergunta na volta do contato', () => {
 
   it('"Sim" conclui pelo caminho de sempre, e C também', () => {
     render({ leads: [CONTATO], now: NOW });
-    click(button('WhatsApp', agora()));
+    whatsappDoMenu();
     mudarAba('hidden');
     mudarAba('visible');
     tecla('c');
@@ -500,7 +521,7 @@ describe('Meta nova: a pergunta na volta do contato', () => {
 
   it('"Ainda não" devolve as ações, com o foco no Agora', () => {
     render({ leads: [CONTATO], now: NOW });
-    click(button('WhatsApp', agora()));
+    whatsappDoMenu();
     mudarAba('hidden');
     mudarAba('visible');
     const nao = button('Ainda não', agora());
@@ -520,7 +541,7 @@ describe('Meta nova: a pergunta na volta do contato', () => {
       click(button('Ligar', agora()));
       act(() => { vi.advanceTimersByTime(2000); });
       expect(pergunta()).toBeNull();
-      click(button('WhatsApp', agora()));
+      whatsappDoMenu();
       mudarAba('hidden');
       mudarAba('visible');
       expect(pergunta()).toBeNull();
@@ -533,7 +554,7 @@ describe('Meta nova: a pergunta na volta do contato', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
       render({ leads: [NOVO], now: NOW });
-      click(button('WhatsApp', agora()));
+      whatsappDoMenu();
       act(() => { vi.advanceTimersByTime(5000); });
       // Bem depois, a pessoa troca de janela por outro motivo e volta.
       mudarAba('hidden');
@@ -546,7 +567,7 @@ describe('Meta nova: a pergunta na volta do contato', () => {
 
   it('o "Sim" que abre o pop-up deixa o foco no Agora, para onde ele volta', () => {
     render({ leads: [CONTATO], now: NOW });
-    click(button('WhatsApp', agora()));
+    whatsappDoMenu();
     mudarAba('hidden');
     mudarAba('visible');
     const sim = button('Sim, concluir', agora());
@@ -558,7 +579,7 @@ describe('Meta nova: a pergunta na volta do contato', () => {
 
   it('a visita que passou da hora não pergunta: o próximo passo é o desfecho', () => {
     render({ leads: [VISITA], now: at(17, 20) });
-    click(button('WhatsApp', agora()));
+    whatsappDoMenu();
     mudarAba('hidden');
     mudarAba('visible');
     expect(pergunta()).toBeNull();
@@ -566,7 +587,7 @@ describe('Meta nova: a pergunta na volta do contato', () => {
 
   it('a pergunta não passa para outra tarefa', () => {
     render({ leads: [CONTATO, ATRASO], now: NOW });
-    click(button('WhatsApp', agora()));
+    whatsappDoMenu();
     click(button('Pular por agora'));
     mudarAba('hidden');
     mudarAba('visible');

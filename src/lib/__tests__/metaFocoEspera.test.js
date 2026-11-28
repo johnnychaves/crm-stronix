@@ -142,7 +142,8 @@ describe('a ligação na DailyGoalView', () => {
   const VIEW = readFileSync(join(aqui, '../../views/DailyGoalView.jsx'), 'utf8');
 
   it('calcula as esperas só para quem vende e passa à tela', () => {
-    expect(VIEW).toContain('isSeller(appUser) ? awaitingEntriesOf(leads, appUser.id, now) : NO_ESPERAS');
+    // Com o gestor olhando a Meta de um consultor, as contas são as dele (meta).
+    expect(VIEW).toContain('isSeller(meta) ? awaitingEntriesOf(leads, meta.id, now) : NO_ESPERAS');
     expect(VIEW).toContain('esperas={esperas}');
   });
 });

@@ -36,8 +36,8 @@ describe('a tela da Meta na DailyGoalView', () => {
       'onWhatsapp={handleWhatsapp}',
       'onCall={handleCall}',
       'onFoco={setFilter}',
-      'onMark={markAgendaPresence}',
-      'onCorrect={handleCorrectOutcome}',
+      'onMark={soOlhar ? null : markAgendaPresence}',
+      'onCorrect={soOlhar ? undefined : handleCorrectOutcome}',
     ]) {
       expect(corpo, ligacao).toContain(ligacao);
     }
