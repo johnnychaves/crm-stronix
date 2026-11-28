@@ -148,10 +148,16 @@ export function MetaFocoScreen({
   // 27/11/2026): quando a pessoa troca a tarefa do Agora (linha da fila, Pular,
   // "Voltar à ordem sugerida" e "Ir agora"), o bloco novo entra e a linha de
   // quem saiu acende na fila. Concluir não anima: a tarefa some da lista.
-  // O `n` remonta o AgoraCard, para a entrada tocar de novo a cada troca.
+  // O `n` remonta o AgoraCard, para a entrada tocar de novo a cada troca. Os
+  // efeitos só valem enquanto o Agora é a tarefa que entrou, no mesmo foco
+  // (`trocaAtiva`): sem isso, concluir ou trocar de aba deixava o destaque
+  // antigo valendo, e a linha de quem saiu piscava de novo ao remontar.
   const [troca, setTroca] = useState(null);
+  const marcarTroca = (para) => {
+    if (agora && para && para !== agora.key) setTroca((t) => ({ saiu: agora.key, para, foco, n: (t?.n || 0) + 1 }));
+  };
   const trocar = (next) => {
-    if (agora && next.key !== agora.key) setTroca((t) => ({ saiu: agora.key, n: (t?.n || 0) + 1 }));
+    marcarTroca(next.key);
     setSel(next);
   };
 
@@ -169,14 +175,12 @@ export function MetaFocoScreen({
       setDispensa({ day: today, map: new Map(dispensadas || []).set(esperaDispensaKey(agora), 'espera') });
     }
     // A chave nula deixa a ordem escolher; a troca vale se o Agora muda.
-    const prox = list.find((e) => e.key !== agora.key);
-    if (prox) setTroca((t) => ({ saiu: agora.key, n: (t?.n || 0) + 1 }));
+    marcarTroca(list.find((e) => e.key !== agora.key)?.key);
     setSel({ key: null, pinned: false, foco });
   };
   const unpin = () => {
     focusAgora.current = true;
-    const primeira = list[0];
-    if (primeira && agora && primeira.key !== agora.key) setTroca((t) => ({ saiu: agora.key, n: (t?.n || 0) + 1 }));
+    marcarTroca(list[0]?.key);
     setSel({ key: null, pinned: false, foco });
   };
   const showAll = () => {
@@ -265,12 +269,13 @@ export function MetaFocoScreen({
   } : null);
 
   const fila = agora ? list.filter((e) => e.key !== agora.key) : [];
+  const trocaAtiva = Boolean(troca && agora && troca.para === agora.key && troca.foco === foco);
   const morning = doneSlots === 0 && !somenteLeitura ? morningText(entries.filter((e) => e.slug !== FOCO_ESPERA)) : '';
 
   let body;
   // Sem tarefa da meta, a espera ainda precisa aparecer.
   if (totalSlots === 0 && esperas.length === 0) body = <MetaVazia />;
-  else if (entries.length === 0) body = <DiaFechado doneSlots={doneSlots} volume={volume} perfectDay={perfectDay} tomorrow={tomorrow} />;
+  else if (entries.length === 0) body = <DiaFechado doneSlots={doneSlots} volume={volume} perfectDay={perfectDay} tomorrow={tomorrow} quem={somenteLeitura} />;
   else if (!agora) body = <FocoVazio label={FOCO_LABEL[foco]} onAll={showAll} />;
   else {
     body = (
@@ -286,7 +291,7 @@ export function MetaFocoScreen({
         )}
         <AgoraCard
           key={troca?.n || 0}
-          entrando={Boolean(troca)}
+          entrando={trocaAtiva}
           ref={agoraRef}
           entry={agora}
           why={whyOf(agora, now, opts)}
@@ -309,7 +314,7 @@ export function MetaFocoScreen({
           onRetornoSim={retornoSim}
           onRetornoNao={retornoNao}
         />
-        <FilaDepois items={fila} sla={sla} onPick={pick} voltouKey={troca?.saiu} whyOf={(e) => whyOf(e, now, opts)} comEspera={esperas.length > 0} />
+        <FilaDepois items={fila} sla={sla} onPick={pick} voltouKey={trocaAtiva ? troca.saiu : null} whyOf={(e) => whyOf(e, now, opts)} comEspera={esperas.length > 0} />
       </>
     );
   }

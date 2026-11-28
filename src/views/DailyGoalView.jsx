@@ -185,6 +185,7 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
   // olhar, pedido do Johnny em 27/11/2026). As contas da Meta passam a ser as
   // dele (`meta`), e nada se grava: as ações somem e o dia batido não é marcado.
   const meta = vendo || appUser;
+  const metaAuthUid = meta?.authUid || null;
   const soOlhar = Boolean(vendo);
   const toast = useToast();
   // A categoria aberta vem do endereço: F5 mantém e o link abre na mesma
@@ -242,15 +243,17 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
   // Histórico persistido: 1 doc por dia que o consultor zerou a meta.
   const [dailyHistory, setDailyHistory] = useState([]);
   useEffect(() => {
-    if (!meta?.authUid) return;
+    if (!metaAuthUid) return;
     const ref = collection(db, 'artifacts', appId, 'public', 'data', DAILY_GOAL_HISTORY_PATH);
     const unsub = onSnapshot(
-      query(ref, where('consultantAuthUid', '==', meta.authUid)),
+      query(ref, where('consultantAuthUid', '==', metaAuthUid)),
       (snap) => setDailyHistory(snap.docs.map(d => d.data())),
       () => { /* regras ainda não publicadas → mantém vazio sem quebrar a UI */ }
     );
     return () => unsub();
-  }, [db, meta]);
+    // Pelo uid, e não pelo objeto: o `vendo` é recriado a cada atualização da
+    // lista da equipe, e cada nova assinatura releria o histórico inteiro.
+  }, [db, metaAuthUid]);
 
   // Grava (idempotente) a marca de "meta batida hoje". ID determinístico
   // por (consultor, dia) → setDoc/merge não duplica. volumeCount/volumeTarget

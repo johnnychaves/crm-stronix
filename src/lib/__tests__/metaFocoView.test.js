@@ -156,6 +156,17 @@ describe('Meta nova: o Agora e a fila', () => {
     expect(agoraName()).not.toBe(antes);
   });
 
+  it('o destaque de quem saiu não volta a piscar ao trocar de aba', () => {
+    render({ leads: LEADS, now: NOW });
+    click(button('Carla Contato'));
+    expect(host.querySelector('.meta-voltou')).not.toBeNull();
+    const aba = (nome) => [...host.querySelectorAll('[role="tab"]')].find((t) => t.textContent.startsWith(nome));
+    act(() => { aba('Atrasados').dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })); });
+    act(() => { aba('Todos').dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })); });
+    expect(host.querySelector('.meta-voltou')).toBeNull();
+    expect(agora().classList.contains('meta-entra')).toBe(false);
+  });
+
   it('pular vale só no dia: no dia seguinte a tarefa volta ao lugar dela na fila', () => {
     render({ leads: LEADS, now: NOW });
     click(button('Pular por agora'));

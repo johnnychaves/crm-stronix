@@ -20,7 +20,10 @@ export function ConversarMenu({ triggerClassName, onWhatsapp, onStronizap, tecla
     <DropdownMenu key={chave}>
       <DropdownMenuTrigger asChild>
         <button type="button" aria-keyshortcuts={teclas ? (onStronizap ? 'W Z' : 'W') : undefined} className={triggerClassName}>
-          <MessageCircle size={15} aria-hidden="true" /> Conversar <ChevronDown size={14} aria-hidden="true" />
+          <MessageCircle size={15} aria-hidden="true" /> Conversar
+          {/* A tecla do W no próprio botão, como nos outros da Meta (some no celular). */}
+          {teclas && <kbd aria-hidden="true" className="ml-0.5 hidden h-[18px] min-w-[18px] place-items-center rounded-[5px] border border-current px-[5px] font-sans text-[11px] font-semibold leading-none opacity-55 md:inline-grid">W</kbd>}
+          <ChevronDown size={14} aria-hidden="true" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align={align} className="min-w-[270px] p-1.5">
