@@ -293,7 +293,9 @@ export function FocoVazio({ label, onAll }) {
 
 // O dia fechado: tudo feito. As tarefas, a prospecção, o selo do dia perfeito
 // e o que vem amanhã (`tomorrow` já vem desenhado pela Meta).
-export function DiaFechado({ doneSlots, volume, perfectDay, tomorrow }) {
+// `quem` é o primeiro nome de quem tem a Meta quando o gestor só olha; sem
+// ele, o texto fala com quem está logado.
+export function DiaFechado({ doneSlots, volume, perfectDay, tomorrow, quem = null }) {
   return (
     <div className={cn(CARD, 'mt-3.5 px-7 py-7')}>
       <div className="flex items-start gap-4">
@@ -301,7 +303,7 @@ export function DiaFechado({ doneSlots, volume, perfectDay, tomorrow }) {
         <div className="min-w-0">
           <h2 className="font-display text-[22px] font-bold tracking-[-0.02em]">Tudo feito por hoje</h2>
           <p className="mt-1 text-[14px] text-muted-foreground">
-            Você fechou {doneSlots === 1 ? 'a tarefa' : `as ${doneSlots} tarefas`} do dia.
+            {quem || 'Você'} fechou {doneSlots === 1 ? 'a tarefa' : `as ${doneSlots} tarefas`} do dia.
             {volume.target > 0 && <> Prospecção: <span className="num font-semibold text-foreground">{volume.count} de {volume.target}</span>.</>}
           </p>
           {perfectDay && (

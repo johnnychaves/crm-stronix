@@ -108,5 +108,5 @@ export function MetaDiariaRoute({ db, appUser, listenersActive, dailyGoalProps }
   // O seletor fica no mesmo lugar nas duas Metas: dentro do cabeçalho, à
   // direita. Na do consultor, antes da faixa do topo, ele ficava coberto.
   const vendo = consultor ? (usersList || []).find((u) => u?.id === consultor) || null : null;
-  return <DailyGoalView key={vendo?.id || 'eu'} {...dailyGoalProps} seletor={escolha} vendo={vendo} />;
+  return <DailyGoalView key={vendo?.id || 'eu'} {...dailyGoalProps} seletor={escolha} vendo={vendo} paramsCtx={ctx} />;
 }

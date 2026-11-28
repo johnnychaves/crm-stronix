@@ -103,17 +103,17 @@ export const AgoraCard = forwardRef(function AgoraCard(
   // O WhatsApp é o Conversar, com as duas saídas no menu. Sem o Stronizap
   // conectado, a opção dele aparece apagada (onStronizap null). W e Z abrem
   // direto, sem o menu.
-  const whatsapp = (main) => (
+  const conversar = () => (
     <ConversarMenu
       chave={entry.key}
       teclas
-      triggerClassName={cn(ACT, main ? ACT_MAIN : 'text-emerald-700 dark:text-emerald-300')}
+      triggerClassName={cn(ACT, 'text-emerald-700 dark:text-emerald-300')}
       onWhatsapp={() => onWhatsapp(lead)}
       onStronizap={onStronizap ? () => onStronizap(lead) : null}
     />
   );
-  const ligar = (main) => (
-    <button type="button" aria-keyshortcuts="L" className={cn(ACT, main && ACT_MAIN)} onClick={() => onCall(lead)}>
+  const ligar = () => (
+    <button type="button" aria-keyshortcuts="L" className={ACT} onClick={() => onCall(lead)}>
       <Phone size={15} aria-hidden="true" /> Ligar <Kbd>L</Kbd>
     </button>
   );
@@ -213,8 +213,8 @@ export const AgoraCard = forwardRef(function AgoraCard(
             </button>
           </div>
           <div className="mt-2.5 flex flex-wrap items-center gap-2.5">
-            {ligacao ? ligar(false) : whatsapp(false)}
-            {ligacao ? whatsapp(false) : ligar(false)}
+            {ligacao ? ligar() : conversar()}
+            {ligacao ? conversar() : ligar()}
             <button type="button" className={ACT} onClick={() => onPostpone(lead, slug)}>
               <Calendar size={15} aria-hidden="true" /> Reagendar
             </button>
@@ -230,7 +230,7 @@ export const AgoraCard = forwardRef(function AgoraCard(
             <button type="button" aria-keyshortcuts="N" className={ACT} onClick={() => onOutcome(lead, 'no_show', slug)}>
               <X size={15} aria-hidden="true" /> Não compareceu <Kbd>N</Kbd>
             </button>
-            {passou && whatsapp(false)}
+            {passou && conversar()}
             <DropdownMenu key={entry.key}>
               <DropdownMenuTrigger asChild>
                 <button type="button" className={ACT}>Mais <ChevronDown size={14} aria-hidden="true" /></button>
@@ -243,8 +243,8 @@ export const AgoraCard = forwardRef(function AgoraCard(
           </>
         ) : (
           <>
-            {ligacao ? ligar(false) : whatsapp(false)}
-            {ligacao ? whatsapp(false) : ligar(false)}
+            {ligacao ? ligar() : conversar()}
+            {ligacao ? conversar() : ligar()}
             <button type="button" aria-keyshortcuts="C" className={cn(ACT, ACT_MAIN)} onClick={() => onGoalDone(lead, slug, '')}>
               <Check size={15} aria-hidden="true" /> Concluir <Kbd>C</Kbd>
             </button>

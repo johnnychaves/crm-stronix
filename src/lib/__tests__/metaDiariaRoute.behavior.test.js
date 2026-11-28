@@ -15,7 +15,18 @@ vi.mock('../../components/dailygoal/professor/ProfessorMetaScreen.jsx', () => ({
   },
 }));
 // O seletor vai para dentro da DailyGoalView (faixa do topo), e não antes dela.
-vi.mock('../../views/DailyGoalView.jsx', () => ({ DailyGoalView: ({ seletor, vendo }) => h('div', { 'data-testid': 'consultor', 'data-vendo': vendo?.id || '' }, seletor) }));
+// O botão "filtro" troca a categoria pelo endereço, como o "Foco em" da Meta.
+vi.mock('../../views/DailyGoalView.jsx', async () => {
+  const { useScreenParams } = await import('../../hooks/useScreenParams.js');
+  const vazio = {};
+  return {
+    DailyGoalView: ({ seletor, vendo, paramsCtx }) => {
+      const [, setParams] = useScreenParams('dailyGoal', paramsCtx || vazio);
+      return h('div', { 'data-testid': 'consultor', 'data-vendo': vendo?.id || '' },
+        seletor, h('button', { type: 'button', onClick: () => setParams({ cat: 'atrasado' }) }, 'filtro'));
+    },
+  };
+});
 vi.mock('../../hooks/useFaltososDoProfessor.js', () => ({ useFaltososDoProfessor: () => ({ estados: [], leadsById: new Map() }) }));
 vi.mock('../../hooks/useAulasDeHojeDoProfessor.js', () => ({ useAulasDeHojeDoProfessor: () => [] }));
 vi.mock('../../lib/faltosos/contatoDeFaltaWrites.js', () => ({ registrarContatoDeFalta: vi.fn(), marcarJaVoltou: vi.fn() }));
@@ -107,5 +118,12 @@ describe('MetaDiariaRoute', () => {
     await montar(consultor, '?consultor=c1');
     expect(document.querySelector('select')).toBeNull();
     expect(q('consultor').dataset.vendo).toBe('');
+  });
+  it('trocar de filtro olhando a Meta de um consultor continua na Meta dele', async () => {
+    await montar(gestor, '?consultor=c1');
+    const filtro = [...document.querySelectorAll('button')].find((b) => b.textContent === 'filtro');
+    await act(async () => { filtro.click(); });
+    expect(q('consultor').dataset.vendo).toBe('c1');
+    expect(document.querySelector('select').value).toBe('c:c1');
   });
 });

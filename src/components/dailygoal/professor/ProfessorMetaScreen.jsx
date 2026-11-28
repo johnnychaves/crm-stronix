@@ -60,20 +60,19 @@ export function ProfessorMetaScreen({
     <div className="flex flex-col gap-4">
       {/* mt-3: a mesma altura da faixa da Meta do consultor (DiaStrip), que desce
           12 px da borda da área. Assim, trocar de Meta pelo seletor não pula. */}
-      <header className="mt-3 flex flex-wrap items-center justify-between gap-4 rounded-[18px] bg-card px-6 py-[18px]">
+      <header className="mt-3 flex min-h-[76px] flex-wrap items-center justify-between gap-4 rounded-[18px] border border-border bg-card px-6 py-3.5">
         <div>
-          <h1 className="font-display text-[24px] font-bold tracking-[-0.02em]">{titulo}</h1>
-          <p className="mt-0.5 text-[13px] text-muted-foreground">
+          <h1 className="font-display text-[21px] font-bold leading-tight tracking-[-0.02em]">{titulo}</h1>
+          <p className="text-[12.5px] text-muted-foreground">
             {professorLigado ? linhaImport : 'Seu acesso ainda não está ligado a um professor. Fale com o gestor.'}
             {professorLigado && (live
               ? <span className="ml-2 inline-flex items-center gap-1.5 font-semibold text-emerald-700 dark:text-emerald-300"><i aria-hidden="true" className="size-[7px] rounded-full bg-emerald-500" />Ao vivo</span>
               : <span className="ml-2">Atualizado às {now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>)}
           </p>
         </div>
-        {/* O seletor "Ver a Meta de" do gestor fica aqui, à direita, no mesmo
-            lugar em que ele fica na faixa da Meta do consultor (DiaStrip). */}
-        <div className="flex flex-wrap items-center gap-5">
-          {seletor}
+        {/* O seletor "Ver a Meta de" do gestor fica no canto direito, depois do
+            progresso, como na faixa da Meta do consultor (DiaStrip). */}
+        <div className="ml-auto flex flex-wrap items-center gap-[22px]">
           {professorLigado && total > 0 && (
             <div className="grid min-w-[200px] grid-cols-[auto_auto] items-baseline gap-x-2.5 gap-y-0.5">
               <b className="num font-display text-[22px] font-bold">{feitos.length} de {total}</b>
@@ -81,6 +80,7 @@ export function ProfessorMetaScreen({
               <span className="col-span-2 h-1.5 overflow-hidden rounded-full bg-muted"><i className="block h-full rounded-full bg-emerald-500" style={{ width: `${(feitos.length / total) * 100}%` }} /></span>
             </div>
           )}
+          {seletor && <div className="flex-none">{seletor}</div>}
         </div>
       </header>
       {gestorVendo && <p className="rounded-xl bg-amber-50 px-4 py-2.5 text-[13px] text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">Você está vendo a Meta de {nomeVisto}. O que você registrar aqui fica no seu nome.</p>}
