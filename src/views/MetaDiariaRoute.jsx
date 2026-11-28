@@ -78,12 +78,15 @@ export function MetaDiariaRoute({ db, appUser, listenersActive, dailyGoalProps }
     const meu = typeof appUser?.professorId === 'string' && appUser.professorId.trim() ? appUser.professorId : null;
     return <MetaDoProfessor key={meu || 'sem'} db={db} appUser={appUser} professorId={meu} nomeVisto={firstName(appUser?.name) || 'professor'} gestorVendo={false} listenersActive={listenersActive} />;
   }
-  const seletor = podeVerProf && ativos.length > 0
-    ? <div className="mb-3 flex justify-end"><SeletorDeMeta professores={ativos} valor={prof} onEscolher={(id) => setParams({ prof: id })} /></div>
+  const escolha = podeVerProf && ativos.length > 0
+    ? <SeletorDeMeta professores={ativos} valor={prof} onEscolher={(id) => setParams({ prof: id })} />
     : null;
+  const seletor = escolha ? <div className="mb-3 flex justify-end">{escolha}</div> : null;
   if (prof) {
     const nome = ativos.find((p) => p.id === prof)?.nome || '';
     return <MetaDoProfessor key={prof} db={db} appUser={appUser} professorId={prof} nomeVisto={firstName(nome) || nome} gestorVendo listenersActive={listenersActive} topo={seletor} />;
   }
-  return <>{seletor}<DailyGoalView {...dailyGoalProps} /></>;
+  // Na Meta do consultor o seletor vai dentro da faixa do topo, que fica presa
+  // e cobriria o seletor se ele viesse antes dela.
+  return <DailyGoalView {...dailyGoalProps} seletor={escolha} />;
 }

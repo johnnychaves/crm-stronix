@@ -14,7 +14,8 @@ vi.mock('../../components/dailygoal/professor/ProfessorMetaScreen.jsx', () => ({
     return h('div', { 'data-testid': 'prof', 'data-gestor': String(p.gestorVendo), 'data-nome': p.nomeVisto });
   },
 }));
-vi.mock('../../views/DailyGoalView.jsx', () => ({ DailyGoalView: () => h('div', { 'data-testid': 'consultor' }) }));
+// O seletor vai para dentro da DailyGoalView (faixa do topo), e não antes dela.
+vi.mock('../../views/DailyGoalView.jsx', () => ({ DailyGoalView: ({ seletor }) => h('div', { 'data-testid': 'consultor' }, seletor) }));
 vi.mock('../../hooks/useFaltososDoProfessor.js', () => ({ useFaltososDoProfessor: () => ({ estados: [], leadsById: new Map() }) }));
 vi.mock('../../hooks/useAulasDeHojeDoProfessor.js', () => ({ useAulasDeHojeDoProfessor: () => [] }));
 vi.mock('../../lib/faltosos/contatoDeFaltaWrites.js', () => ({ registrarContatoDeFalta: vi.fn(), marcarJaVoltou: vi.fn() }));
@@ -75,5 +76,6 @@ describe('MetaDiariaRoute', () => {
     await montar(gestor);
     expect(q('consultor')).not.toBeNull();
     expect(document.querySelector('select').value).toBe('');
+    expect(q('consultor').querySelector('select')).not.toBeNull();
   });
 });

@@ -28,7 +28,10 @@ function Bar({ value, max, className, label }) {
   );
 }
 
-export function DiaStrip({ greeting, firstName, todayLabel, live, now, frozenDay, totalSlots, doneSlots, progress, volume, streak }) {
+// `extra` é o seletor "Ver a Meta de" do gestor (módulo Stronix 2.0). Ele mora
+// dentro da faixa porque ela fica presa no topo e sobe sobre o que vem antes
+// dela: em cima da faixa, o seletor ficava coberto pela metade.
+export function DiaStrip({ greeting, firstName, todayLabel, live, now, frozenDay, totalSlots, doneSlots, progress, volume, streak, extra = null }) {
   return (
     <div className="sticky -top-4 z-30 -mx-4 -mt-4 -mb-3 bg-page px-4 pt-7 md:-top-8 md:-mx-8 md:-mt-8 md:px-8 md:pt-11">
       <header className="flex items-center gap-[22px] rounded-[18px] border border-border bg-popover px-6 py-3.5 shadow-[0_10px_28px_-14px_rgba(14,26,64,0.28)] dark:bg-neutral-900 max-[900px]:flex-wrap">
@@ -73,8 +76,10 @@ export function DiaStrip({ greeting, firstName, todayLabel, live, now, frozenDay
           </p>
         )}
 
+        {extra && <div className="ml-auto">{extra}</div>}
+
         {totalSlots > 0 && (
-          <div className="ml-auto min-w-[180px] flex-[0_1_230px]">
+          <div className={cn('min-w-[180px] flex-[0_1_230px]', !extra && 'ml-auto')}>
             <div className="flex items-center gap-3">
               <b className="num font-display text-[32px] font-bold leading-none tracking-[-0.035em]">{progress}%</b>
               <span className="flex flex-col text-[12.5px] leading-tight text-muted-foreground">
