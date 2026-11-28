@@ -65,14 +65,14 @@ describe('ProfileComposer fechado', () => {
   it('é uma linha só, com um ícone para cada modo', async () => {
     await montar();
     expect(botao('Registrar o que aconteceu com Rafael')).not.toBeNull();
-    ['Anotação', 'WhatsApp', 'Ligação', 'Mudar fase', 'Agendar'].forEach((m) => expect(botao(m), m).not.toBeNull());
+    ['Anotação', 'Conversar', 'Ligação', 'Mudar fase', 'Agendar'].forEach((m) => expect(botao(m), m).not.toBeNull());
     expect(caixa()).toBeNull();
   });
 
   it('quem não muda fase não tem o ícone Mudar fase', async () => {
     await montar({ canMudarFase: false });
     expect(botao('Mudar fase')).toBeNull();
-    ['Anotação', 'WhatsApp', 'Ligação', 'Agendar'].forEach((m) => expect(botao(m), m).not.toBeNull());
+    ['Anotação', 'Conversar', 'Ligação', 'Agendar'].forEach((m) => expect(botao(m), m).not.toBeNull());
   });
 
   it('clicar na linha abre a Anotação', async () => {
@@ -102,7 +102,7 @@ describe('ProfileComposer aberto, modos de texto', () => {
 
   it('o WhatsApp não tem atalhos, e o botão diz que envia', async () => {
     await montar();
-    await clicar(botao('WhatsApp'));
+    await clicar(botao('Conversar'));
     expect(botao('Vai pensar')).toBeNull();
     expect(botao('Não atendeu')).toBeNull();
     expect(botao('Enviar pelo WhatsApp')).not.toBeNull();
@@ -142,7 +142,7 @@ describe('ProfileComposer aberto, modos de texto', () => {
 
   it('o WhatsApp de um menor de idade fala com o responsável', async () => {
     await montar({ whatsappName: 'Ana' });
-    await clicar(botao('WhatsApp'));
+    await clicar(botao('Conversar'));
     expect(caixa().getAttribute('placeholder')).toBe('Mensagem para Ana');
   });
 
@@ -313,7 +313,7 @@ describe('ProfileComposer, gravação lenta', () => {
     await montar({ loading: true });
     await abrir();
     expect(caixa().readOnly).toBe(true);
-    ['Anotação', 'WhatsApp', 'Ligação', 'Mudar fase', 'Agendar'].forEach((m) => expect(botao(m).disabled, m).toBe(true));
+    ['Anotação', 'Conversar', 'Ligação', 'Mudar fase', 'Agendar'].forEach((m) => expect(botao(m).disabled, m).toBe(true));
     expect(botao('Vai pensar').disabled).toBe(true);
   });
 });
@@ -365,7 +365,7 @@ describe('ProfileComposer, travas e textos', () => {
 
   it('no WhatsApp a caixa se chama Mensagem e o Ctrl e Enter enviam', async () => {
     await montar();
-    await clicar(botao('WhatsApp'));
+    await clicar(botao('Conversar'));
     expect(document.body.querySelector('label[for="composer-text"]').textContent).toBe('Mensagem');
     expect(document.body.textContent).toContain('Ctrl e Enter enviam');
     await clicar(botao('Anotação'));
@@ -375,7 +375,7 @@ describe('ProfileComposer, travas e textos', () => {
 
   it('o hover da Anotação tem variante no escuro', async () => {
     await montar();
-    await clicar(botao('WhatsApp'));
+    await clicar(botao('Conversar'));
     expect(botao('Anotação').className).toMatch(/dark:hover:/);
   });
 });

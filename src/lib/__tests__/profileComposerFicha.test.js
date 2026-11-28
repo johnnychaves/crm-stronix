@@ -226,7 +226,7 @@ describe('o compositor grava pela ficha', () => {
 
   it('WhatsApp: abre o WhatsApp do lead com o texto e registra o envio', async () => {
     await montar();
-    await clicar(modo('WhatsApp'));
+    await clicar(modo('Conversar'));
     await digitar('Oi, Lucas');
     await clicar(botao('Enviar pelo WhatsApp'));
     expect(abrirJanela).toHaveBeenCalledWith('https://wa.me/5511988887777?text=Oi%2C%20Lucas', '_blank', 'noopener,noreferrer');
@@ -237,12 +237,32 @@ describe('o compositor grava pela ficha', () => {
   it('WhatsApp de um menor: a mensagem vai para o responsável', async () => {
     const menor = { ...LEAD, isMinor: true, guardian: { name: 'Marina Prado', phone: '11977776666', relationship: 'Mãe' } };
     await montar('timeline', { lead: menor });
-    await clicar(modo('WhatsApp'));
+    await clicar(modo('Conversar'));
     expect(caixa().getAttribute('placeholder')).toBe('Mensagem para Marina');
     await digitar('Oi, Marina');
     await clicar(botao('Enviar pelo WhatsApp'));
     expect(abrirJanela).toHaveBeenCalledWith('https://wa.me/5511977776666?text=Oi%2C%20Marina', '_blank', 'noopener,noreferrer');
     expect(logInteraction.mock.calls[0][3].text).toBe('📲 Mensagem WhatsApp enviada: Oi, Marina');
+  });
+
+  it('Conversar pelo Stronizap: abre a conversa com a mensagem pronta e registra igual ao WhatsApp', async () => {
+    await montar('timeline', { appUser: { ...CONSULTOR, tenantZap: true } });
+    await clicar(modo('Conversar'));
+    await clicar(botao('Stronizap'));
+    await digitar('Oi, Lucas');
+    await clicar(botao('Abrir no Stronizap'));
+    expect(abrirJanela).toHaveBeenCalledWith('https://stronizap.com.br/chamar/5511988887777?texto=Oi%2C%20Lucas', '_blank', 'noopener,noreferrer');
+    expect(logInteraction.mock.calls[0][3]).toEqual({ text: '📲 Mensagem WhatsApp enviada: Oi, Lucas', type: 'note' });
+  });
+
+  it('Conversar sem o Stronizap conectado: a opção fica apagada e a mensagem sai pelo WhatsApp', async () => {
+    await montar();
+    await clicar(modo('Conversar'));
+    expect(botao('Stronizap').disabled).toBe(true);
+    expect(botao('Stronizap').className).toContain('grayscale');
+    expect(document.body.textContent).toContain('A academia ainda não conectou o Stronizap.');
+    expect(botao('Abrir no Stronizap')).toBeNull();
+    expect(botao('Enviar pelo WhatsApp')).not.toBeNull();
   });
 
   it('Agendar: do tipo até o Confirmar, grava o agendamento e fecha', async () => {

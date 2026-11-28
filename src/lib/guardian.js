@@ -85,13 +85,14 @@ export function whatsappHref(phone, text) {
 }
 
 // A conversa do número no Stronizap (link /chamar, no ar desde 25/11/2026):
-// ele leva ao login quando preciso, pergunta o canal e abre a conversa. Não
-// aceita texto pronto, então o link de indicação continua no wa.me.
-export function stronizapHref(phone) {
+// ele leva ao login quando preciso, pergunta o canal e abre a conversa.
+export function stronizapHref(phone, text) {
   let n = onlyDigits(phone);
   if (!n) return null;
   if (n.length <= 11) n = `55${n}`;
-  return `https://stronizap.com.br/chamar/${n}`;
+  // O texto entra pronto na caixa de digitar da conversa, sem ser enviado
+  // (o Stronizap lê o ?texto= desde o PR do /chamar com texto).
+  return text ? `https://stronizap.com.br/chamar/${n}?texto=${encodeURIComponent(text)}` : `https://stronizap.com.br/chamar/${n}`;
 }
 
 export function telHref(phone) {

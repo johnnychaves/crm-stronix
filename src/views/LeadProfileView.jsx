@@ -942,15 +942,19 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
 
   // Os gravadores do WhatsApp e da Ligação também recebem o texto do
   // compositor e devolvem true quando gravaram.
-  const handleSendWhatsAppMessage = async (text) => {
+  // `via` é o "Enviar por" do Conversar: 'stronizap' abre a conversa no
+  // Stronizap com a mensagem pronta na caixa, só com a integração conectada.
+  // A linha do tempo grava o mesmo texto nos dois caminhos, que a leitura da
+  // linha do tempo e do último registro reconhecem.
+  const handleSendWhatsAppMessage = async (text, via = 'whatsapp') => {
     if (!canTimeline) { toast.warning('Você não tem permissão para registrar interações neste lead.'); return false; }
     const msg = String(text ?? '').trim();
     if (!msg) { toast.warning('Escreva a mensagem antes de enviar.'); return false; }
-    const href = whatsappHref(contact.phone, msg);
+    const href = via === 'stronizap' && appUser?.tenantZap ? stronizapHref(contact.phone, msg) : whatsappHref(contact.phone, msg);
     if (!href) { toast.warning('Lead sem WhatsApp cadastrado.'); return false; }
     setLoading(true);
     try {
-      // Abre o WhatsApp com a mensagem digitada e registra o envio na linha do tempo.
+      // Abre o WhatsApp (ou o Stronizap) com a mensagem digitada e registra o envio na linha do tempo.
       window.open(href, '_blank', 'noopener,noreferrer');
       await logInteraction(db, lead, appUser, {
         text: `📲 Mensagem WhatsApp enviada: ${msg}`,
@@ -989,8 +993,8 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   };
 
   // O ProfileComposer manda o modo e o texto; cada modo cai no seu gravador.
-  const submitComposerText = (mode, text) => {
-    if (mode === 'whatsapp') return handleSendWhatsAppMessage(text);
+  const submitComposerText = (mode, text, opts) => {
+    if (mode === 'whatsapp') return handleSendWhatsAppMessage(text, opts?.via);
     if (mode === 'call') return handleLogCall(text);
     return saveInteraction(text);
   };
@@ -1572,6 +1576,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
             canMudarFase={canMudarFase}
             loading={loading}
             onSubmitText={submitComposerText}
+            stronizapOn={Boolean(appUser?.tenantZap)}
             renderStatus={() => (
               <>
                 {/* Cliente: só o funil Upgrade. O aviso vem ANTES para a pessoa
