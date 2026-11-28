@@ -180,7 +180,7 @@ export function TomorrowApptRow({ lead, when }) {
 
 const NO_ESPERAS = [];
 
-function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuses, db, usersList, listenersActive = true, seletor = null, vendo = null }) {
+function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuses, db, usersList, listenersActive = true, seletor = null, vendo = null, paramsCtx = null }) {
   // `vendo` é o consultor que o gestor escolheu no "Ver a Meta de" (só para
   // olhar, pedido do Johnny em 27/11/2026). As contas da Meta passam a ser as
   // dele (`meta`), e nada se grava: as ações somem e o dia batido não é marcado.
@@ -189,8 +189,11 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
   const toast = useToast();
   // A categoria aberta vem do endereço: F5 mantém e o link abre na mesma
   // categoria.
-  const paramsCtx = useMemo(() => ({}), []);
-  const [{ cat: filter }, setParams] = useScreenParams('dailyGoal', paramsCtx);
+  // O contexto vem da rota (MetaDiariaRoute): com um vazio, o consultor=
+  // escolhido no "Ver a Meta de" não passava na conferência e sumia na troca
+  // de filtro, e a tela voltava para a Meta de quem está logado.
+  const vazio = useMemo(() => ({}), []);
+  const [{ cat: filter }, setParams] = useScreenParams('dailyGoal', paramsCtx || vazio);
   const setFilter = (v) => setParams({ cat: v });
   // Relógio por minuto, congelado na pausa por inatividade, como a aba Hoje das
   // Rotinas: sem dados chegando, o relógio andando faria atrasada toda tarefa

@@ -34,7 +34,7 @@ function Bar({ value, max, className, label }) {
 export function DiaStrip({ greeting, firstName, todayLabel, live, now, frozenDay, totalSlots, doneSlots, progress, volume, streak, extra = null, titulo = null }) {
   return (
     <div className="sticky -top-4 z-30 -mx-4 -mt-4 -mb-3 bg-page px-4 pt-7 md:-top-8 md:-mx-8 md:-mt-8 md:px-8 md:pt-11">
-      <header className="flex items-center gap-[22px] rounded-[18px] border border-border bg-popover px-6 py-3.5 shadow-[0_10px_28px_-14px_rgba(14,26,64,0.28)] dark:bg-neutral-900 max-[900px]:flex-wrap">
+      <header className="flex min-h-[76px] items-center gap-[22px] rounded-[18px] border border-border bg-popover px-6 py-3.5 shadow-[0_10px_28px_-14px_rgba(14,26,64,0.28)] dark:bg-neutral-900 max-[900px]:flex-wrap">
         <div className="min-w-0">
           <h1 className="font-display text-[21px] font-bold leading-tight tracking-[-0.02em] whitespace-nowrap">{titulo || `${greeting}, ${firstName}`}</h1>
           <p className="flex flex-wrap items-center gap-x-2 text-[12.5px] text-muted-foreground">
@@ -76,10 +76,8 @@ export function DiaStrip({ greeting, firstName, todayLabel, live, now, frozenDay
           </p>
         )}
 
-        {extra && <div className="ml-auto">{extra}</div>}
-
         {totalSlots > 0 && (
-          <div className={cn('min-w-[180px] flex-[0_1_230px]', !extra && 'ml-auto')}>
+          <div className="ml-auto min-w-[180px] flex-[0_1_230px]">
             <div className="flex items-center gap-3">
               <b className="num font-display text-[32px] font-bold leading-none tracking-[-0.035em]">{progress}%</b>
               <span className="flex flex-col text-[12.5px] leading-tight text-muted-foreground">
@@ -90,6 +88,10 @@ export function DiaStrip({ greeting, firstName, todayLabel, live, now, frozenDay
             <div className="mt-2"><Bar value={doneSlots} max={totalSlots} className="bg-brand-600" label="Tarefas feitas hoje" /></div>
           </div>
         )}
+        {/* O seletor fica sempre no canto direito, depois do progresso, com
+            largura fixa: o que vem antes dele muda de tamanho de uma Meta para
+            outra, e ele não pode andar (pedido do Johnny, 27/11/2026). */}
+        {extra && <div className={cn('flex-none', totalSlots > 0 ? '' : 'ml-auto')}>{extra}</div>}
       </header>
     </div>
   );

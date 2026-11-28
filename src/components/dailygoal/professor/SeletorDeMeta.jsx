@@ -10,12 +10,12 @@ export function SeletorDeMeta({ professores = [], consultores = [], valor, onEsc
     return onEscolher({ tipo: tipo === 'c' ? 'consultor' : 'professor', id: resto.join(':') });
   };
   return (
-    <label className="inline-flex items-center gap-2 text-[13px] text-muted-foreground">
+    <label className="inline-flex items-center gap-2 whitespace-nowrap text-[13px] text-muted-foreground">
       Ver a Meta de
       <select
         value={valor || ''}
         onChange={(e) => escolher(e.target.value)}
-        className="h-9 rounded-full border border-brand-200 bg-brand-50 px-3 text-[13px] font-semibold text-brand-700 focus-visible:outline-none focus-visible:anel-foco dark:border-brand-800 dark:bg-brand-950/40 dark:text-brand-200"
+        className="h-9 w-[190px] truncate rounded-full border border-brand-200 bg-brand-50 px-3 text-[13px] font-semibold text-brand-700 focus-visible:outline-none focus-visible:anel-foco dark:border-brand-800 dark:bg-brand-950/40 dark:text-brand-200"
       >
         <option value="">Minha meta</option>
         {grupos ? (
