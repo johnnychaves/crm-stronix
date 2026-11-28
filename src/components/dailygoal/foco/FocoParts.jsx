@@ -103,7 +103,7 @@ const QUEUE_SHOWN = 7;
 // A fila "Depois". A linha inteira é um botão que traz a tarefa para o Agora
 // (decisão do Johnny: sem botão "Fazer agora"). Ela não abre a ficha: quem abre
 // é o nome e o "Abrir ficha" do Agora.
-export function FilaDepois({ items, sla, onPick, whyOf, comEspera = false }) {
+export function FilaDepois({ items, sla, onPick, whyOf, comEspera = false, voltouKey = null }) {
   const [all, setAll] = useState(false);
   const shown = all ? items : items.slice(0, QUEUE_SHOWN);
   return (
@@ -133,7 +133,7 @@ export function FilaDepois({ items, sla, onPick, whyOf, comEspera = false }) {
               const sub = e.slug === FOCO_ESPERA ? trecho : cliente ? e.lead.currentPlanName : e.lead.source;
               const why = whyOf(e);
               return (
-                <li key={e.key} className="border-b border-border last:border-b-0">
+                <li key={e.key} className={cn('border-b border-border last:border-b-0', e.key === voltouKey && 'meta-voltou')}>
                   <button
                     type="button"
                     onClick={() => onPick(e)}

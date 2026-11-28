@@ -58,7 +58,7 @@ const Kbd = ({ children }) => (
 );
 
 export const AgoraCard = forwardRef(function AgoraCard(
-  { entry, why, facts, frase, now, meId, pinned, retorno = false, onUnpin, onSkip, onOutcome, onReschedule, onPostpone, onGoalDone, onWhatsapp, onStronizap, onCall, onRetornoSim, onRetornoNao },
+  { entry, why, facts, frase, now, meId, pinned, entrando = false, retorno = false, onUnpin, onSkip, onOutcome, onReschedule, onPostpone, onGoalDone, onWhatsapp, onStronizap, onCall, onRetornoSim, onRetornoNao },
   ref
 ) {
   const { slug, lead } = entry;
@@ -126,7 +126,7 @@ export const AgoraCard = forwardRef(function AgoraCard(
       ref={ref}
       tabIndex={-1}
       aria-label={`Agora: ${lead.name || 'lead sem nome'}`}
-      className={cn('relative mt-3.5 scroll-mt-48 rounded-[18px] border border-l-[6px] border-border bg-card px-6 pb-4 pt-5 outline-none', tone.edge)}
+      className={cn('relative mt-3.5 scroll-mt-48 rounded-[18px] border border-l-[6px] border-border bg-card px-6 pb-4 pt-5 outline-none', tone.edge, entrando && 'meta-entra')}
     >
       <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2">
         <span className="text-[13px] font-semibold text-brand-700 dark:text-brand-300">Agora</span>
