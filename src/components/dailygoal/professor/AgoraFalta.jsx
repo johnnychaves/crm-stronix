@@ -3,12 +3,13 @@ import { MessageCircle } from 'lucide-react';
 import { cn } from '../../../lib/utils.js';
 import { LeadLink } from '../../nav/AppLink.jsx';
 import { Avatar } from '../../ui/Avatar.jsx';
-import { contactOf, whatsappHref } from '../../../lib/guardian.js';
+import { contactOf, stronizapHref, whatsappHref } from '../../../lib/guardian.js';
+import { ConversarMenu } from '../../profile/ConversarMenu.jsx';
 import { fraseDe, motivoDe, canalTexto, resultadoTexto } from '../../../lib/faltosos/metaProfessor.js';
 
 const BOTAO = 'inline-flex h-9 items-center gap-2 rounded-full border border-border bg-card px-3.5 text-[13px] font-semibold hover:border-brand-200 focus-visible:outline-none focus-visible:anel-foco';
 
-export const AgoraFalta = forwardRef(function AgoraFalta({ estado, lead, hojeDia, now, entrando, ultimo, onRegistrar, onJaVoltou, onPular }, ref) {
+export const AgoraFalta = forwardRef(function AgoraFalta({ estado, lead, hojeDia, now, entrando, ultimo, onRegistrar, onJaVoltou, onPular, zapOn = false }, ref) {
   const f = fraseDe(estado, hojeDia);
   const contato = lead ? contactOf(lead, now) : null;
   const href = contato ? whatsappHref(contato.phone) : null;
@@ -51,7 +52,15 @@ export const AgoraFalta = forwardRef(function AgoraFalta({ estado, lead, hojeDia
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
         <div className="flex flex-wrap gap-2">
-          {href && <a href={href} target="_blank" rel="noopener noreferrer" className={cn(BOTAO, 'text-emerald-700 dark:text-emerald-300')}><MessageCircle aria-hidden="true" className="size-4" />WhatsApp</a>}
+          {href && zapOn && (
+            <ConversarMenu
+              chave={estado.id}
+              triggerClassName={cn(BOTAO, 'text-emerald-700 dark:text-emerald-300')}
+              onWhatsapp={() => window.open(href, '_blank', 'noopener,noreferrer')}
+              onStronizap={() => window.open(stronizapHref(contato.phone), '_blank', 'noopener,noreferrer')}
+            />
+          )}
+          {href && !zapOn && <a href={href} target="_blank" rel="noopener noreferrer" className={cn(BOTAO, 'text-emerald-700 dark:text-emerald-300')}><MessageCircle aria-hidden="true" className="size-4" />WhatsApp</a>}
           <button type="button" onClick={onRegistrar} className="inline-flex h-9 items-center rounded-full bg-brand-600 px-4 text-[13px] font-semibold text-white hover:bg-brand-700 focus-visible:outline-none focus-visible:anel-foco focus-visible:ring-offset-2 focus-visible:ring-offset-background">Registrar contato</button>
           <button type="button" onClick={onJaVoltou} className={BOTAO}>Já voltou</button>
         </div>

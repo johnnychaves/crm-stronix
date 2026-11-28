@@ -40,7 +40,7 @@ const prazoViraODia = () => dgDateKey(new Date(Date.now() + DESFAZER_MS)) !== dg
 export function MetaFocoScreen({
   strip, processedLeads, esperas = NONE, now, sla, renewalCheckpoints, meId, foco, onFoco,
   totalSlots, doneSlots, volume, perfectDay, tomorrow, aside,
-  onOutcome, onReschedule, onPostpone, onOutcomePopup, onConclude, onWhatsapp, onCall,
+  onOutcome, onReschedule, onPostpone, onOutcomePopup, onConclude, onWhatsapp, onStronizap = null, onCall,
 }) {
   const aviso = useConcluirComDesfazer();
   const opts = useMemo(() => ({ sla, renewalCheckpoints }), [sla, renewalCheckpoints]);
@@ -186,6 +186,11 @@ export function MetaFocoScreen({
   const whatsapp = (lead) => {
     if (onWhatsapp(lead) && agora && !isAppt(agora.slug) && !prova) setRetorno({ key: agora.key, via: 'whatsapp', pronto: false });
   };
+  // A saída pelo Stronizap (academia com a integração ligada) abre outra aba,
+  // como o WhatsApp, e arma a mesma pergunta na volta.
+  const stronizap = onStronizap ? (lead) => {
+    if (onStronizap(lead) && agora && !isAppt(agora.slug) && !prova) setRetorno({ key: agora.key, via: 'whatsapp', pronto: false });
+  } : null;
   const ligar = (lead) => {
     if (onCall(lead) && agora && !isAppt(agora.slug) && !prova) setRetorno({ key: agora.key, via: 'ligacao', pronto: false });
   };
@@ -233,6 +238,7 @@ export function MetaFocoScreen({
   const espera = agora?.slug === FOCO_ESPERA;
   useAgoraShortcuts(agora ? {
     w: perguntar || espera || (appt && !passou) ? null : () => whatsapp(agora.lead),
+    z: !stronizap || perguntar || espera || (appt && !passou) ? null : () => stronizap(agora.lead),
     l: perguntar || espera || appt ? null : () => ligar(agora.lead),
     c: perguntar ? retornoSim : espera ? null : appt ? () => onOutcome(agora.lead, 'attended', agora.slug) : () => concluir(agora),
     n: perguntar || !appt ? null : () => onOutcome(agora.lead, 'no_show', agora.slug),
@@ -276,6 +282,7 @@ export function MetaFocoScreen({
           onPostpone={onPostpone}
           onGoalDone={() => concluir(agora)}
           onWhatsapp={whatsapp}
+          onStronizap={stronizap}
           onCall={ligar}
           onRetornoSim={retornoSim}
           onRetornoNao={retornoNao}

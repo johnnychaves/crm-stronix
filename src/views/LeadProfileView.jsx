@@ -21,7 +21,8 @@ import { ACTIONS, can, isGestor, isSeller } from '../lib/acesso.js';
 import { MODULES, hasModule } from '../lib/modules.js';
 import { normalizeAppointmentType, getSafeDateOrNull } from '../lib/dates.js';
 // firstName vira contactFirstName: o arquivo já tem um firstName local, do próprio lead.
-import { contactLabel, contactOf, firstName as contactFirstName, hasPhone, isMinorNow, telHref, whatsappHref } from '../lib/guardian.js';
+import { contactLabel, contactOf, firstName as contactFirstName, hasPhone, isMinorNow, stronizapHref, telHref, whatsappHref } from '../lib/guardian.js';
+import { ConversarMenu } from '../components/profile/ConversarMenu.jsx';
 import { hasLiveContract } from '../lib/contracts.js';
 import { isSystemFunnel } from '../lib/funnels.js';
 import { planProfileNote } from '../lib/profileNote.js';
@@ -105,6 +106,8 @@ function TabCount({ n, active }) {
 // listenersActive é o portão de ociosidade do App, repassado à linha do tempo.
 // Pílula neutra do chip da idade no cabeçalho.
 const CHIP_IDADE = 'inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full bg-muted px-2.5 text-[13px] font-medium text-slate-700 dark:bg-white/10 dark:text-slate-200';
+// O Conversar do cabeçalho, no desenho do Btn brand md que ele substitui.
+const CONVERSAR_FICHA = 'inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand-600 px-3.5 text-[12.5px] font-semibold whitespace-nowrap text-white shadow-sm transition hover:bg-brand-700 active:scale-[.98] outline-none focus-visible:anel-foco focus-visible:ring-offset-2 focus-visible:ring-offset-background';
 
 function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFailed, listenersActive = true, appUser, statuses, tags, lossReasons, usersList, db, funnels, sources = [] }) {
   // Timeline por query própria (G2): histórico COMPLETO do lead (índice #10),
@@ -282,6 +285,13 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     const href = whatsappHref(contact.phone, `Olá ${contactFirstName(contact.name)}`);
     if (!href) { toast.warning('Lead sem WhatsApp cadastrado.'); return; }
     window.open(href);
+  };
+
+  // A conversa no Stronizap (link /chamar), só com a integração ligada.
+  const handleStronizap = () => {
+    const href = stronizapHref(contact.phone);
+    if (!href) { toast.warning('Lead sem WhatsApp cadastrado.'); return; }
+    window.open(href, '_blank', 'noopener,noreferrer');
   };
 
   const handleCall = () => {
@@ -1407,7 +1417,15 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
 
             {/* ações */}
             <div className="ml-auto flex flex-wrap items-center gap-2">
-              <Btn kind="brand" size="md" icon={<MessageCircle size={14} />} onClick={handleWhatsApp}>WhatsApp</Btn>
+              {appUser?.tenantZap ? (
+                <ConversarMenu
+                  triggerClassName={CONVERSAR_FICHA}
+                  onWhatsapp={handleWhatsApp}
+                  onStronizap={handleStronizap}
+                />
+              ) : (
+                <Btn kind="brand" size="md" icon={<MessageCircle size={14} />} onClick={handleWhatsApp}>WhatsApp</Btn>
+              )}
               <Btn kind="secondary" size="md" icon={<Phone size={14} />} onClick={handleCall}>Ligar</Btn>
               {/* O botão Indicações (cadastrar, copiar o link e mandar pelo
                   WhatsApp) é de quem cadastra indicação, e só do cliente. O

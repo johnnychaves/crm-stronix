@@ -12,6 +12,7 @@ import { LeadLink } from '../../nav/AppLink.jsx';
 import { Avatar } from '../../ui/Avatar.jsx';
 import { StronizapBadge } from '../../brand/StronizapMark.jsx';
 import { ContactPhone } from '../../profile/ContactPhone.jsx';
+import { ConversarMenu } from '../../profile/ConversarMenu.jsx';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../ui/dropdown-menu.jsx';
 
 // O bloco Agora da Meta, com a tarefa
@@ -57,7 +58,7 @@ const Kbd = ({ children }) => (
 );
 
 export const AgoraCard = forwardRef(function AgoraCard(
-  { entry, why, facts, frase, now, meId, pinned, retorno = false, onUnpin, onSkip, onOutcome, onReschedule, onPostpone, onGoalDone, onWhatsapp, onCall, onRetornoSim, onRetornoNao },
+  { entry, why, facts, frase, now, meId, pinned, retorno = false, onUnpin, onSkip, onOutcome, onReschedule, onPostpone, onGoalDone, onWhatsapp, onStronizap, onCall, onRetornoSim, onRetornoNao },
   ref
 ) {
   const { slug, lead } = entry;
@@ -99,11 +100,21 @@ export const AgoraCard = forwardRef(function AgoraCard(
     ? (isAppt ? `Lead de ${firstName(lead.consultantName)}` : `Contato passado por ${firstName(lead.consultantName)}`)
     : null;
 
-  const whatsapp = (main) => (
+  // Com o Stronizap ligado na academia, o WhatsApp vira o Conversar, com as
+  // duas saídas no menu (W e Z continuam valendo sem abrir o menu).
+  const whatsapp = (main) => (onStronizap ? (
+    <ConversarMenu
+      chave={entry.key}
+      teclas
+      triggerClassName={cn(ACT, main ? ACT_MAIN : 'text-emerald-700 dark:text-emerald-300')}
+      onWhatsapp={() => onWhatsapp(lead)}
+      onStronizap={() => onStronizap(lead)}
+    />
+  ) : (
     <button type="button" aria-keyshortcuts="W" className={cn(ACT, main ? ACT_MAIN : 'text-emerald-700 dark:text-emerald-300')} onClick={() => onWhatsapp(lead)}>
       <MessageCircle size={15} aria-hidden="true" /> WhatsApp <Kbd>W</Kbd>
     </button>
-  );
+  ));
   const ligar = (main) => (
     <button type="button" aria-keyshortcuts="L" className={cn(ACT, main && ACT_MAIN)} onClick={() => onCall(lead)}>
       <Phone size={15} aria-hidden="true" /> Ligar <Kbd>L</Kbd>

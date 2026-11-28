@@ -56,6 +56,7 @@ function MetaDoProfessor({ db, appUser, professorId, nomeVisto, gestorVendo, lis
         aulas={aulas}
         onRegistrar={onRegistrar}
         onJaVoltou={onJaVoltou}
+        zapOn={Boolean(appUser?.tenantZap)}
       />
     </>
   );
