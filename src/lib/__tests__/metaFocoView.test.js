@@ -121,6 +121,20 @@ describe('Meta nova: o Agora e a fila', () => {
     expect(filaNames()).toEqual(['Carla Contato', 'Davi Atraso', 'Ana Critica']);
   });
 
+  it('os efeitos da troca: o bloco novo entra e a linha de quem saiu acende na fila', () => {
+    render({ leads: LEADS, now: NOW });
+    // Na abertura não há troca, e nada anima.
+    expect(agora().classList.contains('meta-entra')).toBe(false);
+    expect(host.querySelector('.meta-voltou')).toBeNull();
+    click(button('Carla Contato'));
+    expect(agora().classList.contains('meta-entra')).toBe(true);
+    expect(host.querySelector('.meta-voltou').textContent).toContain('Ana Critica');
+    click(button('Pular por agora'));
+    expect(agoraName()).not.toBe('Carla Contato');
+    expect(agora().classList.contains('meta-entra')).toBe(true);
+    expect(host.querySelector('.meta-voltou').textContent).toContain('Carla Contato');
+  });
+
   it('pular vale só no dia: no dia seguinte a tarefa volta ao lugar dela na fila', () => {
     render({ leads: LEADS, now: NOW });
     click(button('Pular por agora'));

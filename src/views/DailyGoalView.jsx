@@ -180,7 +180,7 @@ export function TomorrowApptRow({ lead, when }) {
 
 const NO_ESPERAS = [];
 
-function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuses, db, usersList, listenersActive = true }) {
+function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuses, db, usersList, listenersActive = true, seletor = null }) {
   const toast = useToast();
   // A categoria aberta vem do endereço: F5 mantém e o link abre na mesma
   // categoria.
@@ -1044,6 +1044,7 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
         strip={{
           greeting, firstName, todayLabel, now, totalSlots, doneSlots, progress, volume,
           live: listenersActive,
+          extra: seletor,
           frozenDay: listenersActive ? '' : frozenDayText(now, liveNow),
           streak: ritmoMes.streak,
         }}

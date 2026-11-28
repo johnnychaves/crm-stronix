@@ -143,9 +143,20 @@ export function MetaFocoScreen({
   }, [retorno]);
   const perguntar = Boolean(retorno?.pronto && agora && !isAppt(agora.slug) && agora.slug !== FOCO_ESPERA);
 
+  // Os efeitos da troca, iguais aos da Meta do professor (pedido do Johnny,
+  // 27/11/2026): quando a pessoa troca a tarefa do Agora (linha da fila, Pular,
+  // "Voltar à ordem sugerida" e "Ir agora"), o bloco novo entra e a linha de
+  // quem saiu acende na fila. Concluir não anima: a tarefa some da lista.
+  // O `n` remonta o AgoraCard, para a entrada tocar de novo a cada troca.
+  const [troca, setTroca] = useState(null);
+  const trocar = (next) => {
+    if (agora && next.key !== agora.key) setTroca((t) => ({ saiu: agora.key, n: (t?.n || 0) + 1 }));
+    setSel(next);
+  };
+
   const pick = (e) => {
     focusAgora.current = true;
-    setSel({ key: e.key, pinned: true, foco });
+    trocar({ key: e.key, pinned: true, foco });
   };
   const skipAgora = () => {
     if (!agora) return;
@@ -156,10 +167,15 @@ export function MetaFocoScreen({
     if (agora.slug === FOCO_ESPERA) {
       setDispensa({ day: today, map: new Map(dispensadas || []).set(esperaDispensaKey(agora), 'espera') });
     }
+    // A chave nula deixa a ordem escolher; a troca vale se o Agora muda.
+    const prox = list.find((e) => e.key !== agora.key);
+    if (prox) setTroca((t) => ({ saiu: agora.key, n: (t?.n || 0) + 1 }));
     setSel({ key: null, pinned: false, foco });
   };
   const unpin = () => {
     focusAgora.current = true;
+    const primeira = list[0];
+    if (primeira && agora && primeira.key !== agora.key) setTroca((t) => ({ saiu: agora.key, n: (t?.n || 0) + 1 }));
     setSel({ key: null, pinned: false, foco });
   };
   const showAll = () => {
@@ -169,7 +185,7 @@ export function MetaFocoScreen({
   const irAgora = () => {
     if (!urgente) return;
     focusAgora.current = true;
-    setSel({ key: urgente.key, pinned: false, foco });
+    trocar({ key: urgente.key, pinned: false, foco });
   };
   const agoraNao = () => {
     if (!urgente) return;
@@ -266,6 +282,8 @@ export function MetaFocoScreen({
           />
         )}
         <AgoraCard
+          key={troca?.n || 0}
+          entrando={Boolean(troca)}
           ref={agoraRef}
           entry={agora}
           why={whyOf(agora, now, opts)}
@@ -287,7 +305,7 @@ export function MetaFocoScreen({
           onRetornoSim={retornoSim}
           onRetornoNao={retornoNao}
         />
-        <FilaDepois items={fila} sla={sla} onPick={pick} whyOf={(e) => whyOf(e, now, opts)} comEspera={esperas.length > 0} />
+        <FilaDepois items={fila} sla={sla} onPick={pick} voltouKey={troca?.saiu} whyOf={(e) => whyOf(e, now, opts)} comEspera={esperas.length > 0} />
       </>
     );
   }
