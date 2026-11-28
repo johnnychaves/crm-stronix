@@ -52,15 +52,14 @@ export const AgoraFalta = forwardRef(function AgoraFalta({ estado, lead, hojeDia
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
         <div className="flex flex-wrap gap-2">
-          {href && zapOn && (
+          {href && (
             <ConversarMenu
               chave={estado.id}
               triggerClassName={cn(BOTAO, 'text-emerald-700 dark:text-emerald-300')}
               onWhatsapp={() => window.open(href, '_blank', 'noopener,noreferrer')}
-              onStronizap={() => window.open(stronizapHref(contato.phone), '_blank', 'noopener,noreferrer')}
+              onStronizap={zapOn ? () => window.open(stronizapHref(contato.phone), '_blank', 'noopener,noreferrer') : null}
             />
           )}
-          {href && !zapOn && <a href={href} target="_blank" rel="noopener noreferrer" className={cn(BOTAO, 'text-emerald-700 dark:text-emerald-300')}><MessageCircle aria-hidden="true" className="size-4" />WhatsApp</a>}
           <button type="button" onClick={onRegistrar} className="inline-flex h-9 items-center rounded-full bg-brand-600 px-4 text-[13px] font-semibold text-white hover:bg-brand-700 focus-visible:outline-none focus-visible:anel-foco focus-visible:ring-offset-2 focus-visible:ring-offset-background">Registrar contato</button>
           <button type="button" onClick={onJaVoltou} className={BOTAO}>Já voltou</button>
         </div>

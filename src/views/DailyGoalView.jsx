@@ -180,7 +180,12 @@ export function TomorrowApptRow({ lead, when }) {
 
 const NO_ESPERAS = [];
 
-function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuses, db, usersList, listenersActive = true, seletor = null }) {
+function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuses, db, usersList, listenersActive = true, seletor = null, vendo = null }) {
+  // `vendo` é o consultor que o gestor escolheu no "Ver a Meta de" (só para
+  // olhar, pedido do Johnny em 27/11/2026). As contas da Meta passam a ser as
+  // dele (`meta`), e nada se grava: as ações somem e o dia batido não é marcado.
+  const meta = vendo || appUser;
+  const soOlhar = Boolean(vendo);
   const toast = useToast();
   // A categoria aberta vem do endereço: F5 mantém e o link abre na mesma
   // categoria.
@@ -234,15 +239,15 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
   // Histórico persistido: 1 doc por dia que o consultor zerou a meta.
   const [dailyHistory, setDailyHistory] = useState([]);
   useEffect(() => {
-    if (!appUser?.authUid) return;
+    if (!meta?.authUid) return;
     const ref = collection(db, 'artifacts', appId, 'public', 'data', DAILY_GOAL_HISTORY_PATH);
     const unsub = onSnapshot(
-      query(ref, where('consultantAuthUid', '==', appUser.authUid)),
+      query(ref, where('consultantAuthUid', '==', meta.authUid)),
       (snap) => setDailyHistory(snap.docs.map(d => d.data())),
       () => { /* regras ainda não publicadas → mantém vazio sem quebrar a UI */ }
     );
     return () => unsub();
-  }, [db, appUser]);
+  }, [db, meta]);
 
   // Grava (idempotente) a marca de "meta batida hoje". ID determinístico
   // por (consultor, dia) → setDoc/merge não duplica. volumeCount/volumeTarget
@@ -267,16 +272,16 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
   // minuto do relógio.
   const interactionsByLead = useMemo(() => buildInteractionsByLead(interactions), [interactions]);
   const processedLeads = useMemo(
-    () => computeDailyGoalSlots(leads, interactionsByLead, appUser.id, renewalCheckpoints, renewalGraceDays, now),
-    [leads, appUser, interactionsByLead, now, renewalCheckpoints, renewalGraceDays]
+    () => computeDailyGoalSlots(leads, interactionsByLead, meta.id, renewalCheckpoints, renewalGraceDays, now),
+    [leads, meta, interactionsByLead, now, renewalCheckpoints, renewalGraceDays]
   );
   // "Respondeu, aguardando você" (PR 4 da Parte B): quem escreveu no WhatsApp e
   // ficou sem resposta, nos leads de que sou dono. Só para quem vende. Nasce
   // só da marca do lead (awaitingReplySince), então sem o Stronizap a lista é
   // vazia e a tela fica igual. Fora do computeDailyGoalSlots: não conta no dia.
   const esperas = useMemo(
-    () => (isSeller(appUser) ? awaitingEntriesOf(leads, appUser.id, now) : NO_ESPERAS),
-    [leads, appUser, now]
+    () => (isSeller(meta) ? awaitingEntriesOf(leads, meta.id, now) : NO_ESPERAS),
+    [leads, meta, now]
   );
 
   // Agenda do dia (painel compartilhado): todas as visitas e aulas de HOJE na
@@ -302,8 +307,8 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
   // agendaLeads: os agendamentos de hoje, lidos ao vivo no App (useDayAgenda),
   // que também põe na Meta quem tem visita ou aula hoje, em qualquer fase.
   const dayAgenda = useMemo(
-    () => computeDayAgenda({ liveLeads: leads, agendaLeads, usersById, viewerId: appUser.id, now }),
-    [leads, agendaLeads, usersById, appUser, now]
+    () => computeDayAgenda({ liveLeads: leads, agendaLeads, usersById, viewerId: meta.id, now }),
+    [leads, agendaLeads, usersById, meta, now]
   );
 
   // Agenda de hoje. Linha sem desfecho: grava o escolhido. Linha já marcada:
@@ -391,12 +396,12 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
   // ligações/mensagens e leads novos (ver lib/dailyGoal.js).
   // Cota de prospecção é 100% individual: vem do doc do usuário, não do
   // config da academia. volumeTargetFor ignora qualquer 2º argumento.
-  const volumeTarget = volumeTargetFor(appUser);
+  const volumeTarget = volumeTargetFor(meta);
   const volumeData = useMemo(() => {
     if (!volumeTarget) return null;
     void todayKey; // vira com o dia, como o resto da Meta
-    return computeDailyVolume(leads, interactions, appUser.id, appUser.authUid);
-  }, [leads, interactions, appUser, volumeTarget, todayKey]);
+    return computeDailyVolume(leads, interactions, meta.id, meta.authUid);
+  }, [leads, interactions, meta, volumeTarget, todayKey]);
   const volumeCount = volumeData?.total || 0;
   // Dia perfeito ⚡ = pendências zeradas E volume batido (não trava o ritmo).
   const perfectDay = progress === 100 && total > 0 && volumeTarget > 0 && volumeCount >= volumeTarget;
@@ -406,9 +411,9 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
     if (!volumeTarget) return null;
     void todayKey;
     const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
-    const { total: mTotal } = computeVolumeInRange(leads, interactions, appUser.id, appUser.authUid, monthStart, null, metaWeekdays);
+    const { total: mTotal } = computeVolumeInRange(leads, interactions, meta.id, meta.authUid, monthStart, null, metaWeekdays);
     return { total: mTotal, target: volumeTarget * countMetaDaysInMonth(metaWeekdays) };
-  }, [leads, interactions, appUser, volumeTarget, metaWeekdays, todayKey]);
+  }, [leads, interactions, meta, volumeTarget, metaWeekdays, todayKey]);
 
   // Para o "Feitos hoje" da lateral: leads com AO MENOS uma categoria
   // concluída. Lead pendente em outra categoria continua na fila do Foco.
@@ -416,6 +421,8 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
 
 
   useEffect(() => {
+    // Olhando a Meta de um consultor, nada se grava e não há confete.
+    if (soOlhar) return;
     if (progress === 100 && total > 0) {
       // Confete SÓ em transição real durante a sessão (ex.: 90% → 100%).
       // prevProgress null = primeiro cálculo após montar — quem reabre a tela
@@ -431,7 +438,7 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
       recordGoalHit(volumeCount, volumeTarget);
     }
     prevProgress.current = progress;
-  }, [progress, total, volumeCount, volumeTarget, recordGoalHit]);
+  }, [soOlhar, progress, total, volumeCount, volumeTarget, recordGoalHit]);
 
   // Abre o pop-up de desfecho da categoria, já no desfecho pedido (o Reagendar
   // do card passa 'reagendar'). Devolve false quando a categoria não tem
@@ -948,8 +955,8 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
   // (regra em tomorrowAppointmentsOf, src/lib/dailyGoal.js).
   const tomorrowAppts = useMemo(() => {
     void todayKey; // "amanhã" também vira com o dia (A5)
-    return tomorrowAppointmentsOf(leads, appUser.id);
-  }, [leads, appUser, todayKey]);
+    return tomorrowAppointmentsOf(leads, meta.id);
+  }, [leads, meta, todayKey]);
 
   const greeting = useMemo(() => {
     const h = now.getHours();
@@ -962,7 +969,7 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
     now.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }),
   [now]);
 
-  const firstName = (appUser.name || '').split(' ')[0] || 'consultor';
+  const firstName = (meta.name || '').split(' ')[0] || 'consultor';
 
   const modals = (
     <>
@@ -1045,6 +1052,7 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
           greeting, firstName, todayLabel, now, totalSlots, doneSlots, progress, volume,
           live: listenersActive,
           extra: seletor,
+          titulo: soOlhar ? `Meta diária de ${firstName}` : null,
           frozenDay: listenersActive ? '' : frozenDayText(now, liveNow),
           streak: ritmoMes.streak,
         }}
@@ -1053,7 +1061,8 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
         now={now}
         sla={slaOverdueDays}
         renewalCheckpoints={renewalCheckpoints}
-        meId={appUser.id}
+        meId={meta.id}
+        somenteLeitura={soOlhar ? firstName : null}
         foco={filter}
         onFoco={setFilter}
         totalSlots={totalSlots}
@@ -1076,7 +1085,7 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
         onCall={handleCall}
         aside={(
           <>
-            <AgendaHoje rows={dayAgenda.rows} now={now} savingId={savingAgendaId} onMark={markAgendaPresence} />
+            <AgendaHoje rows={dayAgenda.rows} now={now} savingId={savingAgendaId} onMark={soOlhar ? null : markAgendaPresence} />
             <RitmoCard ritmo={ritmoMes} expected={expectedHits} volumeMonth={volumeMonth} />
             {isMetaParticipant(appUser) && (
               <RoutineCard db={db} appUser={appUser} enabled={listenersActive} now={now} metaWeekdays={metaWeekdays} />
@@ -1101,8 +1110,8 @@ function DailyGoalView({ leads, agendaLeads = [], interactions, appUser, statuse
                     lead={lead}
                     now={now}
                     saving={savingAgendaId === lead.id}
-                    onReschedule={(l, s) => setRescheduleTarget({ lead: l, categorySlug: s })}
-                    onCorrect={handleCorrectOutcome}
+                    onReschedule={soOlhar ? undefined : (l, s) => setRescheduleTarget({ lead: l, categorySlug: s })}
+                    onCorrect={soOlhar ? undefined : handleCorrectOutcome}
                   />
                 )}
               />

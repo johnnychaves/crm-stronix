@@ -58,7 +58,7 @@ const Kbd = ({ children }) => (
 );
 
 export const AgoraCard = forwardRef(function AgoraCard(
-  { entry, why, facts, frase, now, meId, pinned, entrando = false, retorno = false, onUnpin, onSkip, onOutcome, onReschedule, onPostpone, onGoalDone, onWhatsapp, onStronizap, onCall, onRetornoSim, onRetornoNao },
+  { entry, why, facts, frase, now, meId, pinned, entrando = false, somenteLeitura = false, retorno = false, onUnpin, onSkip, onOutcome, onReschedule, onPostpone, onGoalDone, onWhatsapp, onStronizap, onCall, onRetornoSim, onRetornoNao },
   ref
 ) {
   const { slug, lead } = entry;
@@ -100,21 +100,18 @@ export const AgoraCard = forwardRef(function AgoraCard(
     ? (isAppt ? `Lead de ${firstName(lead.consultantName)}` : `Contato passado por ${firstName(lead.consultantName)}`)
     : null;
 
-  // Com o Stronizap ligado na academia, o WhatsApp vira o Conversar, com as
-  // duas saídas no menu (W e Z continuam valendo sem abrir o menu).
-  const whatsapp = (main) => (onStronizap ? (
+  // O WhatsApp é o Conversar, com as duas saídas no menu. Sem o Stronizap
+  // conectado, a opção dele aparece apagada (onStronizap null). W e Z abrem
+  // direto, sem o menu.
+  const whatsapp = (main) => (
     <ConversarMenu
       chave={entry.key}
       teclas
       triggerClassName={cn(ACT, main ? ACT_MAIN : 'text-emerald-700 dark:text-emerald-300')}
       onWhatsapp={() => onWhatsapp(lead)}
-      onStronizap={() => onStronizap(lead)}
+      onStronizap={onStronizap ? () => onStronizap(lead) : null}
     />
-  ) : (
-    <button type="button" aria-keyshortcuts="W" className={cn(ACT, main ? ACT_MAIN : 'text-emerald-700 dark:text-emerald-300')} onClick={() => onWhatsapp(lead)}>
-      <MessageCircle size={15} aria-hidden="true" /> WhatsApp <Kbd>W</Kbd>
-    </button>
-  ));
+  );
   const ligar = (main) => (
     <button type="button" aria-keyshortcuts="L" className={cn(ACT, main && ACT_MAIN)} onClick={() => onCall(lead)}>
       <Phone size={15} aria-hidden="true" /> Ligar <Kbd>L</Kbd>
@@ -187,7 +184,7 @@ export const AgoraCard = forwardRef(function AgoraCard(
         </div>
       </div>
 
-      {retorno ? (
+      {somenteLeitura ? null : retorno ? (
         // Na volta do WhatsApp ou da ligação, a pergunta toma o lugar das ações.
         <div role="group" aria-label="Confirmar contato" className="mt-5 flex flex-wrap items-center gap-3 rounded-[14px] bg-muted px-4 py-3">
           <p className="mr-auto text-[14.5px] font-medium">Conversou com {firstName(lead.name) || 'o lead'}?</p>

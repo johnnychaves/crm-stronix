@@ -77,4 +77,16 @@ describe('ConversarMenu', () => {
     await abrir();
     expect(document.body.querySelectorAll('[role="menuitem"] kbd')).toHaveLength(0);
   });
+
+  it('sem o Stronizap conectado, a opção aparece apagada e não chama nada', async () => {
+    const onWhatsapp = vi.fn();
+    await montar({ onWhatsapp, onStronizap: null, teclas: true });
+    await abrir();
+    const zap = item('Stronizap');
+    expect(zap.getAttribute('aria-disabled')).toBe('true');
+    expect(zap.className).toContain('grayscale');
+    expect(zap.textContent).toContain('A academia ainda não conectou o Stronizap');
+    expect(zap.querySelector('kbd')).toBeNull();
+    expect(item('WhatsApp')).toBeTruthy();
+  });
 });

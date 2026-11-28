@@ -41,6 +41,7 @@ export function MetaFocoScreen({
   strip, processedLeads, esperas = NONE, now, sla, renewalCheckpoints, meId, foco, onFoco,
   totalSlots, doneSlots, volume, perfectDay, tomorrow, aside,
   onOutcome, onReschedule, onPostpone, onOutcomePopup, onConclude, onWhatsapp, onStronizap = null, onCall,
+  somenteLeitura = null,
 }) {
   const aviso = useConcluirComDesfazer();
   const opts = useMemo(() => ({ sla, renewalCheckpoints }), [sla, renewalCheckpoints]);
@@ -252,7 +253,9 @@ export function MetaFocoScreen({
   const passou = Boolean(apptAt && apptAt < now);
   // Na espera só o S vale: o Agora dela não tem WhatsApp, Ligar nem Concluir.
   const espera = agora?.slug === FOCO_ESPERA;
-  useAgoraShortcuts(agora ? {
+  // Olhando a Meta de um consultor (somenteLeitura é o primeiro nome dele), só
+  // o S vale: nenhuma tecla grava nada.
+  useAgoraShortcuts(agora && somenteLeitura ? { s: skipAgora } : agora ? {
     w: perguntar || espera || (appt && !passou) ? null : () => whatsapp(agora.lead),
     z: !stronizap || perguntar || espera || (appt && !passou) ? null : () => stronizap(agora.lead),
     l: perguntar || espera || appt ? null : () => ligar(agora.lead),
@@ -262,7 +265,7 @@ export function MetaFocoScreen({
   } : null);
 
   const fila = agora ? list.filter((e) => e.key !== agora.key) : [];
-  const morning = doneSlots === 0 ? morningText(entries.filter((e) => e.slug !== FOCO_ESPERA)) : '';
+  const morning = doneSlots === 0 && !somenteLeitura ? morningText(entries.filter((e) => e.slug !== FOCO_ESPERA)) : '';
 
   let body;
   // Sem tarefa da meta, a espera ainda precisa aparecer.
@@ -293,6 +296,7 @@ export function MetaFocoScreen({
           meId={meId}
           pinned={pinned}
           retorno={perguntar}
+          somenteLeitura={Boolean(somenteLeitura)}
           onUnpin={unpin}
           onSkip={skipAgora}
           onOutcome={onOutcome}
@@ -313,6 +317,11 @@ export function MetaFocoScreen({
   return (
     <div className="relative flex flex-col font-sans">
       <DiaStrip {...strip} />
+      {somenteLeitura && (
+        <p className="mt-3 rounded-xl bg-amber-50 px-4 py-2.5 text-[13px] text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+          Você está vendo a Meta de {somenteLeitura}. É só para olhar: as tarefas continuam com {somenteLeitura}.
+        </p>
+      )}
       {morning && <p className="mt-3 px-1 text-[13.5px] text-muted-foreground">{morning}</p>}
       {/* O leitor de tela ouve a tarefa nova quando o Agora troca, e a faixa de
           urgência quando ela aparece. Nas faixas de visita, aula e contato a

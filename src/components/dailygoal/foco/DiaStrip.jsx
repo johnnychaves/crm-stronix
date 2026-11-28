@@ -31,12 +31,12 @@ function Bar({ value, max, className, label }) {
 // `extra` é o seletor "Ver a Meta de" do gestor (módulo Stronix 2.0). Ele mora
 // dentro da faixa porque ela fica presa no topo e sobe sobre o que vem antes
 // dela: em cima da faixa, o seletor ficava coberto pela metade.
-export function DiaStrip({ greeting, firstName, todayLabel, live, now, frozenDay, totalSlots, doneSlots, progress, volume, streak, extra = null }) {
+export function DiaStrip({ greeting, firstName, todayLabel, live, now, frozenDay, totalSlots, doneSlots, progress, volume, streak, extra = null, titulo = null }) {
   return (
     <div className="sticky -top-4 z-30 -mx-4 -mt-4 -mb-3 bg-page px-4 pt-7 md:-top-8 md:-mx-8 md:-mt-8 md:px-8 md:pt-11">
       <header className="flex items-center gap-[22px] rounded-[18px] border border-border bg-popover px-6 py-3.5 shadow-[0_10px_28px_-14px_rgba(14,26,64,0.28)] dark:bg-neutral-900 max-[900px]:flex-wrap">
         <div className="min-w-0">
-          <h1 className="font-display text-[21px] font-bold leading-tight tracking-[-0.02em] whitespace-nowrap">{greeting}, {firstName}</h1>
+          <h1 className="font-display text-[21px] font-bold leading-tight tracking-[-0.02em] whitespace-nowrap">{titulo || `${greeting}, ${firstName}`}</h1>
           <p className="flex flex-wrap items-center gap-x-2 text-[12.5px] text-muted-foreground">
             <span className="first-letter:uppercase">{todayLabel}</span>
             <span className="inline-flex items-center gap-1.5" data-relogio={live ? 'ao-vivo' : 'parado'}>

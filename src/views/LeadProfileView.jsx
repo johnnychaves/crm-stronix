@@ -1417,15 +1417,11 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
 
             {/* ações */}
             <div className="ml-auto flex flex-wrap items-center gap-2">
-              {appUser?.tenantZap ? (
-                <ConversarMenu
-                  triggerClassName={CONVERSAR_FICHA}
-                  onWhatsapp={handleWhatsApp}
-                  onStronizap={handleStronizap}
-                />
-              ) : (
-                <Btn kind="brand" size="md" icon={<MessageCircle size={14} />} onClick={handleWhatsApp}>WhatsApp</Btn>
-              )}
+              <ConversarMenu
+                triggerClassName={CONVERSAR_FICHA}
+                onWhatsapp={handleWhatsApp}
+                onStronizap={appUser?.tenantZap ? handleStronizap : null}
+              />
               <Btn kind="secondary" size="md" icon={<Phone size={14} />} onClick={handleCall}>Ligar</Btn>
               {/* O botão Indicações (cadastrar, copiar o link e mandar pelo
                   WhatsApp) é de quem cadastra indicação, e só do cliente. O

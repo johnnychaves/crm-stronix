@@ -239,6 +239,12 @@ const dataDoPeriodo = (campo) => param(
 const ativoNaMeta = (ctx, id) => Boolean(ctx.podeVerProf && id && (ctx.professoresAtivos || []).some((p) => p?.id === id));
 const profMeta = param('prof', (raw, ctx) => (ativoNaMeta(ctx, raw) ? raw : null), (v, ctx) => (ativoNaMeta(ctx, v) ? v : null));
 
+// Consultor visto pelo gestor na Meta diária, só para olhar (pedido do Johnny,
+// 27/11/2026). Vale em toda academia, sem o módulo: o que depende do Stronix
+// 2.0 é só o professor. Ausente é a Meta do próprio gestor.
+const consultorNaMeta = (ctx, id) => Boolean(ctx.podeVerConsultor && id && (ctx.consultoresAtivos || []).some((c) => c?.id === id));
+const consultorMeta = param('consultor', (raw, ctx) => (consultorNaMeta(ctx, raw) ? raw : null), (v, ctx) => (consultorNaMeta(ctx, v) ? v : null));
+
 const cat = param(
   'cat',
   (raw) => (own(CAT_FOCO_POR_CODIGO, raw) ? CAT_FOCO_POR_CODIGO[raw] : 'all'),
@@ -413,7 +419,7 @@ const TABELA = {
   leads: { funil: funilDaTela, fase, resp, origem, ordem: ordemDosLeads },
   aulas: { dia, de: dataDoPeriodo('de'), ate: dataDoPeriodo('ate'), resp, prof },
   visitas: { dia, de: dataDoPeriodo('de'), ate: dataDoPeriodo('ate'), resp },
-  dailyGoal: { cat, prof: profMeta },
+  dailyGoal: { cat, prof: profMeta, consultor: consultorMeta },
   professores: { trilha: trilhaDaLista, ciclo },
   professorPerfil: { ciclo },
   consultorPerfil: { ciclo },

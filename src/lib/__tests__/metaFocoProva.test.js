@@ -72,6 +72,13 @@ function render(props) {
 const agora = () => host.querySelector('article[aria-label^="Agora"]');
 const button = (text, scope = host) => [...scope.querySelectorAll('button')].find((b) => b.textContent.includes(text));
 const click = (el) => act(() => { el.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+// O WhatsApp mora no menu Conversar (27/11/2026): abre o menu e escolhe a opção.
+const whatsappDoMenu = () => {
+  const gatilho = button('Conversar', agora());
+  act(() => { gatilho.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); });
+  const item = [...document.body.querySelectorAll('[role="menuitem"]')].find((el) => el.textContent.includes('WhatsApp'));
+  act(() => { item.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+};
 const tecla = (key) => act(() => {
   document.body.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
 });
@@ -94,7 +101,7 @@ describe('Meta: a prova do Stronizap no bloco Agora', () => {
     expect(concluir.getAttribute('aria-keyshortcuts')).toBe('C');
     // Um Concluir só: a fileira de baixo fica com WhatsApp, Ligar e Reagendar.
     expect(agora().querySelectorAll('[aria-keyshortcuts="C"]')).toHaveLength(1);
-    expect(button('WhatsApp', agora())).toBeDefined();
+    expect(button('Conversar', agora())).toBeDefined();
     expect(button('Ligar', agora())).toBeDefined();
     expect(button('Reagendar', agora())).toBeDefined();
     expect(agora().textContent).not.toContain('Ver conversa');
@@ -116,7 +123,7 @@ describe('Meta: a prova do Stronizap no bloco Agora', () => {
 
   it('com prova, a volta do WhatsApp não pergunta', () => {
     render({ leads: [comProva(CONTATO)], now: NOW });
-    click(button('WhatsApp', agora()));
+    whatsappDoMenu();
     expect(handlers.onWhatsapp).toHaveBeenCalled();
     mudarAba('hidden');
     mudarAba('visible');
@@ -126,7 +133,7 @@ describe('Meta: a prova do Stronizap no bloco Agora', () => {
 
   it('a prova que chega com a pergunta aberta toma o lugar dela, e o foco vai para o Concluir da faixa', () => {
     render({ leads: [CONTATO], now: NOW });
-    click(button('WhatsApp', agora()));
+    whatsappDoMenu();
     mudarAba('hidden');
     mudarAba('visible');
     expect(pergunta()).not.toBeNull();
@@ -139,7 +146,7 @@ describe('Meta: a prova do Stronizap no bloco Agora', () => {
   it('a pergunta aberta para um lead não leva o foco ao Concluir de outro lead que chega com prova', () => {
     const DAVI = lead('d', 'Davi Contato', 'contato_hoje', { nextFollowUp: at(18, 30), nextFollowUpType: 'Mensagem' });
     render({ leads: [CONTATO], now: NOW });
-    click(button('WhatsApp', agora()));
+    whatsappDoMenu();
     mudarAba('hidden');
     mudarAba('visible');
     expect(pergunta()).not.toBeNull();
@@ -198,7 +205,7 @@ describe('Quem não usa o Stronizap: o Agora fica como hoje', () => {
 
   it('sem prova, a pergunta continua na volta do WhatsApp', () => {
     render({ leads: [{ ...CONTATO, zapProofToday: null }], now: NOW });
-    click(button('WhatsApp', agora()));
+    whatsappDoMenu();
     mudarAba('hidden');
     mudarAba('visible');
     expect(pergunta().textContent).toContain('Conversou com Carla?');

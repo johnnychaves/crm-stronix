@@ -15,7 +15,7 @@ vi.mock('../../components/dailygoal/professor/ProfessorMetaScreen.jsx', () => ({
   },
 }));
 // O seletor vai para dentro da DailyGoalView (faixa do topo), e não antes dela.
-vi.mock('../../views/DailyGoalView.jsx', () => ({ DailyGoalView: ({ seletor }) => h('div', { 'data-testid': 'consultor' }, seletor) }));
+vi.mock('../../views/DailyGoalView.jsx', () => ({ DailyGoalView: ({ seletor, vendo }) => h('div', { 'data-testid': 'consultor', 'data-vendo': vendo?.id || '' }, seletor) }));
 vi.mock('../../hooks/useFaltososDoProfessor.js', () => ({ useFaltososDoProfessor: () => ({ estados: [], leadsById: new Map() }) }));
 vi.mock('../../hooks/useAulasDeHojeDoProfessor.js', () => ({ useAulasDeHojeDoProfessor: () => [] }));
 vi.mock('../../lib/faltosos/contatoDeFaltaWrites.js', () => ({ registrarContatoDeFalta: vi.fn(), marcarJaVoltou: vi.fn() }));
@@ -28,6 +28,12 @@ const modulos = ['faltosos'];
 const gestor = { id: 'g', role: 'admin', tenantModules: modulos };
 const consultor = { id: 'c', role: 'consultant', tenantModules: modulos };
 const professor = { id: 'u', role: 'professor', professorId: 'p2', name: 'Gilson Souza', tenantModules: modulos };
+const usersList = [
+  { id: 'g', role: 'admin', name: 'Gestora' },
+  { id: 'c1', role: 'consultant', name: 'Ana Souza' },
+  { id: 'c2', role: 'consultant', name: 'Bruno Lima', active: false },
+  professor,
+];
 
 let root = null;
 async function montar(appUser, search = '') {
@@ -37,7 +43,7 @@ async function montar(appUser, search = '') {
   await act(async () => {
     root.render(h(MemoryRouter, { initialEntries: [`/x/meta-diaria${search}`] },
       h(GeneralConfigContext.Provider, { value: { professores, faltosos: null } },
-        h(MetaDiariaRoute, { db: {}, appUser, listenersActive: true, dailyGoalProps: {} }))));
+        h(MetaDiariaRoute, { db: {}, appUser, listenersActive: true, dailyGoalProps: { usersList } }))));
   });
 }
 afterEach(async () => { await act(async () => { root?.unmount(); }); document.body.innerHTML = ''; root = null; });
@@ -53,7 +59,7 @@ describe('MetaDiariaRoute', () => {
     await montar(gestor, '?prof=p1');
     expect(q('prof').dataset.gestor).toBe('true');
     expect(q('prof').dataset.nome).toBe('Heloísa');
-    expect(document.querySelector('select').value).toBe('p1');
+    expect(document.querySelector('select').value).toBe('p:p1');
     // No mesmo lugar da Meta do consultor: dentro do cabeçalho.
     expect(document.querySelector('header select')).not.toBeNull();
   });
@@ -63,7 +69,7 @@ describe('MetaDiariaRoute', () => {
     expect(montagens.n).toBe(1);
     const sel = document.querySelector('select');
     await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(sel, 'p2');
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(sel, 'p:p2');
       sel.dispatchEvent(new Event('change', { bubbles: true }));
     });
     expect(q('prof').dataset.nome).toBe('Gilson');
@@ -79,5 +85,27 @@ describe('MetaDiariaRoute', () => {
     expect(q('consultor')).not.toBeNull();
     expect(document.querySelector('select').value).toBe('');
     expect(q('consultor').querySelector('select')).not.toBeNull();
+  });
+  it('gestor sem o módulo: o seletor tem só os consultores ativos, e a Meta escolhida abre só para olhar', async () => {
+    await montar({ id: 'g', role: 'admin', tenantModules: [] });
+    const opcoes = [...document.querySelectorAll('select option')].map((o) => o.textContent);
+    expect(opcoes).toEqual(['Minha meta', 'Ana Souza']);
+    const sel = document.querySelector('select');
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(sel, 'c:c1');
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(q('consultor').dataset.vendo).toBe('c1');
+  });
+  it('gestor com o módulo: consultores e professores em grupos', async () => {
+    await montar(gestor, '?consultor=c1');
+    expect([...document.querySelectorAll('select optgroup')].map((g) => g.label)).toEqual(['Consultores', 'Professores']);
+    expect(document.querySelector('select').value).toBe('c:c1');
+    expect(q('consultor').dataset.vendo).toBe('c1');
+  });
+  it('consultor não vê o seletor nem abre a Meta de um colega pelo endereço', async () => {
+    await montar(consultor, '?consultor=c1');
+    expect(document.querySelector('select')).toBeNull();
+    expect(q('consultor').dataset.vendo).toBe('');
   });
 });
